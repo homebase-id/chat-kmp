@@ -42,15 +42,18 @@ android {
 }
 
 dependencies {
+    implementation(project(":homebase-common"))
     implementation(project(":homebase-core"))
     implementation(project(":homebase-chat"))
 
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.ui)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.jetbrains.compose.material3)
 
     implementation(libs.koin.core)
     implementation(libs.koin.android)

@@ -16,16 +16,9 @@ fun KoinApp(
     onNavHostReady: suspend (NavController) -> Unit = {},
 ) {
     KoinApplication(application = { modules(allModules) }) {
-        HomebaseTheme {
-            val navController = rememberNavController()
-
-            AppNavHost(
-                navController = navController,
-            )
-            LaunchedEffect(navController) {
-                onNavHostReady(navController)
-            }
-        }
+        App(
+            onNavHostReady = onNavHostReady
+        )
     }
 }
 
@@ -34,14 +27,14 @@ fun KoinApp(
 fun App(
     onNavHostReady: suspend (NavController) -> Unit = {},
 ) {
-        HomebaseTheme {
-            val navController = rememberNavController()
-
-            AppNavHost(
-                navController = navController,
-            )
-            LaunchedEffect(navController) {
-                onNavHostReady(navController)
-            }
+    val navController = rememberNavController()
+    HomebaseTheme {
+        AppNavHost(
+            navController = navController,
+        )
+        LaunchedEffect(navController) {
+            onNavHostReady(navController)
         }
+    }
+
 }

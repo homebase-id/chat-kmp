@@ -121,7 +121,7 @@ fun AppNavHost(
 
                 composable<Route.Settings> {
                     SettingsScreen(
-                        viewModel = koinViewModel(),
+                        viewModel = koinViewModel()
                     )
                 }
             }

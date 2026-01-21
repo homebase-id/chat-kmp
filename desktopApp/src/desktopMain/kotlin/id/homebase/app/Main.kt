@@ -3,9 +3,28 @@ package id.homebase.app
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import id.homebase.core.KoinApp
+import id.homebase.core.App
+import id.homebase.core.di.allModules
+import id.homebase.core.settings.UserPreferences
+import id.homebase.core.settings.applyStoredLocale
+import kotlinx.coroutines.runBlocking
+import org.koin.core.context.GlobalContext
+import org.koin.core.context.GlobalContext.startKoin
 
 fun main() = application {
+    // Initialize Koin first
+    startKoin {
+        modules(allModules)
+    }
+
+    // Apply saved locale
+    val koin = GlobalContext.get()
+    val userPreferences = koin.get<UserPreferences>()
+
+    runBlocking {
+        applyStoredLocale(userPreferences)
+    }
+
     val config = DesktopPreferences()
     val state = rememberWindowState(
         placement = config.windowPlacement,
@@ -30,6 +49,6 @@ fun main() = application {
         title = "Homebase Chat",
         state = state,
     ) {
-        KoinApp()
+        App()
     }
 }

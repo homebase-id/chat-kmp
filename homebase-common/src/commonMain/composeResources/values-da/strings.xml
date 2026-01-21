@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings">Indstillinger</string>
+    <string name="chat_select_a_conversation">Vælg en samtale</string>
+    <string name="language">Sprog</string>
+    <string name="language_system">Systemstandard</string>
+    <string name="language_english">Engelsk</string>
+    <string name="language_danish">Dansk</string>
+</resources>

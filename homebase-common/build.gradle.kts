@@ -69,5 +69,10 @@ kotlin {
             implementation(libs.kotlinx.immutableCollections)
             implementation(libs.multiplatform.settings)
         }
+
+        androidMain.dependencies {
+            implementation(libs.androidx.appcompat)
+
+        }
     }
 }

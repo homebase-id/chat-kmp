@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.core.settings.Language
 import id.homebase.core.settings.UserPreferences
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,15 @@ class SettingsViewModel(
     private val _uiEvent = Channel<SettingsUiEvent>(Channel.BUFFERED)
     val uiEvent = _uiEvent.receiveAsFlow()
 
+    init {
+        loadSettings()
+    }
+
+    private fun loadSettings() {
+        val savedLanguageCode = userPreferences.language
+        val selectedLanguage = Language.fromCode(savedLanguageCode)
+        _uiState.value = _uiState.value.copy(selectedLanguage = selectedLanguage)
+    }
 
     /** Single entry point for all UI actions. */
     fun onAction(action: SettingsUiAction) {
@@ -27,7 +37,16 @@ class SettingsViewModel(
             is SettingsUiAction.ChatListClicked -> {
                 sendEvent(SettingsUiEvent.NavigateToChatList)
             }
+            is SettingsUiAction.LanguageSelected -> {
+                saveLanguage(action.language)
+            }
         }
+    }
+
+    private fun saveLanguage(language: Language) {
+        userPreferences.language = language.code
+        sendEvent(SettingsUiEvent.SetLanguage(language.code))
+        _uiState.value = _uiState.value.copy(selectedLanguage = language)
     }
 
     private fun sendEvent(event: SettingsUiEvent) {

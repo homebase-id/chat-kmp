@@ -53,6 +53,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":homebase-common"))
             implementation(project(":homebase-core"))
             implementation(project(":homebase-chat"))
 
