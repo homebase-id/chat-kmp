@@ -9,6 +9,7 @@ plugins {
 }
 
 kotlin {
+    applyDefaultHierarchyTemplate()
 
     androidLibrary {
         namespace = "id.homebase.core"
@@ -39,34 +40,36 @@ kotlin {
     }
 
     sourceSets {
-        commonMain {
-            dependencies {
-                implementation(project(":homebase-common"))
-                implementation(project(":homebase-chat"))
+        commonMain.dependencies {
+            implementation(project(":homebase-common"))
+            implementation(project(":homebase-chat"))
 
-                implementation(libs.jetbrains.compose.runtime)
-                implementation(libs.jetbrains.compose.foundation)
-                implementation(libs.jetbrains.compose.resources)
-                implementation(libs.jetbrains.compose.material3)
-                implementation(libs.jetbrains.compose.ui.tooling.preview)
-                implementation(libs.androidx.lifecycle.viewmodelCompose)
-                implementation(libs.androidx.lifecycle.runtimeCompose)
-                implementation(libs.atomicfu)
-                implementation(libs.kotlinx.datetime)
-                implementation(libs.kotlinx.io.core)
-                implementation(libs.kermit)
-                implementation(libs.kotlinx.coroutines.core)
-                implementation(libs.navigation.compose)
-                implementation(libs.koin.core)
-                implementation(libs.koin.compose)
-                implementation(libs.koin.compose.viewmodel)
-            }
+            implementation(libs.jetbrains.compose.runtime)
+            implementation(libs.jetbrains.compose.foundation)
+            implementation(libs.jetbrains.compose.resources)
+            implementation(libs.jetbrains.compose.material3)
+            implementation(libs.jetbrains.compose.material.icons.extended)
+            implementation(libs.jetbrains.compose.material3.adaptive)
+            implementation(libs.jetbrains.compose.ui.tooling.preview)
+            implementation(libs.androidx.lifecycle.viewmodelCompose)
+            implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.atomicfu)
+            implementation(libs.kotlinx.datetime)
+            implementation(libs.kotlinx.io.core)
+            implementation(libs.kermit)
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.navigation.compose)
+            implementation(libs.koin.core)
+            implementation(libs.koin.compose)
+            implementation(libs.koin.compose.viewmodel)
+            implementation(libs.multiplatform.settings)
         }
-        iosMain {
-            dependencies {
-                implementation(libs.ktor.client.darwin)
-                implementation(libs.sqldelight.native.driver)
-            }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
+            implementation(libs.sqldelight.native.driver)
+        }
+        androidMain.dependencies {
+            implementation(libs.koin.android)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

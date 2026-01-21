@@ -12,7 +12,7 @@ import org.koin.compose.KoinApplication
 /** Main application entry point. Sets up Koin DI, theme, and navigation. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun App(
+fun KoinApp(
     onNavHostReady: suspend (NavController) -> Unit = {},
 ) {
     KoinApplication(application = { modules(allModules) }) {
@@ -27,4 +27,21 @@ fun App(
             }
         }
     }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun App(
+    onNavHostReady: suspend (NavController) -> Unit = {},
+) {
+        HomebaseTheme {
+            val navController = rememberNavController()
+
+            AppNavHost(
+                navController = navController,
+            )
+            LaunchedEffect(navController) {
+                onNavHostReady(navController)
+            }
+        }
 }

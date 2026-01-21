@@ -8,7 +8,7 @@ object MainViewControllerRef {
 }
 
 fun MainViewController(): UIViewController {
-    val controller = ComposeUIViewController { App() }
+    val controller = ComposeUIViewController { KoinApp() }
     MainViewControllerRef.instance = controller
     return controller
 }

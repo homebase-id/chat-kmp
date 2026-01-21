@@ -1,8 +1,5 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     alias(libs.plugins.androidApplication)
-    alias(libs.plugins.kotlinAndroid)
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.composeCompiler)
 }
@@ -42,12 +39,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-
-    kotlin {
-        compilerOptions {
-            jvmTarget = JvmTarget.JVM_11
-        }
-    }
 }
 
 dependencies {
@@ -59,11 +50,15 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.kotlinx.coroutines.android)
+
+    implementation(libs.koin.core)
+    implementation(libs.koin.android)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.sqldelight.android.driver)
     implementation(libs.smart.exception.java)
     implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.kotlinx.coroutines.android)
+
 
     debugImplementation(libs.androidx.ui.tooling)
 }

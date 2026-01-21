@@ -10,6 +10,8 @@ plugins {
 }
 
 kotlin {
+    applyDefaultHierarchyTemplate()
+
     androidLibrary {
         namespace = "id.homebase.chat"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
@@ -43,24 +45,22 @@ kotlin {
     }
 
     sourceSets {
-        commonMain {
-            dependencies {
-                implementation(project(":homebase-common"))
+        commonMain.dependencies {
+            implementation(project(":homebase-common"))
 
-                implementation(libs.jetbrains.compose.runtime)
-                implementation(libs.jetbrains.compose.foundation)
-                implementation(libs.jetbrains.compose.resources)
-                implementation(libs.jetbrains.compose.material3)
-                implementation(libs.jetbrains.compose.material3.adaptive)
-                implementation(libs.jetbrains.compose.material3.adaptive.layout)
-                implementation(libs.jetbrains.compose.material3.adaptive.navigation)
-                implementation(libs.jetbrains.compose.material.icons.extended)
-                implementation(libs.jetbrains.compose.ui.backhandler)
-                implementation(libs.jetbrains.compose.ui.tooling.preview)
-                implementation(libs.androidx.lifecycle.viewmodelCompose)
-                implementation(libs.androidx.lifecycle.runtimeCompose)
-                implementation(libs.kotlinx.immutableCollections)
-            }
+            implementation(libs.jetbrains.compose.runtime)
+            implementation(libs.jetbrains.compose.foundation)
+            implementation(libs.jetbrains.compose.resources)
+            implementation(libs.jetbrains.compose.material3)
+            implementation(libs.jetbrains.compose.material3.adaptive)
+            implementation(libs.jetbrains.compose.material3.adaptive.layout)
+            implementation(libs.jetbrains.compose.material3.adaptive.navigation)
+            implementation(libs.jetbrains.compose.material.icons.extended)
+            implementation(libs.jetbrains.compose.ui.backhandler)
+            implementation(libs.jetbrains.compose.ui.tooling.preview)
+            implementation(libs.androidx.lifecycle.viewmodelCompose)
+            implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.kotlinx.immutableCollections)
         }
     }
 }

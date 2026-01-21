@@ -7,11 +7,14 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.composeHotReload)
 }
 
 kotlin {
+    applyDefaultHierarchyTemplate()
+
     compilerOptions {
-         allWarningsAsErrors.set(true)
+        allWarningsAsErrors.set(true)
     }
 
     // Apply Native-specific opt-ins
@@ -60,17 +63,17 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.multiplatform.settings)
+            implementation(libs.koin.core)
         }
 
-        val desktopMain by getting {
-            dependencies {
-                implementation(libs.jetbrains.compose.desktop.jvm.macos.arm64)
-                implementation(libs.jetbrains.compose.desktop.jvm.macos.x64)
-                implementation(libs.jetbrains.compose.desktop.jvm.windows.x64)
-                implementation(libs.jetbrains.compose.desktop.jvm.linux.arm64)
-                implementation(libs.jetbrains.compose.desktop.jvm.linux.x64)
-                implementation(libs.kotlinx.coroutinesSwing)
-            }
+        getByName("desktopMain").dependencies {
+            implementation(libs.jetbrains.compose.desktop.jvm.macos.arm64)
+            implementation(libs.jetbrains.compose.desktop.jvm.macos.x64)
+            implementation(libs.jetbrains.compose.desktop.jvm.windows.x64)
+            implementation(libs.jetbrains.compose.desktop.jvm.linux.arm64)
+            implementation(libs.jetbrains.compose.desktop.jvm.linux.x64)
+            implementation(libs.kotlinx.coroutinesSwing)
         }
 
         commonTest.dependencies {

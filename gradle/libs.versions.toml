@@ -1,5 +1,5 @@
 [versions]
-agp = "8.13.2"
+agp = "9.0.0"
 android-compileSdk = "36"
 android-minSdk = "27"
 android-targetSdk = "36"
@@ -12,12 +12,13 @@ androidx-media3 = "1.9.0"
 androidx-testExt = "1.3.0"
 androidx-testRunner = "1.7.0"
 androidx-testCore = "1.7.0"
-composeMultiplatform = "1.9.3"
+composeMultiplatform = "1.10.0"
+composeHotReload = "1.1.0-alpha04"
 jetbrains-compose-material3 = "1.9.0"
 jetbrains-compose-material3-adaptive = "1.2.0"
-jetbrains-compose-hotreload = "1.0.0"
 jetbrains-compose-ui-tooling-preview = "1.10.0"
 materialIconsExtended = "1.7.3"
+multiplatformSettings = "1.3.0"
 junit = "4.13.2"
 kotlin = "2.3.0"
 browser = "1.9.0"
@@ -29,7 +30,7 @@ kotlinx-io = "0.8.2"
 ktor="3.3.3"
 kermit="2.0.8"
 cryptography="0.5.0"
-robolectric = "4.16"
+robolectric = "4.16.1"
 navigation = "2.9.1"
 koin = "4.1.1"
 filekit = "0.12.0"
@@ -103,6 +104,7 @@ kotlinx-immutableCollections = { group = "org.jetbrains.kotlinx", name = "kotlin
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "navigation" }
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
 koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin" }
 koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel", version.ref = "koin" }
 filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "filekit" }
@@ -114,12 +116,14 @@ espresso-core = { group = "com.android.support.test.espresso", name = "espresso-
 appcompat-v7 = { group = "com.android.support", name = "appcompat-v7", version.ref = "appcompatV7" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview", version.ref = "uiToolingPreview" }
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling", version.ref = "uiToolingPreview" }
+multiplatform-settings = { group = "com.russhwolf", name = "multiplatform-settings", version.ref = "multiplatformSettings" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload"}
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
