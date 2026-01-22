@@ -4,13 +4,13 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import androidx.navigation.ExperimentalBrowserHistoryApi
 import androidx.navigation.bindToBrowserNavigation
-import id.homebase.core.App
+import id.homebase.core.KoinApp
 
 @OptIn(ExperimentalComposeUiApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
     ComposeViewport("ComposeApp") {
-        App(
+        KoinApp(
             onNavHostReady = { it.bindToBrowserNavigation() }
         )
     }

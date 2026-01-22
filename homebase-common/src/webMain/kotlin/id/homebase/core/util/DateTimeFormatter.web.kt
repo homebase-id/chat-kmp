@@ -1,11 +1,29 @@
 package id.homebase.core.util
 
-actual fun formatShortDate(instant: kotlinx.datetime.Instant): String {
-    val date = js("new Date(instant.toEpochMilliseconds())")
-    return js("date.toLocaleDateString()").toString()
+import kotlin.time.Instant
+
+
+actual fun formatShortDate(instant: Instant): String {
+    return formatShortDateJs(instant.toEpochMilliseconds())
 }
 
-actual fun formatTime(instant: kotlinx.datetime.Instant): String {
-    val date = js("new Date(instant.toEpochMilliseconds())")
-    return js("date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})").toString()
+
+actual fun formatTime(instant: Instant): String  {
+    return formatTimeJs(instant.toEpochMilliseconds())
 }
+
+@OptIn(ExperimentalWasmJsInterop::class)
+fun formatShortDateJs(epochMs: Long): String = js(
+    """{
+        let date = new Date(epochMs);
+        date.toLocaleDateString();
+}"""
+)
+
+@OptIn(ExperimentalWasmJsInterop::class)
+ fun formatTimeJs(epochMs: Long): String = js(
+    """{
+        let date = new Date(epochMs);
+        date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+}"""
+)

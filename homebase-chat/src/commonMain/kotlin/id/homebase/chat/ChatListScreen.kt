@@ -83,20 +83,19 @@ import id.homebase.resources.chat_select_a_conversation
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Instant
 
 @Composable
 fun ChatListScreen(
     viewModel: ChatListViewModel,
-    onNavigateToMessages: (conversationId: String) -> Unit,
     onNavigateBack: () -> Unit,
+    onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.uiEvent.collect { event ->
             when (event) {
-                is ChatListUiEvent.NavigateToMessages -> onNavigateToMessages(event.conversationId)
+                is ChatListUiEvent.NavigateToMessages -> {}
                 ChatListUiEvent.NavigateBack -> onNavigateBack()
             }
         }
@@ -104,7 +103,8 @@ fun ChatListScreen(
 
     ChatListUi(
         uiState = uiState,
-        onAction = viewModel::onAction
+        onAction = viewModel::onAction,
+        onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
     )
 }
 
@@ -113,6 +113,7 @@ fun ChatListScreen(
 fun ChatListUi(
     uiState: ChatListUiState,
     onAction: (ChatListUiAction) -> Unit,
+    onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val scaffoldNavigator = rememberListDetailPaneScaffoldNavigator<String>()
     val scope = rememberCoroutineScope()
@@ -129,6 +130,16 @@ fun ChatListUi(
         defaultPanePreferredWidth = 360.dp, // Slightly wider default for chat list
         excludedBounds = defaultDirective.excludedBounds
     )
+    
+    // Detect if detail pane is visible and list pane is hidden (compact view showing only detail)
+    val isListPaneHidden = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
+    val isDetailPaneVisible = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
+    val showingOnlyDetail = isListPaneHidden && isDetailPaneVisible
+    
+    // Notify parent about detail pane visibility in compact view
+    LaunchedEffect(showingOnlyDetail) {
+        onDetailPaneVisibilityChanged(showingOnlyDetail)
+    }
 
     BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {
@@ -157,13 +168,12 @@ fun ChatListUi(
                         }
                     )
                 } else {
-                    val isDetailPaneVisible =
-                        scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
+                    //val isDetailPaneVisible =
+                    //   scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
 
                     ChatListPane(
                         conversations = uiState.conversations,
                         selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                        isExpanded = isDetailPaneVisible,
                         onConversationClick = { conversationId ->
                             onAction(ChatListUiAction.ConversationClicked(conversationId))
                             scope.launch {
@@ -212,7 +222,6 @@ fun ChatListPane(
     onConversationClick: (String) -> Unit,
     onNewChatClick: () -> Unit,
     selectedConversationId: String? = null,
-    isExpanded: Boolean = false,
 ) {
     Scaffold(
         topBar = {
@@ -420,7 +429,7 @@ fun ChatDetailPane(
                     }
                     ConversationMenu(
                         showMenu = showMenu,
-                        conversation = conversation,
+                        conversationId = conversation.id,
                         onDelete = { showMenu = false },
                         dismissMenu = { showMenu = false }
                     )
@@ -519,12 +528,12 @@ fun ChatDetailPane(
                     if (message.isCurrentUser) {
                         SentMessageBubble(
                             message = message.content,
-                            timestamp = message.timestamp
+                            timestamp = formatTimestamp(message.timestamp)
                         )
                     } else {
                         ReceivedMessageBubble(
                             message = message.content,
-                            timestamp = message.timestamp
+                            timestamp = formatTimestamp(message.timestamp)
                         )
                     }
                 }
@@ -540,7 +549,7 @@ fun ChatDetailPane(
 @Composable
 fun SentMessageBubble(
     message: String,
-    timestamp: Instant,
+    timestamp: String,
 ) {
     Row(
         modifier = Modifier
@@ -554,7 +563,7 @@ fun SentMessageBubble(
         ) {
             ChatBubble(
                 text = message,
-                timestamp = formatTimestamp(timestamp),
+                timestamp = timestamp,
                 sentByYou = true,
             )
         }
@@ -564,7 +573,7 @@ fun SentMessageBubble(
 @Composable
 fun ReceivedMessageBubble(
     message: String,
-    timestamp: Instant,
+    timestamp: String,
 ) {
     Row(
         modifier = Modifier
@@ -578,7 +587,7 @@ fun ReceivedMessageBubble(
         ) {
             ChatBubble(
                 text = message,
-                timestamp = formatTimestamp(timestamp),
+                timestamp = timestamp,
                 sentByYou = false,
             )
         }
@@ -834,8 +843,8 @@ fun ContactItem(
 @Composable
 fun ConversationMenu(
     showMenu: Boolean,
-    conversation: Conversation,
-    onDelete: () -> Unit,
+    conversationId: String,
+    onDelete: (conversationId: String) -> Unit,
     dismissMenu: () -> Unit,
 ) {
     DropdownMenu(
@@ -860,7 +869,7 @@ fun ConversationMenu(
 
         DropdownMenuItem(
             onClick = {
-                onDelete()
+                onDelete(conversationId)
                 dismissMenu()
             },
             text = { Text(text = "Delete") },

@@ -18,7 +18,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -55,10 +57,14 @@ fun AppNavHost(
     val topLevelRoutes = remember {
         listOf(TopLevelRoute.Chat, TopLevelRoute.Settings)
     }
+    
+    // Track if we are in a screen where bottom menu should be hidden
+    var shouldHideBottomMenu by remember { mutableStateOf(false) }
+    val shouldShowBottomNav = !useNavigationRail && !shouldHideBottomMenu
 
     Scaffold(
         bottomBar = {
-            if (!useNavigationRail) {
+            if (shouldShowBottomNav) {
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
@@ -127,8 +133,8 @@ fun AppNavHost(
                     ChatListScreen(
                         viewModel = koinViewModel(),
                         onNavigateBack = { navController.popBackStack() },
-                        onNavigateToMessages = { conversationId ->
-                            //navController.navigate(Route.ChatMessages(conversationId))
+                        onDetailPaneVisibilityChanged = { isShowingDetail ->
+                            shouldHideBottomMenu = isShowingDetail
                         }
                     )
                 }
