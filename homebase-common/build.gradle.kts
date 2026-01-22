@@ -28,7 +28,7 @@ kotlin {
         androidResources.enable = true
     }
 
-    jvm("desktop")
+    jvm()
 
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
@@ -68,11 +68,23 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(libs.kotlinx.immutableCollections)
             implementation(libs.multiplatform.settings)
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.ktor.logging)
+            implementation(libs.coil3)
+            implementation(libs.coil3.compose)
+            implementation(libs.coil3.network)
         }
-
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
-
+            implementation(libs.ktor.client.okhttp)
+        }
+        appleMain.dependencies {
+            implementation(libs.ktor.client.darwin)
+        }
+        jvmMain.dependencies {
+            implementation(libs.ktor.client.cio)
         }
     }
 }

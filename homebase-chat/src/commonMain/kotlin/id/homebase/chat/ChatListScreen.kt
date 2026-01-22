@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,20 +16,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VideoCall
 import androidx.compose.material3.Badge
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
@@ -59,18 +64,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import id.homebase.chat.data.Contact
+import id.homebase.chat.data.Message
+import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.formatTimestamp
+import id.homebase.core.widget.AvatarImage
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_select_a_conversation
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Instant
 
 @Composable
 fun ChatListScreen(
@@ -131,18 +144,38 @@ fun ChatListUi(
             AnimatedPane(
                 modifier = Modifier
             ) {
-                ChatListPane(
-                    conversations = uiState.conversations,
-                    selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                    onConversationClick = { conversationId ->
-                        scope.launch {
-                            scaffoldNavigator.navigateTo(
-                                ListDetailPaneScaffoldRole.Detail,
-                                conversationId
-                            )
+                if (uiState.showingNewChatPane) {
+                    NewChatPane(
+                        contacts = uiState.contacts,
+                        searchQuery = uiState.searchQuery,
+                        onBackClick = { onAction(ChatListUiAction.BackToListClicked) },
+                        onContactClick = { contact ->
+                            onAction(ChatListUiAction.ContactClicked(contact))
+                        },
+                        onSearchQueryChanged = { query ->
+                            onAction(ChatListUiAction.SearchQueryChanged(query))
                         }
-                    },
-                )
+                    )
+                } else {
+                    val isDetailPaneVisible =
+                        scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
+
+                    ChatListPane(
+                        conversations = uiState.conversations,
+                        selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
+                        isExpanded = isDetailPaneVisible,
+                        onConversationClick = { conversationId ->
+                            onAction(ChatListUiAction.ConversationClicked(conversationId))
+                            scope.launch {
+                                scaffoldNavigator.navigateTo(
+                                    ListDetailPaneScaffoldRole.Detail,
+                                    conversationId
+                                )
+                            }
+                        },
+                        onNewChatClick = { onAction(ChatListUiAction.NewChatClicked) }
+                    )
+                }
             }
         },
         detailPane = {
@@ -152,12 +185,16 @@ fun ChatListUi(
                     if (conversation != null) {
                         ChatDetailPane(
                             conversation = conversation,
+                            messages = uiState.currentConversationMessages,
                             onBackClick = {
                                 scope.launch {
                                     scaffoldNavigator.navigateBack(backNavigationBehavior)
                                 }
                             },
-                            showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] == PaneAdaptedValue.Hidden
+                            onSendMessage = { content ->
+                                onAction(ChatListUiAction.SendMessage(conversationId, content))
+                            },
+                            showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
                         )
                     } else {
                         EmptyDetailPane()
@@ -173,54 +210,59 @@ fun ChatListUi(
 fun ChatListPane(
     conversations: ImmutableList<Conversation>,
     onConversationClick: (String) -> Unit,
+    onNewChatClick: () -> Unit,
     selectedConversationId: String? = null,
+    isExpanded: Boolean = false,
 ) {
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(MR.string.app_name),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
+            Column {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = stringResource(MR.string.app_name),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    actions = {
+                        IconButton(onClick = onNewChatClick) {
+                            Icon(
+                                imageVector = FeatherEdit,
+                                contentDescription = "New conversation"
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     )
-                },
-                actions = {
-                    IconButton(onClick = { }) {
+                )
+                // Search field below title
+                OutlinedTextField(
+                    value = "",
+                    onValueChange = { },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = { Text("Search") },
+                    leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search"
                         )
-                    }
-                    IconButton(onClick = { }) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "More options"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                )
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { /* TODO: Handle new chat */ },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "New chat"
+                    },
+                    shape = RoundedCornerShape(24.dp),
+                    singleLine = true
                 )
             }
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
         ) {
             items(conversations.toList()) { conversation ->
                 ConversationItem(
@@ -244,27 +286,16 @@ fun ConversationItem(
             .fillMaxWidth()
             .background(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
-                else MaterialTheme.colorScheme.surface
+                else MaterialTheme.colorScheme.surfaceContainerLow
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 20.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = conversation.avatarInitials,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
+        AvatarImage(
+            avatarUrl = conversation.avatarUrl,
+            avatarInitials = conversation.avatarInitials,
+        )
 
         Spacer(modifier = Modifier.width(12.dp))
 
@@ -289,7 +320,7 @@ fun ConversationItem(
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Text(
-                    text = conversation.timestamp,
+                    text = formatTimestamp(conversation.timestamp),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (conversation.unreadCount > 0)
                         MaterialTheme.colorScheme.primary
@@ -319,10 +350,11 @@ fun ConversationItem(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Badge(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
+                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     ) {
                         Text(
+                            modifier = Modifier.padding(2.dp),
                             text = conversation.unreadCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold
@@ -338,18 +370,28 @@ fun ConversationItem(
 @Composable
 fun ChatDetailPane(
     conversation: Conversation,
+    messages: ImmutableList<Message>,
     onBackClick: () -> Unit,
+    onSendMessage: (String) -> Unit,
     showBackButton: Boolean,
 ) {
     var messageText by remember { mutableStateOf("") }
+    var showMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
+            TopAppBar(
                 title = {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        AvatarImage(
+                            avatarUrl = conversation.avatarUrl,
+                            avatarInitials = conversation.avatarInitials,
+                            size = 32.dp,
+                            fontSize = 12.sp,
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
                         Text(
                             text = conversation.name,
                             style = MaterialTheme.typography.titleMedium,
@@ -361,31 +403,27 @@ fun ChatDetailPane(
                     if (showBackButton) {
                         IconButton(onClick = onBackClick) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                imageVector = Icons.Default.ChevronLeft,
                                 contentDescription = "Back"
                             )
                         }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { }) {
-                        Icon(
-                            imageVector = Icons.Default.VideoCall,
-                            contentDescription = "Video call"
-                        )
-                    }
-                    IconButton(onClick = { }) {
-                        Icon(
-                            imageVector = Icons.Default.Call,
-                            contentDescription = "Call"
-                        )
-                    }
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = {
+                        showMenu = true
+                    }) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = "More options"
                         )
                     }
+                    ConversationMenu(
+                        showMenu = showMenu,
+                        conversation = conversation,
+                        onDelete = { showMenu = false },
+                        dismissMenu = { showMenu = false }
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -418,8 +456,8 @@ fun ChatDetailPane(
 
                     FloatingActionButton(
                         onClick = {
-                            // TODO: Handle send message
                             if (messageText.isNotBlank()) {
+                                onSendMessage(messageText)
                                 messageText = ""
                             }
                         },
@@ -442,35 +480,53 @@ fun ChatDetailPane(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
-            // Mock message bubbles
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                reverseLayout = true
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 item {
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            AvatarImage(
+                                avatarUrl = conversation.avatarUrl,
+                                avatarInitials = conversation.avatarInitials,
+                                size = 72.dp,
+                                fontSize = 24.sp,
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = conversation.name,
+                                style = MaterialTheme.typography.headlineSmall,
+                            )
+                        }
+                    }
+                }
+                item {
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                // Sample messages
-                item {
-                    ReceivedMessageBubble(
-                        message = conversation.lastMessage,
-                        timestamp = conversation.timestamp
-                    )
-                }
-
-                item {
-                    SentMessageBubble(
-                        message = "That sounds great! Let me know when you're free.",
-                        timestamp = "2:30 PM"
-                    )
-                }
-
-                item {
-                    ReceivedMessageBubble(
-                        message = "Hey! How are you doing?",
-                        timestamp = "2:15 PM"
-                    )
+                items(messages.toList()) { message ->
+                    if (message.isCurrentUser) {
+                        SentMessageBubble(
+                            message = message.content,
+                            timestamp = message.timestamp
+                        )
+                    } else {
+                        ReceivedMessageBubble(
+                            message = message.content,
+                            timestamp = message.timestamp
+                        )
+                    }
                 }
 
                 item {
@@ -484,7 +540,7 @@ fun ChatDetailPane(
 @Composable
 fun SentMessageBubble(
     message: String,
-    timestamp: String,
+    timestamp: Instant,
 ) {
     Row(
         modifier = Modifier
@@ -496,27 +552,10 @@ fun SentMessageBubble(
             horizontalAlignment = Alignment.End,
             modifier = Modifier.fillMaxWidth(0.75f)
         ) {
-            Surface(
-                shape = RoundedCornerShape(
-                    topStart = 18.dp,
-                    topEnd = 18.dp,
-                    bottomStart = 18.dp,
-                    bottomEnd = 4.dp
-                ),
-                color = MaterialTheme.colorScheme.primaryContainer,
-            ) {
-                Text(
-                    text = message,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = timestamp,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+            ChatBubble(
+                text = message,
+                timestamp = formatTimestamp(timestamp),
+                sentByYou = true,
             )
         }
     }
@@ -525,7 +564,7 @@ fun SentMessageBubble(
 @Composable
 fun ReceivedMessageBubble(
     message: String,
-    timestamp: String,
+    timestamp: Instant,
 ) {
     Row(
         modifier = Modifier
@@ -537,28 +576,104 @@ fun ReceivedMessageBubble(
             horizontalAlignment = Alignment.Start,
             modifier = Modifier.fillMaxWidth(0.75f)
         ) {
-            Surface(
-                shape = RoundedCornerShape(
-                    topStart = 18.dp,
-                    topEnd = 18.dp,
-                    bottomStart = 4.dp,
-                    bottomEnd = 18.dp
-                ),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
+            ChatBubble(
+                text = message,
+                timestamp = formatTimestamp(timestamp),
+                sentByYou = false,
+            )
+        }
+    }
+}
+
+@Composable
+fun ChatBubble(
+    modifier: Modifier = Modifier,
+    text: String,
+    timestamp: String,
+    sentByYou: Boolean,
+) {
+    // We store the result of the text layout to know where the last line ends
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val backgroundColor =
+        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh
+    val contentColor =
+        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface
+
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(
+            topStart = 18.dp,
+            topEnd = 18.dp,
+            bottomStart = if (!sentByYou) 4.dp else 18.dp,
+            bottomEnd = if (sentByYou) 4.dp else 18.dp,
+        ),
+        color = backgroundColor,
+    ) {
+        Layout(
+            modifier = Modifier.padding(12.dp),
+            content = {
                 Text(
-                    text = message,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    text = text,
+                    onTextLayout = { textLayoutResult = it },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = contentColor
+                )
+                Text(
+                    modifier = Modifier.padding(top = 4.dp),
+                    text = timestamp,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = contentColor.copy(alpha = 0.7f)
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = timestamp,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        ) { measurables, constraints ->
+            val textPlaceable = measurables[0].measure(constraints)
+            val timePlaceable = measurables[1].measure(constraints)
+
+            val layoutResult = textLayoutResult
+            var totalWidth: Int
+            var totalHeight: Int
+            var timeX: Int
+            var timeY: Int
+
+            if (layoutResult == null) {
+                // Fallback if layout isn't ready yet
+                totalWidth = textPlaceable.width
+                totalHeight = textPlaceable.height
+                timeX = 0
+                timeY = 0
+            } else {
+                val lastLineIndex = layoutResult.lineCount - 1
+                val lastLineRight = layoutResult.getLineRight(lastLineIndex)
+
+                // Determine if timestamp fits on the last line
+                // We add a small gap (8dp converted to px) between text and time
+                val horizontalGap = 8.dp.toPx()
+                val fitsOnLastLine =
+                    (constraints.maxWidth - lastLineRight) > (timePlaceable.width + horizontalGap)
+
+                if (fitsOnLastLine) {
+                    // Fits on the same line
+                    totalWidth = maxOf(
+                        textPlaceable.width,
+                        (lastLineRight + horizontalGap + timePlaceable.width).toInt()
+                    )
+                    totalHeight = textPlaceable.height
+                    timeX = totalWidth - timePlaceable.width
+                    timeY = totalHeight - timePlaceable.height
+                } else {
+                    // Needs a new line
+                    totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
+                    totalHeight = textPlaceable.height + timePlaceable.height
+                    timeX = totalWidth - timePlaceable.width
+                    timeY = totalHeight - timePlaceable.height
+                }
+            }
+
+            layout(totalWidth, totalHeight) {
+                textPlaceable.placeRelative(0, 0)
+                timePlaceable.placeRelative(timeX, timeY)
+            }
         }
     }
 }
@@ -587,6 +702,188 @@ fun EmptyDetailPane() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NewChatPane(
+    contacts: ImmutableList<Contact>,
+    searchQuery: String,
+    onBackClick: () -> Unit,
+    onContactClick: (Contact) -> Unit,
+    onSearchQueryChanged: (String) -> Unit,
+) {
+    val filteredContacts = remember(contacts, searchQuery) {
+        if (searchQuery.isBlank()) {
+            contacts
+        } else {
+            contacts.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        text = "New Chat",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                )
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // Search field
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChanged,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                placeholder = { Text("Search contacts") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search"
+                    )
+                },
+                shape = RoundedCornerShape(24.dp),
+                singleLine = true
+            )
+
+            // Contacts section
+            Text(
+                text = "CONTACTS",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(filteredContacts.toList()) { contact ->
+                    ContactItem(
+                        contact = contact,
+                        onClick = { onContactClick(contact) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ContactItem(
+    contact: Contact,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AvatarImage(
+            avatarUrl = contact.avatarUrl,
+            avatarInitials = contact.avatarInitials,
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // Content
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = contact.name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = contact.status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+fun ConversationMenu(
+    showMenu: Boolean,
+    conversation: Conversation,
+    onDelete: () -> Unit,
+    dismissMenu: () -> Unit,
+) {
+    DropdownMenu(
+        expanded = showMenu,
+        onDismissRequest = dismissMenu
+    ) {
+        DropdownMenuItem(
+            onClick = {
+                dismissMenu()
+            },
+            text = { Text(text = "Menu above the fold") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                    contentDescription = null
+                )
+            }
+        )
+
+        HorizontalDivider()
+
+
+        DropdownMenuItem(
+            onClick = {
+                onDelete()
+                dismissMenu()
+            },
+            text = { Text(text = "Delete") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null
+                )
+            }
+        )
+        DropdownMenuItem(
+            onClick = {
+                dismissMenu()
+            },
+            text = { Text(text = "Block") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Error,
+                    contentDescription = null
+                )
+            }
+        )
+
     }
 }
 

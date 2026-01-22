@@ -1,6 +1,7 @@
 package id.homebase.core.di
 
 import id.homebase.chat.ChatListViewModel
+import id.homebase.chat.data.MockChatApiProvider
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
@@ -10,21 +11,11 @@ import org.koin.dsl.module
 
 val appModule = module {
     single { UserPreferences(get()) }
+    single { MockChatApiProvider() }
 
     viewModelOf(::HomeViewModel)
     viewModelOf(::ChatListViewModel)
     viewModelOf(::SettingsViewModel)
-
-
-
-//    // ChatMessageDetailViewModel with parameters
-//    viewModel { (driveId: Uuid, fileId: Uuid) ->
-//        ChatMessageDetailViewModel(
-//                driveId = driveId,
-//                fileId = fileId,
-//                driveFileProvider = getOrNull<DriveFileProvider>()
-//        )
-//    }
 }
 
 // Common module that each platform will implement

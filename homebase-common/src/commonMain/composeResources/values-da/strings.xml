@@ -6,4 +6,19 @@
     <string name="language_system">Systemstandard</string>
     <string name="language_english">Engelsk</string>
     <string name="language_danish">Dansk</string>
+
+    <!-- Time formatting -->
+    <string name="time_just_now">Lige nu</string>
+    <string name="time_minutes_ago">%1$sm siden</string>
+    <string name="time_hours_ago">%1$st siden</string>
+    <string name="time_yesterday">I går</string>
+
+    <!-- Day names -->
+    <string name="day_monday">Mandag</string>
+    <string name="day_tuesday">Tirsdag</string>
+    <string name="day_wednesday">Onsdag</string>
+    <string name="day_thursday">Torsdag</string>
+    <string name="day_friday">Fredag</string>
+    <string name="day_saturday">Lørdag</string>
+    <string name="day_sunday">Søndag</string>
 </resources>

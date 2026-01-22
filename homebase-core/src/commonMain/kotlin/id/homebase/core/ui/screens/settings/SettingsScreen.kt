@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -66,7 +67,7 @@ fun SettingsUi(
 ) {
     Scaffold { innerPadding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(24.dp),
+            modifier = Modifier.fillMaxSize().consumeWindowInsets(innerPadding).padding(innerPadding).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {

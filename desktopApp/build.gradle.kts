@@ -45,7 +45,7 @@ kotlin {
         }
     }
 
-    jvm("desktop") {
+    jvm() {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
@@ -68,7 +68,7 @@ kotlin {
             implementation(libs.koin.core)
         }
 
-        getByName("desktopMain").dependencies {
+        jvmMain.dependencies {
             implementation(libs.jetbrains.compose.desktop.jvm.macos.arm64)
             implementation(libs.jetbrains.compose.desktop.jvm.macos.x64)
             implementation(libs.jetbrains.compose.desktop.jvm.windows.x64)

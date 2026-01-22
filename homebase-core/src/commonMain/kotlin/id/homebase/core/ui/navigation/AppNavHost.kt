@@ -1,10 +1,12 @@
 package id.homebase.core.ui.navigation
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -18,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -26,6 +29,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.chat.ChatListScreen
+import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import org.koin.compose.viewmodel.koinViewModel
@@ -35,7 +39,7 @@ sealed class TopLevelRoute(
     val label: String,
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
-    data object Chat : TopLevelRoute(Route.ChatList, "Chats", Icons.AutoMirrored.Filled.Chat)
+    data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
     data object Settings : TopLevelRoute(Route.Settings, "Settings", Icons.Default.Settings)
 }
 
@@ -44,7 +48,8 @@ fun AppNavHost(
     navController: NavHostController = rememberNavController(),
 ) {
     val adaptiveInfo = currentWindowAdaptiveInfo()
-    val useNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+    val useNavigationRail =
+        adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val topLevelRoutes = remember {
@@ -75,9 +80,18 @@ fun AppNavHost(
             }
         }
     ) { paddingValues ->
-        Row(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(paddingValues)
+                .padding(paddingValues)
+        ) {
             if (useNavigationRail) {
-                NavigationRail {
+                NavigationRail(
+                    header = {
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                ) {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationRailItem(
                             icon = { Icon(topLevelRoute.icon, contentDescription = null) },
@@ -114,7 +128,7 @@ fun AppNavHost(
                         viewModel = koinViewModel(),
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToMessages = { conversationId ->
-                            navController.navigate(Route.ChatMessages(conversationId))
+                            //navController.navigate(Route.ChatMessages(conversationId))
                         }
                     )
                 }

@@ -17,7 +17,7 @@ kotlin {
         minSdk = libs.versions.android.minSdk.get().toInt()
     }
 
-    jvm("desktop")
+    jvm()
 
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {

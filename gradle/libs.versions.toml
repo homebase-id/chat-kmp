@@ -19,6 +19,7 @@ jetbrains-compose-material3-adaptive = "1.2.0"
 jetbrains-compose-ui-tooling-preview = "1.10.0"
 materialIconsExtended = "1.7.3"
 multiplatformSettings = "1.3.0"
+coil3 = "3.3.0"
 junit = "4.13.2"
 kotlin = "2.3.0"
 browser = "1.9.0"
@@ -34,7 +35,7 @@ robolectric = "4.16.1"
 navigation = "2.9.1"
 koin = "4.1.1"
 filekit = "0.12.0"
-atomicfu = "0.29.0"
+atomicfu = "0.30.0"
 runner = "1.0.2"
 espressoCore = "3.0.2"
 appcompatV7 = "28.0.0"
@@ -117,6 +118,11 @@ appcompat-v7 = { group = "com.android.support", name = "appcompat-v7", version.r
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview", version.ref = "uiToolingPreview" }
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling", version.ref = "uiToolingPreview" }
 multiplatform-settings = { group = "com.russhwolf", name = "multiplatform-settings", version.ref = "multiplatformSettings" }
+coil3 = { group = "io.coil-kt.coil3", name = "coil", version.ref = "coil3" }
+coil3-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil3" }
+coil3-network = { group = "io.coil-kt.coil3", name = "coil-network-ktor3", version.ref = "coil3" }
+coil3-video = { group = "io.coil-kt.coil3", name = "coil-video", version.ref = "coil3" } # Android only
+coil3-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil3" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
