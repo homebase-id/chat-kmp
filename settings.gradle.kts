@@ -32,8 +32,10 @@ dependencyResolutionManagement {
 include(":homebase-common")
 include(":homebase-core")
 include(":homebase-chat")
+include(":homebase-api")
 
 // Apps
 include(":desktopApp")
 include(":androidApp")
 include(":webApp")
+

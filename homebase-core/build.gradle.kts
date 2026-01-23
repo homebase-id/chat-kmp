@@ -41,6 +41,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":homebase-api"))
             implementation(project(":homebase-common"))
             implementation(project(":homebase-chat"))
 

@@ -1,5 +1,6 @@
 package id.homebase.core.di
 
+import id.homebase.api.di.apiModule
 import id.homebase.chat.ChatListViewModel
 import id.homebase.chat.data.MockChatApiProvider
 import id.homebase.core.settings.UserPreferences
@@ -22,4 +23,4 @@ val appModule = module {
 expect fun platformModule(): Module
 
 /** All Koin modules for the application. */
-val allModules = listOf(platformModule(), appModule)
+val allModules = listOf(platformModule(), apiModule, appModule)
