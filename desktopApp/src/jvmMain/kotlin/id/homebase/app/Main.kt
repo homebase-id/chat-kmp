@@ -3,6 +3,8 @@ package id.homebase.app
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import id.homebase.api.sync.database.DatabaseDriverFactory
+import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.App
 import id.homebase.core.di.allModules
 import id.homebase.core.settings.UserPreferences
@@ -32,6 +34,10 @@ fun main() = application {
         width = config.windowWidthDp,
         height = config.windowHeightDp,
     )
+
+    runBlocking {
+        DatabaseManager.initialize { DatabaseDriverFactory().createDriver() }
+    }
 
     Window(
         onCloseRequest = {

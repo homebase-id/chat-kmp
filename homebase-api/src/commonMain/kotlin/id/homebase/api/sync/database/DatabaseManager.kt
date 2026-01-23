@@ -43,12 +43,13 @@ private val outboxAdapter = Outbox.Adapter(
     dependencyFileIdAdapter = UuidAdapter
 )
 
-class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable
-{
+class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
     private val logger = Logger.withTag("DatabaseManager")
     private var database: OdinDatabase
     private var driver: SqlDriver
-    private val dbDispatcher = Dispatchers.IO.limitedParallelism(1)
+
+    //    private val dbDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private val dbDispatcher = Dispatchers.Default.limitedParallelism(1)
 
     init {
         driver = driverProvider()
@@ -66,7 +67,8 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable
     }
 
     companion object {
-        private const val DATABASE_VERSION=1  // Increase to wipe the database and rebuild all tables
+        private const val DATABASE_VERSION =
+            1  // Increase to wipe the database and rebuild all tables
         private lateinit var instance: DatabaseManager
         val appDb: DatabaseManager get() = instance
 
@@ -84,9 +86,8 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable
             }
         }
 
-        suspend fun wipeTables(driver: SqlDriver)
-        {
-            withContext(Dispatchers.IO) {
+        suspend fun wipeTables(driver: SqlDriver) {
+            withContext(Dispatchers.Default) {
                 try {
                     val tables = listOf(
                         "AppNotifications",
@@ -111,10 +112,34 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable
 
     // Lazy wrappers
     public val keyValue: KeyValueWrapper by lazy { KeyValueWrapper(driver, keyValueAdapter, this) }
-    public val appNotifications: AppNotificationsWrapper by lazy { AppNotificationsWrapper(driver, appNotificationsAdapter, this) }
-    public val driveMainIndex: DriveMainIndexWrapper by lazy { DriveMainIndexWrapper(driver, driveMainIndexAdapter, this) }
-    public val driveTagIndex: DriveTagIndexWrapper by lazy { DriveTagIndexWrapper(driver, driveTagIndexAdapter, this) }
-    public val driveLocalTagIndex: DriveLocalTagIndexWrapper by lazy { DriveLocalTagIndexWrapper(driver, driveLocalTagIndexAdapter, this) }
+    public val appNotifications: AppNotificationsWrapper by lazy {
+        AppNotificationsWrapper(
+            driver,
+            appNotificationsAdapter,
+            this
+        )
+    }
+    public val driveMainIndex: DriveMainIndexWrapper by lazy {
+        DriveMainIndexWrapper(
+            driver,
+            driveMainIndexAdapter,
+            this
+        )
+    }
+    public val driveTagIndex: DriveTagIndexWrapper by lazy {
+        DriveTagIndexWrapper(
+            driver,
+            driveTagIndexAdapter,
+            this
+        )
+    }
+    public val driveLocalTagIndex: DriveLocalTagIndexWrapper by lazy {
+        DriveLocalTagIndexWrapper(
+            driver,
+            driveLocalTagIndexAdapter,
+            this
+        )
+    }
     public val outbox: OutboxWrapper by lazy { OutboxWrapper(driver, outboxAdapter, this) }
 
     suspend fun <R> executeReadQuery(
@@ -131,6 +156,7 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable
             throw e  // Rethrow if you want the caller to handle, or return a fallback QueryResult
         }
     }
+
     suspend fun withWriteTransaction(block: (OdinDatabase) -> Unit) {
         withContext(dbDispatcher) {
             database.transaction { block(database) }
