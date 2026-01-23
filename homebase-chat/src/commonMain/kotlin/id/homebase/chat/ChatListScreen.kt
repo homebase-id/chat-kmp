@@ -2,6 +2,10 @@ package id.homebase.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +15,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Badge
@@ -64,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +83,8 @@ import id.homebase.chat.data.Message
 import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.util.ifTrue
+import id.homebase.core.util.isMobile
 import id.homebase.core.widget.AvatarImage
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
@@ -130,12 +139,14 @@ fun ChatListUi(
         defaultPanePreferredWidth = 360.dp, // Slightly wider default for chat list
         excludedBounds = defaultDirective.excludedBounds
     )
-    
+
     // Detect if detail pane is visible and list pane is hidden (compact view showing only detail)
-    val isListPaneHidden = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
-    val isDetailPaneVisible = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
+    val isListPaneHidden =
+        scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
+    val isDetailPaneVisible =
+        scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
     val showingOnlyDetail = isListPaneHidden && isDetailPaneVisible
-    
+
     // Notify parent about detail pane visibility in compact view
     LaunchedEffect(showingOnlyDetail) {
         onDetailPaneVisibilityChanged(showingOnlyDetail)
@@ -527,13 +538,11 @@ fun ChatDetailPane(
                 items(messages.toList()) { message ->
                     if (message.isCurrentUser) {
                         SentMessageBubble(
-                            message = message.content,
-                            timestamp = formatTimestamp(message.timestamp)
+                            message = message,
                         )
                     } else {
                         ReceivedMessageBubble(
-                            message = message.content,
-                            timestamp = formatTimestamp(message.timestamp)
+                            message = message,
                         )
                     }
                 }
@@ -548,49 +557,107 @@ fun ChatDetailPane(
 
 @Composable
 fun SentMessageBubble(
-    message: String,
-    timestamp: String,
+    message: Message,
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.End
     ) {
+        Spacer(modifier = Modifier.width(24.dp))
         Column(
-            horizontalAlignment = Alignment.End,
-            modifier = Modifier.fillMaxWidth(0.75f)
+            modifier = Modifier.weight(1f).hoverable(interactionSource),
+            horizontalAlignment = Alignment.End
         ) {
-            ChatBubble(
-                text = message,
-                timestamp = timestamp,
-                sentByYou = true,
-            )
+            Row {
+                Column {
+                    if (isHovered) {
+                        IconButton(onClick = {
+                            showMenu = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreHoriz,
+                                contentDescription = "More options",
+                                tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                            )
+                        }
+                    }
+                    SentMessageMenu(
+                        showMenu = showMenu,
+                        messageId = message.id,
+                        onDelete = { showMenu = false },
+                        dismissMenu = { showMenu = false }
+                    )
+                }
+                ChatBubble(
+                    modifier = Modifier
+                        .heightIn(min = 48.dp),
+                    text = message.content,
+                    timestamp = formatTimestamp(message.timestamp),
+                    sentByYou = true,
+                    onLongClick = {
+                        showMenu = true
+                    }
+                )
+            }
         }
     }
 }
 
 @Composable
 fun ReceivedMessageBubble(
-    message: String,
-    timestamp: String,
+    message: Message,
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.Start
     ) {
         Column(
+            modifier = Modifier.weight(1f).hoverable(interactionSource),
             horizontalAlignment = Alignment.Start,
-            modifier = Modifier.fillMaxWidth(0.75f)
         ) {
-            ChatBubble(
-                text = message,
-                timestamp = timestamp,
-                sentByYou = false,
-            )
+            Row {
+                ChatBubble(
+                    modifier = Modifier
+                        .heightIn(min = 48.dp),
+                    text = message.content,
+                    timestamp = formatTimestamp(message.timestamp),
+                    sentByYou = false,
+                    onLongClick = {
+                        showMenu = true
+                    }
+                )
+                Column {
+                    if (isHovered) {
+                        IconButton(onClick = {
+                            showMenu = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreHoriz,
+                                contentDescription = "More options",
+                                tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                            )
+                        }
+                    }
+                    ReceivedMessageMenu(
+                        showMenu = showMenu,
+                        messageId = message.id,
+                        onDelete = { showMenu = false },
+                        dismissMenu = { showMenu = false }
+                    )
+                }
+            }
         }
+        Spacer(modifier = Modifier.width(24.dp))
     }
 }
 
@@ -600,7 +667,8 @@ fun ChatBubble(
     text: String,
     timestamp: String,
     sentByYou: Boolean,
-) {
+    onLongClick: () -> Unit,
+    ) {
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val backgroundColor =
@@ -608,15 +676,22 @@ fun ChatBubble(
     val contentColor =
         if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface
 
-
+    val shape = RoundedCornerShape(
+        topStart = 18.dp,
+        topEnd = 18.dp,
+        bottomStart = if (!sentByYou) 4.dp else 18.dp,
+        bottomEnd = if (sentByYou) 4.dp else 18.dp,
+    )
     Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(
-            topStart = 18.dp,
-            topEnd = 18.dp,
-            bottomStart = if (!sentByYou) 4.dp else 18.dp,
-            bottomEnd = if (sentByYou) 4.dp else 18.dp,
-        ),
+        modifier = modifier
+            .clip(shape)
+            .ifTrue(isMobile()) {
+                Modifier.combinedClickable(
+                    onClick = {},
+                    onLongClick = onLongClick
+                )
+            },
+        shape = shape,
         color = backgroundColor,
     ) {
         Layout(
@@ -629,7 +704,7 @@ fun ChatBubble(
                     color = contentColor
                 )
                 Text(
-                    modifier = Modifier.padding(top = 4.dp),
+                    modifier = Modifier.padding(top = 8.dp),
                     text = timestamp,
                     style = MaterialTheme.typography.labelSmall,
                     color = contentColor.copy(alpha = 0.7f)
@@ -870,6 +945,118 @@ fun ConversationMenu(
         DropdownMenuItem(
             onClick = {
                 onDelete(conversationId)
+                dismissMenu()
+            },
+            text = { Text(text = "Delete") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null
+                )
+            }
+        )
+        DropdownMenuItem(
+            onClick = {
+                dismissMenu()
+            },
+            text = { Text(text = "Block") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Error,
+                    contentDescription = null
+                )
+            }
+        )
+
+    }
+}
+
+@Composable
+fun ReceivedMessageMenu(
+    showMenu: Boolean,
+    messageId: String,
+    onDelete: (messageId: String) -> Unit,
+    dismissMenu: () -> Unit,
+) {
+    DropdownMenu(
+        expanded = showMenu,
+        onDismissRequest = dismissMenu
+    ) {
+        DropdownMenuItem(
+            onClick = {
+                dismissMenu()
+            },
+            text = { Text(text = "Menu above the fold") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                    contentDescription = null
+                )
+            }
+        )
+
+        HorizontalDivider()
+
+
+        DropdownMenuItem(
+            onClick = {
+                onDelete(messageId)
+                dismissMenu()
+            },
+            text = { Text(text = "Delete") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null
+                )
+            }
+        )
+        DropdownMenuItem(
+            onClick = {
+                dismissMenu()
+            },
+            text = { Text(text = "Block") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Error,
+                    contentDescription = null
+                )
+            }
+        )
+
+    }
+}
+
+@Composable
+fun SentMessageMenu(
+    showMenu: Boolean,
+    messageId: String,
+    onDelete: (messageId: String) -> Unit,
+    dismissMenu: () -> Unit,
+) {
+    DropdownMenu(
+        expanded = showMenu,
+        onDismissRequest = dismissMenu
+    ) {
+        DropdownMenuItem(
+            onClick = {
+                dismissMenu()
+            },
+            text = { Text(text = "Menu above the fold") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                    contentDescription = null
+                )
+            }
+        )
+
+        HorizontalDivider()
+
+
+        DropdownMenuItem(
+            onClick = {
+                onDelete(messageId)
                 dismissMenu()
             },
             text = { Text(text = "Delete") },

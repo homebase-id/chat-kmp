@@ -5,7 +5,8 @@
     <string name="chat_select_a_conversation">Select a conversation</string>
     <string name="language">Language</string>
     <string name="language_system">System Default</string>
-    <string name="language_english">English</string>
+    <string name="language_english_us">English (USA)</string>
+    <string name="language_english_gb">English (Great Britain)</string>
     <string name="language_danish">Danish</string>
 
     <!-- Time formatting -->

@@ -4,7 +4,8 @@
     <string name="chat_select_a_conversation">Vælg en samtale</string>
     <string name="language">Sprog</string>
     <string name="language_system">Systemstandard</string>
-    <string name="language_english">Engelsk</string>
+    <string name="language_english_us">Engelsk (USA)</string>
+    <string name="language_english_gb">Engelsk (Storbritannien)</string>
     <string name="language_danish">Dansk</string>
 
     <!-- Time formatting -->
