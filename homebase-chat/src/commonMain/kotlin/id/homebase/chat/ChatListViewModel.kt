@@ -66,7 +66,8 @@ data class ConversationUiModel(  // TODO: Move the data objects / classes into C
 
 @Immutable
 data class ChatListUiState(
-    val conversationViewModels: ImmutableList<ConversationUiModel> = persistentListOf(),
+    val conversations: ImmutableList<ConversationUiModel> = persistentListOf(),
+    val selectedConversationId: String? = null,
     val showingNewChatPane: Boolean = false,
     val contacts: ImmutableList<ContactUiModel> = persistentListOf(),
     val searchQuery: String = "",
@@ -171,6 +172,7 @@ class ChatListViewModel(
             chatMessageService.messages.collect { messages ->
                 val sorted = messages.sortedBy { it.timestamp }
                 _uiState.value = _uiState.value.copy(
+                    selectedConversationId = conversationId,
                     currentConversationMessageViewModels = sorted.toPersistentList()
                 )
             }

@@ -2,22 +2,27 @@
 
 ## How to run
 
-Android:
+### Android
 ```
 ./gradlew androidApp:installDebug
 ```
 
-iOS:
+### iOS
 ```
 Run from Xcode
 ```
 
-Desktop:
+### Desktop
 ```
 ./gradlew desktopApp:run
 ```
 
-Wasm:
+With hot reload:
+```
+./gradlew desktopApp:hotRunJvm --auto
+```
+
+### Wasm
 ```
 ./gradlew webApp:wasmJsBrowserDevelopmentRun --no-configuration-cache
 ```

@@ -1,11 +1,7 @@
 package id.homebase.chat
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +11,6 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,24 +18,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Badge
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -48,14 +38,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.VerticalDragHandle
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
 import androidx.compose.material3.adaptive.layout.PaneAdaptedValue
+import androidx.compose.material3.adaptive.layout.PaneExpansionAnchor
 import androidx.compose.material3.adaptive.layout.PaneScaffoldDirective
+import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldDestinationItem
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
+import androidx.compose.material3.adaptive.layout.rememberPaneExpansionState
 import androidx.compose.material3.adaptive.navigation.BackNavigationBehavior
 import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.Composable
@@ -70,11 +64,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,13 +73,13 @@ import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.formatTimestamp
-import id.homebase.core.util.ifTrue
-import id.homebase.core.util.isMobile
 import id.homebase.core.widget.AvatarImage
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
+import id.homebase.resources.chat_new_conversation
+import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_select_a_conversation
+import id.homebase.resources.chat_select_a_conversation_subtitle
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -113,7 +104,7 @@ fun ChatListScreen(
 
     ChatListUi(
         uiState = uiState,
-        onAction = viewModel::onAction,
+        onUiAction = viewModel::onAction,
         onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
     )
 }
@@ -122,24 +113,34 @@ fun ChatListScreen(
 @Composable
 fun ChatListUi(
     uiState: ChatListUiState,
-    onAction: (ChatListUiAction) -> Unit,
+    onUiAction: (ChatListUiAction) -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
-    val scaffoldNavigator = rememberListDetailPaneScaffoldNavigator<Uuid>()
-    val scope = rememberCoroutineScope()
-    val backNavigationBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
-
-    // Create custom directive with no spacer between panes
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
-    val customDirective = PaneScaffoldDirective(
-        maxHorizontalPartitions = defaultDirective.maxHorizontalPartitions,
+    val isExpanded =
+        windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(800)
+    val scaffoldDirective = PaneScaffoldDirective(
+        maxHorizontalPartitions = if (isExpanded) 2 else 1,
         horizontalPartitionSpacerSize = 0.dp, // Remove the white border
         maxVerticalPartitions = defaultDirective.maxVerticalPartitions,
         verticalPartitionSpacerSize = defaultDirective.verticalPartitionSpacerSize,
         defaultPanePreferredWidth = 360.dp, // Slightly wider default for chat list
         excludedBounds = defaultDirective.excludedBounds
     )
+    val scaffoldNavigator = rememberListDetailPaneScaffoldNavigator<String>(
+        scaffoldDirective = scaffoldDirective,
+        initialDestinationHistory = if (scaffoldDirective.maxHorizontalPartitions > 1) {
+            listOf(
+                ThreePaneScaffoldDestinationItem(ListDetailPaneScaffoldRole.List),
+                ThreePaneScaffoldDestinationItem(ListDetailPaneScaffoldRole.Detail)
+            )
+        } else {
+            listOf(ThreePaneScaffoldDestinationItem(ListDetailPaneScaffoldRole.List))
+        }
+    )
+    val scope = rememberCoroutineScope()
+    val backNavigationBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
 
     // Detect if detail pane is visible and list pane is hidden (compact view showing only detail)
     val isListPaneHidden =
@@ -147,6 +148,24 @@ fun ChatListUi(
     val isDetailPaneVisible =
         scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
     val showingOnlyDetail = isListPaneHidden && isDetailPaneVisible
+
+    LaunchedEffect(isExpanded) {
+        if (!isExpanded && scaffoldNavigator.currentDestination?.pane == ListDetailPaneScaffoldRole.Detail) {
+            // Optional: If you want to force it back to list view when shrinking
+            scaffoldNavigator.navigateBack()
+        }
+    }
+
+    val partitions = scaffoldDirective.maxHorizontalPartitions
+    LaunchedEffect(partitions) {
+        if (partitions > 1) {
+            // This ensures the Detail role is added to the active visible roles
+            scaffoldNavigator.navigateTo(
+                ListDetailPaneScaffoldRole.Detail,
+                uiState.selectedConversationId,
+            )
+        }
+    }
 
     // Notify parent about detail pane visibility in compact view
     LaunchedEffect(showingOnlyDetail) {
@@ -161,33 +180,30 @@ fun ChatListUi(
 
     ListDetailPaneScaffold(
         modifier = Modifier.fillMaxSize(),
-        directive = customDirective,
+        directive = scaffoldNavigator.scaffoldDirective,
         scaffoldState = scaffoldNavigator.scaffoldState,
         listPane = {
             AnimatedPane(
                 modifier = Modifier
             ) {
                 if (uiState.showingNewChatPane) {
-                    NewChatPane(
+                    NewConversationPane(
                         contacts = uiState.contacts,
                         searchQuery = uiState.searchQuery,
-                        onBackClick = { onAction(ChatListUiAction.BackToListClicked) },
+                        onBackClick = { onUiAction(ChatListUiAction.BackToListClicked) },
                         onContactClick = { contact ->
-                            onAction(ChatListUiAction.ContactClicked(contact))
+                            onUiAction(ChatListUiAction.ContactClicked(contact))
                         },
                         onSearchQueryChanged = { query ->
-                            onAction(ChatListUiAction.SearchQueryChanged(query))
+                            onUiAction(ChatListUiAction.SearchQueryChanged(query))
                         }
                     )
                 } else {
-                    //val isDetailPaneVisible =
-                    //   scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
-
                     ChatListPane(
                         conversationViewModels = uiState.conversationViewModels,
                         selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
                         onConversationClick = { conversationId ->
-                            onAction(ChatListUiAction.ConversationClicked(conversationId))
+                            onUiAction(ChatListUiAction.ConversationClicked(conversationId))
                             scope.launch {
                                 scaffoldNavigator.navigateTo(
                                     ListDetailPaneScaffoldRole.Detail,
@@ -195,15 +211,15 @@ fun ChatListUi(
                                 )
                             }
                         },
-                        onNewChatClick = { onAction(ChatListUiAction.NewChatClicked) }
+                        onUiAction = onUiAction,
                     )
                 }
             }
         },
         detailPane = {
             AnimatedPane {
-                scaffoldNavigator.currentDestination?.contentKey?.let { conversationId ->
-                    val conversation = uiState.conversationViewModels.find { it.id == conversationId }
+                uiState.selectedConversationId?.let { conversationId ->
+                    val conversation = uiState.conversations.find { it.id == conversationId }
                     if (conversation != null) {
                         ChatDetailPane(
                             conversationViewModel = conversation,
@@ -214,16 +230,50 @@ fun ChatListUi(
                                 }
                             },
                             onSendMessage = { content ->
-                                onAction(ChatListUiAction.SendMessage(conversationId, content))
+                                onUiAction(
+                                    ChatListUiAction.SendMessage(
+                                        conversationId,
+                                        content
+                                    )
+                                )
                             },
                             showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
                         )
                     } else {
-                        EmptyDetailPane()
+                        EmptyDetailPane(
+                            title = stringResource(MR.string.chat_select_a_conversation),
+                            subtitle = stringResource(MR.string.chat_select_a_conversation_subtitle)
+                        )
                     }
-                } ?: EmptyDetailPane()
+                } ?: EmptyDetailPane(
+                    title = stringResource(MR.string.chat_select_a_conversation),
+                    subtitle = stringResource(MR.string.chat_select_a_conversation_subtitle)
+                )
             }
         },
+        paneExpansionState =
+            rememberPaneExpansionState(
+                keyProvider = scaffoldNavigator.scaffoldValue,
+                anchors = listOf(
+                    PaneExpansionAnchor.Offset.fromStart(280.dp),
+                    PaneExpansionAnchor.Offset.fromStart(320.dp),
+                    PaneExpansionAnchor.Offset.fromStart(360.dp),
+                    PaneExpansionAnchor.Offset.fromStart(400.dp),
+                    PaneExpansionAnchor.Offset.fromStart(440.dp),
+                    PaneExpansionAnchor.Offset.fromStart(480.dp),
+                ),
+            ),
+        paneExpansionDragHandle = { state ->
+            val interactionSource = remember { MutableInteractionSource() }
+            VerticalDragHandle(
+                modifier =
+                    Modifier.paneExpansionDraggable(
+                        state,
+                        LocalMinimumInteractiveComponentSize.current,
+                        interactionSource
+                    ), interactionSource = interactionSource
+            )
+        }
     )
 }
 
@@ -235,6 +285,16 @@ fun ChatListPane(
     onNewChatClick: () -> Unit,
     selectedConversationId: Uuid? = null,
 ) {
+    var filterByUnread by remember { mutableStateOf(false) }
+    var selectedFilterConversationId by remember { mutableStateOf<String?>(null) }
+    val filteredConversations = remember(conversations, filterByUnread) {
+        if (filterByUnread) {
+            conversations.filter { it.unreadCount > 0 || it.id == selectedFilterConversationId }
+        } else {
+            conversations
+        }
+    }
+
     Scaffold(
         topBar = {
             Column {
@@ -247,10 +307,12 @@ fun ChatListPane(
                         )
                     },
                     actions = {
-                        IconButton(onClick = onNewChatClick) {
+                        IconButton(onClick = {
+                            onUiAction(ChatListUiAction.NewChatClicked)
+                        }) {
                             Icon(
                                 imageVector = FeatherEdit,
-                                contentDescription = "New conversation"
+                                contentDescription = stringResource(MR.string.chat_new_conversation)
                             )
                         }
                     },
@@ -259,22 +321,43 @@ fun ChatListPane(
                     )
                 )
                 // Search field below title
-                OutlinedTextField(
-                    value = "",
-                    onValueChange = { },
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    placeholder = { Text("Search") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search"
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = "",
+                        onValueChange = { },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text(stringResource(MR.string.chat_search_placeholder)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search"
+                            )
+                        },
+                        shape = RoundedCornerShape(24.dp),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    IconButton(
+                        onClick = {
+                            filterByUnread = !filterByUnread
+                            if (!filterByUnread) {
+                                selectedFilterConversationId = null
+                            }
+                        },
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = if (filterByUnread) HomebaseTheme.extendedColors.bubbleSentSurface else Color.Unspecified
                         )
-                    },
-                    shape = RoundedCornerShape(24.dp),
-                    singleLine = true
-                )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FilterList,
+                            contentDescription = "Filter by unread",
+                        )
+                    }
+                }
             }
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -285,101 +368,52 @@ fun ChatListPane(
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
         ) {
-            items(conversationViewModels.toList()) { conversation ->
+            if (filterByUnread) {
+                item {
+                    Text(
+                        text = "Filtered by unread",
+                        modifier = Modifier.padding(24.dp),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                }
+            }
+            items(filteredConversations.toList()) { conversation ->
                 ConversationItem(
-                    conversationViewModel = conversation,
-                    onClick = { onConversationClick(conversation.id) },
+                    conversation = conversation,
+                    onClick = {
+                        if (filterByUnread) {
+                            selectedFilterConversationId = conversation.id
+                        }
+                        onConversationClick(conversation.id)
+                    },
                     isSelected = conversation.id == selectedConversationId
                 )
             }
-        }
-    }
-}
-
-@Composable
-fun ConversationItem(
-    conversationViewModel: ConversationUiModel,
-    onClick: () -> Unit,
-    isSelected: Boolean = false,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
-                else MaterialTheme.colorScheme.surfaceContainerLow
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AvatarImage(
-            avatarUrl = conversationViewModel.avatarUrl,
-            avatarInitials = conversationViewModel.avatarInitials,
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Content
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = conversationViewModel.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (conversationViewModel.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Text(
-                    text = formatTimestamp(conversationViewModel.timestamp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (conversationViewModel.unreadCount > 0)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (conversationViewModel.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = conversationViewModel.lastMessage,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-
-                if (conversationViewModel.unreadCount > 0) {
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Badge(
-                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+            if (filterByUnread) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                        horizontalArrangement = Arrangement.Center,
                     ) {
-                        Text(
-                            modifier = Modifier.padding(2.dp),
-                            text = conversationViewModel.unreadCount.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            if (filteredConversations.isEmpty()) {
+                                Text(
+                                    text = "No unread chats",
+                                    modifier = Modifier.padding(24.dp),
+                                )
+                            }
+                            ElevatedButton(
+                                onClick = {
+                                    filterByUnread = false
+                                }, colors = ButtonDefaults.elevatedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                )
+                            ) {
+                                Text(text = "Clear filter")
+                            }
+                        }
                     }
                 }
             }
@@ -556,541 +590,13 @@ fun ChatDetailPane(
     }
 }
 
-@Composable
-fun SentMessageBubble(
-    messageViewModel: MessageUiModel,
-) {
-    var showMenu by remember { mutableStateOf(false) }
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-    ) {
-        Spacer(modifier = Modifier.width(24.dp))
-        Column(
-            modifier = Modifier.weight(1f).hoverable(interactionSource),
-            horizontalAlignment = Alignment.End
-        ) {
-            Row {
-                Column {
-                    if (isHovered) {
-                        IconButton(onClick = {
-                            showMenu = true
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = "More options",
-                                tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                            )
-                        }
-                    }
-                    SentMessageMenu(
-                        showMenu = showMenu,
-                        messageId = messageViewModel.id.toString(),
-                        onDelete = { showMenu = false },
-                        dismissMenu = { showMenu = false }
-                    )
-                }
-                ChatBubble(
-                    modifier = Modifier
-                        .heightIn(min = 48.dp),
-                    text = messageViewModel.content,
-                    timestamp = formatTimestamp(messageViewModel.timestamp),
-                    sentByYou = true,
-                    onLongClick = {
-                        showMenu = true
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun ReceivedMessageBubble(
-    messageViewModel: MessageUiModel,
-) {
-    var showMenu by remember { mutableStateOf(false) }
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-    ) {
-        Column(
-            modifier = Modifier.weight(1f).hoverable(interactionSource),
-            horizontalAlignment = Alignment.Start,
-        ) {
-            Row {
-                ChatBubble(
-                    modifier = Modifier
-                        .heightIn(min = 48.dp),
-                    text = messageViewModel.content,
-                    timestamp = formatTimestamp(messageViewModel.timestamp),
-                    sentByYou = false,
-                    onLongClick = {
-                        showMenu = true
-                    }
-                )
-                Column {
-                    if (isHovered) {
-                        IconButton(onClick = {
-                            showMenu = true
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = "More options",
-                                tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                            )
-                        }
-                    }
-                    ReceivedMessageMenu(
-                        showMenu = showMenu,
-                        messageId = messageViewModel.id.toString(),
-                        onDelete = { showMenu = false },
-                        dismissMenu = { showMenu = false }
-                    )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.width(24.dp))
-    }
-}
-
-@Composable
-fun ChatBubble(
-    modifier: Modifier = Modifier,
-    text: String,
-    timestamp: String,
-    sentByYou: Boolean,
-    onLongClick: () -> Unit,
-    ) {
-    // We store the result of the text layout to know where the last line ends
-    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val backgroundColor =
-        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface else MaterialTheme.colorScheme.surfaceContainerHigh
-    val contentColor =
-        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface
-
-    val shape = RoundedCornerShape(
-        topStart = 18.dp,
-        topEnd = 18.dp,
-        bottomStart = if (!sentByYou) 4.dp else 18.dp,
-        bottomEnd = if (sentByYou) 4.dp else 18.dp,
-    )
-    Surface(
-        modifier = modifier
-            .clip(shape)
-            .ifTrue(isMobile()) {
-                Modifier.combinedClickable(
-                    onClick = {},
-                    onLongClick = onLongClick
-                )
-            },
-        shape = shape,
-        color = backgroundColor,
-    ) {
-        Layout(
-            modifier = Modifier.padding(12.dp),
-            content = {
-                Text(
-                    text = text,
-                    onTextLayout = { textLayoutResult = it },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor
-                )
-                Text(
-                    modifier = Modifier.padding(top = 8.dp),
-                    text = timestamp,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.7f)
-                )
-            }
-        ) { measurables, constraints ->
-            val textPlaceable = measurables[0].measure(constraints)
-            val timePlaceable = measurables[1].measure(constraints)
-
-            val layoutResult = textLayoutResult
-            var totalWidth: Int
-            var totalHeight: Int
-            var timeX: Int
-            var timeY: Int
-
-            if (layoutResult == null) {
-                // Fallback if layout isn't ready yet
-                totalWidth = textPlaceable.width
-                totalHeight = textPlaceable.height
-                timeX = 0
-                timeY = 0
-            } else {
-                val lastLineIndex = layoutResult.lineCount - 1
-                val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-
-                // Determine if timestamp fits on the last line
-                // We add a small gap (8dp converted to px) between text and time
-                val horizontalGap = 8.dp.toPx()
-                val fitsOnLastLine =
-                    (constraints.maxWidth - lastLineRight) > (timePlaceable.width + horizontalGap)
-
-                if (fitsOnLastLine) {
-                    // Fits on the same line
-                    totalWidth = maxOf(
-                        textPlaceable.width,
-                        (lastLineRight + horizontalGap + timePlaceable.width).toInt()
-                    )
-                    totalHeight = textPlaceable.height
-                    timeX = totalWidth - timePlaceable.width
-                    timeY = totalHeight - timePlaceable.height
-                } else {
-                    // Needs a new line
-                    totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
-                    totalHeight = textPlaceable.height + timePlaceable.height
-                    timeX = totalWidth - timePlaceable.width
-                    timeY = totalHeight - timePlaceable.height
-                }
-            }
-
-            layout(totalWidth, totalHeight) {
-                textPlaceable.placeRelative(0, 0)
-                timePlaceable.placeRelative(timeX, timeY)
-            }
-        }
-    }
-}
-
-@Composable
-fun EmptyDetailPane() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainerLowest),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = stringResource(MR.string.chat_select_a_conversation),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Choose a conversation from the list to view messages",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun NewChatPane(
-    contacts: ImmutableList<ContactUiModel>,
-    searchQuery: String,
-    onBackClick: () -> Unit,
-    onContactClick: (ContactUiModel) -> Unit,
-    onSearchQueryChanged: (String) -> Unit,
-) {
-    val filteredContacts = remember(contacts, searchQuery) {
-        if (searchQuery.isBlank()) {
-            contacts
-        } else {
-            contacts.filter { it.name.contains(searchQuery, ignoreCase = true) }
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = "New Chat",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                )
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // Search field
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChanged,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search contacts") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search"
-                    )
-                },
-                shape = RoundedCornerShape(24.dp),
-                singleLine = true
-            )
-
-            // Contacts section
-            Text(
-                text = "CONTACTS",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(filteredContacts.toList()) { contact ->
-                    ContactItem(
-                        contact = contact,
-                        onClick = { onContactClick(contact) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ContactItem(
-    contact: ContactUiModel,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AvatarImage(
-            avatarUrl = contact.avatarUrl,
-            avatarInitials = contact.avatarInitials,
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Content
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            Text(
-                text = contact.name,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = contact.status,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-fun ConversationMenu(
-    showMenu: Boolean,
-    conversationId: Uuid,
-    onDelete: (conversationId: Uuid) -> Unit,
-    dismissMenu: () -> Unit,
-) {
-    DropdownMenu(
-        expanded = showMenu,
-        onDismissRequest = dismissMenu
-    ) {
-        DropdownMenuItem(
-            onClick = {
-                dismissMenu()
-            },
-            text = { Text(text = "Menu above the fold") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
-                    contentDescription = null
-                )
-            }
-        )
-
-        HorizontalDivider()
-
-
-        DropdownMenuItem(
-            onClick = {
-                onDelete(conversationId)
-                dismissMenu()
-            },
-            text = { Text(text = "Delete") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
-        DropdownMenuItem(
-            onClick = {
-                dismissMenu()
-            },
-            text = { Text(text = "Block") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Error,
-                    contentDescription = null
-                )
-            }
-        )
-
-    }
-}
-
-@Composable
-fun ReceivedMessageMenu(
-    showMenu: Boolean,
-    messageId: String,
-    onDelete: (messageId: String) -> Unit,
-    dismissMenu: () -> Unit,
-) {
-    DropdownMenu(
-        expanded = showMenu,
-        onDismissRequest = dismissMenu
-    ) {
-        DropdownMenuItem(
-            onClick = {
-                dismissMenu()
-            },
-            text = { Text(text = "Menu above the fold") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
-                    contentDescription = null
-                )
-            }
-        )
-
-        HorizontalDivider()
-
-
-        DropdownMenuItem(
-            onClick = {
-                onDelete(messageId)
-                dismissMenu()
-            },
-            text = { Text(text = "Delete") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
-        DropdownMenuItem(
-            onClick = {
-                dismissMenu()
-            },
-            text = { Text(text = "Block") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Error,
-                    contentDescription = null
-                )
-            }
-        )
-
-    }
-}
-
-@Composable
-fun SentMessageMenu(
-    showMenu: Boolean,
-    messageId: String,
-    onDelete: (messageId: String) -> Unit,
-    dismissMenu: () -> Unit,
-) {
-    DropdownMenu(
-        expanded = showMenu,
-        onDismissRequest = dismissMenu
-    ) {
-        DropdownMenuItem(
-            onClick = {
-                dismissMenu()
-            },
-            text = { Text(text = "Menu above the fold") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
-                    contentDescription = null
-                )
-            }
-        )
-
-        HorizontalDivider()
-
-
-        DropdownMenuItem(
-            onClick = {
-                onDelete(messageId)
-                dismissMenu()
-            },
-            text = { Text(text = "Delete") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
-        DropdownMenuItem(
-            onClick = {
-                dismissMenu()
-            },
-            text = { Text(text = "Block") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Error,
-                    contentDescription = null
-                )
-            }
-        )
-
-    }
-}
-
 @Preview
 @Composable
 fun ChatListUiPreview() {
     HomebaseTheme {
         ChatListUi(
             uiState = ChatListUiState(),
-            onAction = {}
+            onUiAction = {}
         )
     }
 }

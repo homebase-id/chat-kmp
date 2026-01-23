@@ -53,5 +53,4 @@ fun App(
             onNavHostReady(navController)
         }
     }
-
 }
