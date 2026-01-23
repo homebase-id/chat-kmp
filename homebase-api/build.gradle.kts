@@ -6,10 +6,22 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.sqldelight)
 }
 
 kotlin {
     applyDefaultHierarchyTemplate()
+
+    // ✅ GLOBAL opt-ins for ALL source sets & targets
+    sourceSets.all {
+        languageSettings.apply {
+            optIn("kotlin.uuid.ExperimentalUuidApi")
+            optIn("kotlin.io.encoding.ExperimentalEncodingApi")
+            optIn("kotlinx.serialization.ExperimentalSerializationApi")
+            optIn("kotlin.time.ExperimentalTime")
+            optIn("dev.whyoleg.cryptography.DelicateCryptographyApi")
+        }
+    }
 
     // Target declarations - add or remove as needed below. These define
     // which platforms this KMP module supports.
@@ -93,6 +105,15 @@ kotlin {
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
+        }
+    }
+}
+
+sqldelight {
+    databases {
+        create("OdinDatabase") {
+            packageName.set("id.homebase.api.sync.database")
+            dialect(libs.sqldelight.sqlite338.dialect)
         }
     }
 }

@@ -1,0 +1,33 @@
+import kotlin.uuid.Uuid;
+
+CREATE TABLE IF NOT EXISTS DriveTagIndex(
+   rowId INTEGER PRIMARY KEY AUTOINCREMENT,
+   identityId BLOB AS Uuid NOT NULL,
+   driveId BLOB AS Uuid NOT NULL,
+   fileId BLOB AS Uuid NOT NULL,
+   tagId BLOB AS Uuid NOT NULL,
+   UNIQUE(identityId,driveId,fileId,tagId)
+);
+
+-- Insert a tag
+insertTag:
+INSERT INTO DriveTagIndex(identityId, driveId, fileId, tagId)
+VALUES (?, ?, ?, ?);
+
+-- Select tags for a file
+selectByFile:
+SELECT * FROM DriveTagIndex
+WHERE identityId = ? AND driveId = ? AND fileId = ?;
+
+-- Delete all tags (for testing)
+deleteByFile:
+DELETE FROM DriveTagIndex
+WHERE identityId = ? AND driveId = ? AND fileId = ?;
+
+-- Delete all records (for testing)
+deleteAll:
+DELETE FROM DriveTagIndex;
+
+-- countALl
+countAll:
+SELECT count(*) FROM DriveTagIndex;

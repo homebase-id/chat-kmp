@@ -1,0 +1,111 @@
+import kotlin.uuid.Uuid;
+
+CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 1
+   rowId INTEGER PRIMARY KEY AUTOINCREMENT,
+   identityId BLOB AS Uuid NOT NULL,
+   driveId BLOB AS Uuid NOT NULL,
+   fileId BLOB AS Uuid NOT NULL,
+   uniqueId BLOB AS Uuid,
+   globalTransitId BLOB AS Uuid,
+   senderId TEXT,
+   groupId BLOB AS Uuid,
+   fileType INTEGER NOT NULL,
+   dataType INTEGER NOT NULL,
+   archivalStatus INTEGER NOT NULL,
+   historyStatus INTEGER NOT NULL,
+   userDate INTEGER NOT NULL,
+   created INTEGER NOT NULL,
+   modified INTEGER NOT NULL,
+   fileSystemType INTEGER NOT NULL,
+   jsonHeader TEXT NOT NULL,
+   CHECK (fileId IS NOT NULL OR uniqueId IS NOT NULL OR globalTransitId IS NOT NULL),
+
+   UNIQUE(identityId,driveId,fileId),
+   UNIQUE(identityId,driveId,uniqueId),
+   UNIQUE(identityId,driveId,globalTransitId)
+);
+
+CREATE INDEX IF NOT EXISTS Idx0DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,created,rowId);
+CREATE INDEX IF NOT EXISTS Idx1DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,modified,rowId);
+CREATE INDEX IF NOT EXISTS Idx2DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,userDate,rowId);
+
+-- Upsert a record
+upsertDriveMainIndex:
+INSERT INTO DriveMainIndex (
+   identityId,driveId,fileId,
+   uniqueId,globalTransitId,
+   groupId,
+   senderId,
+   fileType,dataType,archivalStatus,historyStatus,
+   userDate,created,modified,
+   fileSystemType, jsonHeader)
+VALUES (
+   ?,?,?,?,?,
+   ?,?,?,?,?,?,?,
+   ?,?,?,?)
+ON CONFLICT (identityId,driveId,fileId) DO UPDATE
+SET uniqueId = excluded.uniqueId,
+    globalTransitId = excluded.globalTransitId,
+    groupId = excluded.groupId,
+    senderId = excluded.senderId,
+    fileType = excluded.fileType,dataType = excluded.dataType,
+    archivalStatus = excluded.archivalStatus,historyStatus = excluded.historyStatus,
+    userDate = excluded.userDate,created = excluded.created,modified = excluded.modified,
+    fileSystemType = excluded.fileSystemType,
+    jsonHeader = excluded.jsonHeader
+WHERE excluded.modified > DriveMainIndex.modified; -- Only update if the row is newer. Host guarantees it.
+
+--Probably a bad idea... :
+--ON CONFLICT (identityId,driveId,uniqueId) DO UPDATE
+--SET fileId = COALESCE(fileId, excluded.fileId), -- only update if current is NULL - I'm not even sure I want this
+--    globalTransitId = excluded.globalTransitId,
+--    groupId = excluded.groupId,
+--    senderId = excluded.senderId,
+--    fileType = excluded.fileType,dataType = excluded.dataType,
+--    archivalStatus = excluded.archivalStatus,historyStatus = excluded.historyStatus,
+--    userDate = excluded.userDate,created = excluded.created,modified = excluded.modified,
+--    fileSystemType = excluded.fileSystemType,
+--    jsonHeader = excluded.jsonHeader
+--ON CONFLICT (identityId,driveId,globalTransitId) DO UPDATE
+--SET fileId = COALESCE(fileId, excluded.fileId), -- only update if current is NULL - I'm not even sure I want this
+--    uniqueId = uniqueId,
+--    groupId = excluded.groupId,
+--    senderId = excluded.senderId,
+--    fileType = excluded.fileType,dataType = excluded.dataType,
+--    archivalStatus = excluded.archivalStatus,historyStatus = excluded.historyStatus,
+--    userDate = excluded.userDate,created = excluded.created,modified = excluded.modified,
+--    fileSystemType = excluded.fileSystemType,
+--    jsonHeader = excluded.jsonHeader
+
+-- Select by identity and drive and file (get single row)
+selectByIdentityAndDriveAndFile:
+SELECT * FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND fileId = ?;
+
+-- Select by identity and drive and file (get single row)
+selectByIdentityAndDriveAndUnique:
+SELECT * FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND uniqueId = ?;
+
+-- Select by identity and drive and file (get single row)
+selectByIdentityAndDriveAndGlobal:
+SELECT * FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND globalTransitId = ?;
+
+
+-- Delete all records (for testing)
+deleteAll:
+DELETE FROM DriveMainIndex;
+
+-- Delete all records (for testing)
+deleteBy:
+DELETE FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND fileId = ?;
+
+-- Count all records - for TESTING
+countAll:
+SELECT count(*) FROM DriveMainIndex;
+
+-- Select all records - for TESTING
+selectAll:
+SELECT * FROM DriveMainIndex;

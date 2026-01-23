@@ -1,0 +1,88 @@
+package id.homebase.homebasekmppoc.prototype.lib.eventbus
+
+import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
+import id.homebase.api.client.drives.HomebaseFile
+import kotlin.uuid.Uuid
+
+sealed interface  BackendEvent {
+    enum class SyncSource {
+        DriveSync,
+        WebSocket
+    }
+
+    // A DriveEvent event happens on a drive when either sync() has received a batch of data
+    // from the host, or when the websocket listener has received some data.
+    sealed interface DriveEvent : id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent {
+        val driveId: Uuid  // Common property for all sync events (implement in each data class)
+
+        data class Started(
+            override val driveId : Uuid,
+        ) : DriveEvent // Only raised by Drive.sync()
+
+        data class Completed(
+            override val driveId: Uuid,
+            val totalCount: Int
+        ) : DriveEvent  // Only raised by Drive.sync()
+
+        data class Failed(
+            override val driveId: Uuid,
+            val errorMessage: String,  // Or add throwable: Throwable
+            val source: SyncSource = SyncSource.DriveSync
+        ) : DriveEvent
+
+        data class BatchReceived(
+            override val driveId : Uuid,
+            val totalCount: Int,
+            val batchCount: Int,
+            val latestModified: UnixTimeUtc?,
+            val batchData: List<HomebaseFile>,
+            val source: SyncSource = SyncSource.DriveSync
+        ) : DriveEvent
+    }
+
+
+    sealed interface OutboxEvent : id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent {
+        data object Started : OutboxEvent
+
+        data class Completed(
+            val totalCount: Int
+        ) : OutboxEvent  // Only raised by Drive.sync()
+
+        data class Failed(
+            val errorMessage: String?  // Or add throwable: Throwable
+        ) : OutboxEvent
+
+        // When beginning to send an item we guarantee itemStarted event (0%)
+        data class ItemStarted(
+            val driveId : Uuid,
+            val fileId : Uuid,
+            val totalBytes: Long? = null
+        ) : OutboxEvent  // Only raised by Drive.sync()
+
+        // Progress during the sending of an item ]0..100[ %
+        data class ItemProgress(
+            val driveId: Uuid,
+            val fileId: Uuid,
+            val progress: Float,  // 0.0 to 1.0
+            val bytesSent: Long? = null
+        ) : OutboxEvent  // New: For ongoing upload progress updates
+
+        // When the item has been delivered we guarantee itemCompleted event (100%)
+        data class ItemCompleted(
+            val driveId : Uuid,
+            val fileId : Uuid
+        ) : OutboxEvent  // Only raised by Drive.sync()
+
+    }
+    // Add sealed interface UploadUpdate for Outbox / upload status
+    // Add sealed interface VideoUpdate (or WorkUpdate) compression & segmentation & encryption
+
+
+    // We go online / offline when the websocket listener is connected / disconnected
+    data object Connecting : id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent
+    data object ConnectionOnline : id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent
+    data object ConnectionOffline : id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent
+
+    // We need an event for when someone is typing something for you...
+    // data object UserTyping : backendEvent
+}

@@ -1,0 +1,51 @@
+import kotlin.uuid.Uuid;
+
+CREATE TABLE IF NOT EXISTS AppNotifications(
+   rowId INTEGER PRIMARY KEY AUTOINCREMENT,
+   identityId BLOB AS Uuid NOT NULL,
+   notificationId BLOB AS Uuid NOT NULL UNIQUE,
+   unread INTEGER NOT NULL,
+   senderId TEXT,
+   timestamp INTEGER NOT NULL,
+   data BLOB,
+   created INTEGER NOT NULL,
+   modified INTEGER NOT NULL,
+   UNIQUE(identityId,notificationId)
+);
+CREATE INDEX IF NOT EXISTS Idx0AppNotifications ON AppNotifications(identityId,created);
+
+-- Insert a notification
+insertNotification:
+INSERT INTO AppNotifications(identityId, notificationId, unread, senderId, timestamp, data, created, modified)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Select notification by identity and notificationId
+selectByNotificationId:
+SELECT * FROM AppNotifications
+WHERE identityId = ? AND notificationId = ?;
+
+
+-- Select page of notification, newest first, with configurable count
+selectFirstPage:
+SELECT * FROM AppNotifications
+WHERE identityId = ?
+ORDER BY rowId DESC
+LIMIT ?;
+
+-- Select next page using cursor (last rowId from previous page)
+selectNextPage:
+SELECT * FROM AppNotifications
+WHERE identityId = ? AND rowId < ?
+ORDER BY rowId DESC
+LIMIT ?;
+
+
+-- Delete all notifications for an identity (for testing)
+deleteAll:
+DELETE FROM AppNotifications
+WHERE identityId = ?;
+
+-- Delete notification by identity and notificationId
+deleteByNotificationId:
+DELETE FROM AppNotifications
+WHERE identityId = ? AND notificationId = ?;
