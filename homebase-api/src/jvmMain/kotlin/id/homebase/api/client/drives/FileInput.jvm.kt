@@ -4,8 +4,6 @@ package id.homebase.api.client.drives
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.io.asSource
-import kotlinx.io.buffered
 import java.io.File
 
 actual fun openFileInput(path: String): InputProvider =
