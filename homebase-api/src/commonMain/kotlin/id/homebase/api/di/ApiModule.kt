@@ -5,6 +5,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -29,4 +30,7 @@ val apiModule = module {
     factoryOf(::DriveFileProvider)
 
     factoryOf(::SecurityContextProvider)
+
+    single { EventBus() }
+
 }

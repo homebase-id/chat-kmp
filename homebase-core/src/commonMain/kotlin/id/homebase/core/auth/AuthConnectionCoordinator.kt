@@ -1,8 +1,9 @@
 package id.homebase.core.auth
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.query.DriveQueryProvider
-import id.homebase.api.client.eventbus.appEventBus
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.websockets.OdinWebSocketClient
 import id.homebase.api.sync.DriveSync
 import id.homebase.api.sync.database.DatabaseManager
@@ -14,7 +15,8 @@ import kotlin.uuid.Uuid
 
 class AuthConnectionCoordinator(
     private val credentialsManager: CredentialsManager,
-    private val driveQueryProvider: DriveQueryProvider
+    private val driveQueryProvider: DriveQueryProvider,
+    private val eventBus: EventBus
 ) {
     private val ioScope = CoroutineScope(Dispatchers.Default)
     private var wsClient: OdinWebSocketClient? = null
@@ -39,22 +41,29 @@ class AuthConnectionCoordinator(
 
         identityId = credentials.getIdentityId()
 
-        driveSyncs = syncDrives.map { targetDrive ->
-            DriveSync(
-                identityId = identityId!!,
-                driveId = targetDrive.alias,
-                driveQueryProvider = driveQueryProvider,
-                databaseManager = DatabaseManager.appDb,
-                eventBus = appEventBus,
-                scope = ioScope
-            )
+        driveSyncs = syncDrives.mapNotNull { targetDrive ->
+            runCatching {
+                DriveSync(
+                    identityId = identityId!!,
+                    driveId = targetDrive.alias,
+                    driveQueryProvider = driveQueryProvider,
+                    databaseManager = DatabaseManager.appDb,
+                    eventBus = eventBus,
+                    scope = ioScope
+                )
+            }.onFailure { e ->
+                Logger.e(
+                    "Failed to create DriveSync for drive=${targetDrive.alias}",
+                    e
+                )
+            }.getOrNull()
         }
 
         wsClient =
             OdinWebSocketClient(
                 credentialsManager = credentialsManager,
                 scope = ioScope,
-                eventBus = appEventBus,
+                eventBus = eventBus,
                 databaseManager = DatabaseManager.appDb,
                 drives = syncDrives,
                 onConnected = { handleWsConnect() },
