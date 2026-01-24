@@ -17,76 +17,90 @@ import kotlinx.coroutines.launch
 
 /**
  * Local HTTP server for handling YouAuth callbacks on desktop.
+ *
+ * JVM ONLY.
  */
 object LocalCallbackServer {
 
-    private var server: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
-    private var currentPort: Int = 0
+    private const val TAG = "LocalCallbackServer"
 
     private const val START_PORT = 49152
     private const val END_PORT = 65535
     private const val MAX_PORT_ATTEMPTS = 100
 
+    private var server: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? =
+        null
+    private var currentPort: Int = 0
+
     fun start(scope: CoroutineScope, preferredPort: Int = 0): Int {
         if (server != null) return currentPort
 
         val portsToTry =
-            if (preferredPort > 0) {
-                listOf(preferredPort) + randomPorts()
-            } else {
-                randomPorts()
-            }
+            if (preferredPort > 0) listOf(preferredPort) + randomPorts()
+            else randomPorts()
 
         for (port in portsToTry) {
             try {
-                server = embeddedServer(CIO, port = port) {
-                    routing {
-                        get("/authorization-code-callback") {
-                            val fullUrl =
-                                "http://localhost:$currentPort${call.request.local.uri}"
+                server =
+                    embeddedServer(CIO, port = port) {
+                        routing {
 
-                            Logger.d("LocalCallbackServer") {
-                                "Received callback: $fullUrl"
+                            /** OAuth callback */
+                            get("/authorization-code-callback") {
+                                val fullUrl =
+                                    "http://localhost:$port${call.request.local.uri}"
+
+                                Logger.d(TAG) { "Received callback: $fullUrl" }
+
+                                scope.launch {
+                                    try {
+                                        YouAuthFlowManager.handleCallback(fullUrl)
+                                    } catch (e: Exception) {
+                                        Logger.e(TAG) { "Callback error: ${e.message}" }
+                                    }
+                                }
+
+                                call.respondText(
+                                    text = CALLBACK_HTML,
+                                    contentType = ContentType.Text.Html
+                                )
                             }
 
-                            scope.launch {
-                                try {
-                                    YouAuthFlowManager.handleCallback(fullUrl)
-                                } catch (e: Exception) {
-                                    Logger.e("LocalCallbackServer") {
-                                        "Callback error: ${e.message}"
-                                    }
+                            /** Bring desktop app to foreground */
+                            get("/focus") {
+                                Logger.d(TAG) { "Focus requested from browser" }
+
+                                scope.launch {
+                                    DesktopAppFocusManager.requestFocus()
+                                }
+
+                                call.respondText("OK", ContentType.Text.Plain)
+
+                                scope.launch {
+                                    delay(750)
+                                    stop()
                                 }
                             }
 
-                            call.respondText(
-                                text = CALLBACK_HTML,
-                                contentType = ContentType.Text.Html
-                            )
-
-                            scope.launch {
-                                delay(1000)
-                                stop()
+                            /** Health check */
+                            get("/") {
+                                call.respondText(
+                                    "OAuth Callback Server running",
+                                    ContentType.Text.Plain
+                                )
                             }
                         }
-
-                        get("/") {
-                            call.respondText(
-                                "OAuth Callback Server running",
-                                ContentType.Text.Plain
-                            )
-                        }
-                    }
-                }.start(wait = false)
+                    }.start(wait = false)
 
                 currentPort = port
-                return currentPort
-
+                Logger.i(TAG) { "Callback server started on port $port" }
+                return port
             } catch (_: Exception) {
                 server = null
             }
         }
 
+        Logger.e(TAG) { "Failed to start callback server" }
         return -1
     }
 
@@ -94,10 +108,13 @@ object LocalCallbackServer {
         server?.stop(1000, 2000)
         server = null
         currentPort = 0
+        Logger.i(TAG) { "Callback server stopped" }
     }
 
     fun isRunning(): Boolean = server != null
     fun getPort(): Int = currentPort
+
+    /* ---------------- helpers ---------------- */
 
     private fun randomPorts(): List<Int> =
         (0 until MAX_PORT_ATTEMPTS).map {
@@ -116,16 +133,18 @@ object LocalCallbackServer {
         return -1
     }
 
+    /* ---------------- HTML ---------------- */
+
     private const val CALLBACK_HTML = """
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <title>Authentication Complete</title>
+  <title>Homebase Chat — Authentication Complete</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #fff;
+      background: #ffffff;
       color: #171717;
       display: flex;
       align-items: center;
@@ -135,25 +154,69 @@ object LocalCallbackServer {
     }
     .box {
       border: 1px solid #eaeaea;
-      border-radius: 12px;
-      padding: 2rem;
+      border-radius: 14px;
+      padding: 2.25rem;
       text-align: center;
-      max-width: 400px;
+      max-width: 440px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.06);
     }
     h1 {
-      font-size: 1.25rem;
-      margin-bottom: 0.5rem;
+      font-size: 1.35rem;
+      margin-bottom: 0.75rem;
+      font-weight: 600;
     }
     p {
-      color: #666;
+      color: #555;
+      margin: 0.5rem 0;
+      line-height: 1.5;
+    }
+    .hint {
+      font-size: 0.9rem;
+      color: #777;
+      margin-top: 1.25rem;
+    }
+    button {
+      margin-top: 1.75rem;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      border-radius: 8px;
+      border: none;
+      background: #171717;
+      color: #ffffff;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #000000;
     }
   </style>
 </head>
 <body>
   <div class="box">
-    <h1>Authentication Complete</h1>
-    <p>You can close this window now.</p>
+    <h1>You're signed in</h1>
+
+    <p>
+      Authentication for <strong>Homebase&nbsp;Chat</strong> is complete.
+    </p>
+
+    <p>
+      You can now continue using the application.
+    </p>
+
+    <button onclick="openApp()">Return to Homebase Chat</button>
+
+    <p class="hint">
+      You may also close this browser tab if it doesn’t close automatically.
+    </p>
   </div>
+
+  <script>
+    function openApp() {
+      fetch('/focus')
+        .finally(() => {
+          try { window.close(); } catch (_) {}
+        });
+    }
+  </script>
 </body>
 </html>
 """

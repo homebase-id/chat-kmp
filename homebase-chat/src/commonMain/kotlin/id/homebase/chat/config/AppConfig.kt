@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.lib.config
+package id.homebase.chat.config
 
 import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermissionType
@@ -43,9 +43,6 @@ val contactTargetDrive =
                 type = Uuid.parse("70e92f0f94d05f5c7dcd36466094f3a5")
         )
 
-val publicPostsDriveId = Uuid.parse("e8475dc46cb4b6651c2d0dbd0f3aad5f")
-val channelDriveType = Uuid.parse("8f448716-e34c-edf9-0141-45e043ca6612")
-
 // App permissions required
 val appPermissions: List<AppPermissionType> =
         listOf(
@@ -71,13 +68,6 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
                         permissions = listOf(DrivePermissionType.Read, DrivePermissionType.Write)
                 ),
                 TargetDriveAccessRequest(
-                        alias = publicPostsDriveId.toString(),
-                        type = channelDriveType.toString(),
-                        name = "Public Posts Drive",
-                        description = " ",
-                        permissions = listOf(DrivePermissionType.Read, DrivePermissionType.Write)
-                ),
-                TargetDriveAccessRequest(
                         alias = chatTargetDrive.alias.toString(),
                         type = chatTargetDrive.type.toString(),
                         name = "Chat Drive",
@@ -95,15 +85,18 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
                         name = " ",
                         description = " ",
                         permissions = listOf(DrivePermissionType.Read, DrivePermissionType.Write)
-                ),
-                TargetDriveAccessRequest(
-                        alias = "8f12d8c4933813d378488d91ed23b64c",
-                        type = "597241530e3ef24b28b9a75ec3a5c45c",
-                        name = " ",
-                        description = " ",
-                        permissions = listOf(DrivePermissionType.Read)
                 )
         )
+
+// Drives we listen to for sockets and synchronization
+val syncDrives: List<TargetDrive> =
+    targetDriveAccessRequest.map { request ->
+        TargetDrive(
+            alias = Uuid.parse(request.alias),
+            type = Uuid.parse(request.type)
+        )
+    }
+
 
 // Circle drive requests
 val circleDriveTargetRequest: List<TargetDriveAccessRequest> =
@@ -116,6 +109,7 @@ val circleDriveTargetRequest: List<TargetDriveAccessRequest> =
                         permissions = listOf(DrivePermissionType.Write, DrivePermissionType.React)
                 )
         )
+
 
 /**
  * Get the permission extension config for checking missing permissions. Uses the same drives and

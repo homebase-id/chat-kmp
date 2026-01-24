@@ -1,10 +1,9 @@
 package id.homebase.api.browser
 
 actual object RedirectConfig {
-    actual val scheme: String
-        get() = TODO("Not yet implemented")
+    actual val scheme: String = "youauth"
 
     actual fun buildRedirectUri(clientId: String): String {
-        TODO("Not yet implemented")
+        return "youauth://$clientId/authorization-code-callback"
     }
 }

@@ -3,6 +3,7 @@ package id.homebase.app
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.App
@@ -55,6 +56,7 @@ fun main() = application {
         title = "Homebase Chat",
         state = state,
     ) {
+        DesktopAppFocusManager.registerWindowProvider { window }
         App()
     }
 }

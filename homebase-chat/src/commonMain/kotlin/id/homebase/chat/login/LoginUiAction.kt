@@ -13,3 +13,4 @@ sealed interface LoginUiAction {
      */
     data object AppResumed : LoginUiAction
 }
+

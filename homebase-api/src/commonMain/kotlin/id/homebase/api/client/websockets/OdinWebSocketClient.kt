@@ -6,7 +6,6 @@ import id.homebase.api.crypto.AesCbc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.toBase64
-import id.homebase.homebasekmppoc.lib.config.chatTargetDrive
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.ServerFile
@@ -14,7 +13,6 @@ import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.http.SharedSecretEncryptedPayload
-import id.homebase.api.client.http.appCookieName
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -197,6 +195,8 @@ class OdinWebSocketClient(
         val wsUrl = "wss://${identity}/api/apps/v1/notify/ws"
         Logger.i { "Connecting to WebSocket at $wsUrl" }
 
+        val appCookieName = "BX0900"
+
         client.webSocket(
             urlString = wsUrl,
             request = {
@@ -364,7 +364,7 @@ class OdinWebSocketClient(
         try {
             fileHeaderProcessor.baseUpsertEntryZapZap(
                 identityId = identityId,
-                driveId = chatTargetDrive.alias,
+                driveId = theFileNotification.targetDrive!!.alias,
                 fileHeaders = files,
                 cursor = null
             )

@@ -35,6 +35,7 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.ChatListScreen
 import id.homebase.chat.login.LoginScreen
+import id.homebase.chat.login.LoginUiEvent
 import id.homebase.chat.login.LoginViewModel
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.home.HomeScreen
@@ -139,12 +140,25 @@ fun AppNavHost(
                 composable<Route.Login> {
                     val viewModel = koinViewModel<LoginViewModel>()
 
+                    ObserveAsEvents(viewModel.uiEvent) { event ->
+                        when (event) {
+                            is LoginUiEvent.NavigateToHome -> {
+                                navController.navigate(Route.Home) {
+                                    popUpTo(Route.Login) { inclusive = true }
+                                }
+                            }
+
+                            is LoginUiEvent.ShowError -> {
+                                // TODO: Show snackbar
+                            }
+                        }
+                    }
+
                     LoginScreen(
                         state = viewModel.uiState.collectAsState().value,
                         onAction = viewModel::onAction
                     )
                 }
-
 
                 composable<Route.Home> {
                     AuthenticatedRouteWithFlowManager(

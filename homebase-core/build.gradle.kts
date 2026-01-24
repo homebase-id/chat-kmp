@@ -45,6 +45,7 @@ kotlin {
             implementation(project(":homebase-common"))
             implementation(project(":homebase-chat"))
 
+            implementation(libs.ktor.client.core)
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
             implementation(libs.jetbrains.compose.resources)

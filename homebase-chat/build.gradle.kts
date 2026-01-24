@@ -49,6 +49,7 @@ kotlin {
             api(project(":homebase-api"))
             implementation(project(":homebase-common"))
 
+            implementation(libs.kermit)
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
             implementation(libs.jetbrains.compose.resources)
