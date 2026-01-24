@@ -1,7 +1,11 @@
 package id.homebase.homebasekmppoc.lib.youauth
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.youauth.AppAuthorizationExtendParams
+import id.homebase.api.youauth.AppPermissionType
+import id.homebase.api.youauth.DriveReference
 import id.homebase.api.youauth.SecurityContextProvider
+import id.homebase.api.youauth.TargetDriveAccessRequest
 import id.homebase.api.youauth.getUniqueDrivesWithHighestPermission
 
 /** Configuration for checking missing permissions. */

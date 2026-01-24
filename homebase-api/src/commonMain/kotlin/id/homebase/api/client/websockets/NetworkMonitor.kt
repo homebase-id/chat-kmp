@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.websockets
+package id.homebase.api.client.websockets
 
 import kotlinx.coroutines.flow.StateFlow
 

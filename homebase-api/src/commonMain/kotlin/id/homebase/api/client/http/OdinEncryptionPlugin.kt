@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.http
+package id.homebase.api.client.http
 
 import co.touchlab.kermit.Logger
 import id.homebase.homebasekmppoc.prototype.lib.crypto.CryptoHelper

@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives
+package id.homebase.api.client.drives
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -17,7 +17,7 @@ enum class FileSystemType(val value: Int) {
     // Add more as needed from the C# enum
 
     companion object {
-        fun fromInt(value: Int): id.homebase.homebasekmppoc.prototype.lib.drives.FileSystemType {
+        fun fromInt(value: Int): FileSystemType {
             return entries.firstOrNull { it.value == value }
                 ?: throw IllegalArgumentException("Unknown FileSystemType: $value")
         }

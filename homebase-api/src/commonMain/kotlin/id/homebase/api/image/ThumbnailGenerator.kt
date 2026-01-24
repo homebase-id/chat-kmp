@@ -1,7 +1,7 @@
 package id.homebase.api.image
 
 import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.homebasekmppoc.prototype.lib.drives.upload.EmbeddedThumb
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.io.encoding.Base64

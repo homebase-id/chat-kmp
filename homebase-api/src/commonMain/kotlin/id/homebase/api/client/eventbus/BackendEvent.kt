@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.eventbus
+package id.homebase.api.client.eventbus
 
 import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
 import id.homebase.api.client.drives.HomebaseFile
@@ -12,7 +12,7 @@ sealed interface  BackendEvent {
 
     // A DriveEvent event happens on a drive when either sync() has received a batch of data
     // from the host, or when the websocket listener has received some data.
-    sealed interface DriveEvent : id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent {
+    sealed interface DriveEvent : BackendEvent {
         val driveId: Uuid  // Common property for all sync events (implement in each data class)
 
         data class Started(
@@ -41,7 +41,7 @@ sealed interface  BackendEvent {
     }
 
 
-    sealed interface OutboxEvent : id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent {
+    sealed interface OutboxEvent : BackendEvent {
         data object Started : OutboxEvent
 
         data class Completed(
@@ -79,9 +79,9 @@ sealed interface  BackendEvent {
 
 
     // We go online / offline when the websocket listener is connected / disconnected
-    data object Connecting : id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent
-    data object ConnectionOnline : id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent
-    data object ConnectionOffline : id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent
+    data object Connecting : BackendEvent
+    data object ConnectionOnline : BackendEvent
+    data object ConnectionOffline : BackendEvent
 
     // We need an event for when someone is typing something for you...
     // data object UserTyping : backendEvent

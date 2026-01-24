@@ -1,10 +1,10 @@
 @file:OptIn(ExperimentalUuidApi::class)
 
-package id.homebase.homebasekmppoc.prototype.lib.drives.files
+package id.homebase.api.client.drives.files
 
 import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
-import id.homebase.homebasekmppoc.prototype.lib.drives.GlobalTransitIdFileIdentifier
-import id.homebase.homebasekmppoc.prototype.lib.serialization.UuidSerializer
+import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
+import id.homebase.api.serialization.UuidSerializer
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
@@ -20,15 +20,15 @@ data class FileMetadata(
     val isEncrypted: Boolean = false,
     val senderOdinId: String? = null,
     val originalAuthor: String? = null,
-    val appData: id.homebase.homebasekmppoc.prototype.lib.drives.files.AppFileMetaData = _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.AppFileMetaData(),
-    val localAppData: id.homebase.homebasekmppoc.prototype.lib.drives.files.LocalAppMetadata? = null,
-    val referencedFile: id.homebase.homebasekmppoc.prototype.lib.drives.GlobalTransitIdFileIdentifier? = null,
-    val reactionPreview: id.homebase.homebasekmppoc.prototype.lib.drives.files.ReactionSummary? = null,
+    val appData: AppFileMetaData = AppFileMetaData(),
+    val localAppData: LocalAppMetadata? = null,
+    val referencedFile: GlobalTransitIdFileIdentifier? = null,
+    val reactionPreview: ReactionSummary? = null,
     @Serializable(with = UuidSerializer::class) val versionTag: Uuid? = null,
-    val payloads: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadDescriptor>? = null,
-    val dataSource: id.homebase.homebasekmppoc.prototype.lib.drives.files.DataSource? = null
+    val payloads: List<PayloadDescriptor>? = null,
+    val dataSource: DataSource? = null
 ) {
-        fun getPayloadDescriptor(key: String): id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadDescriptor? {
+        fun getPayloadDescriptor(key: String): PayloadDescriptor? {
                 return payloads?.firstOrNull { it.keyEquals(key) }
         }
 }
@@ -42,8 +42,8 @@ data class AppFileMetaData(
     @Serializable(with = UuidSerializer::class) val groupId: Uuid? = null,
     val userDate: Long? = null,
     val content: String? = null,
-    val previewThumbnail: id.homebase.homebasekmppoc.prototype.lib.drives.files.ThumbnailDescriptor? = null,
-    val archivalStatus: id.homebase.homebasekmppoc.prototype.lib.drives.files.ArchivalStatus? = null
+    val previewThumbnail: ThumbnailDescriptor? = null,
+    val archivalStatus: ArchivalStatus? = null
 )
 
 @Serializable
@@ -67,7 +67,7 @@ data class CommentPreview(
         val isEncrypted: Boolean,
         val odinId: String,
         val content: String,
-        val reactions: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.ReactionEntry> = emptyList()
+        val reactions: List<ReactionEntry> = emptyList()
 )
 
 /**
@@ -76,8 +76,8 @@ data class CommentPreview(
  */
 @Serializable
 data class ReactionSummary(
-    val comments: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.CommentPreview> = emptyList(),
-    val reactions: Map<String, id.homebase.homebasekmppoc.prototype.lib.drives.files.ReactionEntry> = emptyMap(),
+    val comments: List<CommentPreview> = emptyList(),
+    val reactions: Map<String, ReactionEntry> = emptyMap(),
     val totalCommentCount: Int = 0
 )
 

@@ -1,5 +1,6 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.upload
+package id.homebase.api.client.drives.upload
 
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.homebasekmppoc.prototype.lib.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.homebasekmppoc.prototype.lib.serialization.Base64ByteArraySerializer
@@ -12,14 +13,14 @@ data class UploadPayloadDescriptor(
     @SerialName("payloadKey") val payloadKey: String,
     val descriptorContent: String? = null,
     val contentType: String? = null,
-    val previewThumbnail: id.homebase.homebasekmppoc.prototype.lib.drives.upload.EmbeddedThumb? = null,
-    val thumbnails: List<id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadThumbnailDescriptor>? = null,
+    val previewThumbnail: EmbeddedThumb? = null,
+    val thumbnails: List<UploadThumbnailDescriptor>? = null,
     @Serializable(with = Base64ByteArraySerializer::class) val iv: ByteArray? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other == null || this::class != other::class) return false
-        other as id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadPayloadDescriptor
+        other as UploadPayloadDescriptor
         if (payloadKey != other.payloadKey) return false
         if (descriptorContent != other.descriptorContent) return false
         if (contentType != other.contentType) return false
@@ -56,7 +57,7 @@ data class UploadThumbnailDescriptor(
 @Serializable
 data class UploadManifest(
     @SerialName("PayloadDescriptors")
-    val payloadDescriptors: List<id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadPayloadDescriptor>? = null
+    val payloadDescriptors: List<UploadPayloadDescriptor>? = null
 ) {
     companion object {
         /**
@@ -68,13 +69,13 @@ data class UploadManifest(
          * @return A new UploadManifest with payload descriptors
          */
         fun build(
-            payloads: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadFile>?,
+            payloads: List<PayloadFile>?,
             thumbnails: List<ThumbnailFile>? = null,
             generatePayloadIv: Boolean = false
-        ): id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadManifest {
+        ): UploadManifest {
             val descriptors =
                 payloads?.map { payload ->
-                    _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadPayloadDescriptor(
+                    UploadPayloadDescriptor(
                         payloadKey = payload.key,
                         descriptorContent = payload.descriptorContent,
                         previewThumbnail = payload.previewThumbnail,
@@ -83,7 +84,7 @@ data class UploadManifest(
                             thumbnails
                                 ?.filter { it.key == payload.key }
                                 ?.map { thumb ->
-                                    _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadThumbnailDescriptor(
+                                    UploadThumbnailDescriptor(
                                         thumbnailKey =
                                             thumb.key +
                                                     thumb.pixelWidth,
@@ -102,7 +103,7 @@ data class UploadManifest(
                             else null
                     )
                 }
-            return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadManifest(
+            return UploadManifest(
                 payloadDescriptors = descriptors
             )
         }
@@ -113,17 +114,17 @@ data class UploadManifest(
 @Serializable
 data class UploadManifestPayloadDescriptor(
     val payloadKey: String,
-    @SerialName("payloadUpdateOperationType") val operationType: id.homebase.homebasekmppoc.prototype.lib.drives.upload.PayloadOperationType,
+    @SerialName("payloadUpdateOperationType") val operationType: PayloadOperationType,
     val descriptorContent: String? = null,
     val contentType: String? = null,
-    val previewThumbnail: id.homebase.homebasekmppoc.prototype.lib.drives.upload.EmbeddedThumb? = null,
-    val thumbnails: List<id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadThumbnailDescriptor>? = null,
+    val previewThumbnail: EmbeddedThumb? = null,
+    val thumbnails: List<UploadThumbnailDescriptor>? = null,
     @Serializable(with = Base64ByteArraySerializer::class) val iv: ByteArray? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other == null || this::class != other::class) return false
-        other as id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadManifestPayloadDescriptor
+        other as UploadManifestPayloadDescriptor
         if (payloadKey != other.payloadKey) return false
         if (operationType != other.operationType) return false
         if (descriptorContent != other.descriptorContent) return false
@@ -162,7 +163,7 @@ enum class PayloadOperationType {
 @Serializable
 data class UpdateManifest(
     @SerialName("PayloadDescriptors")
-    val payloadDescriptors: List<id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadManifestPayloadDescriptor>? = null
+    val payloadDescriptors: List<UploadManifestPayloadDescriptor>? = null
 ) {
     companion object {
         /**
@@ -175,17 +176,17 @@ data class UpdateManifest(
          * @return A new UpdateManifest with payload instructions
          */
         fun build(
-            payloads: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadFile>? = null,
-            toDeletePayloads: List<id.homebase.homebasekmppoc.prototype.lib.drives.upload.PayloadDeleteKey>? = null,
+            payloads: List<PayloadFile>? = null,
+            toDeletePayloads: List<PayloadDeleteKey>? = null,
             thumbnails: List<ThumbnailFile>? = null,
             generatePayloadIv: Boolean = false
-        ): id.homebase.homebasekmppoc.prototype.lib.drives.upload.UpdateManifest {
+        ): UpdateManifest {
             val appendInstructions =
                 payloads?.map { payload ->
-                    _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadManifestPayloadDescriptor(
+                    UploadManifestPayloadDescriptor(
                         payloadKey = payload.key,
                         operationType =
-                            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.PayloadOperationType.AppendOrOverwrite,
+                            PayloadOperationType.AppendOrOverwrite,
                         descriptorContent = payload.descriptorContent,
                         previewThumbnail = payload.previewThumbnail,
                         contentType = payload.contentType,
@@ -193,7 +194,7 @@ data class UpdateManifest(
                             thumbnails
                                 ?.filter { it.key == payload.key }
                                 ?.map { thumb ->
-                                    _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadThumbnailDescriptor(
+                                    UploadThumbnailDescriptor(
                                         thumbnailKey =
                                             thumb.key +
                                                     thumb.pixelWidth,
@@ -216,14 +217,14 @@ data class UpdateManifest(
 
             val deleteInstructions =
                 toDeletePayloads?.map { toDelete ->
-                    _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadManifestPayloadDescriptor(
+                    UploadManifestPayloadDescriptor(
                         payloadKey = toDelete.key,
-                        operationType = _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.PayloadOperationType.DeletePayload
+                        operationType = PayloadOperationType.DeletePayload
                     )
                 }
                     ?: emptyList()
 
-            return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.UpdateManifest(
+            return UpdateManifest(
                 payloadDescriptors = appendInstructions + deleteInstructions
             )
         }

@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalUuidApi::class)
 
-package id.homebase.homebasekmppoc.prototype.lib.http
+package id.homebase.api.client.http
 
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid

@@ -1,6 +1,6 @@
 package id.homebase.homebasekmppoc.prototype.lib.core
 
-import id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor
+import id.homebase.api.client.drives.query.QueryBatchCursor
 
 /**
  * Generic batch result wrapper for paginated queries.

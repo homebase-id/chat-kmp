@@ -12,17 +12,10 @@ import id.homebase.homebasekmppoc.prototype.lib.crypto.ByteArrayUtil
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.homebasekmppoc.prototype.lib.crypto.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.homebasekmppoc.prototype.lib.drives.FileSystemType
-import id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive
-import id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadFile
+import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.homebasekmppoc.prototype.lib.drives.upload.CreateFileResult
-import id.homebase.homebasekmppoc.prototype.lib.drives.upload.FileIdFileIdentifier
-import id.homebase.homebasekmppoc.prototype.lib.drives.upload.FileUpdateInstructionSet
-import id.homebase.homebasekmppoc.prototype.lib.drives.upload.TransitOptions
-import id.homebase.homebasekmppoc.prototype.lib.drives.upload.UpdateFileResult
-import id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadFileMetadata
-import id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadManifest
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.*
@@ -118,7 +111,7 @@ class DriveUploadProvider(
         )
 
         val instructions =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadInstructionSet(
+            UploadInstructionSet(
                 transferIv = transferIv,
                 manifest = UploadManifest.Companion.build(
                     request.payloads,
@@ -129,7 +122,7 @@ class DriveUploadProvider(
             )
 
         val data =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.buildUploadFormData(
+            buildUploadFormData(
                 instructionSet = instructions,
                 sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
                 payloads = request.payloads,
@@ -158,7 +151,7 @@ class DriveUploadProvider(
             )
 
         val data =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.buildUpdateFormData(
+            buildUpdateFormData(
                 instructionSet = request.instructions,
                 sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
                 payloads = request.payloads,
@@ -186,7 +179,7 @@ class DriveUploadProvider(
             )
 
         val data =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.buildUpdateFormData(
+            buildUpdateFormData(
                 instructionSet = request.instructions,
                 sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
                 payloads = request.payloads,
@@ -397,7 +390,7 @@ class DriveUploadProvider(
 
         // Create the file descriptor
         val descriptor =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadFileDescriptor(
+            UploadFileDescriptor(
                 encryptedKeyHeader = sharedSecretEncryptedKeyHeader,
                 fileMetadata = metadata
             )
@@ -438,7 +431,7 @@ class DriveUploadProvider(
 
         // Create the file descriptor
         val descriptor =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.UpdateFileDescriptor(
+            UpdateFileDescriptor(
                 encryptedKeyHeader = sharedSecretEncryptedKeyHeader,
                 fileMetadata = metadata
             )

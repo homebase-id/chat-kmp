@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.lib.youauth
+package id.homebase.api.youauth
 import id.homebase.api.storage.SharedPreferences
 
 /**

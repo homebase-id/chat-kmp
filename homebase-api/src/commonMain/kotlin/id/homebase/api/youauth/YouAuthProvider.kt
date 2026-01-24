@@ -1,8 +1,7 @@
-package id.homebase.homebasekmppoc.lib.youauth
+package id.homebase.api.youauth
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.crypto.AesCbc
-import id.homebase.api.youauth.YouAuthorizationParams
 import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
 import id.homebase.homebasekmppoc.prototype.lib.crypto.EccKeyPair
 import id.homebase.homebasekmppoc.prototype.lib.crypto.EccKeySize
@@ -11,10 +10,9 @@ import id.homebase.homebasekmppoc.prototype.lib.crypto.generateEccKeyPair
 import id.homebase.homebasekmppoc.prototype.lib.crypto.performEcdhKeyAgreement
 import id.homebase.homebasekmppoc.prototype.lib.crypto.publicKeyFromJwkBase64Url
 import id.homebase.homebasekmppoc.prototype.lib.crypto.publicKeyToJwkBase64Url
-import id.homebase.homebasekmppoc.prototype.lib.http.CreateHttpClientOptions
-import id.homebase.homebasekmppoc.prototype.lib.http.OdinClient
+import id.homebase.api.client.http.CreateHttpClientOptions
+import id.homebase.api.client.http.OdinClient
 import io.ktor.client.call.body
-import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -44,21 +42,21 @@ class YouAuthProvider(private val odinClient: OdinClient) {
      *
      * @return true if valid, false if invalid, null if network error
      */
-    suspend fun hasValidToken(): Boolean? {
-        return try {
-            val client =
-                odinClient.createHttpClient(CreateHttpClientOptions(overrideEncryption = true))
-            val response = client.get("/auth/verifytoken")
-            when (response.status.value) {
-                200 -> true
-                401, 403 -> false
-                else -> null
-            }
-        } catch (e: Exception) {
-            Logger.e(TAG, e) { "Error verifying token" }
-            null
-        }
-    }
+//    suspend fun hasValidToken(): Boolean? {
+//        return try {
+//            val client =
+//                odinClient.createHttpClient(CreateHttpClientOptions(overrideEncryption = true))
+//            val response = client.get("/auth/verifytoken")
+//            when (response.status.value) {
+//                200 -> true
+//                401, 403 -> false
+//                else -> null
+//            }
+//        } catch (e: Exception) {
+//            Logger.e(TAG, e) { "Error verifying token" }
+//            null
+//        }
+//    }
 
     /**
      * Build registration parameters for app authorization.
@@ -92,7 +90,7 @@ class YouAuthProvider(private val odinClient: OdinClient) {
         val clientFriendly = clientFriendlyName ?: "Homebase KMP App"
 
         val permissionRequest =
-            AppAuthorizationParams.create(
+            AppAuthorizationParams.Companion.create(
                 appName = appName,
                 appId = appId,
                 friendlyName = clientFriendly,

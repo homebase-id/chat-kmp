@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.upload
+package id.homebase.api.client.drives.upload
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -22,7 +22,7 @@ enum class SendContents(val value: Int) {
     All(3); // Thumbnails | Payload
 
     companion object {
-        fun fromInt(value: Int): id.homebase.homebasekmppoc.prototype.lib.drives.upload.SendContents {
+        fun fromInt(value: Int): SendContents {
             return entries.firstOrNull { it.value == value } ?: HeaderOnly
         }
     }
@@ -40,7 +40,7 @@ enum class ScheduleOptions(val value: String) {
     SendLater("sendAsync");
 
     companion object {
-        fun fromString(value: String): id.homebase.homebasekmppoc.prototype.lib.drives.upload.ScheduleOptions {
+        fun fromString(value: String): ScheduleOptions {
             return entries.firstOrNull { it.value == value } ?: SendLater
         }
     }
@@ -56,7 +56,7 @@ enum class PriorityOptions(val value: Int) {
     Low(3);
 
     companion object {
-        fun fromInt(value: Int): id.homebase.homebasekmppoc.prototype.lib.drives.upload.PriorityOptions {
+        fun fromInt(value: Int): PriorityOptions {
             return entries.firstOrNull { it.value == value } ?: Medium
         }
     }
@@ -95,7 +95,7 @@ enum class TransferUploadStatus(val value: String) {
     RecipientDoesNotHavePermissionToFileAcl("recipientdoesnothavepermissiontofileacl");
 
     companion object {
-        fun fromString(value: String): id.homebase.homebasekmppoc.prototype.lib.drives.upload.TransferUploadStatus {
+        fun fromString(value: String): TransferUploadStatus {
             return entries.firstOrNull { 
                 it.value.equals(value, ignoreCase = true) 
             } ?: Enqueued

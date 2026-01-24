@@ -1,6 +1,6 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives
+package id.homebase.api.client.drives
 
-import id.homebase.homebasekmppoc.prototype.lib.serialization.UuidSerializer
+import id.homebase.api.serialization.UuidSerializer
 import io.ktor.utils.io.charsets.Charsets
 import io.ktor.utils.io.core.toByteArray
 import kotlinx.serialization.Serializable
@@ -19,7 +19,7 @@ data class GlobalTransitIdFileIdentifier(
     @Serializable(with = UuidSerializer::class)
     val globalTransitId: Uuid,
 
-    val targetDrive: id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive
+    val targetDrive: TargetDrive
 
 )
 
@@ -47,15 +47,15 @@ data class TargetDrive(
     }
 
     companion object {
-        fun newTargetDrive(): id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive {
-            return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive(
+        fun newTargetDrive(): TargetDrive {
+            return TargetDrive(
                 alias = Uuid.random(),
                 type = Uuid.random()
             )
         }
 
-        fun newTargetDrive(type: Uuid): id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive {
-            return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive(
+        fun newTargetDrive(type: Uuid): TargetDrive {
+            return TargetDrive(
                 alias = Uuid.random(),
                 type = type
             )

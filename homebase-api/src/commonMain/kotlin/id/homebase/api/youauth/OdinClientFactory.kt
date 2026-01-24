@@ -1,9 +1,8 @@
 package id.homebase.api.youauth
 
 import id.homebase.api.storage.SecureStorage
-import id.homebase.homebasekmppoc.lib.youauth.YouAuthStorageKeys
-import id.homebase.homebasekmppoc.prototype.lib.http.OdinClient
-import id.homebase.homebasekmppoc.prototype.lib.http.ProviderOptions
+import id.homebase.api.client.http.OdinClient
+import id.homebase.api.client.http.ProviderOptions
 import kotlin.io.encoding.Base64
 
 /**

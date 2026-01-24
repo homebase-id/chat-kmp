@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives
+package id.homebase.api.client.drives
 
 import kotlinx.serialization.Serializable
 
@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
 data class DriveDefinition(
     val driveId: String,
     val name: String,
-    val targetDriveInfo: id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive,
+    val targetDriveInfo: TargetDrive,
     val metadata: String,
     val allowAnonymousReads: Boolean,
     val allowSubscriptions: Boolean,

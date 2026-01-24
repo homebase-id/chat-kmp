@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives
+package id.homebase.api.client.drives
 
 import kotlinx.serialization.Serializable
 
@@ -10,14 +10,14 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class ServerMetadata(
-    val accessControlList: id.homebase.homebasekmppoc.prototype.lib.drives.AccessControlList? = null,
+    val accessControlList: AccessControlList? = null,
     //@Deprecated("Use allowDistribution instead")
     //val doNotIndex: Boolean = false, <-- MS if it's deprecated, let's try not to use it
     val allowDistribution: Boolean = false,
-    val fileSystemType: id.homebase.homebasekmppoc.prototype.lib.drives.FileSystemType = _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.FileSystemType.Standard,
+    val fileSystemType: FileSystemType = FileSystemType.Standard,
     val fileByteCount: Long = 0,
     val originalRecipientCount: Int = 0,
-    val transferHistory: id.homebase.homebasekmppoc.prototype.lib.drives.RecipientTransferHistory? = null
+    val transferHistory: RecipientTransferHistory? = null
 )
 
 /**

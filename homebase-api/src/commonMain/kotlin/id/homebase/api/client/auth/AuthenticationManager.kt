@@ -1,11 +1,10 @@
-package id.homebase.homebasekmppoc.prototype.lib.authentication
+package id.homebase.api.client.auth
 
 import co.touchlab.kermit.Logger
 import dev.whyoleg.cryptography.BinarySize.Companion.bytes
 import dev.whyoleg.cryptography.CryptographyProvider
 import dev.whyoleg.cryptography.algorithms.PBKDF2
 import dev.whyoleg.cryptography.algorithms.SHA256
-import id.homebase.api.client.auth.NonceData
 import id.homebase.api.crypto.AesGcm
 import id.homebase.api.crypto.Base64Encoder
 import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
@@ -17,9 +16,9 @@ import id.homebase.homebasekmppoc.prototype.lib.crypto.generateEccKeyPair
 import id.homebase.homebasekmppoc.prototype.lib.crypto.performEcdhKeyAgreement
 import id.homebase.homebasekmppoc.prototype.lib.crypto.publicKeyFromJwkBase64Url
 import id.homebase.homebasekmppoc.prototype.lib.crypto.publicKeyToJwk
-import id.homebase.homebasekmppoc.prototype.lib.http.createHttpClient
+import id.homebase.api.client.http.createHttpClient
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
-import id.homebase.homebasekmppoc.prototype.lib.http.ownerCookieName
+import id.homebase.api.client.http.ownerCookieName
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.post

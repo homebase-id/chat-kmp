@@ -1,5 +1,6 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.files
+package id.homebase.api.client.drives.files
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.ByteApiResponse
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
@@ -7,18 +8,22 @@ import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.homebasekmppoc.prototype.lib.crypto.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.ServerFile
+import id.homebase.api.client.drives.upload.TransferUploadStatus
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
 /** Options for payload operations with range support. */
 data class PayloadOperationOptions(
-    val fileSystemType: id.homebase.homebasekmppoc.prototype.lib.drives.FileSystemType = _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.FileSystemType.Standard,
+    val fileSystemType: FileSystemType = FileSystemType.Standard,
     val chunkStart: Long? = null,
     val chunkLength: Long? = null,
     val lastModified: Long? = null
@@ -29,7 +34,7 @@ data class BytesResponse(val bytes: ByteArray, val contentType: String) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other == null || this::class != other::class) return false
-        other as id.homebase.homebasekmppoc.prototype.lib.drives.files.BytesResponse
+        other as BytesResponse
         if (!bytes.contentEquals(other.bytes)) return false
         if (contentType != other.contentType) return false
         return true
@@ -68,8 +73,8 @@ public class DriveFileProvider(
         fileId: Uuid
     ): HomebaseFile? {
 
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(driveId, "driveId")
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(fileId, "fileId")
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
 
         val creds = requireCreds()
         val url = apiUrl(
@@ -89,7 +94,7 @@ public class DriveFileProvider(
 
         throwForFailure(response)
 
-        var file = deserialize<id.homebase.homebasekmppoc.prototype.lib.drives.ServerFile>(response.body)
+        var file = deserialize<ServerFile>(response.body)
         return file.asHomebaseFile(creds.secret)
     }
 
@@ -98,11 +103,11 @@ public class DriveFileProvider(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
-        options: id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadOperationOptions = _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadOperationOptions()
+        options: PayloadOperationOptions = PayloadOperationOptions()
     ): ByteApiResponse? {
 
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(driveId, "driveId")
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(fileId, "fileId")
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
         require(key.isNotBlank()) { "Key must be defined" }
 
         val creds = requireCreds()
@@ -115,7 +120,7 @@ public class DriveFileProvider(
             }
 
         val rangeResult =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.DriveFileHelpers.getRangeHeader(
+            DriveFileHelpers.getRangeHeader(
                 options.chunkStart,
                 options.chunkLength
             )
@@ -159,21 +164,21 @@ public class DriveFileProvider(
         key: String,
         chunkStart: Long? = null,
         chunkLength: Long? = null
-    ): id.homebase.homebasekmppoc.prototype.lib.drives.files.BytesResponse? {
+    ): BytesResponse? {
 
         val raw =
             getPayloadBytesRaw(
                 driveId = driveId,
                 fileId = fileId,
                 key = key,
-                options = _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadOperationOptions(
+                options = PayloadOperationOptions(
                     chunkStart = chunkStart,
                     chunkLength = chunkLength
                 )
             ) ?: return null
 
         val rangeResult =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.DriveFileHelpers.getRangeHeader(chunkStart, chunkLength)
+            DriveFileHelpers.getRangeHeader(chunkStart, chunkLength)
 
         val decryptedBytes =
             if (rangeResult.updatedChunkStart != null) {
@@ -197,7 +202,7 @@ public class DriveFileProvider(
                 decryptBytes(raw.headers, raw.bytes)
             }
 
-        return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.BytesResponse(
+        return BytesResponse(
             bytes = decryptedBytes,
             contentType = raw.contentType
         )
@@ -213,8 +218,8 @@ public class DriveFileProvider(
         lastModified: Long? = null
     ): ByteApiResponse? {
 
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(driveId, "driveId")
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(fileId, "fileId")
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
         require(payloadKey.isNotBlank()) { "PayloadKey must be defined" }
         require(width > 0) { "Width must be positive" }
         require(height > 0) { "Height must be positive" }
@@ -262,7 +267,7 @@ public class DriveFileProvider(
         width: Int,
         height: Int,
         lastModified: Long? = null
-    ): id.homebase.homebasekmppoc.prototype.lib.drives.files.BytesResponse? {
+    ): BytesResponse? {
 
         val raw =
             getThumbBytesRaw(
@@ -277,7 +282,7 @@ public class DriveFileProvider(
         val decryptedBytes =
             decryptBytes(raw.headers, raw.bytes)
 
-        return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.BytesResponse(
+        return BytesResponse(
             bytes = decryptedBytes,
             contentType = raw.contentType
         )
@@ -294,10 +299,10 @@ public class DriveFileProvider(
     suspend fun getTransferHistory(
         driveId: Uuid,
         fileId: Uuid
-    ): id.homebase.homebasekmppoc.prototype.lib.drives.files.TransferHistory? {
+    ): TransferHistory? {
 
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(driveId, "driveId")
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(fileId, "fileId")
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
 
 
         val creds = requireCreds()
@@ -315,7 +320,7 @@ public class DriveFileProvider(
 
         throwForFailure(response);
 
-        return deserialize<id.homebase.homebasekmppoc.prototype.lib.drives.files.TransferHistory>(response.body)
+        return deserialize<TransferHistory>(response.body)
     }
 
     // ==================== DELETE METHODS ====================
@@ -333,10 +338,10 @@ public class DriveFileProvider(
         driveId: Uuid,
         fileId: Uuid,
         recipients: List<String>? = null
-    ): id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileResult {
+    ): DeleteFileResult {
 
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(driveId, "driveId")
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(fileId, "fileId")
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
 
         val endpoint = "/drives/$driveId/files/$fileId/delete"
 
@@ -344,7 +349,7 @@ public class DriveFileProvider(
 
         // fileId not used  because we pass it in via query string
         val request =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileRequest(
+            DeleteFileRequest(
                 fileId = Uuid.NIL,
                 recipients = recipients
             )
@@ -358,7 +363,7 @@ public class DriveFileProvider(
 
         throwForFailure(response);
 
-        return deserialize<id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileResult>(response.body)
+        return deserialize<DeleteFileResult>(response.body)
     }
 
     suspend fun hardDeleteFile(
@@ -367,8 +372,8 @@ public class DriveFileProvider(
         recipients: List<String>? = null,
     ): Boolean {
 
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(driveId, "driveId")
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(fileId, "fileId")
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
 
         val endpoint = "/drives/$driveId/files/$fileId/hard-delete"
 
@@ -376,7 +381,7 @@ public class DriveFileProvider(
 
         // fileId not used  because we pass it in via query string
         val request =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileRequest(
+            DeleteFileRequest(
                 fileId = Uuid.NIL,
                 recipients = recipients
             )
@@ -398,17 +403,17 @@ public class DriveFileProvider(
         driveId: Uuid,
         fileIds: List<Uuid>,
         recipients: List<String>? = null
-    ): id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileIdBatchResult {
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(driveId, "driveId")
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuidList(fileIds, "fileIds")
+    ): DeleteFileIdBatchResult {
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuidList(fileIds, "fileIds")
         val creds = requireCreds()
 
         val endpoint = "/drives/${driveId}/files/delete-batch/by-file-id";
         val request =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFilesBatchRequest(
+            DeleteFilesBatchRequest(
                 requests =
                     fileIds.map { fileId ->
-                        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileRequest(
+                        DeleteFileRequest(
                             fileId = fileId,
                             recipients = recipients
                         )
@@ -424,7 +429,7 @@ public class DriveFileProvider(
 
         throwForFailure(response);
 
-        return deserialize<id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileIdBatchResult>(response.body)
+        return deserialize<DeleteFileIdBatchResult>(response.body)
 
     }
 
@@ -433,18 +438,18 @@ public class DriveFileProvider(
         driveId: Uuid,
         groupIds: List<Uuid>,
         recipients: List<String>? = null
-    ): id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFilesByGroupIdBatchResult {
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuid(driveId, "driveId")
-        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil.requireValidUuidList(groupIds, "groupIds")
+    ): DeleteFilesByGroupIdBatchResult {
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuidList(groupIds, "groupIds")
 
         val creds = requireCreds()
 
         val endpoint = "/drives/${driveId}/files/delete-batch/by-group-id";
         val request =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteByGroupIdBatchRequest(
+            DeleteByGroupIdBatchRequest(
                 requests =
                     groupIds.map { groupId ->
-                        _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteByGroupIdRequest(
+                        DeleteByGroupIdRequest(
                             groupId = groupId,
                             recipients = recipients
                         )
@@ -460,7 +465,7 @@ public class DriveFileProvider(
 
         throwForFailure(response);
 
-        return deserialize<id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFilesByGroupIdBatchResult>(response.body)
+        return deserialize<DeleteFilesByGroupIdBatchResult>(response.body)
 
     }
 
@@ -473,16 +478,16 @@ public class DriveFileProvider(
     }
 
     /** Decrypts JSON content from file metadata. */
-    private suspend fun decryptJsonContent(metadata: id.homebase.homebasekmppoc.prototype.lib.drives.files.FileMetadata, keyHeader: KeyHeader): String? {
+    private suspend fun decryptJsonContent(metadata: FileMetadata, keyHeader: KeyHeader): String? {
         val content = metadata.appData.content ?: return null
         if (!metadata.isEncrypted) return content
 
         return try {
-            val encryptedBytes = _root_ide_package_.kotlin.io.encoding.Base64.Default.decode(content)
+            val encryptedBytes = Base64.Default.decode(content)
             val decryptedBytes = keyHeader.decrypt(encryptedBytes)
             decryptedBytes.decodeToString()
         } catch (e: Exception) {
-            _root_ide_package_.co.touchlab.kermit.Logger.Companion.e(_root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.DriveFileProvider.Companion.TAG) { "[odin-kt:decryptJsonContent] ${e.message}" }
+            Logger.Companion.e(TAG) { "[odin-kt:decryptJsonContent] ${e.message}" }
             null
         }
     }
@@ -643,28 +648,28 @@ data class DeleteFileResult(
     val fileId: Uuid,
     var localFileDeleted: Boolean,
     var localFileNotFound: Boolean,
-    val recipientStatus: Map<String, id.homebase.homebasekmppoc.prototype.lib.drives.upload.TransferUploadStatus>? = null
+    val recipientStatus: Map<String, TransferUploadStatus>? = null
 )
 
 @Serializable
 data class DeleteFileIdBatchResult
     (
-    val results: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileResult>
+    val results: List<DeleteFileResult>
 )
 
 @Serializable
 data class DeleteFilesByGroupIdBatchResult(
-    val results: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileByGroupIdResult>
+    val results: List<DeleteFileByGroupIdResult>
 )
 
 @Serializable
 data class DeleteFileByGroupIdResult(
     val groupId: Uuid,
-    val deleteFileResults: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileResult>
+    val deleteFileResults: List<DeleteFileResult>
 )
 
 @Serializable
-private data class DeleteFilesBatchRequest(val requests: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteFileRequest>)
+private data class DeleteFilesBatchRequest(val requests: List<DeleteFileRequest>)
 
 @Serializable
 private data class DeleteByGroupIdRequest(
@@ -673,4 +678,4 @@ private data class DeleteByGroupIdRequest(
 )
 
 @Serializable
-private data class DeleteByGroupIdBatchRequest(val requests: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.DeleteByGroupIdRequest>)
+private data class DeleteByGroupIdBatchRequest(val requests: List<DeleteByGroupIdRequest>)

@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.lib.youauth
+package id.homebase.api.youauth
 
 /**
  * Permission types for circle-level access. These define what access is granted within a specific

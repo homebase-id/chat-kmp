@@ -1,6 +1,5 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives
+package id.homebase.api.client.drives
 
-import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
 import kotlinx.serialization.Serializable
 
@@ -36,8 +35,8 @@ data class QueryBatchResponse(
 ) {
 
     companion object {
-        fun fromInvalidDrive(name: String): id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchResponse {
-            return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchResponse(
+        fun fromInvalidDrive(name: String): QueryBatchResponse {
+            return QueryBatchResponse(
                 name = name,
                 invalidDrive = true,
                 searchResults = emptyList()

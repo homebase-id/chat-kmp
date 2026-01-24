@@ -1,9 +1,10 @@
-package id.homebase.homebasekmppoc.prototype.lib.http
+package id.homebase.api.client.http
 
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.homebasekmppoc.prototype.lib.authentication.AuthState
+import id.homebase.api.client.auth.AuthState
 import id.homebase.homebasekmppoc.prototype.lib.crypto.KeyHeader
-import id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.homebasekmppoc.prototype.lib.http.PayloadWrapper
 
 class HeaderWrapper(
     val authenticated: AuthState.Authenticated,

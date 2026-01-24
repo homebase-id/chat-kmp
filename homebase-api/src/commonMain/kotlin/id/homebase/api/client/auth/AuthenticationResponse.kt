@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.authentication
+package id.homebase.api.client.auth
 
 import kotlinx.serialization.Serializable
 

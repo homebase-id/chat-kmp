@@ -1,10 +1,10 @@
 package id.homebase.homebasekmppoc.lib.config
 
-import id.homebase.homebasekmppoc.lib.youauth.AppPermissionType
-import id.homebase.homebasekmppoc.lib.youauth.DrivePermissionType
+import id.homebase.api.youauth.AppPermissionType
+import id.homebase.api.youauth.DrivePermissionType
 import id.homebase.homebasekmppoc.lib.youauth.PermissionExtensionConfig
-import id.homebase.homebasekmppoc.lib.youauth.TargetDriveAccessRequest
-import id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive
+import id.homebase.api.youauth.TargetDriveAccessRequest
+import id.homebase.api.client.drives.TargetDrive
 import kotlin.uuid.Uuid
 
 /**

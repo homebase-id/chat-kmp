@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.query
+package id.homebase.api.client.drives.query
 
 import kotlinx.serialization.Serializable
 

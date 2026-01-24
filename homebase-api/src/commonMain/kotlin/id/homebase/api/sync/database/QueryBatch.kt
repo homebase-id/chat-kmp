@@ -1,15 +1,14 @@
 package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
-import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.homebasekmppoc.prototype.lib.core.IntRange
 import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
 import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtcRange
-import id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchSortField
-import id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.QueryBatchSortField
+import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor
-import id.homebase.homebasekmppoc.prototype.lib.drives.query.TimeRowCursor
+import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.client.drives.query.TimeRowCursor
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlin.uuid.Uuid
 

@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.http
+package id.homebase.api.client.http
 
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.client.*

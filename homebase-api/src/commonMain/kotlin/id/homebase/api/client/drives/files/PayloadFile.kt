@@ -1,6 +1,6 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.files
+package id.homebase.api.client.drives.files
 
-import id.homebase.homebasekmppoc.prototype.lib.drives.upload.EmbeddedThumb
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import kotlinx.serialization.Serializable
 
 /**
@@ -13,7 +13,7 @@ data class PayloadFile(
     // Per GPT - There is no single stream abstraction that works across JVM, Android, iOS, and JS and is safe to serialize or reuse.
     // So filePath is the only way to hand in a payload
     val filePath: String,
-    val previewThumbnail: id.homebase.homebasekmppoc.prototype.lib.drives.upload.EmbeddedThumb? = null,
+    val previewThumbnail: EmbeddedThumb? = null,
     val contentType: String = "",
     val descriptorContent: String? = null,
     val skipEncryption: Boolean = false,
@@ -24,7 +24,7 @@ data class PayloadFile(
         if (this === other) return true
         if (other == null || this::class != other::class) return false
 
-        other as id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadFile
+        other as PayloadFile
 
         if (key != other.key) return false
         if (!filePath.contentEquals(other.filePath)) return false

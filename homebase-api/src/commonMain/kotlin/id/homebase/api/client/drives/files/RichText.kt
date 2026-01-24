@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.files
+package id.homebase.api.client.drives.files
 
 import kotlinx.serialization.Serializable
 
@@ -9,11 +9,11 @@ data class RichTextNode(
         val id: String? = null,
         val value: String? = null,
         val text: String? = null,
-        val children: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.RichTextNode>? = null
+        val children: List<RichTextNode>? = null
 )
 
 /** Rich text type alias (list of RichTextNode). */
-typealias RichText = List<id.homebase.homebasekmppoc.prototype.lib.drives.files.RichTextNode>
+typealias RichText = List<RichTextNode>
 
 /** Base reaction interface. */
 @Serializable data class ReactionBase(val authorOdinId: String? = null, val body: String)
@@ -23,9 +23,9 @@ typealias RichText = List<id.homebase.homebasekmppoc.prototype.lib.drives.files.
 data class CommentReaction(
     val authorOdinId: String? = null,
     val body: String,
-    val bodyAsRichText: id.homebase.homebasekmppoc.prototype.lib.drives.files.RichText? = null,
+    val bodyAsRichText: RichText? = null,
     val mediaPayloadKey: String? = null
 )
 
 /** Emoji reaction. */
-typealias EmojiReaction = id.homebase.homebasekmppoc.prototype.lib.drives.files.ReactionBase
+typealias EmojiReaction = ReactionBase

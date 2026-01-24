@@ -1,14 +1,13 @@
-package id.homebase.homebasekmppoc.prototype.lib.authentication
+package id.homebase.api.client.auth
 
-import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.sync.DriveSync
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.homebasekmppoc.lib.config.chatTargetDrive
-import id.homebase.homebasekmppoc.lib.youauth.YouAuthState
+import id.homebase.api.youauth.YouAuthState
 import id.homebase.homebasekmppoc.prototype.lib.drives.DriveSyncManager
-import id.homebase.homebasekmppoc.prototype.lib.eventbus.appEventBus
-import id.homebase.homebasekmppoc.prototype.lib.websockets.OdinWebSocketClient
+import id.homebase.api.client.eventbus.appEventBus
+import id.homebase.api.client.websockets.OdinWebSocketClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.uuid.Uuid
@@ -19,7 +18,7 @@ class AuthConnectionCoordinator(
 ) {
     private val identityId = Uuid.parse("7b1be23b-48bb-4304-bc7b-db5910c09a92") // TODO: Todd <- Had to do this, identityId shouldn't be in a suspend function. It should be globally easily available anytime someone is logged in
     private var wsClient: OdinWebSocketClient? = null
-    private val ioScope = CoroutineScope(Dispatchers.IO)
+    private val ioScope = CoroutineScope(Dispatchers.Default)
 
     private val targetDriveDrives = listOf(chatTargetDrive)  // TODO: <-- two drive lists of different types
 

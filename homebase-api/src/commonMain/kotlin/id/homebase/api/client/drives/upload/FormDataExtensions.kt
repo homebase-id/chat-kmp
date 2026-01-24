@@ -1,5 +1,6 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.upload
+package id.homebase.api.client.drives.upload
 
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.openFileInput
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
@@ -20,7 +21,7 @@ private data class ProcessedPayload(
         if (this === other) return true
         if (other == null || this::class != other::class) return false
 
-        other as id.homebase.homebasekmppoc.prototype.lib.drives.upload.ProcessedPayload
+        other as ProcessedPayload
 
         if (key != other.key) return false
         if (contentType != other.contentType) return false
@@ -47,7 +48,7 @@ private data class ProcessedThumbnail(
         if (this === other) return true
         if (other == null || this::class != other::class) return false
 
-        other as id.homebase.homebasekmppoc.prototype.lib.drives.upload.ProcessedThumbnail
+        other as ProcessedThumbnail
 
         if (filename != other.filename) return false
         if (contentType != other.contentType) return false
@@ -75,16 +76,16 @@ private data class ProcessedThumbnail(
  * @return MultiPartFormDataContent ready for HTTP upload
  */
 suspend fun buildUploadFormData(
-    instructionSet: id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadInstructionSet,
+    instructionSet: UploadInstructionSet,
     sharedSecretEncryptedDescriptor: ByteArray? = null,
-    payloads: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadFile>? = null,
+    payloads: List<PayloadFile>? = null,
     thumbnails: List<ThumbnailFile>? = null
 ): MultiPartFormDataContent {
 
     val runtimePayloads =
         payloads?.map { it.toRuntime(::openFileInput) }
 
-    return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.buildFormDataInternal(
+    return buildFormDataInternal(
         instructionSet = instructionSet,
         sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
         payloads = runtimePayloads,
@@ -102,16 +103,16 @@ suspend fun buildUploadFormData(
  * @return MultiPartFormDataContent ready for HTTP update
  */
 suspend fun buildUpdateFormData(
-    instructionSet: id.homebase.homebasekmppoc.prototype.lib.drives.upload.FileUpdateInstructionSet,
+    instructionSet: FileUpdateInstructionSet,
     sharedSecretEncryptedDescriptor: ByteArray? = null,
-    payloads: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadFile>? = null,
+    payloads: List<PayloadFile>? = null,
     thumbnails: List<ThumbnailFile>? = null
 ): MultiPartFormDataContent
     {
         val runtimePayloads =
             payloads?.map { it.toRuntime(::openFileInput) }
 
-        return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.buildFormDataInternal(
+        return buildFormDataInternal(
             instructionSet = instructionSet,
             sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
             payloads = runtimePayloads,
@@ -126,7 +127,7 @@ suspend fun buildUpdateFormData(
 private inline fun <reified T> buildFormDataInternal(
     instructionSet: T,
     sharedSecretEncryptedDescriptor: ByteArray?,
-    payloads: List<id.homebase.homebasekmppoc.prototype.lib.drives.upload.RuntimePayloadFile>?,
+    payloads: List<RuntimePayloadFile>?,
     thumbnails: List<ThumbnailFile>?
 ): MultiPartFormDataContent {
 
@@ -198,10 +199,10 @@ data class RuntimePayloadFile(
     val input: InputProvider
 )
 
-fun id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadFile.toRuntime(
+fun PayloadFile.toRuntime(
     openInput: (String) -> InputProvider
-): id.homebase.homebasekmppoc.prototype.lib.drives.upload.RuntimePayloadFile =
-    _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.upload.RuntimePayloadFile(
+): RuntimePayloadFile =
+    RuntimePayloadFile(
         key = key,
         contentType = contentType,
         input = openInput(filePath)

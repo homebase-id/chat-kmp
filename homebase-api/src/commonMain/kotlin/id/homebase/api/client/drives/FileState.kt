@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives
+package id.homebase.api.client.drives
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -17,7 +17,7 @@ enum class FileState(val value: Int) {
     // Archived(3) - commented out in original
 
     companion object {
-        fun fromInt(value: Int): id.homebase.homebasekmppoc.prototype.lib.drives.FileState {
+        fun fromInt(value: Int): FileState {
             return entries.firstOrNull { it.value == value }
                 ?: throw IllegalArgumentException("Unknown FileState: $value")
         }

@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.lib.youauth
+package id.homebase.api.youauth
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.browser.BrowserLauncher
@@ -8,17 +8,16 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.decodeUrl
 import id.homebase.api.generateUuidBytes
 import id.homebase.api.generateUuidString
-import id.homebase.api.youauth.OdinClientFactory
 import id.homebase.api.storage.SecureStorage
-import id.homebase.api.youauth.YouAuthorizationParams
 import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
 import id.homebase.homebasekmppoc.prototype.lib.crypto.EccKeyPair
 import id.homebase.homebasekmppoc.prototype.lib.crypto.EccKeySize
 import id.homebase.homebasekmppoc.prototype.lib.crypto.generateEccKeyPair
 import id.homebase.homebasekmppoc.prototype.lib.crypto.publicKeyToJwkBase64Url
-import id.homebase.homebasekmppoc.prototype.lib.http.UriBuilder
+import id.homebase.api.client.http.UriBuilder
 import kotlin.io.encoding.Base64
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -147,16 +146,16 @@ class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
      * @param drives List of drive access requests
      */
     suspend fun authorize(
-            identity: String,
-            scope: CoroutineScope,
-            appId: String,
-            appName: String,
-            drives: List<TargetDriveAccessRequest> = emptyList(),
-            permissions: List<AppPermissionType>? = null,
-            circlePermissions: List<AppCirclePermissionType>? = null,
-            circleDrives: List<TargetDriveAccessRequest>? = null,
-            circles: List<String>? = null,
-            clientFriendlyName: String? = null
+        identity: String,
+        scope: CoroutineScope,
+        appId: String,
+        appName: String,
+        drives: List<TargetDriveAccessRequest> = emptyList(),
+        permissions: List<AppPermissionType>? = null,
+        circlePermissions: List<AppCirclePermissionType>? = null,
+        circleDrives: List<TargetDriveAccessRequest>? = null,
+        circles: List<String>? = null,
+        clientFriendlyName: String? = null
     ) {
         if (_authState.value == YouAuthState.Authenticating ||
                         _authState.value is YouAuthState.Authenticated
@@ -183,7 +182,7 @@ class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
 
             // Build permission request
             val permissionRequest =
-                    AppAuthorizationParams.create(
+                    AppAuthorizationParams.Companion.create(
                             appName = appName,
                             appId = appId,
                             friendlyName = clientFriendlyName ?: "Homebase KMP App",
@@ -345,7 +344,7 @@ class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
     suspend fun onAppResumed(delayMs: Long = 500) {
         if (_authState.value == YouAuthState.Authenticating) {
             // Wait a short time for callback to potentially arrive
-            kotlinx.coroutines.delay(delayMs)
+            delay(delayMs)
 
             // If still authenticating, assume user cancelled
             if (_authState.value == YouAuthState.Authenticating) {

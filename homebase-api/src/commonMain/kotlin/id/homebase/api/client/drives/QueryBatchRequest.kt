@@ -1,5 +1,5 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives
-import id.homebase.homebasekmppoc.prototype.lib.drives.query.FileQueryParams
+package id.homebase.api.client.drives
+import id.homebase.api.client.drives.query.FileQueryParams
 import kotlinx.serialization.Serializable
 
 /**
@@ -8,6 +8,6 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class QueryBatchRequest(
-    val queryParams: id.homebase.homebasekmppoc.prototype.lib.drives.query.FileQueryParams,
-    val resultOptionsRequest: id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchResultOptionsRequest
+    val queryParams: FileQueryParams,
+    val resultOptionsRequest: QueryBatchResultOptionsRequest
 )

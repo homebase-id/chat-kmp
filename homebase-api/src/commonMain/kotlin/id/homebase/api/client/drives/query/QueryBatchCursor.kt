@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.query
+package id.homebase.api.client.drives.query
 
 import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
 import kotlinx.serialization.Serializable
@@ -19,7 +19,7 @@ data class TimeRowCursor(
     }
 
     companion object {
-        fun fromJson(jsonString: String): id.homebase.homebasekmppoc.prototype.lib.drives.query.TimeRowCursor {
+        fun fromJson(jsonString: String): TimeRowCursor {
             return Json.decodeFromString(jsonString)
         }
     }
@@ -32,18 +32,18 @@ data class TimeRowCursor(
  */
 @Serializable
 data class QueryBatchCursor(
-    val paging: id.homebase.homebasekmppoc.prototype.lib.drives.query.TimeRowCursor? = null,
-    val stop: id.homebase.homebasekmppoc.prototype.lib.drives.query.TimeRowCursor? = null,
-    val next: id.homebase.homebasekmppoc.prototype.lib.drives.query.TimeRowCursor? = null
+    val paging: TimeRowCursor? = null,
+    val stop: TimeRowCursor? = null,
+    val next: TimeRowCursor? = null
 ) {
     constructor(jsonString: String) : this() {
-        val decoded = Json.decodeFromString<id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor>(jsonString)
+        val decoded = Json.decodeFromString<QueryBatchCursor>(jsonString)
         // Note: In Kotlin, we can't reassign val properties after construction
         // The decoded object would need to be used directly or this pattern refactored
     }
 
-    fun clone(): id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor {
-        return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor(
+    fun clone(): QueryBatchCursor {
+        return QueryBatchCursor(
             paging = paging?.copy(),
             stop = stop?.copy(),
             next = next?.copy()
@@ -55,16 +55,16 @@ data class QueryBatchCursor(
     }
 
     companion object {
-        fun fromStartPoint(fromTimestamp: UnixTimeUtc): id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor {
-            return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor(
-                paging = _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.query.TimeRowCursor(
+        fun fromStartPoint(fromTimestamp: UnixTimeUtc): QueryBatchCursor {
+            return QueryBatchCursor(
+                paging = TimeRowCursor(
                     fromTimestamp,
                     null
                 )
             )
         }
 
-        fun fromJson(jsonString: String): id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor {
+        fun fromJson(jsonString: String): QueryBatchCursor {
             return Json.decodeFromString(jsonString)
         }
     }

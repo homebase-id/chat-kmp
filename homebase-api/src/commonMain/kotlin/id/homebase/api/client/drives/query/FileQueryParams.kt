@@ -1,10 +1,9 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.query
+package id.homebase.api.client.drives.query
 
 import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtcRange
-import id.homebase.homebasekmppoc.prototype.lib.drives.FileState
-import id.homebase.homebasekmppoc.prototype.lib.drives.FileSystemType
-import id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive
-import id.homebase.homebasekmppoc.prototype.lib.serialization.UuidSerializer
+import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
@@ -17,7 +16,7 @@ import kotlin.uuid.Uuid
 data class FileQueryParams(
     val fileType: List<Int>? = null,
     val dataType: List<Int>? = null,
-    val fileState: List<id.homebase.homebasekmppoc.prototype.lib.drives.FileState>? = null,
+    val fileState: List<FileState>? = null,
     val archivalStatus: List<Int>? = null,
     val sender: List<String>? = null, // Todo: senderId
     val groupId: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
@@ -30,7 +29,7 @@ data class FileQueryParams(
     val localTagsMatchAtLeastOne: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
     val localTagsMatchAll: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
     val globalTransitId: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
-    val fileSystemType: id.homebase.homebasekmppoc.prototype.lib.drives.FileSystemType? = null,
+    val fileSystemType: FileSystemType? = null,
 ) {
 
 }

@@ -3,10 +3,14 @@ package id.homebase.homebasekmppoc.prototype.lib.http
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.homebasekmppoc.lib.config.feedTargetDrive
-import id.homebase.homebasekmppoc.prototype.lib.authentication.AuthState
+import id.homebase.api.client.auth.AuthState
 import id.homebase.homebasekmppoc.prototype.lib.crypto.CryptoHelper
 import id.homebase.homebasekmppoc.prototype.lib.crypto.KeyHeader
-import id.homebase.homebasekmppoc.prototype.lib.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.http.AppOrOwner
+import id.homebase.api.client.http.HeaderWrapper
+import id.homebase.api.client.http.cookieNameFrom
+import id.homebase.api.client.http.createHttpClient
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import id.homebase.homebasekmppoc.prototype.lib.video.VideoMetaData
 import io.ktor.client.call.body

@@ -3,10 +3,10 @@ package id.homebase.api.client.drives.query
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
-import id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchRequest
-import id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchResponse
-import id.homebase.homebasekmppoc.prototype.lib.drives.ServerFile
-import id.homebase.homebasekmppoc.prototype.lib.drives.files.ValidationUtil
+import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.QueryBatchResponse
+import id.homebase.api.client.drives.ServerFile
+import id.homebase.api.client.drives.files.ValidationUtil
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlinx.serialization.Serializable
@@ -52,7 +52,7 @@ class DriveQueryProvider(
             encryptedFile.asHomebaseFile(creds.secret)
         }
 
-        return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchResponse(
+        return QueryBatchResponse(
             name = internal.name,
             invalidDrive = internal.invalidDrive,
             queryTime = internal.queryTime,

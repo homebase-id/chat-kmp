@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.files
+package id.homebase.api.client.drives.files
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -26,12 +26,12 @@ enum class TransferStatus(val value: String) {
     SendingServerTooManyAttempts("sendingservertoomanyattempts");
 
     companion object {
-        fun fromString(value: String): id.homebase.homebasekmppoc.prototype.lib.drives.files.TransferStatus {
+        fun fromString(value: String): TransferStatus {
             return entries.firstOrNull { it.value.equals(value, ignoreCase = true) } ?: None
         }
 
         /** List of failed transfer statuses. */
-        val failedStatuses: List<id.homebase.homebasekmppoc.prototype.lib.drives.files.TransferStatus> =
+        val failedStatuses: List<TransferStatus> =
                 listOf(
                         RecipientIdentityReturnedAccessDenied,
                         SourceFileDoesNotAllowDistribution,
@@ -42,7 +42,7 @@ enum class TransferStatus(val value: String) {
                         SendingServerTooManyAttempts
                 )
 
-        fun isFailedStatus(status: id.homebase.homebasekmppoc.prototype.lib.drives.files.TransferStatus): Boolean {
+        fun isFailedStatus(status: TransferStatus): Boolean {
             return status in failedStatuses
         }
     }

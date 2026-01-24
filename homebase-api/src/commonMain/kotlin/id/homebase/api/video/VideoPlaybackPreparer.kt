@@ -2,9 +2,9 @@ package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
-import id.homebase.homebasekmppoc.prototype.lib.http.AppOrOwner
+import id.homebase.api.client.http.AppOrOwner
 import id.homebase.homebasekmppoc.prototype.lib.http.PayloadWrapper
-import id.homebase.homebasekmppoc.prototype.lib.http.cookieNameFrom
+import id.homebase.api.client.http.cookieNameFrom
 import id.homebase.homebasekmppoc.prototype.lib.video.LocalVideoServer
 import id.homebase.homebasekmppoc.prototype.lib.video.VideoMetaData
 import io.ktor.http.encodeURLParameter

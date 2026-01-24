@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.lib.youauth
+package id.homebase.api.youauth
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -64,11 +64,11 @@ data class AppAuthorizationParams(
                                 // API requires 'd' field to always be present, even if empty array
                                 drives =
                                         if (drives.isNotEmpty())
-                                                TargetDriveAccessRequest.encodeList(drives)
+                                                TargetDriveAccessRequest.Companion.encodeList(drives)
                                         else "[]",
                                 circleDrives =
                                         circleDrives?.takeIf { it.isNotEmpty() }?.let {
-                                                TargetDriveAccessRequest.encodeList(it)
+                                                TargetDriveAccessRequest.Companion.encodeList(it)
                                         },
                                 circles = circles?.joinToString(","),
                                 permissions = permissions?.joinToString(","),

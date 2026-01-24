@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.files
+package id.homebase.api.client.drives.files
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -13,7 +13,7 @@ enum class SecurityGroupType(val value: String) {
     @SerialName("owner") Owner("owner");
 
     companion object {
-        fun fromString(value: String): id.homebase.homebasekmppoc.prototype.lib.drives.files.SecurityGroupType {
+        fun fromString(value: String): SecurityGroupType {
             return entries.firstOrNull { it.value.equals(value, ignoreCase = true) } ?: Anonymous
         }
     }

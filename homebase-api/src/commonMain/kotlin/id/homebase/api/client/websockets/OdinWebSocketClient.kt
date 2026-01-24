@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.websockets
+package id.homebase.api.client.websockets
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
@@ -9,12 +9,12 @@ import id.homebase.api.toBase64
 import id.homebase.homebasekmppoc.lib.config.chatTargetDrive
 import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
 import id.homebase.homebasekmppoc.prototype.lib.crypto.ByteArrayUtil
-import id.homebase.homebasekmppoc.prototype.lib.drives.ServerFile
-import id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive
-import id.homebase.homebasekmppoc.prototype.lib.eventbus.BackendEvent
-import id.homebase.homebasekmppoc.prototype.lib.eventbus.EventBus
-import id.homebase.homebasekmppoc.prototype.lib.http.SharedSecretEncryptedPayload
-import id.homebase.homebasekmppoc.prototype.lib.http.appCookieName
+import id.homebase.api.client.drives.ServerFile
+import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.http.SharedSecretEncryptedPayload
+import id.homebase.api.client.http.appCookieName
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession

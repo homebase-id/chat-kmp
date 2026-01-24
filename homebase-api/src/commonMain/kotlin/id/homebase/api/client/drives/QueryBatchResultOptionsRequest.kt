@@ -1,7 +1,7 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives
+package id.homebase.api.client.drives
 
-import id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor
-import id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchResultOptions
+import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.client.drives.query.QueryBatchResultOptions
 import kotlinx.serialization.Serializable
 
 /**
@@ -30,16 +30,16 @@ data class QueryBatchResultOptionsRequest(
      */
     val includeTransferHistory: Boolean = false,
 
-    val ordering: id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchSortOrder? = null,
+    val ordering: QueryBatchSortOrder? = null,
 
-    val sorting: id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchSortField? = null
+    val sorting: QueryBatchSortField? = null
 ) {
-    fun toQueryBatchResultOptions(): id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchResultOptions {
-        return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchResultOptions(
+    fun toQueryBatchResultOptions(): QueryBatchResultOptions {
+        return QueryBatchResultOptions(
             cursor = if (cursorState.isNullOrEmpty()) {
-                _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor()
+                QueryBatchCursor()
             } else {
-                _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor.Companion.fromJson(
+                QueryBatchCursor.Companion.fromJson(
                     cursorState
                 )
             },
@@ -47,15 +47,14 @@ data class QueryBatchResultOptionsRequest(
             includeHeaderContent = includeMetadataHeader,
             includeTransferHistory = includeTransferHistory,
             ordering = ordering
-                ?: _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchSortOrder.Default,
+                ?: QueryBatchSortOrder.Default,
             sorting = sorting
-                ?: _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchSortField.CreatedDate
+                ?: QueryBatchSortField.CreatedDate
         )
     }
 
     companion object {
-        val Default =
-            _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchResultOptionsRequest(
+        val Default = QueryBatchResultOptionsRequest(
                 maxRecords = 10,
                 includeMetadataHeader = true
             )

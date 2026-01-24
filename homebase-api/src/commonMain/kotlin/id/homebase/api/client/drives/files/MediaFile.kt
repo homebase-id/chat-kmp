@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.files
+package id.homebase.api.client.drives.files
 
 import kotlinx.serialization.Serializable
 
@@ -13,7 +13,7 @@ data class NewMediaFile(
         if (this === other) return true
         if (other == null || this::class != other::class) return false
 
-        other as id.homebase.homebasekmppoc.prototype.lib.drives.files.NewMediaFile
+        other as NewMediaFile
 
         if (key != other.key) return false
         if (!payload.contentEquals(other.payload)) return false

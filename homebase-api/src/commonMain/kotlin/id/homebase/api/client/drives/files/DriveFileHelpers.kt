@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.files
+package id.homebase.api.client.drives.files
 
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlin.math.abs
@@ -34,9 +34,9 @@ object DriveFileHelpers {
      * @param chunkLength Optional end byte of the requested range
      * @return RangeHeaderResult containing adjusted range and offset information
      */
-    fun getRangeHeader(chunkStart: Long? = null, chunkLength: Long? = null): id.homebase.homebasekmppoc.prototype.lib.drives.files.RangeHeaderResult {
+    fun getRangeHeader(chunkStart: Long? = null, chunkLength: Long? = null): RangeHeaderResult {
         if (chunkStart == null) {
-            return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.RangeHeaderResult(
+            return RangeHeaderResult(
                 startOffset = 0,
                 updatedChunkStart = null,
                 updatedChunkEnd = null,
@@ -68,7 +68,7 @@ object DriveFileHelpers {
                     "bytes=$updatedChunkStart-"
                 }
 
-        return _root_ide_package_.id.homebase.homebasekmppoc.prototype.lib.drives.files.RangeHeaderResult(
+        return RangeHeaderResult(
             startOffset = startOffset,
             updatedChunkStart = updatedChunkStart,
             updatedChunkEnd = updatedChunkEnd,
@@ -103,7 +103,7 @@ object DriveFileHelpers {
      * @param data The data containing bytes and content type, or null
      * @return The parsed object of type T, or null if data is null or parsing fails
      */
-    inline fun <reified T> parseBytesToObject(data: id.homebase.homebasekmppoc.prototype.lib.drives.files.BytesWithContentType?): T? {
+    inline fun <reified T> parseBytesToObject(data: BytesWithContentType?): T? {
         if (data == null) return null
         return tryJsonParse<T>(data.bytes.decodeToString())
     }
@@ -131,7 +131,7 @@ data class BytesWithContentType(val bytes: ByteArray, val contentType: String) {
         if (this === other) return true
         if (other == null || this::class != other::class) return false
 
-        other as id.homebase.homebasekmppoc.prototype.lib.drives.files.BytesWithContentType
+        other as BytesWithContentType
 
         if (!bytes.contentEquals(other.bytes)) return false
         if (contentType != other.contentType) return false

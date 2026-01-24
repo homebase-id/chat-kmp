@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives
+package id.homebase.api.client.drives
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -26,7 +26,7 @@ enum class QueryBatchSortField(val value: Int) {
     OnlyModifiedDate(4);  // Not yet implemented
 
     companion object {
-        fun fromInt(value: Int): id.homebase.homebasekmppoc.prototype.lib.drives.QueryBatchSortField {
+        fun fromInt(value: Int): QueryBatchSortField {
             return entries.firstOrNull { it.value == value }
                 ?: throw IllegalArgumentException("Unknown QueryBatchSortField: $value")
         }

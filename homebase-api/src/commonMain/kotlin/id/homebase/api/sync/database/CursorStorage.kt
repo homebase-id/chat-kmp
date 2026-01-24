@@ -1,6 +1,6 @@
 package id.homebase.api.sync.database
 
-import id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor
+import id.homebase.api.client.drives.query.QueryBatchCursor
 import kotlin.uuid.Uuid
 
 /**

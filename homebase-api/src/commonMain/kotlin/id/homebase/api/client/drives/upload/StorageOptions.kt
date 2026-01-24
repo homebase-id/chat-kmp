@@ -1,6 +1,5 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.upload
+package id.homebase.api.client.drives.upload
 
-import id.homebase.homebasekmppoc.prototype.lib.drives.TargetDrive
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 

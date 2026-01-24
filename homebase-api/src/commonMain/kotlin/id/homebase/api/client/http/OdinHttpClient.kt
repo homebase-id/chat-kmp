@@ -1,7 +1,7 @@
-package id.homebase.homebasekmppoc.prototype.lib.http
+package id.homebase.api.client.http
 
 import co.touchlab.kermit.Logger
-import id.homebase.homebasekmppoc.prototype.lib.authentication.AuthState
+import id.homebase.api.client.auth.AuthState
 import id.homebase.homebasekmppoc.prototype.lib.crypto.CryptoHelper
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient

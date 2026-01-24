@@ -1,6 +1,8 @@
-package id.homebase.homebasekmppoc.lib.youauth
+package id.homebase.api.youauth
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
+import kotlin.text.iterator
 
 /**
  * Parameters for extending app registration/permissions. These are sent to the /owner/appupdate
@@ -43,28 +45,28 @@ data class AppAuthorizationExtendParams(
          * @param returnUrl Deep link URL to return to app
          */
         fun create(
-                appId: String,
-                drives: List<TargetDriveAccessRequest>,
-                circleDrives: List<TargetDriveAccessRequest>? = null,
-                permissionKeys: List<Int>? = null,
-                needsAllConnectedOrCircleIds: Any? = null, // Boolean or List<String>
-                returnUrl: String
+            appId: String,
+            drives: List<TargetDriveAccessRequest>,
+            circleDrives: List<TargetDriveAccessRequest>? = null,
+            permissionKeys: List<Int>? = null,
+            needsAllConnectedOrCircleIds: Any? = null, // Boolean or List<String>
+            returnUrl: String
         ): AppAuthorizationExtendParams {
             val circleIds =
                     when (needsAllConnectedOrCircleIds) {
                         is List<*> -> {
                             @Suppress("UNCHECKED_CAST")
                             Json.encodeToString(
-                                    kotlinx.serialization.serializer(),
+                                serializer(),
                                     needsAllConnectedOrCircleIds as List<String>
                             )
                         }
                         true -> {
                             Json.encodeToString(
-                                    kotlinx.serialization.serializer(),
+                                serializer(),
                                     listOf(
-                                            AUTO_CONNECTIONS_CIRCLE_ID,
-                                            CONFIRMED_CONNECTIONS_CIRCLE_ID
+                                        AUTO_CONNECTIONS_CIRCLE_ID,
+                                        CONFIRMED_CONNECTIONS_CIRCLE_ID
                                     )
                             )
                         }
@@ -74,13 +76,13 @@ data class AppAuthorizationExtendParams(
             return AppAuthorizationExtendParams(
                     appId = appId,
                     d =
-                            if (drives.isNotEmpty()) TargetDriveAccessRequest.encodeList(drives)
+                            if (drives.isNotEmpty()) TargetDriveAccessRequest.Companion.encodeList(drives)
                             else null,
                     p = permissionKeys?.joinToString(","),
                     c = circleIds,
                     cd =
                             circleDrives?.takeIf { it.isNotEmpty() }?.let {
-                                TargetDriveAccessRequest.encodeList(it)
+                                TargetDriveAccessRequest.Companion.encodeList(it)
                             },
                     returnUrl = returnUrl
             )

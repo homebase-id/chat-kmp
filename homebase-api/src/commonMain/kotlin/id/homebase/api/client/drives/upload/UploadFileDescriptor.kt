@@ -1,12 +1,16 @@
-@file:OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+@file:OptIn(ExperimentalEncodingApi::class)
 
-package id.homebase.homebasekmppoc.prototype.lib.drives.upload
+package id.homebase.api.client.drives.upload
 
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.homebasekmppoc.prototype.lib.crypto.KeyHeader
+import id.homebase.api.client.drives.AccessControlList
+import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.homebasekmppoc.prototype.lib.serialization.Base64ByteArraySerializer
 import kotlin.io.encoding.Base64
 import kotlinx.serialization.Serializable
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
 /**
@@ -30,9 +34,9 @@ data class UploadAppFileMetaData(
     val dataType: Int? = null,
     val userDate: Long? = null,
     val groupId: String? = null,
-    val archivalStatus: id.homebase.homebasekmppoc.prototype.lib.drives.files.ArchivalStatus? = null,
+    val archivalStatus: ArchivalStatus? = null,
     val content: String? = null,
-    val previewThumbnail: id.homebase.homebasekmppoc.prototype.lib.drives.upload.EmbeddedThumb? = null
+    val previewThumbnail: EmbeddedThumb? = null
 )
 
 /** File metadata for uploads. */
@@ -40,9 +44,9 @@ data class UploadAppFileMetaData(
 data class UploadFileMetadata(
     val allowDistribution: Boolean,
     val isEncrypted: Boolean,
-    val accessControlList: id.homebase.homebasekmppoc.prototype.lib.drives.AccessControlList? = null,
-    val appData: id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadAppFileMetaData,
-    val referencedFile: id.homebase.homebasekmppoc.prototype.lib.drives.GlobalTransitIdFileIdentifier? = null,
+    val accessControlList: AccessControlList? = null,
+    val appData: UploadAppFileMetaData,
+    val referencedFile: GlobalTransitIdFileIdentifier? = null,
     val versionTag: Uuid? = null
 ) {
     /**
@@ -68,14 +72,14 @@ data class UploadFileMetadata(
 @Serializable
 data class UploadFileDescriptor(
         val encryptedKeyHeader: EncryptedKeyHeader? = null,
-        val fileMetadata: id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadFileMetadata
+        val fileMetadata: UploadFileMetadata
 )
 
 
 @Serializable
 data class UpdateFileDescriptor(
     val encryptedKeyHeader: EncryptedKeyHeader? = null,
-    val fileMetadata: id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadFileMetadata
+    val fileMetadata: UploadFileMetadata
 )
 
 /**

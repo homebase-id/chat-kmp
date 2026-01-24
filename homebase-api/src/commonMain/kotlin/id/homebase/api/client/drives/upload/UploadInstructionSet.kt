@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.drives.upload
+package id.homebase.api.client.drives.upload
 
 import id.homebase.homebasekmppoc.prototype.lib.serialization.Base64ByteArraySerializer
 import kotlinx.serialization.Serializable
@@ -6,10 +6,10 @@ import kotlinx.serialization.Serializable
 /** Base upload instruction set for file uploads. */
 @Serializable
 data class UploadInstructionSet(
-    val storageOptions: id.homebase.homebasekmppoc.prototype.lib.drives.upload.StorageOptions? = null,
-    val transitOptions: id.homebase.homebasekmppoc.prototype.lib.drives.upload.TransitOptions? = null,
+    val storageOptions: StorageOptions? = null,
+    val transitOptions: TransitOptions? = null,
     @Serializable(with = Base64ByteArraySerializer::class) val transferIv: ByteArray? = null,
-    val manifest: id.homebase.homebasekmppoc.prototype.lib.drives.upload.UploadManifest
+    val manifest: UploadManifest
 
 ) {
     override fun equals(other: Any?): Boolean {
