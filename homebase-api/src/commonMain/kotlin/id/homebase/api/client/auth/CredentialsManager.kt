@@ -70,4 +70,10 @@ class CredentialsManager {
     }
 
     //
+
+    suspend fun requireActiveCredentials(): ApiCredentials = mutex.withLock {
+        activeCredentials
+            ?: throw IllegalStateException("No active credentials set")
+    }
+
 }

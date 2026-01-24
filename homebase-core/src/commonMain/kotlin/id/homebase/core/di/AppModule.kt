@@ -4,6 +4,7 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.api.di.apiModule
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.chat.ChatListViewModel
+import id.homebase.chat.data.ChatMessageService
 import id.homebase.chat.data.MockChatApiProvider
 import id.homebase.chat.login.LoginViewModel
 import id.homebase.core.settings.UserPreferences
@@ -19,6 +20,8 @@ val appModule = module {
     single { MockChatApiProvider() }
 
     singleOf(::AuthConnectionCoordinator)
+
+    singleOf(::ChatMessageService)
 
     viewModelOf(::HomeViewModel)
     viewModelOf(::ChatListViewModel)
