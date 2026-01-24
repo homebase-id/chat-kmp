@@ -1,10 +1,10 @@
-package id.homebase.homebasekmppoc.prototype.lib.crypto
+package id.homebase.api.client
 
+import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.crypto.AesCbc
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.encodeUrl
 import id.homebase.api.toBase64
-import id.homebase.api.client.http.SharedSecretEncryptedPayload
-import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.util.encodeBase64
 import kotlin.io.encoding.Base64
@@ -50,7 +50,7 @@ object CryptoHelper {
      * @return URI with query string encrypted and replaced with ss parameter
      */
     suspend fun uriWithEncryptedQueryString(uri: String, sharedSecretBase64: String): String {
-        return uriWithEncryptedQueryString(uri, Base64.decode(sharedSecretBase64))
+        return uriWithEncryptedQueryString(uri, Base64.Default.decode(sharedSecretBase64))
     }
 
     /**
@@ -105,7 +105,7 @@ object CryptoHelper {
      * @return Decrypted and deserialized object of type T
      */
     suspend inline fun <reified T> decryptContent(content: String, sharedSecretBase64: String): T {
-        return decryptContent(content, Base64.decode(sharedSecretBase64))
+        return decryptContent(content, Base64.Default.decode(sharedSecretBase64))
     }
 
     /**
@@ -126,7 +126,7 @@ object CryptoHelper {
      * @return Decrypted plain text string
      */
     suspend fun decryptContentAsString(content: String, sharedSecretBase64: String): String {
-        return decryptContentAsString(content, Base64.decode(sharedSecretBase64))
+        return decryptContentAsString(content, Base64.Default.decode(sharedSecretBase64))
     }
 
     /**
@@ -140,8 +140,8 @@ object CryptoHelper {
         val payload = OdinSystemSerializer.deserialize<SharedSecretEncryptedPayload>(content)
 
         // Decrypt the data
-        val iv = Base64.decode(payload.iv)
-        val encryptedData = Base64.decode(payload.data)
+        val iv = Base64.Default.decode(payload.iv)
+        val encryptedData = Base64.Default.decode(payload.data)
         val plainBytes = AesCbc.decrypt(encryptedData, sharedSecret, iv)
 
         // Convert to string

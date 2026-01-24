@@ -1,6 +1,6 @@
 package id.homebase.api.client.websockets
 
-import id.homebase.api.client.http.SharedSecretEncryptedPayload
+import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.websocket.Frame

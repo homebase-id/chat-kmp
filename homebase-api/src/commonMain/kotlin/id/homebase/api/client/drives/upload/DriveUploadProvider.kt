@@ -10,7 +10,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.EncryptedKeyHeader
-import id.homebase.homebasekmppoc.prototype.lib.crypto.KeyHeader
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.TargetDrive

@@ -3,7 +3,7 @@ package id.homebase.api.client.drives
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.EncryptedKeyHeader
-import id.homebase.homebasekmppoc.prototype.lib.crypto.KeyHeader
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64

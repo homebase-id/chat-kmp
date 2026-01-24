@@ -1,6 +1,6 @@
 package id.homebase.api.client.drives
 
-import id.homebase.homebasekmppoc.prototype.lib.crypto.KeyHeader
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
