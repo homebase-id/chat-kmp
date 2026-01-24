@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.core
+package id.homebase.api.common
 
 import id.homebase.api.client.drives.query.QueryBatchCursor
 

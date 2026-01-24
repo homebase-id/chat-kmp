@@ -17,6 +17,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,7 +31,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
+import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.ChatListScreen
+import id.homebase.chat.login.LoginScreen
+import id.homebase.chat.login.LoginViewModel
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
@@ -48,7 +53,12 @@ sealed class TopLevelRoute(
 @Composable
 fun AppNavHost(
     navController: NavHostController = rememberNavController(),
+    youAuthFlowManager: YouAuthFlowManager
 ) {
+
+    val authState by youAuthFlowManager.authState.collectAsState()
+    val isAuthenticated = authState is YouAuthState.Authenticated
+
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val useNavigationRail =
         adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
@@ -60,7 +70,10 @@ fun AppNavHost(
     
     // Track if we are in a screen where bottom menu should be hidden
     var shouldHideBottomMenu by remember { mutableStateOf(false) }
-    val shouldShowBottomNav = !useNavigationRail && !shouldHideBottomMenu
+    val shouldShowBottomNav =
+        isAuthenticated &&
+                !useNavigationRail &&
+                !shouldHideBottomMenu
 
     Scaffold(
         bottomBar = {
@@ -92,7 +105,7 @@ fun AppNavHost(
                 .consumeWindowInsets(paddingValues)
                 .padding(paddingValues)
         ) {
-            if (useNavigationRail) {
+            if (useNavigationRail && isAuthenticated) {
                 NavigationRail(
                     header = {
                         Spacer(modifier = Modifier.height(12.dp))
@@ -119,31 +132,71 @@ fun AppNavHost(
 
             NavHost(
                 navController = navController,
-                startDestination = Route.ChatList,
+                startDestination = if (isAuthenticated) Route.ChatList else Route.Login,
                 modifier = Modifier.weight(1f)
             ) {
-                composable<Route.Home> {
-                    HomeScreen(
-                        viewModel = koinViewModel(),
-                        onNavigateToChatList = { navController.navigate(Route.ChatList) }
+
+                composable<Route.Login> {
+                    val viewModel = koinViewModel<LoginViewModel>()
+
+                    LoginScreen(
+                        state = viewModel.uiState.collectAsState().value,
+                        onAction = viewModel::onAction
                     )
                 }
 
-                composable<Route.ChatList> {
-                    ChatListScreen(
-                        viewModel = koinViewModel(),
-                        onNavigateBack = { navController.popBackStack() },
-                        onDetailPaneVisibilityChanged = { isShowingDetail ->
-                            shouldHideBottomMenu = isShowingDetail
+
+                composable<Route.Home> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState,
+                        onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
                         }
-                    )
+                    ) {
+                        HomeScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateToChatList = {
+                                navController.navigate(Route.ChatList)
+                            }
+                        )
+                    }
+                }
+
+
+                composable<Route.ChatList> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState,
+                        onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    ) {
+                        ChatListScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                            onDetailPaneVisibilityChanged = {
+                                shouldHideBottomMenu = it
+                            }
+                        )
+                    }
                 }
 
                 composable<Route.Settings> {
-                    SettingsScreen(
-                        viewModel = koinViewModel()
-                    )
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState,
+                        onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    ) {
+                        SettingsScreen(viewModel = koinViewModel())
+                    }
                 }
+
             }
         }
     }
@@ -192,3 +245,24 @@ fun AppNavHost(
 //                    onNavigateBack = { navController.popBackStack() }
 //            )
 //        }
+
+
+/** Wrapper for routes that require authentication using YouAuthFlowManager. */
+@Composable
+private fun AuthenticatedRouteWithFlowManager(
+    authState: kotlinx.coroutines.flow.StateFlow<YouAuthState>,
+    onUnauthenticated: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val currentAuthState by authState.collectAsState()
+
+    when (currentAuthState) {
+        is YouAuthState.Authenticated -> content()
+        is YouAuthState.Unauthenticated -> onUnauthenticated()
+        is YouAuthState.Authenticating -> {
+            // Show loading or nothing while authenticating
+        }
+
+        is YouAuthState.Error -> onUnauthenticated()
+    }
+}

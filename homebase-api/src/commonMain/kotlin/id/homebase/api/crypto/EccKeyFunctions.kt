@@ -1,12 +1,10 @@
-package id.homebase.homebasekmppoc.prototype.lib.crypto
+package id.homebase.api.crypto
 
 import dev.whyoleg.cryptography.CryptographyProvider
 import dev.whyoleg.cryptography.algorithms.EC
 import dev.whyoleg.cryptography.algorithms.ECDH
-import id.homebase.api.crypto.AesCbc
-import id.homebase.api.crypto.Base64UrlEncoder
-import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
-import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
+import id.homebase.api.common.SecureByteArray
+import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer

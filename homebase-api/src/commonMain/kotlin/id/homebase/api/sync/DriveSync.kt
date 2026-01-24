@@ -19,7 +19,6 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlin.collections.mutableListOf
@@ -34,7 +33,7 @@ class DriveSync(
     scope: CoroutineScope? = null
 ) {
     // Background work is Network and DB bound, so using IO
-    private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var cursor: QueryBatchCursor?
     private val mutex = Mutex()
     private var batchSize = 500 // Balanced starting point

@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.crypto
+package id.homebase.api.crypto
 
 enum class EccKeySize {
     P256,

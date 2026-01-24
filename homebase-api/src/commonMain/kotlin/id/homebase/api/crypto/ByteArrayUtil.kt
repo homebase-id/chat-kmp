@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.crypto
+package id.homebase.api.crypto
 
 import kotlin.random.Random
 import kotlin.uuid.Uuid

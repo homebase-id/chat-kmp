@@ -2,8 +2,7 @@ package id.homebase.api.crypto
 
 import dev.whyoleg.cryptography.CryptographyProvider
 import dev.whyoleg.cryptography.algorithms.AES
-import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
-import id.homebase.homebasekmppoc.prototype.lib.crypto.ByteArrayUtil
+import id.homebase.api.common.SecureByteArray
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 

@@ -2,7 +2,7 @@
 
 package id.homebase.api.client.drives.files
 
-import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.serialization.UuidSerializer
 import kotlin.uuid.ExperimentalUuidApi

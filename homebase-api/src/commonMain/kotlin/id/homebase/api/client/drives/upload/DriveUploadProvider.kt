@@ -6,9 +6,9 @@ import id.homebase.api.client.ApiResponse
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.OdinErrorResponse
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
-import id.homebase.homebasekmppoc.prototype.lib.crypto.ByteArrayUtil
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.homebasekmppoc.prototype.lib.crypto.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile

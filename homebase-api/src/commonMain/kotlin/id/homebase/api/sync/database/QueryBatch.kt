@@ -1,9 +1,9 @@
 package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.QueryResult
-import id.homebase.homebasekmppoc.prototype.lib.core.IntRange
-import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
-import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtcRange
+import id.homebase.api.common.IntRange
+import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.common.time.UnixTimeUtcRange
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.HomebaseFile

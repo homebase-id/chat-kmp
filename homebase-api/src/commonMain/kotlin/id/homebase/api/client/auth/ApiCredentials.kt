@@ -1,6 +1,6 @@
 package id.homebase.api.client.auth
 
-import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
+import id.homebase.api.common.SecureByteArray
 
 import kotlin.uuid.Uuid
 

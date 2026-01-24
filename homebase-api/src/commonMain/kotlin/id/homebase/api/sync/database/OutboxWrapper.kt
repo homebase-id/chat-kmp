@@ -1,7 +1,7 @@
 package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.SqlDriver
-import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
+import id.homebase.api.common.time.UnixTimeUtc
 import kotlin.Long
 import kotlin.uuid.Uuid
 import kotlinx.atomicfu.atomic

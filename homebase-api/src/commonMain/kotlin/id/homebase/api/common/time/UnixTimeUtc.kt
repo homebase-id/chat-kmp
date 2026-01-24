@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.core.time
+package id.homebase.api.common.time
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable

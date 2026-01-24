@@ -1,7 +1,7 @@
 package id.homebase.homebasekmppoc.prototype.lib.video
 
 import co.touchlab.kermit.Logger
-import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
+import id.homebase.api.common.SecureByteArray
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header

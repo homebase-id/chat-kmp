@@ -1,7 +1,7 @@
 package id.homebase.api.client
 
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
+import id.homebase.api.common.SecureByteArray
 import id.homebase.homebasekmppoc.prototype.lib.crypto.CryptoHelper
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
@@ -36,16 +36,16 @@ abstract class OdinApiProviderBase(
 
     private val HOST_URL_REGEX = Regex("""^[a-zA-Z][a-zA-Z0-9+.-]*://[^/]+""")
 
-    protected data class ActiveCreds(
+    protected data class ActiveCredentials(
         val domain: String,
         val accessToken: String,
         val secret: SecureByteArray
     )
 
-    protected suspend fun requireCreds(): ActiveCreds {
+    protected suspend fun requireCreds(): ActiveCredentials {
         val (domain, token, secret) =
             checkNotNull(credentialsManager.getActiveCredentials())
-        return ActiveCreds(domain, token, secret)
+        return ActiveCredentials(domain, token, secret)
     }
 
     protected fun apiUrl(domain: String, path: String): String =
@@ -156,6 +156,26 @@ abstract class OdinApiProviderBase(
             secret = null
         )
     }
+
+    protected suspend fun plainPostJson(
+        url: String,
+        token: String,
+        jsonBody: String
+    ): ApiResponse {
+        requireHostInUrl(url)
+        return request(
+            {
+                httpClient.post(url) {
+                    bearerAuth(token)
+                    contentType(ContentType.Application.Json)
+                    accept(ContentType.Application.Json)
+                    setBody(TextContent(jsonBody, ContentType.Application.Json))
+                }
+            },
+            secret = null
+        )
+    }
+
 
     protected suspend fun plainPostMultipart(
         url: String,

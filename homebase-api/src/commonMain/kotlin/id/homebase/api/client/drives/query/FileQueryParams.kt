@@ -1,6 +1,6 @@
 package id.homebase.api.client.drives.query
 
-import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtcRange
+import id.homebase.api.common.time.UnixTimeUtcRange
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.serialization.UuidSerializer

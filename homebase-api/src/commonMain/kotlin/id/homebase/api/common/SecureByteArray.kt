@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.core
+package id.homebase.api.common
 
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64

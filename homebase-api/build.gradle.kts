@@ -106,6 +106,9 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
             implementation(libs.sqldelight.sqlite.driver)
+            implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.11.0")
+            implementation("io.ktor:ktor-server-html-builder:2.3.7")
+
         }
     }
 }

@@ -9,12 +9,13 @@ import id.homebase.api.decodeUrl
 import id.homebase.api.generateUuidBytes
 import id.homebase.api.generateUuidString
 import id.homebase.api.storage.SecureStorage
-import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
-import id.homebase.homebasekmppoc.prototype.lib.crypto.EccKeyPair
-import id.homebase.homebasekmppoc.prototype.lib.crypto.EccKeySize
-import id.homebase.homebasekmppoc.prototype.lib.crypto.generateEccKeyPair
-import id.homebase.homebasekmppoc.prototype.lib.crypto.publicKeyToJwkBase64Url
+import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.EccKeyPair
+import id.homebase.api.crypto.EccKeySize
+import id.homebase.api.crypto.generateEccKeyPair
+import id.homebase.api.crypto.publicKeyToJwkBase64Url
 import id.homebase.api.client.http.UriBuilder
+import io.ktor.client.HttpClient
 import kotlin.io.encoding.Base64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -32,9 +33,9 @@ sealed class YouAuthState {
 
     /** User is authenticated with valid tokens */
     data class Authenticated(
-            val identity: String,
-            val clientAuthToken: String,
-            val sharedSecret: String
+        val identity: String,
+        val clientAuthToken: String,
+        val sharedSecret: String
     ) : YouAuthState()
 
     /** Authentication failed with an error */
@@ -43,9 +44,9 @@ sealed class YouAuthState {
 
 /** Internal state for the auth code flow. */
 private data class AuthCodeFlowState(
-        val identity: String,
-        val password: SecureByteArray,
-        val keyPair: EccKeyPair
+    val identity: String,
+    val password: SecureByteArray,
+    val keyPair: EccKeyPair
 )
 
 /**
@@ -54,7 +55,10 @@ private data class AuthCodeFlowState(
  *
  * This is the recommended entry point for UI components like LoginViewModel.
  */
-class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
+class YouAuthFlowManager(
+    private val credentialsManager: CredentialsManager,
+    private val httpClient: HttpClient
+) {
     private val _authState = MutableStateFlow<YouAuthState>(YouAuthState.Unauthenticated)
     val authState: StateFlow<YouAuthState> = _authState.asStateFlow()
 
@@ -78,10 +82,10 @@ class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
                 }
 
                 val params =
-                        query.split("&").associate {
-                            val parts = it.split("=", limit = 2)
-                            parts[0] to (parts.getOrNull(1) ?: "")
-                        }
+                    query.split("&").associate {
+                        val parts = it.split("=", limit = 2)
+                        parts[0] to (parts.getOrNull(1) ?: "")
+                    }
 
                 val state = decodeUrl(params["state"] ?: "")
                 if (state.isEmpty()) {
@@ -104,23 +108,19 @@ class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
 
     /** Check if there are stored credentials and restore session. */
     suspend fun restoreSession(): Boolean {
-        if (OdinClientFactory.hasStoredCredentials()) {
-            val client = OdinClientFactory.createFromStorage()
-            if (client != null) {
-                val identity = client.getHostIdentity()
+        if (CredentialStorage.hasStoredCredentials()) {
+            val credentials = CredentialStorage.getCredentials()
+            if (credentials != null) {
+                val identity = credentials.identity
                 // We don't have the raw tokens here, but we know we're authenticated
-                client.getSharedSecret()?.let {
-                    _authState.value =
-                            YouAuthState.Authenticated(
-                                    identity = identity,
-                                    clientAuthToken =
-                                            SecureStorage.get(YouAuthStorageKeys.CLIENT_AUTH_TOKEN)
-                                                    ?: "", // TODO: Remove this afterwards when seb
-                                    // decided to ditch the old http code Not
-                                    // needed since OdinClient is configured
-                                    sharedSecret = Base64.encode(it)
-                            )
-                }
+                _authState.value =
+                    YouAuthState.Authenticated(
+                        identity = identity,
+                        clientAuthToken = credentials.clientAuthToken,
+                        // decided to ditch the old http code Not
+                        // needed since OdinClient is configured
+                        sharedSecret = Base64.encode(credentials.sharedSecret.unsafeBytes)
+                    )
                 Logger.i(TAG) { "Session restored for $identity" }
 
                 val apiCredentials = ApiCredentials.create(
@@ -158,7 +158,7 @@ class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
         clientFriendlyName: String? = null
     ) {
         if (_authState.value == YouAuthState.Authenticating ||
-                        _authState.value is YouAuthState.Authenticated
+            _authState.value is YouAuthState.Authenticated
         ) {
             Logger.e(TAG) { "Already authenticating or authenticated" }
             return
@@ -182,17 +182,17 @@ class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
 
             // Build permission request
             val permissionRequest =
-                    AppAuthorizationParams.Companion.create(
-                            appName = appName,
-                            appId = appId,
-                            friendlyName = clientFriendlyName ?: "Homebase KMP App",
-                            drives = drives,
-                            circleDrives = circleDrives,
-                            circles = circles,
-                            permissions = permissions?.map { it.value },
-                            circlePermissions = circlePermissions?.map { it.value },
-                            returnUrl = redirectUri
-                    )
+                AppAuthorizationParams.Companion.create(
+                    appName = appName,
+                    appId = appId,
+                    friendlyName = clientFriendlyName ?: "Homebase KMP App",
+                    drives = drives,
+                    circleDrives = circleDrives,
+                    circles = circles,
+                    permissions = permissions?.map { it.value },
+                    circlePermissions = circlePermissions?.map { it.value },
+                    returnUrl = redirectUri
+                )
 
             // Build authorization request
             val authRequest =
@@ -208,9 +208,9 @@ class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
 
             // Build authorization URL
             val authorizeUrl =
-                    UriBuilder("https://$identity/api/owner/v1/youauth/authorize")
-                            .apply { query = authRequest.toQueryString() }
-                            .toString()
+                UriBuilder("https://$identity/api/owner/v1/youauth/authorize")
+                    .apply { query = authRequest.toQueryString() }
+                    .toString()
 
             // Launch browser
             BrowserLauncher.launchAuthBrowser(authorizeUrl, scope)
@@ -243,33 +243,32 @@ class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
             if (salt.isEmpty()) throw Exception("Missing query param: salt")
 
             // Create unauthenticated client for token exchange
-            val unauthClient = OdinClientFactory.createUnauthenticated(authCodeFlowState!!.identity)
-            val provider = YouAuthProvider(unauthClient)
+            val provider = YouAuthProvider(httpClient, authCodeFlowState!!.identity)
 
             // Finalize authentication
             val result =
-                    provider.finalizeAuthentication(
-                            identity = identity,
-                            keyPair = authCodeFlowState!!.keyPair,
-                            password = authCodeFlowState!!.password,
-                            publicKey = publicKey,
-                            salt = salt
-                    )
+                provider.finalizeAuthentication(
+                    identity = identity,
+                    keyPair = authCodeFlowState!!.keyPair,
+                    password = authCodeFlowState!!.password,
+                    publicKey = publicKey,
+                    salt = salt
+                )
 
             // Save credentials
-            OdinClientFactory.saveCredentials(
-                    identity = result.identity,
-                    clientAuthToken = result.clientAuthToken,
-                    sharedSecret = Base64.decode(result.sharedSecret)
+            CredentialStorage.saveCredentials(
+                identity = result.identity,
+                clientAuthToken = result.clientAuthToken,
+                sharedSecret = Base64.decode(result.sharedSecret)
             )
 
             // Update state
             _authState.value =
-                    YouAuthState.Authenticated(
-                            identity = result.identity,
-                            clientAuthToken = result.clientAuthToken,
-                            sharedSecret = result.sharedSecret
-                    )
+                YouAuthState.Authenticated(
+                    identity = result.identity,
+                    clientAuthToken = result.clientAuthToken,
+                    sharedSecret = result.sharedSecret
+                )
 
             val apiCredentials = ApiCredentials.create(
                 result.identity,
@@ -291,16 +290,16 @@ class YouAuthFlowManager(private val credentialsManager: CredentialsManager) {
     /** Logout and clear credentials. */
     suspend fun logout() {
         try {
-            val client = OdinClientFactory.createFromStorage()
-            if (client != null) {
-                val provider = YouAuthProvider(client)
+            val credentials = CredentialStorage.getCredentials()
+            if (credentials != null) {
+                val provider = YouAuthProvider(httpClient, credentials.identity)
                 provider.logout()
             }
         } catch (e: Exception) {
             Logger.e(TAG, e) { "Error during logout" }
         }
 
-        OdinClientFactory.clearCredentials()
+        CredentialStorage.clearCredentials()
         _authState.value = YouAuthState.Unauthenticated
         Logger.i(TAG) { "User logged out" }
 

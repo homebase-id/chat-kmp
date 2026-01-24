@@ -12,7 +12,7 @@ class DriveSyncManager(
     private val driveQueryProvider: DriveQueryProvider,
     private val databaseManager: DatabaseManager,
     private val eventBus: EventBus,
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default)
 )
 {
     /**

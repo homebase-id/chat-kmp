@@ -1,7 +1,5 @@
 package id.homebase.api.crypto
 
-import id.homebase.homebasekmppoc.prototype.lib.crypto.toStringFromUtf8Bytes
-import id.homebase.homebasekmppoc.prototype.lib.crypto.toUtf8ByteArray
 import kotlin.io.encoding.Base64
 
 /**

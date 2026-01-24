@@ -1,6 +1,6 @@
 package id.homebase.api.client.drives
 
-import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
+import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.serialization.Serializable
 
 /**

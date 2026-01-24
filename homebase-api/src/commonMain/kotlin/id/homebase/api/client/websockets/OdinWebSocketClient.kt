@@ -7,8 +7,8 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.toBase64
 import id.homebase.homebasekmppoc.lib.config.chatTargetDrive
-import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
-import id.homebase.homebasekmppoc.prototype.lib.crypto.ByteArrayUtil
+import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.ServerFile
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent

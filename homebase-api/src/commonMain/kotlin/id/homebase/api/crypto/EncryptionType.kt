@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.crypto
+package id.homebase.api.crypto
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

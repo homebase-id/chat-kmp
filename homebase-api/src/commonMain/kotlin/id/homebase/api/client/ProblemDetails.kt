@@ -32,28 +32,3 @@ fun ProblemDetails.errorCodeEnumOrUnhandled(): OdinClientErrorCode =
     errorCodeEnum() ?: OdinClientErrorCode.UnhandledScenario
 
 
-
-class ClientException(
-    status: Int,
-    val errorCode: OdinClientErrorCode = OdinClientErrorCode.UnhandledScenario,
-    message: String,
-    correlationId: String?,
-    problem: ProblemDetails,
-    cause: Throwable? = null
-) : OdinApiException(status, message, correlationId, problem)
-
-class UnauthorizedException :
-    OdinApiException(401, "Unauthorized")
-
-class ForbiddenException :
-    OdinApiException(403, "Forbidden")
-
-class NotFoundException :
-    OdinApiException(404, "Not found")
-
-class ServerException(
-    status: Int,
-    correlationId: String?,
-    problem: ProblemDetails?
-) : OdinApiException(status, "Server error (status=$status)", correlationId, problem)
-

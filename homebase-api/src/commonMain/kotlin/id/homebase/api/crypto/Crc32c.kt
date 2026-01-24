@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.crypto
+package id.homebase.api.crypto
 
 // CRC32C implementation
 object Crc32c {
