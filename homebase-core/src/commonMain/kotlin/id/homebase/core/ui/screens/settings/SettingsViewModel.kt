@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.settings.Language
 import id.homebase.core.settings.UserPreferences
 import kotlinx.coroutines.channels.Channel
@@ -12,7 +13,8 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val youAuthFlowManager: YouAuthFlowManager
 ): ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -39,6 +41,13 @@ class SettingsViewModel(
             }
             is SettingsUiAction.LanguageSelected -> {
                 saveLanguage(action.language)
+            }
+
+            is SettingsUiAction.LogoutClicked -> {
+                viewModelScope.launch {
+                    youAuthFlowManager.logout()
+                    _uiEvent.send(SettingsUiEvent.LoggedOut)
+                }
             }
         }
     }

@@ -13,10 +13,16 @@ data class SettingsUiState(
 sealed interface SettingsUiAction {
     data object ChatListClicked : SettingsUiAction
     data class LanguageSelected(val language: Language) : SettingsUiAction
+
+    data object LogoutClicked : SettingsUiAction
+
 }
 
 /** One-off events for side effects (navigation). */
 sealed interface SettingsUiEvent {
     data object NavigateToChatList : SettingsUiEvent
     data class SetLanguage(val language: String) : SettingsUiEvent
+
+    data object LoggedOut : SettingsUiEvent
+
 }
