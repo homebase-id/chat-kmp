@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextLayoutResult
@@ -49,23 +50,25 @@ fun SentMessageBubble(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
-        Spacer(modifier = Modifier.width(24.dp))
+        Spacer(modifier = Modifier.width(16.dp))
         Column(
             modifier = Modifier.weight(1f).hoverable(interactionSource),
             horizontalAlignment = Alignment.End
         ) {
             Row {
                 Column {
-                    if (isHovered) {
-                        IconButton(onClick = {
+                    IconButton(
+                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                        onClick = {
                             showMenu = true
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = "More options",
-                                tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                            )
-                        }
+                        },
+                        enabled = isHovered
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = "More options",
+                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                        )
                     }
                     SentMessageMenu(
                         showMenu = showMenu,
@@ -118,16 +121,18 @@ fun ReceivedMessageBubble(
                     }
                 )
                 Column {
-                    if (isHovered) {
-                        IconButton(onClick = {
+                    IconButton(
+                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                        onClick = {
                             showMenu = true
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = "More options",
-                                tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                            )
-                        }
+                        },
+                        enabled = isHovered
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = "More options",
+                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                        )
                     }
                     ReceivedMessageMenu(
                         showMenu = showMenu,
@@ -138,7 +143,7 @@ fun ReceivedMessageBubble(
                 }
             }
         }
-        Spacer(modifier = Modifier.width(24.dp))
+        Spacer(modifier = Modifier.width(16.dp))
     }
 }
 

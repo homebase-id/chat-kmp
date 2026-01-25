@@ -15,17 +15,15 @@ import id.homebase.chat.data.MockChatApiProvider
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 sealed interface ChatListUiEvent {
-    data class NavigateToMessages(val conversationId: Uuid) : ChatListUiEvent
     data object NavigateBack : ChatListUiEvent
 }
 
@@ -71,7 +69,8 @@ data class ChatListUiState(
     val showingNewChatPane: Boolean = false,
     val contacts: ImmutableList<ContactUiModel> = persistentListOf(),
     val searchQuery: String = "",
-    val currentConversationMessageViewModels: ImmutableList<MessageUiModel> = persistentListOf(),
+    val currentConversationMessages: ImmutableList<MessageUiModel> = persistentListOf(),
+    val uiEvent: ChatListUiEvent? = null,
 )
 
 class ChatListViewModel(
@@ -106,14 +105,14 @@ class ChatListViewModel(
         }
     }
 
-    private val _uiEvent = Channel<ChatListUiEvent>(Channel.BUFFERED)
-    val uiEvent = _uiEvent.receiveAsFlow()
+    fun eventConsumed() {
+        _uiState.update { it.copy(uiEvent = null) }
+    }
 
     fun onAction(action: ChatListUiAction) {
         when (action) {
             is ChatListUiAction.ConversationClicked -> {
                 loadMessagesForConversation(action.conversationId)
-                sendEvent(ChatListUiEvent.NavigateToMessages(action.conversationId))
             }
 
             ChatListUiAction.BackClicked -> {
@@ -141,7 +140,6 @@ class ChatListViewModel(
                     searchQuery = ""
                 )
                 loadMessagesForConversation(conversation.id)
-                sendEvent(ChatListUiEvent.NavigateToMessages(conversation.id))
             }
 
             is ChatListUiAction.SearchQueryChanged -> {
@@ -180,7 +178,7 @@ class ChatListViewModel(
     }
 
     private fun sendEvent(event: ChatListUiEvent) {
-        viewModelScope.launch { _uiEvent.send(event) }
+        _uiState.update { it.copy(uiEvent = event) }
     }
 
     fun createConversation(
