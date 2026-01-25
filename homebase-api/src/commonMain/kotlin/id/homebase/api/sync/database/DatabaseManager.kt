@@ -14,6 +14,9 @@ private val appNotificationsAdapter = AppNotifications.Adapter(
     identityIdAdapter = UuidAdapter,
     notificationIdAdapter = UuidAdapter
 )
+private val chatReadCountAdapter = ChatReadCount.Adapter(
+    groupIdAdapter = UuidAdapter
+)
 private val driveMainIndexAdapter = DriveMainIndex.Adapter(
     identityIdAdapter = UuidAdapter,
     driveIdAdapter = UuidAdapter,
@@ -57,6 +60,7 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
         database = OdinDatabase(
             driver,
             appNotificationsAdapter,
+            chatReadCountAdapter,
             driveLocalTagIndexAdapter,
             driveMainIndexAdapter,
             driveTagIndexAdapter,
