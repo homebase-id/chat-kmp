@@ -83,6 +83,7 @@ import id.homebase.resources.chat_select_a_conversation
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @Composable
 fun ChatListScreen(
@@ -115,7 +116,7 @@ fun ChatListUi(
     onAction: (ChatListUiAction) -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
-    val scaffoldNavigator = rememberListDetailPaneScaffoldNavigator<String>()
+    val scaffoldNavigator = rememberListDetailPaneScaffoldNavigator<Uuid>()
     val scope = rememberCoroutineScope()
     val backNavigationBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
 
@@ -219,9 +220,9 @@ fun ChatListUi(
 @Composable
 fun ChatListPane(
     conversations: ImmutableList<Conversation>,
-    onConversationClick: (String) -> Unit,
+    onConversationClick: (Uuid) -> Unit,
     onNewChatClick: () -> Unit,
-    selectedConversationId: String? = null,
+    selectedConversationId: Uuid? = null,
 ) {
     Scaffold(
         topBar = {
@@ -843,8 +844,8 @@ fun ContactItem(
 @Composable
 fun ConversationMenu(
     showMenu: Boolean,
-    conversationId: String,
-    onDelete: (conversationId: String) -> Unit,
+    conversationId: Uuid,
+    onDelete: (conversationId: Uuid) -> Unit,
     dismissMenu: () -> Unit,
 ) {
     DropdownMenu(

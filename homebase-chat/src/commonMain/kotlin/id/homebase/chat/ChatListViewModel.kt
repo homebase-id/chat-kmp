@@ -16,25 +16,26 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 sealed interface ChatListUiEvent {
-    data class NavigateToMessages(val conversationId: String) : ChatListUiEvent
+    data class NavigateToMessages(val conversationId: Uuid) : ChatListUiEvent
     data object NavigateBack : ChatListUiEvent
 }
 
 sealed interface ChatListUiAction {
-    data class ConversationClicked(val conversationId: String) : ChatListUiAction
+    data class ConversationClicked(val conversationId: Uuid) : ChatListUiAction
     data object BackClicked : ChatListUiAction
     data object NewChatClicked : ChatListUiAction
     data object BackToListClicked : ChatListUiAction
     data class ContactClicked(val contact: Contact) : ChatListUiAction
     data class SearchQueryChanged(val query: String) : ChatListUiAction
-    data class SendMessage(val conversationId: String, val content: String) : ChatListUiAction
+    data class SendMessage(val conversationId: Uuid, val content: String) : ChatListUiAction
 }
 
 @Immutable
 data class Conversation(
-    val id: String,
+    val id: Uuid,
     val name: String,
     val lastMessage: String,
     val timestamp: Instant,
@@ -131,7 +132,7 @@ class ChatListViewModel(
         }
     }
     
-    private fun loadMessagesForConversation(conversationId: String) {
+    private fun loadMessagesForConversation(conversationId: Uuid) {
         apiProvider.markConversationAsRead(conversationId)
         val messages = apiProvider.getMessagesByConversationId(conversationId)
         _uiState.value = _uiState.value.copy(
@@ -151,16 +152,16 @@ class ChatListViewModel(
         apiProvider.updateConversation(conversation)
     }
     
-    fun deleteConversation(conversationId: String) {
+    fun deleteConversation(conversationId: Uuid) {
         apiProvider.deleteConversation(conversationId)
     }
     
-    fun getMessagesByConversationId(conversationId: String): List<Message> {
+    fun getMessagesByConversationId(conversationId: Uuid): List<Message> {
         return apiProvider.getMessagesByConversationId(conversationId)
     }
     
     fun addMessage(
-        conversationId: String,
+        conversationId: Uuid,
         content: String,
         senderId: String,
         senderName: String,
@@ -173,7 +174,7 @@ class ChatListViewModel(
         apiProvider.updateMessage(message)
     }
     
-    fun deleteMessage(messageId: String) {
+    fun deleteMessage(messageId: Uuid) {
         apiProvider.deleteMessage(messageId)
     }
     

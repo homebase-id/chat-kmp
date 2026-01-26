@@ -125,8 +125,8 @@ class ChatMessageService(
         val senderName = metadata.senderOdinId!! // todo: resolve from contacts
 
         return Message(
-            id = appData.uniqueId.toString(),
-            conversationId = appData.groupId.toString(),
+            id = appData.uniqueId!!,
+            conversationId = appData.groupId!!,
             timestamp = metadata.transitCreated.toInstant(),
             senderName = senderName,
             isCurrentUser = false,

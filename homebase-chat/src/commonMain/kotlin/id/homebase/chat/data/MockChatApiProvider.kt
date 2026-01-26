@@ -9,8 +9,22 @@ import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 class MockChatApiProvider {
+    
+    companion object {
+        val CONVERSATION_ALICE = Uuid.parse("550e8400-e29b-41d4-a716-446655440001")
+        val CONVERSATION_BOB = Uuid.parse("550e8400-e29b-41d4-a716-446655440002")
+        val CONVERSATION_TEAM = Uuid.parse("550e8400-e29b-41d4-a716-446655440003")
+        val CONVERSATION_DIANA = Uuid.parse("550e8400-e29b-41d4-a716-446655440004")
+        val CONVERSATION_STARLIGHT = Uuid.parse("550e8400-e29b-41d4-a716-446655440005")
+        val CONVERSATION_FRANK = Uuid.parse("550e8400-e29b-41d4-a716-446655440006")
+        val CONVERSATION_GRACE = Uuid.parse("550e8400-e29b-41d4-a716-446655440007")
+        val CONVERSATION_HENRY = Uuid.parse("550e8400-e29b-41d4-a716-446655440008")
+        val CONVERSATION_FAMILY = Uuid.parse("550e8400-e29b-41d4-a716-446655440009")
+        val CONVERSATION_IVY = Uuid.parse("550e8400-e29b-41d4-a716-446655440010")
+    }
     
     private val _conversations = MutableStateFlow(getInitialConversations())
     val conversations: StateFlow<List<Conversation>> = _conversations.asStateFlow()
@@ -22,8 +36,8 @@ class MockChatApiProvider {
     val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
     
     private fun getInitialConversations(): List<Conversation> = listOf(
-        Conversation(
-            id = "1",
+Conversation(
+            id = CONVERSATION_ALICE,
             name = "Alice Johnson",
             lastMessage = "Hey! Are we still on for dinner tonight?",
             timestamp = Clock.System.now() - 15.minutes,
@@ -32,8 +46,8 @@ class MockChatApiProvider {
             avatarUrl = "https://i.pravatar.cc/150?img=1",
             isPinned = true
         ),
-        Conversation(
-            id = "2",
+Conversation(
+            id = CONVERSATION_BOB,
             name = "Bob Smith",
             lastMessage = "Thanks for your help earlier! 👍",
             timestamp = Clock.System.now() - 1.hours - 15.minutes,
@@ -41,8 +55,8 @@ class MockChatApiProvider {
             avatarInitials = "BS",
             avatarUrl = "https://i.pravatar.cc/150?img=12",
         ),
-        Conversation(
-            id = "3",
+Conversation(
+            id = CONVERSATION_TEAM,
             name = "Team Planning",
             lastMessage = "Charlie: The meeting is rescheduled to 3 PM",
             timestamp = Clock.System.now() - 2.hours - 30.minutes,
@@ -51,8 +65,8 @@ class MockChatApiProvider {
             avatarUrl = "https://i.pravatar.cc/150?img=60",
             isPinned = true
         ),
-        Conversation(
-            id = "4",
+Conversation(
+            id = CONVERSATION_DIANA,
             name = "Diana Martinez",
             lastMessage = "Can you send me those files?",
             timestamp = Clock.System.now() - 3.hours - 20.minutes,
@@ -60,8 +74,8 @@ class MockChatApiProvider {
             avatarInitials = "DM",
             avatarUrl = "https://i.pravatar.cc/150?img=5",
         ),
-        Conversation(
-            id = "5",
+Conversation(
+            id = CONVERSATION_STARLIGHT,
             name = "Project Starlight",
             lastMessage = "Emily: I've pushed the latest changes",
             timestamp = Clock.System.now() - 1.days,
@@ -69,8 +83,8 @@ class MockChatApiProvider {
             avatarInitials = "PS",
             avatarUrl = "https://i.pravatar.cc/150?img=70",
         ),
-        Conversation(
-            id = "6",
+Conversation(
+            id = CONVERSATION_FRANK,
             name = "Frank Wilson",
             lastMessage = "See you tomorrow!",
             timestamp = Clock.System.now() - 1.days - 3.hours,
@@ -78,8 +92,8 @@ class MockChatApiProvider {
             avatarInitials = "FW",
             avatarUrl = "",
         ),
-        Conversation(
-            id = "7",
+Conversation(
+            id = CONVERSATION_GRACE,
             name = "Grace Lee",
             lastMessage = "That sounds great! 😊",
             timestamp = Clock.System.now() - 3.days,
@@ -87,8 +101,8 @@ class MockChatApiProvider {
             avatarInitials = "GL",
             avatarUrl = "https://i.pravatar.cc/150?img=9",
         ),
-        Conversation(
-            id = "8",
+Conversation(
+            id = CONVERSATION_HENRY,
             name = "Henry Davis",
             lastMessage = "I'll take a look at it",
             timestamp = Clock.System.now() - 3.days - 2.hours,
@@ -96,8 +110,8 @@ class MockChatApiProvider {
             avatarInitials = "HD",
             avatarUrl = "https://i.pravatar.cc/150?img=14",
         ),
-        Conversation(
-            id = "9",
+Conversation(
+            id = CONVERSATION_FAMILY,
             name = "Family",
             lastMessage = "Mom: Don't forget to call grandma",
             timestamp = Clock.System.now() - 4.days,
@@ -105,8 +119,8 @@ class MockChatApiProvider {
             avatarInitials = "FM",
             avatarUrl = "https://i.pravatar.cc/150?img=65",
         ),
-        Conversation(
-            id = "10",
+Conversation(
+            id = CONVERSATION_IVY,
             name = "Ivy Chen",
             lastMessage = "Perfect! See you there",
             timestamp = Clock.System.now() - 5.days,
@@ -117,71 +131,71 @@ class MockChatApiProvider {
     )
     
     private fun getInitialContacts(): List<Contact> = listOf(
-        Contact(
-            id = "c1",
+Contact(
+            id = Uuid.random(),
             name = "Alice Johnson",
             avatarInitials = "AJ",
             avatarUrl = "https://i.pravatar.cc/150?img=1",
             status = "Available"
         ),
-        Contact(
-            id = "c2",
+Contact(
+            id = Uuid.random(),
             name = "Bob Smith",
             avatarInitials = "BS",
             avatarUrl = "https://i.pravatar.cc/150?img=12",
             status = "Away"
         ),
-        Contact(
-            id = "c4",
+Contact(
+            id = Uuid.random(),
             name = "Diana Martinez",
             avatarInitials = "DM",
             avatarUrl = "https://i.pravatar.cc/150?img=5",
             status = "Available"
         ),
-        Contact(
-            id = "c6",
+Contact(
+            id = Uuid.random(),
             name = "Frank Wilson",
             avatarInitials = "FW",
             avatarUrl = "https://i.pravatar.cc/150?img=13",
             status = "Available"
         ),
-        Contact(
-            id = "c7",
+Contact(
+            id = Uuid.random(),
             name = "Grace Lee",
             avatarInitials = "GL",
             avatarUrl = "https://i.pravatar.cc/150?img=9",
             status = "Busy"
         ),
-        Contact(
-            id = "c8",
+Contact(
+            id = Uuid.random(),
             name = "Henry Davis",
             avatarInitials = "HD",
             avatarUrl = "https://i.pravatar.cc/150?img=14",
             status = "Available"
         ),
-        Contact(
-            id = "c10",
+Contact(
+            id = Uuid.random(),
             name = "Ivy Chen",
             avatarInitials = "IC",
             avatarUrl = "https://i.pravatar.cc/150?img=10",
             status = "Available"
         ),
-        Contact(
-            id = "c11",
+Contact(
+            id = Uuid.random(),
             name = "Jack Brown",
             avatarInitials = "JB",
             avatarUrl = "https://i.pravatar.cc/150?img=15",
             status = "Away"
         ),
-        Contact(
-            id = "c12",
+Contact(
+            id = Uuid.random(),
             name = "Kate Wilson",
             avatarInitials = "KW",
             avatarUrl = "https://i.pravatar.cc/150?img=20",
             status = "Available"
         ),
-        Contact(
-            id = "c13",
+Contact(
+            id = Uuid.random(),
             name = "Liam Taylor",
             avatarInitials = "LT",
             avatarUrl = "https://i.pravatar.cc/150?img=33",
@@ -191,9 +205,9 @@ class MockChatApiProvider {
     
     private fun getInitialMessages(): List<Message> = listOf(
         // Conversation 1 - Alice Johnson
-        Message(
-            id = "m1_1",
-            conversationId = "1",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_ALICE,
             content = "Hi! How are you doing?",
             timestamp = Clock.System.now() - 30.minutes,
             senderId = "user1",
@@ -202,9 +216,9 @@ class MockChatApiProvider {
             isRead = true,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m1_2",
-            conversationId = "1",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_ALICE,
             content = "I'm doing great, thanks! How about you?",
             timestamp = Clock.System.now() - 28.minutes,
             senderId = "me",
@@ -213,9 +227,9 @@ class MockChatApiProvider {
             isRead = true,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m1_3",
-            conversationId = "1",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_ALICE,
             content = "Hey! Are we still on for dinner tonight?",
             timestamp = Clock.System.now() - 15.minutes,
             senderId = "user1",
@@ -224,9 +238,9 @@ class MockChatApiProvider {
             isRead = false,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m1_4",
-            conversationId = "1",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_ALICE,
             content = "What time works for you?",
             timestamp = Clock.System.now() - 10.minutes,
             senderId = "user1",
@@ -237,9 +251,9 @@ class MockChatApiProvider {
         ),
         
         // Conversation 2 - Bob Smith
-        Message(
-            id = "m2_1",
-            conversationId = "2",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_BOB,
             content = "Could you help me with that bug we discussed?",
             timestamp = Clock.System.now() - 2.hours,
             senderId = "user2",
@@ -248,9 +262,9 @@ class MockChatApiProvider {
             isRead = true,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m2_2",
-            conversationId = "2",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_BOB,
             content = "Sure! I'll take a look at it now.",
             timestamp = Clock.System.now() - 1.hours - 45.minutes,
             senderId = "me",
@@ -259,9 +273,9 @@ class MockChatApiProvider {
             isRead = true,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m2_3",
-            conversationId = "2",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_BOB,
             content = "Thanks for your help earlier! 👍",
             timestamp = Clock.System.now() - 1.hours - 15.minutes,
             senderId = "user2",
@@ -272,9 +286,9 @@ class MockChatApiProvider {
         ),
         
         // Conversation 3 - Team Planning
-        Message(
-            id = "m3_1",
-            conversationId = "3",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_TEAM,
             content = "What time is our meeting today?",
             timestamp = Clock.System.now() - 3.hours,
             senderId = "user3",
@@ -283,9 +297,9 @@ class MockChatApiProvider {
             isRead = true,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m3_2",
-            conversationId = "3",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_TEAM,
             content = "It was scheduled for 2 PM",
             timestamp = Clock.System.now() - 2.hours - 45.minutes,
             senderId = "me",
@@ -294,9 +308,9 @@ class MockChatApiProvider {
             isRead = true,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m3_3",
-            conversationId = "3",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_TEAM,
             content = "The meeting is rescheduled to 3 PM",
             timestamp = Clock.System.now() - 2.hours - 30.minutes,
             senderId = "user4",
@@ -305,9 +319,9 @@ class MockChatApiProvider {
             isRead = false,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m3_4",
-            conversationId = "3",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_TEAM,
             content = "Can everyone make it at that time?",
             timestamp = Clock.System.now() - 2.hours - 20.minutes,
             senderId = "user5",
@@ -316,9 +330,9 @@ class MockChatApiProvider {
             isRead = false,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m3_5",
-            conversationId = "3",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_TEAM,
             content = "I need to check the agenda",
             timestamp = Clock.System.now() - 2.hours - 15.minutes,
             senderId = "user6",
@@ -327,9 +341,9 @@ class MockChatApiProvider {
             isRead = false,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m3_6",
-            conversationId = "3",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_TEAM,
             content = "The updated agenda is in the shared folder",
             timestamp = Clock.System.now() - 2.hours - 10.minutes,
             senderId = "user3",
@@ -338,9 +352,9 @@ class MockChatApiProvider {
             isRead = false,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m3_7",
-            conversationId = "3",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_TEAM,
             content = "Thanks David!",
             timestamp = Clock.System.now() - 2.hours - 5.minutes,
             senderId = "user5",
@@ -351,9 +365,9 @@ class MockChatApiProvider {
         ),
         
         // Conversation 4 - Diana Martinez
-        Message(
-            id = "m4_1",
-            conversationId = "4",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_DIANA,
             content = "Can you send me those files?",
             timestamp = Clock.System.now() - 3.hours - 20.minutes,
             senderId = "user5",
@@ -364,9 +378,9 @@ class MockChatApiProvider {
         ),
         
         // Conversation 5 - Project Starlight
-        Message(
-            id = "m5_1",
-            conversationId = "5",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_STARLIGHT,
             content = "I've pushed the latest changes",
             timestamp = Clock.System.now() - 1.days,
             senderId = "user6",
@@ -375,9 +389,9 @@ class MockChatApiProvider {
             isRead = true,
             messageAppData = MessageAppData()
         ),
-        Message(
-            id = "m5_2",
-            conversationId = "5",
+Message(
+            id = Uuid.random(),
+            conversationId = CONVERSATION_STARLIGHT,
             content = "Great! I'll review them soon.",
             timestamp = Clock.System.now() - 1.days + 10.minutes,
             senderId = "me",
@@ -388,21 +402,21 @@ class MockChatApiProvider {
         ),
     )
     
-    fun getConversationById(id: String): Conversation? {
+    fun getConversationById(id: Uuid): Conversation? {
         return _conversations.value.find { it.id == id }
     }
     
-    fun getMessagesByConversationId(conversationId: String): List<Message> {
+    fun getMessagesByConversationId(conversationId: Uuid): List<Message> {
         return _messages.value.filter { it.conversationId == conversationId }
     }
     
-    private fun calculateUnreadCount(conversationId: String): Int {
+    private fun calculateUnreadCount(conversationId: Uuid): Int {
         return _messages.value.count { 
             it.conversationId == conversationId && !it.isCurrentUser && !it.isRead 
         }
     }
     
-    private fun updateConversationUnreadCount(conversationId: String) {
+    private fun updateConversationUnreadCount(conversationId: Uuid) {
         val unreadCount = calculateUnreadCount(conversationId)
         val conversation = getConversationById(conversationId)
         conversation?.let {
@@ -410,7 +424,7 @@ class MockChatApiProvider {
         }
     }
     
-    fun markConversationAsRead(conversationId: String) {
+    fun markConversationAsRead(conversationId: Uuid) {
         _messages.value = _messages.value.map { message ->
             if (message.conversationId == conversationId && !message.isCurrentUser && !message.isRead) {
                 message.copy(isRead = true)
@@ -427,7 +441,7 @@ class MockChatApiProvider {
         isPinned: Boolean = false,
         avatarUrl: String = "https://i.pravatar.cc/150?img=${(1..70).random()}"
     ): Conversation {
-        val newId = ((_conversations.value.maxOfOrNull { it.id.toIntOrNull() ?: 0 } ?: 0) + 1).toString()
+        val newId = Uuid.random()
         val newConversation = Conversation(
             id = newId,
             name = name,
@@ -448,20 +462,20 @@ class MockChatApiProvider {
         }
     }
     
-    fun deleteConversation(conversationId: String) {
+    fun deleteConversation(conversationId: Uuid) {
         _conversations.value = _conversations.value.filter { it.id != conversationId }
         _messages.value = _messages.value.filter { it.conversationId != conversationId }
     }
     
     fun addMessage(
-        conversationId: String,
+        conversationId: Uuid,
         content: String,
         senderId: String,
         senderName: String,
         isCurrentUser: Boolean = false,
         timestamp: Instant = Clock.System.now()
     ): Message {
-        val newId = "m${conversationId}_${Clock.System.now().toEpochMilliseconds()}"
+        val newId = Uuid.random()
         val newMessage = Message(
             id = newId,
             conversationId = conversationId,
@@ -511,7 +525,7 @@ class MockChatApiProvider {
         }
     }
     
-    fun deleteMessage(messageId: String) {
+    fun deleteMessage(messageId: Uuid) {
         val message = _messages.value.find { it.id == messageId }
         _messages.value = _messages.value.filter { it.id != messageId }
         
