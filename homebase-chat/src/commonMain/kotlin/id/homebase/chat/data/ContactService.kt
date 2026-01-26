@@ -124,24 +124,24 @@ data class ContactName(
 
 @Serializable
 data class ContactLocation(
-    val city: String,
+    val city: String?,
     val country: String?
 )
 
 @Serializable
 data class ContactPhone(
-    val number: String
+    val number: String?
 )
 
 @Serializable
 data class ContactEmail(
-    val email: String
+    val email: String?
 )
 
 
 @Serializable
 data class ContactBirthday(
-    val date: String
+    val date: String?
 )
 
 
