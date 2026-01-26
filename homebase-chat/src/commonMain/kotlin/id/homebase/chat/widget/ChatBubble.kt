@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.Icon
@@ -183,12 +184,14 @@ fun ChatBubble(
         Layout(
             modifier = Modifier.padding(12.dp),
             content = {
+                SelectionContainer {
                 Text(
                     text = text,
                     onTextLayout = { textLayoutResult = it },
                     style = MaterialTheme.typography.bodyMedium,
                     color = contentColor
                 )
+                    }
                 Text(
                     modifier = Modifier.padding(top = 8.dp),
                     text = timestamp,

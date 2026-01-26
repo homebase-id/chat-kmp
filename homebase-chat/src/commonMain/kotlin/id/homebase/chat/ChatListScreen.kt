@@ -13,27 +13,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -76,6 +71,10 @@ import id.homebase.chat.widget.ConversationAvatarItem
 import id.homebase.chat.widget.ConversationItem
 import id.homebase.chat.widget.ConversationMenu
 import id.homebase.chat.widget.EmptyDetailPane
+import id.homebase.chat.widget.MessageInputBar
+import id.homebase.chat.widget.MessageSectionItem
+import id.homebase.chat.widget.MessagesSection
+import id.homebase.chat.widget.MinimalTextField
 import id.homebase.chat.widget.NewConversationPane
 import id.homebase.chat.widget.ReceivedMessageBubble
 import id.homebase.chat.widget.SentMessageBubble
@@ -87,7 +86,6 @@ import id.homebase.core.widget.AvatarImage
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_new_conversation
-import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
 import id.homebase.resources.time_today
@@ -310,6 +308,7 @@ fun ChatListPane(
     onNewChatClick: () -> Unit,
     selectedConversationId: Uuid? = null,
 ) {
+    val searchState = rememberTextFieldState()
     var filterByUnread by remember { mutableStateOf(false) }
     var selectedFilterConversationId by remember { mutableStateOf<String?>(null) }
     val filteredConversations = remember(conversations, filterByUnread) {
@@ -352,19 +351,9 @@ fun ChatListPane(
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            OutlinedTextField(
-                                value = "",
-                                onValueChange = { },
+                            MinimalTextField(
+                                textFieldState = searchState,
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text(stringResource(MR.string.chat_search_placeholder)) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Search,
-                                        contentDescription = "Search"
-                                    )
-                                },
-                                shape = RoundedCornerShape(24.dp),
-                                singleLine = true
                             )
                             Spacer(modifier = Modifier.width(16.dp))
                             IconButton(
@@ -384,6 +373,7 @@ fun ChatListPane(
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
                     } else {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
@@ -502,11 +492,6 @@ private fun getDateSectionLabel(timestamp: Instant): String {
     }
 }
 
-private data class MessageSection(
-    val firstMessageTime: Instant,
-    val messages: List<Message>,
-    val date: LocalDate
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -517,7 +502,6 @@ fun ChatDetailPane(
     onSendMessage: (String) -> Unit,
     showBackButton: Boolean,
 ) {
-    var messageText by remember { mutableStateOf("") }
     var showMenu by remember { mutableStateOf(false) }
 
     val groupedMessages = remember(messages) {
@@ -528,7 +512,7 @@ fun ChatDetailPane(
                 date
             }
             .map { (date, msgs) ->
-                MessageSection(
+                MessageSectionItem(
                     firstMessageTime = msgs.first().timestamp,
                     messages = msgs,
                     date = date
@@ -594,42 +578,13 @@ fun ChatDetailPane(
                 shadowElevation = 8.dp,
                 tonalElevation = 0.dp
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    OutlinedTextField(
-                        value = messageText,
-                        onValueChange = { messageText = it },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 8.dp),
-                        placeholder = {
-                            Text("Message")
-                        },
-                        shape = RoundedCornerShape(24.dp),
-                        maxLines = 4
-                    )
-
-                    FloatingActionButton(
-                        onClick = {
-                            if (messageText.isNotBlank()) {
-                                onSendMessage(messageText)
-                                messageText = ""
-                            }
-                        },
-                        modifier = Modifier.size(48.dp),
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send message"
-                        )
-                    }
-                }
+                MessageInputBar(
+                    onSendMessage = {
+                        if (it.isNotBlank()) {
+                            onSendMessage(it)
+                        }
+                    },
+                )
             }
         }
     ) { innerPadding ->
@@ -682,21 +637,9 @@ fun ChatDetailPane(
                                 .padding(vertical = 16.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                tonalElevation = 0.dp
-                            ) {
-                                Text(
-                                    text = getDateSectionLabel(section.firstMessageTime),
-                                    modifier = Modifier.padding(
-                                        horizontal = 12.dp,
-                                        vertical = 6.dp
-                                    ),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            MessagesSection(
+                                text = getDateSectionLabel(section.firstMessageTime)
+                            )
                         }
                     }
                     items(

@@ -28,9 +28,10 @@
     <string name="day_saturday">Saturday</string>
     <string name="day_sunday">Sunday</string>
 
-    <!-- Chat list -->
+    <!-- Chat -->
     <string name="chat_select_a_conversation">Select a conversation</string>
     <string name="chat_select_a_conversation_subtitle">Choose a conversation from the list to view messages</string>
     <string name="chat_new_conversation">New conversation</string>
     <string name="chat_search_placeholder">Search</string>
+    <string name="chat_new_message_placeholder">Message</string>
 </resources>
