@@ -3,7 +3,8 @@ package id.homebase.chat.data
 import id.homebase.core.model.FileState
 import id.homebase.core.model.PayloadDescriptor
 import id.homebase.core.model.ThumbnailDescriptor
-import id.homebase.core.model.UnixTimeUtc
+//import id.homebase.core.model.UnixTimeUtc
+import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.uuid.Uuid
@@ -31,9 +32,10 @@ data class UnifiedConversation(
 @Serializable
 data class ConversationMetadata(
     /** The conversation ID this metadata belongs to */
-    val conversationId: String? = null,
+    val conversationId: Uuid? = null,
 
     /** Timestamp when the conversation was last read (UnixTimeUtc in milliseconds) */
+    // TODO: This seems incorrect, isn't the lastReadTime supposed to be on localAppData?
     val lastReadTime: Long? = null
 ) {
     /** Get lastReadTime as UnixTimeUtc */
@@ -66,26 +68,26 @@ data class ConversationData(
     val previewThumbnail: ThumbnailDescriptor?,
 
     /** FileState */
-    val fileState: FileState,
+    // val fileState: FileState, TODO: What is this?
 
     /** Whether content is encrypted */
     val isEncrypted: Boolean,
 
     /** DriveId for reference */
-    val driveId: Uuid,
+    // val driveId: Uuid, TODO: Needed?
 
     /** VersionTag */
     val versionTag: Uuid?,
 
     /** List of payload descriptors with metadata */
-    val payloads: List<PayloadDescriptor>?
+    // val payloads: List<PayloadDescriptor>? TODO: Needed?
 ) {
     companion object {
         /**
          * Convert HomebaseFile to ConversationData object
          * Handles fileType 8888 (chat conversations)
          */
-        /*
+
         fun fromHomebaseFile(homebaseFile: HomebaseFile): ConversationData? {
             return try {
                 val metadata = homebaseFile.fileMetadata
@@ -100,7 +102,8 @@ data class ConversationData(
                 val json = Json { ignoreUnknownKeys = true }
                 val unifiedConversation = json.decodeFromString<UnifiedConversation>(appData.content!!)
 
-                val conversationMeta = metadata.localAppData?.let { localAppData ->
+                val conversationMeta = metadata.localAppData?.content?.let { localAppData ->
+                    // TODO: Looks wrong, we probably need a data class for the localAppData to serialize / deserialize
                     json.decodeFromString<ConversationMetadata>(localAppData)
                 }
 
@@ -112,16 +115,15 @@ data class ConversationData(
                     content = unifiedConversation,
                     conversationMeta = conversationMeta,
                     previewThumbnail = null, // Handle based on your requirements
-                    fileState = FileState.Companion.fromInt(metadata.fileState.value),
+                    // fileState = FileState.Companion.fromInt(metadata.fileState.value), TODO: Needed?
                     isEncrypted = metadata.isEncrypted,
-                    driveId = metadata.driveId,
-                    versionTag = metadata.versionTag,
-                    payloads = metadata.payloads
+                    // driveId = metadata.driveId, TODO: Needed?
+                    versionTag = metadata.versionTag
                 )
             } catch (e: Exception) {
                 null
             }
-        }*/
+        }
     }
 }
 
