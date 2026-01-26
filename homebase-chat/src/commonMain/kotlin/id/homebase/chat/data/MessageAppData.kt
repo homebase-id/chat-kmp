@@ -1,21 +1,24 @@
 package id.homebase.chat.data
 
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
-/** Data class representing chat message content (parsed from JSON) */
+/** Data class representing chat message homebaseFile.AppData (parsed from JSON) */
 @Serializable
-data class ChatMessageContent(
-    /** Optional reply ID if this message is a reply to another message */
+data class MessageAppData(
+    /** Optional reply ID if this message is a reply to another message -
+     *  OBSOLETE - only on old messages */
     val replyId: Uuid? = null,
     val replyPreview: ReplyPreview? = null,
 
     /** Content of the message - can be a simple string or rich text */
     val message: String = "",
-    // contentIsComplete is a boolean if true write "more..."
+    // homebaseFile.contentIsComplete is a boolean if true write "more..."
     // TODO: A helper function to load the text when the user presses "more..."
 
+    // Where is the urlPreview?
     /** Delivery status of the message (as int value) */
     val deliveryStatus: Int = ChatDeliveryStatus.Sent.value,
 
@@ -24,6 +27,20 @@ data class ChatMessageContent(
 ) {
     /** Get the delivery status as enum */
     fun getDeliveryStatusEnum(): ChatDeliveryStatus? = ChatDeliveryStatus.fromValue(deliveryStatus)
+
+    companion object {
+        /**
+         * Parse JSON string as MessageAppData
+         */
+        fun fromMessageAppDataJson(messageAppData: String): MessageAppData {
+            return try {
+                // Parse JSON as MessageAppData
+                OdinSystemSerializer.deserialize<MessageAppData>(messageAppData)
+            } catch (e: Exception) {
+                throw e
+            }
+        }
+    }
 }
 
 @Serializable

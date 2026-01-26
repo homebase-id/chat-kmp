@@ -25,7 +25,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-const val CHAT_CONVERSATION_FILE_TYPE = 8888
+const val CHAT_CONVERSATION_FILE_TYPE:Int = 8888
 const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889
 const val ConversationWithYourselfId = "e4ef2382-ab3c-405d-a8b5-ad3e09e980dd"
 const val CONVERSATION_PAYLOAD_KEY = "convo_pk"
@@ -104,7 +104,7 @@ class ConversationService(
         val conversation = OdinSystemSerializer.deserialize<ConversationFromServer>(content)
 
         return Conversation(
-            id = appData.uniqueId!!.toString(),
+            id = appData.uniqueId ?: throw Exception("missing unique id, data error"),
             name = conversation.title ?: "",
             lastMessage = "TODO last message via michael",
             timestamp = metadata.transitCreated.toInstant(),

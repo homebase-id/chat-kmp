@@ -122,14 +122,15 @@ class ChatMessageService(
         val senderName = metadata.senderOdinId ?: "Me"
 
         return Message(
-            id = appData.uniqueId.toString(),
-            conversationId = appData.groupId.toString(),
+            id = appData.uniqueId!!,
+            conversationId = appData.groupId!!,
             timestamp = metadata.created.toInstant(),
             senderName = senderName,
             isCurrentUser = isCurrentUser,
             isRead = false,
             senderId = metadata.senderOdinId ?: "Me",
             content = parsedContent.message,
+            messageAppData = parsedContent
             //            versionTag = metadata.versionTag,
             //            previewThumbnail = previewThumbnail,
             //            contentIsComplete = metadata.payloads?.find { it.keyEquals(CHAT_MESSAGE_PAYLOAD_KEY) } == null,
@@ -138,9 +139,9 @@ class ChatMessageService(
     }
 
     /** Parses a JSON string as ChatMessageContent. */
-    private fun parseMessageContent(content: String): ChatMessageContent {
+    private fun parseMessageContent(content: String): MessageAppData {
         return try {
-            OdinSystemSerializer.deserialize<ChatMessageContent>(content)
+            OdinSystemSerializer.deserialize<MessageAppData>(content)
         } catch (e: Exception) {
             println(
                 "ChatProvider: Failed to parse ChatMetadata: ${e.message}\nContent: [${content}]"
@@ -148,9 +149,9 @@ class ChatMessageService(
 
             // If parsing fails, create a simple message with the raw content
             try {
-                ChatMessageContent(message = content)
+                MessageAppData(message = content)
             } catch (e2: Exception) {
-                ChatMessageContent()
+                MessageAppData()
             }
         }
     }

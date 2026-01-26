@@ -205,7 +205,7 @@ class LoginViewModel(
                             it.copy(
                                 isLoading = false,
                                 isAuthenticated = false,
-                                errorMessage = authState.message ?: "Authentication failed"
+                                errorMessage = authState.message
                             )
                         }
                     }

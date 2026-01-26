@@ -5,9 +5,6 @@ import id.homebase.api.client.drives.query.QueryBatchCursor
 /**
  * Generic batch result wrapper for paginated queries.
  *
- * This is a type-safe alternative to QueryBatchResult that can wrap any domain model type
- * (ChatMessageData, ConversationData, etc.).
- *
  * @param T The type of records in this batch
  * @property records The list of records in this batch
  * @property hasMoreRows Whether there are more records available for pagination

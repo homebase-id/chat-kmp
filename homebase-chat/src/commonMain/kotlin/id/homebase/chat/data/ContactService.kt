@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlin.uuid.Uuid
 
 const val CONTACT_FILE_TYPE = 100
 
@@ -91,7 +92,7 @@ class ContactService(
         val parsedContact = OdinSystemSerializer.deserialize<ContactServerFile>(content)
 
         return Contact(
-            id = parsedContact.odinId ?: throw Exception("missing odin id for contact in chat. no-can-do"),
+            id = parsedContact.id,
             name = parsedContact.name.displayName,
             avatarInitials = "TD",
             avatarUrl = ""
@@ -102,6 +103,7 @@ class ContactService(
 
 @Serializable
 data class ContactServerFile(
+    val id: Uuid,
     val odinId: String?,
     val name: ContactName,
     val source: String?, // 'contact' | 'public' | 'user';

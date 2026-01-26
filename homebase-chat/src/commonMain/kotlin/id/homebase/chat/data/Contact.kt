@@ -1,10 +1,11 @@
 package id.homebase.chat.data
 
 import androidx.compose.runtime.Immutable
+import kotlin.uuid.Uuid
 
 @Immutable
 data class Contact(
-    val id: String,
+    val id: Uuid,
     val name: String, //TODO: change to ContactName class?
     val avatarInitials: String,
     val avatarUrl: String = "",
