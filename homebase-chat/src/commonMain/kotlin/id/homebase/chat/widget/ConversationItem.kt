@@ -10,12 +10,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -112,5 +114,32 @@ fun ConversationItem(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun ConversationAvatarItem(
+    conversation: Conversation,
+    onClick: () -> Unit,
+    isSelected: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                else MaterialTheme.colorScheme.surfaceContainerLow
+            )
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        AvatarImage(
+            modifier = Modifier.padding(8.dp),
+            avatarUrl = conversation.avatarUrl,
+            avatarInitials = conversation.avatarInitials,
+        )
     }
 }

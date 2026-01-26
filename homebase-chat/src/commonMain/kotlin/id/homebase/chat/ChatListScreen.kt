@@ -71,6 +71,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import id.homebase.chat.data.Message
+import id.homebase.chat.widget.ConversationAvatarItem
+import id.homebase.chat.widget.ConversationItem
+import id.homebase.chat.widget.ConversationMenu
+import id.homebase.chat.widget.EmptyDetailPane
+import id.homebase.chat.widget.NewConversationPane
+import id.homebase.chat.widget.ReceivedMessageBubble
+import id.homebase.chat.widget.SentMessageBubble
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.assets.FeatherEdit
@@ -82,9 +90,21 @@ import id.homebase.resources.chat_new_conversation
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
+import id.homebase.resources.time_today
+import id.homebase.resources.time_yesterday
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.launch
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.format
+import kotlinx.datetime.format.MonthNames
+import kotlinx.datetime.format.char
+import kotlinx.datetime.minus
+import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 @Composable
@@ -101,6 +121,7 @@ fun ChatListScreen(
                 viewModel.eventConsumed()
                 onNavigateBack()
             }
+
             null -> {}
         }
     }
@@ -363,6 +384,22 @@ fun ChatListPane(
                                 )
                             }
                         }
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            IconButton(onClick = {
+                                onUiAction(ChatListUiAction.NewChatClicked)
+                            }) {
+                                Icon(
+                                    imageVector = FeatherEdit,
+                                    contentDescription = stringResource(MR.string.chat_new_conversation)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
                     }
                 }
             },
@@ -385,9 +422,15 @@ fun ChatListPane(
                 }
                 items(filteredConversations.toList()) { conversation ->
                     if (iconOnlyMode) {
-                        AvatarImage(
-                            avatarUrl = conversation.avatarUrl,
-                            avatarInitials = conversation.avatarInitials,
+                        ConversationAvatarItem(
+                            conversation = conversation,
+                            onClick = {
+                                if (filterByUnread) {
+                                    selectedFilterConversationId = conversation.id
+                                }
+                                onConversationClick(conversation.id)
+                            },
+                            isSelected = conversation.id == selectedConversationId
                         )
                     } else {
                         ConversationItem(
@@ -438,6 +481,33 @@ fun ChatListPane(
     }
 }
 
+@Composable
+private fun getDateSectionLabel(timestamp: Instant): String {
+    val timezone = TimeZone.currentSystemDefault()
+    val messageDate = timestamp.toLocalDateTime(timezone).date
+    val today = Clock.System.now().toLocalDateTime(timezone).date
+    val yesterday = today.minus(1, DateTimeUnit.DAY)
+
+    return when (messageDate) {
+        today -> stringResource(MR.string.time_today)
+        yesterday -> stringResource(MR.string.time_yesterday)
+        else -> {
+            val format = LocalDate.Format {
+                monthName(MonthNames.ENGLISH_ABBREVIATED)
+                char(' ')
+                day()
+            }
+            messageDate.format(format)
+        }
+    }
+}
+
+private data class MessageSection(
+    val firstMessageTime: Instant,
+    val messages: List<Message>,
+    val date: LocalDate
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatDetailPane(
@@ -449,6 +519,23 @@ fun ChatDetailPane(
 ) {
     var messageText by remember { mutableStateOf("") }
     var showMenu by remember { mutableStateOf(false) }
+
+    val groupedMessages = remember(messages) {
+        val timezone = TimeZone.currentSystemDefault()
+        messages
+            .groupBy { message ->
+                val date = message.timestamp.toLocalDateTime(timezone).date
+                date
+            }
+            .map { (date, msgs) ->
+                MessageSection(
+                    firstMessageTime = msgs.first().timestamp,
+                    messages = msgs,
+                    date = date
+                )
+            }
+            .sortedBy { it.date }
+    }
 
     Scaffold(
         topBar = {
@@ -587,15 +674,44 @@ fun ChatDetailPane(
                     Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                items(messageViewModels.toList()) { message ->
-                    if (message.isCurrentUser) {
-                        SentMessageBubble(
-                            messageViewModel = message,
-                        )
-                    } else {
-                        ReceivedMessageBubble(
-                            messageViewModel = message,
-                        )
+                groupedMessages.forEach { section ->
+                    item(key = "date_${section.date}") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                tonalElevation = 0.dp
+                            ) {
+                                Text(
+                                    text = getDateSectionLabel(section.firstMessageTime),
+                                    modifier = Modifier.padding(
+                                        horizontal = 12.dp,
+                                        vertical = 6.dp
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    items(
+                        items = section.messages,
+                        key = { message -> message.id }
+                    ) { message ->
+                        if (message.isCurrentUser) {
+                            SentMessageBubble(
+                                message = message,
+                            )
+                        } else {
+                            ReceivedMessageBubble(
+                                message = message,
+                            )
+                        }
                     }
                 }
 

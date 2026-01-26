@@ -14,6 +14,7 @@
     <string name="time_just_now">Lige nu</string>
     <string name="time_minutes_ago">%1$sm siden</string>
     <string name="time_hours_ago">%1$st siden</string>
+    <string name="time_today">I dag</string>
     <string name="time_yesterday">I går</string>
 
     <!-- Day names -->

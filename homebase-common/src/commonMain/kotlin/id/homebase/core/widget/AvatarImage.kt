@@ -23,13 +23,14 @@ import coil3.compose.SubcomposeAsyncImageContent
 
 @Composable
 fun AvatarImage(
+    modifier: Modifier = Modifier,
     avatarUrl: String?,
     avatarInitials: String,
     size: Dp = 48.dp,
     fontSize: TextUnit = 16.sp,
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(size)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primaryContainer),

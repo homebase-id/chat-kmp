@@ -16,7 +16,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
-import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
@@ -27,16 +26,32 @@ fun formatTimestamp(timestamp: Instant): String {
     val now = Clock.System.now()
     val diff = now - timestamp
 
+    val nowDate = now.toLocalDateTime(TimeZone.currentSystemDefault()).date
+    val timestampDate = timestamp.toLocalDateTime(TimeZone.currentSystemDefault()).date
+    val daysDiff = (nowDate.toEpochDays() - timestampDate.toEpochDays())
+
     return when {
         diff < 1.minutes -> stringResource(MR.string.time_just_now)
         diff < 1.hours -> stringResource(MR.string.time_minutes_ago, diff.inWholeMinutes)
-        diff < 24.hours -> formatTime(timestamp) //stringResource(MR.string.time_hours_ago, diff.inWholeHours)
-        diff < 2.days -> stringResource(MR.string.time_yesterday)
-        diff < 7.days -> {
+        daysDiff == 0L -> formatTime(timestamp) // Today
+        daysDiff == 1L -> stringResource(MR.string.time_yesterday) // Yesterday
+        daysDiff < 7 -> {
             val localDateTime = timestamp.toLocalDateTime(TimeZone.currentSystemDefault())
             getDayName(localDateTime.dayOfWeek.ordinal)
         }
         else -> formatShortDate(timestamp)
+    }
+}
+
+@Composable
+fun formatMessageTimestamp(timestamp: Instant): String {
+    val now = Clock.System.now()
+    val diff = now - timestamp
+
+    return when {
+        diff < 1.minutes -> stringResource(MR.string.time_just_now)
+        diff < 1.hours -> stringResource(MR.string.time_minutes_ago, diff.inWholeMinutes)
+       else -> formatTime(timestamp)
     }
 }
 

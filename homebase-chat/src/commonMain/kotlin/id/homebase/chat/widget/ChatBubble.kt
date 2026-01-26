@@ -33,7 +33,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.data.Message
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.formatTimestamp
+import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isMobile
 
@@ -81,7 +81,7 @@ fun SentMessageBubble(
                     modifier = Modifier
                         .heightIn(min = 48.dp),
                     text = message.content,
-                    timestamp = formatTimestamp(message.timestamp),
+                    timestamp = formatMessageTimestamp(message.timestamp),
                     sentByYou = true,
                     onLongClick = {
                         showMenu = true
@@ -114,7 +114,7 @@ fun ReceivedMessageBubble(
                     modifier = Modifier
                         .heightIn(min = 48.dp),
                     text = message.content,
-                    timestamp = formatTimestamp(message.timestamp),
+                    timestamp = formatMessageTimestamp(message.timestamp),
                     sentByYou = false,
                     onLongClick = {
                         showMenu = true
