@@ -32,7 +32,7 @@ data class MessageAppData(
         /**
          * Parse JSON string as MessageAppData
          */
-        fun jsonToMessageAppData(messageAppData: String): MessageAppData {
+        fun fromMessageAppDataJson(messageAppData: String): MessageAppData {
             return try {
                 // Parse JSON as MessageAppData
                 OdinSystemSerializer.deserialize<MessageAppData>(messageAppData)

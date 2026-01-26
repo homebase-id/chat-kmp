@@ -114,8 +114,6 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
         }
     }
 
-    // Lazy wrappers
-    public val keyValue: KeyValueWrapper by lazy { KeyValueWrapper(driver, keyValueAdapter, this) }
     public val appNotifications: AppNotificationsWrapper by lazy {
         AppNotificationsWrapper(
             driver,
@@ -123,17 +121,13 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
             this
         )
     }
+    public val chatReadCount: ChatReadCountWrapper by lazy {
+        ChatReadCountWrapper(driver, chatReadCountAdapter, driveMainIndexAdapter, this)
+    }
     public val driveMainIndex: DriveMainIndexWrapper by lazy {
         DriveMainIndexWrapper(
             driver,
             driveMainIndexAdapter,
-            this
-        )
-    }
-    public val driveTagIndex: DriveTagIndexWrapper by lazy {
-        DriveTagIndexWrapper(
-            driver,
-            driveTagIndexAdapter,
             this
         )
     }
@@ -144,7 +138,20 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
             this
         )
     }
-    public val outbox: OutboxWrapper by lazy { OutboxWrapper(driver, outboxAdapter, this) }
+    public val driveTagIndex: DriveTagIndexWrapper by lazy {
+        DriveTagIndexWrapper(
+            driver,
+            driveTagIndexAdapter,
+            this
+        )
+    }
+    // Lazy wrappers
+    public val keyValue: KeyValueWrapper by lazy {
+        KeyValueWrapper(driver, keyValueAdapter, this)
+    }
+    public val outbox: OutboxWrapper by lazy {
+        OutboxWrapper(driver, outboxAdapter, this)
+    }
 
     suspend fun <R> executeReadQuery(
         identifier: Int?,

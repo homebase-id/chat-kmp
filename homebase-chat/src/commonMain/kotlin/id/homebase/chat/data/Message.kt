@@ -2,7 +2,6 @@ package id.homebase.chat.data
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.common.time.UnixTimeUtc
 import kotlin.time.Instant
 
 @Immutable
@@ -36,8 +35,7 @@ data class Message(
                 if (appData.content == null)
                     throw IllegalArgumentException("AppData is empty")
 
-                val messageAppData = MessageAppData.jsonToMessageAppData(appData.content!!)
-                val senderName = "Lookup Contacts" // Lookup in contacts via senderOdinId
+                val messageAppData = MessageAppData.fromMessageAppDataJson(appData.content!!)
 
                 Message(
                     id = appData.uniqueId?.toString() ?: "",
@@ -45,7 +43,7 @@ data class Message(
                     content = messageAppData.message,
                     timestamp = metadata.transitCreated.toInstant(),
                     senderId = metadata.senderOdinId!!,
-                    senderName = senderName,
+                    senderName = "Lookup Contacts", // Lookup in contacts via senderOdinId
                     isCurrentUser = false,
                     isRead = false,
                     messageAppData = messageAppData
