@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -33,7 +34,11 @@ kotlin {
         androidResources.enable = true
     }
 
-    jvm()
+    jvm() {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
+    }
 
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {

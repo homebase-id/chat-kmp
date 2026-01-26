@@ -2,13 +2,14 @@ package id.homebase.api.client.drives
 
 
 import io.ktor.client.request.forms.InputProvider
+import io.ktor.utils.io.streams.asInput
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
-
-actual fun openFileInput(path: String): InputProvider {
+actual fun openFileInput(path: String): InputProvider =
     TODO("Not yet implemented")
-}
+
 
 // androidMain / desktopMain
 actual suspend fun readFileBytes(path: String): ByteArray =

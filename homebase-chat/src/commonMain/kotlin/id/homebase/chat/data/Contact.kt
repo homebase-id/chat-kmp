@@ -6,8 +6,8 @@ import kotlin.uuid.Uuid
 @Immutable
 data class Contact(
     val id: Uuid,
-    val name: String,
+    val name: String, //TODO: change to ContactName class?
     val avatarInitials: String,
     val avatarUrl: String = "",
-    val status: String = "Available"
+    val status: String = "Available",
 )

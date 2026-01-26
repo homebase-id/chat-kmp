@@ -11,8 +11,6 @@ import kotlin.uuid.Uuid
 import id.homebase.api.client.drives.HomebaseFile
 
 /** Chat conversation file type constant */
-const val CHAT_CONVERSATION_FILE_TYPE = 8888
-
 /** Base conversation interface containing common properties */
 interface BaseConversation {
     val title: String

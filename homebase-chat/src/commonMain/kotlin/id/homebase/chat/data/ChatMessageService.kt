@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
-/** Chat message file type constant */
 const val CHAT_MESSAGE_FILE_TYPE = 7878
 
 /** Archival status indicating a deleted chat */
@@ -69,8 +68,6 @@ class ChatMessageService(
 
         val result =
             fetchMessages(
-                dbm = dbm,
-                driveId = chatDrive,
                 conversationId = conversationId
             )
 
@@ -80,8 +77,6 @@ class ChatMessageService(
     // ----- existing logic, unchanged -----
 
     suspend fun fetchMessages(
-        dbm: DatabaseManager,
-        driveId: Uuid,
         conversationId: Uuid,
         limit: Int = 1000,
         cursor: QueryBatchCursor? = null
@@ -93,13 +88,13 @@ class ChatMessageService(
         val result =
             queryBatch.queryBatchAsync(
                 dbm = dbm,
-                driveId = driveId,
+                driveId = chatDrive,
                 noOfItems = limit,
                 cursor = cursor,
                 sortOrder = QueryBatchSortOrder.NewestFirst,
                 sortField = QueryBatchSortField.CreatedDate,
                 fileSystemType = 0,
-                filetypesAnyOf = listOf(CHAT_MESSAGE_FILE_TYPE),
+                filetypesAnyOf = listOf(CONTACT_FILE_TYPE),
                 groupIdAnyOf = listOf(conversationId)
             )
 
