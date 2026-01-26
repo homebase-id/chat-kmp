@@ -3,11 +3,12 @@ package id.homebase.chat.data
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.drives.HomebaseFile
 import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 @Immutable
 data class Message(
-    val id: String,
-    val conversationId: String,
+    val id: Uuid,
+    val conversationId: Uuid,
     val content: String,
     val timestamp: Instant,
     val senderId: String,
@@ -35,11 +36,17 @@ data class Message(
                 if (appData.content == null)
                     throw IllegalArgumentException("AppData is empty")
 
+                if (appData.uniqueId == null)
+                    throw IllegalArgumentException("UniqueId is empty")
+
+                if (appData.groupId == null)
+                    throw IllegalArgumentException("GroupId is empty")
+
                 val messageAppData = MessageAppData.fromMessageAppDataJson(appData.content!!)
 
                 Message(
-                    id = appData.uniqueId?.toString() ?: "",
-                    conversationId = appData.groupId?.toString() ?: "",
+                    id = appData.uniqueId!!,
+                    conversationId = appData.groupId!!,
                     content = messageAppData.message,
                     timestamp = metadata.transitCreated.toInstant(),
                     senderId = metadata.senderOdinId!!,
