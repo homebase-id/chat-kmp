@@ -9,7 +9,6 @@ import id.homebase.resources.day_sunday
 import id.homebase.resources.day_thursday
 import id.homebase.resources.day_tuesday
 import id.homebase.resources.day_wednesday
-import id.homebase.resources.time_hours_ago
 import id.homebase.resources.time_just_now
 import id.homebase.resources.time_minutes_ago
 import id.homebase.resources.time_yesterday
@@ -31,7 +30,7 @@ fun formatTimestamp(timestamp: Instant): String {
     return when {
         diff < 1.minutes -> stringResource(MR.string.time_just_now)
         diff < 1.hours -> stringResource(MR.string.time_minutes_ago, diff.inWholeMinutes)
-        diff < 24.hours -> stringResource(MR.string.time_hours_ago, diff.inWholeHours)
+        diff < 24.hours -> formatTime(timestamp) //stringResource(MR.string.time_hours_ago, diff.inWholeHours)
         diff < 2.days -> stringResource(MR.string.time_yesterday)
         diff < 7.days -> {
             val localDateTime = timestamp.toLocalDateTime(TimeZone.currentSystemDefault())
@@ -39,10 +38,6 @@ fun formatTimestamp(timestamp: Instant): String {
         }
         else -> formatShortDate(timestamp)
     }
-}
-
-fun formatMessageTimestamp(timestamp: Instant): String {
-    return formatTime(timestamp)
 }
 
 @Composable

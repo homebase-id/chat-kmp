@@ -31,7 +31,8 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.language
 import id.homebase.resources.language_danish
-import id.homebase.resources.language_english
+import id.homebase.resources.language_english_gb
+import id.homebase.resources.language_english_us
 import id.homebase.resources.language_system
 import id.homebase.resources.settings
 import org.jetbrains.compose.resources.stringResource
@@ -168,7 +169,8 @@ fun LanguageOption(
 private fun getStringResourceForLanguage(language: Language): org.jetbrains.compose.resources.StringResource {
     return when (language) {
         Language.SYSTEM -> MR.string.language_system
-        Language.ENGLISH -> MR.string.language_english
+        Language.ENGLISH_US -> MR.string.language_english_us
+        Language.ENGLISH_GB -> MR.string.language_english_gb
         Language.DANISH -> MR.string.language_danish
     }
 }

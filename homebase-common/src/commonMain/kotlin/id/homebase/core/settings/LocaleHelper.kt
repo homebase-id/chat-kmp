@@ -17,7 +17,8 @@ fun applyStoredLocale(userPreferences: UserPreferences) {
  */
 enum class Language(val code: String) {
     SYSTEM("system"),
-    ENGLISH("en-US"),
+    ENGLISH_US("en-US"),
+    ENGLISH_GB("en-GB"),
     DANISH("da-DK");
 
     companion object {

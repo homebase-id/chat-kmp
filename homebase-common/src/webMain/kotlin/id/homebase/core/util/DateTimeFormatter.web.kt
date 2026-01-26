@@ -15,15 +15,15 @@ actual fun formatTime(instant: Instant): String  {
 @OptIn(ExperimentalWasmJsInterop::class)
 fun formatShortDateJs(epochMs: Long): String = js(
     """{
-        let date = new Date(epochMs);
-        date.toLocaleDateString();
+        let date = new Date(Number(epochMs));
+        return date.toLocaleDateString();
 }"""
 )
 
 @OptIn(ExperimentalWasmJsInterop::class)
  fun formatTimeJs(epochMs: Long): String = js(
     """{
-        let date = new Date(epochMs);
-        date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        let date = new Date(Number(epochMs));
+        return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 }"""
 )
