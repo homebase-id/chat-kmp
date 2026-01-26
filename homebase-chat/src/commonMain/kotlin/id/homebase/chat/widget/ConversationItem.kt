@@ -21,6 +21,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mohamedrejeb.richeditor.model.RichTextState
+import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.chat.Conversation
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatTimestamp
@@ -32,11 +34,16 @@ fun ConversationItem(
     onClick: () -> Unit,
     isSelected: Boolean = false,
 ) {
+    val textState = RichTextState()
+    textState.config.listIndent = 0
+    textState.setHtml(conversation.lastMessage)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(8.dp))
             .background(
-                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
                 else MaterialTheme.colorScheme.surfaceContainerLow
             )
             .clickable(onClick = onClick)
@@ -88,8 +95,8 @@ fun ConversationItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = conversation.lastMessage,
+                RichText(
+                    state = textState,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

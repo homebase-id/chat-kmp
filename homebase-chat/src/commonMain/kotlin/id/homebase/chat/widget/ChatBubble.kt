@@ -32,6 +32,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
+import com.mohamedrejeb.richeditor.model.RichTextState
+import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.chat.data.Message
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatMessageTimestamp
@@ -163,6 +165,10 @@ fun ChatBubble(
     val contentColor =
         if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface else MaterialTheme.colorScheme.onSurface
 
+    val textState = RichTextState()
+    textState.config.listIndent = 0
+    textState.setHtml(text)
+
     val shape = RoundedCornerShape(
         topStart = 18.dp,
         topEnd = 18.dp,
@@ -185,15 +191,17 @@ fun ChatBubble(
             modifier = Modifier.padding(12.dp),
             content = {
                 SelectionContainer {
-                Text(
-                    text = text,
-                    onTextLayout = { textLayoutResult = it },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor
-                )
+                    Row {
+                        RichText(
+                            state = textState,
+                            onTextLayout = { textLayoutResult = it },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = contentColor
+                        )
                     }
+                }
                 Text(
-                    modifier = Modifier.padding(top = 8.dp),
+                    modifier = Modifier.padding(top = 16.dp),
                     text = timestamp,
                     style = MaterialTheme.typography.labelSmall,
                     color = contentColor.copy(alpha = 0.7f)

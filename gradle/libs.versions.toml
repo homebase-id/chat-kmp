@@ -23,6 +23,7 @@ coil3 = "3.3.0"
 junit = "4.13.2"
 kotlin = "2.3.0"
 browser = "1.9.0"
+richeditorCompose = "1.0.0-rc13"
 sqldelight = "2.2.1"
 kotlinx-coroutines = "1.10.2"
 kotlinx-datetime = "0.7.1"
@@ -88,6 +89,7 @@ ktor-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicfu" }
 kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
+richeditor-compose = { module = "com.mohamedrejeb.richeditor:richeditor-compose", version.ref = "richeditorCompose" }
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
