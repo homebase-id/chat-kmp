@@ -12,12 +12,18 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.Conversation
 import id.homebase.chat.config.chatTargetDrive
+import id.homebase.core.model.UnixTimeUtc
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 const val CHAT_CONVERSATION_FILE_TYPE = 8888
 const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889
@@ -95,12 +101,29 @@ class ConversationService(
         val appData = metadata.appData
 
         val content = appData.content ?: "";
-        val parsedContent = OdinSystemSerializer.deserialize<Conversation>(content)
+        val conversation = OdinSystemSerializer.deserialize<ConversationFromServer>(content)
 
-       return  parsedContent.copy(
-            id = appData.uniqueId.toString(),
+        return Conversation(
+            id = appData.uniqueId!!.toString(),
+            name = conversation.title ?: "",
+            lastMessage = "TODO last message via michael",
+            timestamp = metadata.transitCreated.toInstant(),
+            unreadCount = 10,
+            avatarInitials = "",
+            avatarUrl = "",
+            isPinned = false
         )
-
-        return parsedContent;
     }
 }
+
+
+@Serializable
+data class ConversationFromServer(
+    //FROM JS
+    val title: String? = "",
+    val recipient: String? = "",
+    val version: Int = 0,
+    val conversationId: Uuid = Uuid.random(),
+    val lastReadTime: UnixTimeUtc? = null,
+    val recipients: List<String> = listOf()
+)

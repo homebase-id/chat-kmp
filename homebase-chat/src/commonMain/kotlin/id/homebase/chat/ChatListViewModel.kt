@@ -45,12 +45,7 @@ data class Conversation(
     val unreadCount: Int = 0,
     val avatarInitials: String,
     val avatarUrl: String = "",
-    val isPinned: Boolean = false,
-
-    //FROM JS
-    val conversationId: Uuid = Uuid.random(),
-    val lastReadTime: Instant? = null,
-    val recipients: List<String> = listOf()
+    val isPinned: Boolean = false
 )
 
 @Immutable
