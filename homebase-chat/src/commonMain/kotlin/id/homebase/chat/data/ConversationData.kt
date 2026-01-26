@@ -3,7 +3,7 @@ package id.homebase.chat.data
 import id.homebase.core.model.FileState
 import id.homebase.core.model.PayloadDescriptor
 import id.homebase.core.model.ThumbnailDescriptor
-//import id.homebase.core.model.UnixTimeUtc
+//import id.homebase.core.model.UnixTimeUtc TODO: We seem to have two UnixTimeUtc?!
 import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
