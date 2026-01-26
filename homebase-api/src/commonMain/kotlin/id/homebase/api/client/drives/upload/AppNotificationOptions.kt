@@ -1,38 +1,7 @@
 package id.homebase.api.client.drives.upload
 
-import id.homebase.api.client.drives.TargetDrive
-import id.homebase.homebasekmppoc.prototype.lib.serialization.Base64ByteArraySerializer
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
-
-/** File identifier using fileId for local operations. */
-@Serializable
-data class FileIdFileIdentifier(
-    val fileId: String,
-    val targetDrive: TargetDrive
-)
-
-/** Represents the locale of an update operation. */
-enum class UpdateLocale {
-    Peer,
-    Local
-}
-
-@Serializable
-data class FileUpdateInstructionSet(
-    @Serializable(with = Base64ByteArraySerializer::class)
-    val transferIv: ByteArray,
-
-    val locale: UpdateLocale,
-
-    val recipients: List<String>,
-
-    val manifest: UpdateManifest,
-
-    val useAppNotification: Boolean = false,
-
-    val appNotificationOptions: AppNotificationOptions? = null
-)
 
 
 /**

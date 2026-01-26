@@ -1,7 +1,7 @@
-package id.homebase.homebasekmppoc.prototype.lib.crypto
+package id.homebase.api.client
 
-import id.homebase.api.crypto.AesCbc
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import kotlinx.io.Buffer
 import kotlinx.serialization.Serializable

@@ -1,4 +1,4 @@
-package id.homebase.api.client.http
+package id.homebase.api.client
 
 import kotlinx.serialization.Serializable
 

@@ -8,11 +8,10 @@ import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.toBase64
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
-import id.homebase.api.client.drives.ServerFile
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.http.SharedSecretEncryptedPayload
+import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -27,72 +26,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 
-
-/**
- * Represents a WebSocket (encrypted) payload received from the server
- */
-@Serializable
-data class WebSocketClientNotificationPayload(
-    val isEncrypted: Boolean,
-    val payload: String
-)
-
-@Serializable
-data class ClientNotificationPayload(
-    val notificationType: ClientNotificationType,
-    val data: String = ""
-)
-
-@Serializable
-data class ProcessInboxPayload(
-    val targetDrive: TargetDrive,
-    val batchSize: Int
-)
-
-@Serializable
-data class InboxItemReceivedNotification(
-    val targetDrive: TargetDrive
-)
-
-@Serializable
-data class ClientDriveNotification(
-    val targetDrive: TargetDrive? = null,
-    val header: ServerFile? = null,
-    val previousServerFileHeader: ServerFile? = null
-)
-
-/**
- * Represents a WebSocket message sent to the server
- * (ported from TypeScript WebsocketCommand interface)
- */
-@Serializable
-data class WebsocketCommand(
-    val command: String, // TS: WebSocketCommands
-    val data: String
-)
-
-/**
- * Request to establish a WebSocket connection with drive subscriptions
- * (ported from TypeScript EstablishConnectionRequest interface)
- */
-@Serializable
-data class EstablishConnectionRequest(
-    val drives: List<TargetDrive>,
-)
-
-/**
- * Represents the connection state of the WebSocket
- */
-sealed class WebSocketState {
-    data object Disconnected : WebSocketState()
-    data object Connecting : WebSocketState()
-    data object Connected : WebSocketState()
-
-    data class Error(val message: String) : WebSocketState()
-}
 
 /**
  * WebSocket client for connecting to Odin notify/ws endpoint
