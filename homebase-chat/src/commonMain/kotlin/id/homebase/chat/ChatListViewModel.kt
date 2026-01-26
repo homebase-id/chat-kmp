@@ -151,12 +151,23 @@ class ChatListViewModel(
 //        apiProvider.markConversationAsRead(conversationId)
 
         viewModelScope.launch {
-            val batch = chatMessageService.fetchMessages((Uuid.parse(conversationId)))
-            val messages = batch.records
+            conversationService.start()
+            conversationService.conversations.collect { conversations ->
+                val sorted = conversations.sortedByDescending { it.timestamp }
+                _uiState.value = _uiState.value.copy(
+                    conversations = sorted.toPersistentList()
+                )
+            }
+        }
 
-            _uiState.value = _uiState.value.copy(
-                currentConversationMessages = messages.toPersistentList()
-            )
+        viewModelScope.launch {
+            chatMessageService.start((Uuid.parse(conversationId)))
+            chatMessageService.messages.collect { messages ->
+                val sorted = messages.sortedBy { it.timestamp }
+                _uiState.value = _uiState.value.copy(
+                    currentConversationMessages = sorted.toPersistentList()
+                )
+            }
         }
     }
 

@@ -94,7 +94,7 @@ class ChatMessageService(
                 sortOrder = QueryBatchSortOrder.NewestFirst,
                 sortField = QueryBatchSortField.CreatedDate,
                 fileSystemType = 0,
-                filetypesAnyOf = listOf(CONTACT_FILE_TYPE),
+                filetypesAnyOf = listOf(CHAT_MESSAGE_FILE_TYPE),
                 groupIdAnyOf = listOf(conversationId)
             )
 
@@ -117,16 +117,18 @@ class ChatMessageService(
 //        val previewThumbnail =
 //            appData.previewThumbnail ?: metadata.payloads?.firstOrNull()?.previewThumbnail
 
-        val senderName = metadata.senderOdinId!! // todo: resolve from contacts
+        val isCurrentUser = metadata.senderOdinId.isNullOrEmpty()
+        // todo: resolve from contacts
+        val senderName = metadata.senderOdinId ?: "Me"
 
         return Message(
             id = appData.uniqueId.toString(),
             conversationId = appData.groupId.toString(),
-            timestamp = metadata.transitCreated.toInstant(),
+            timestamp = metadata.created.toInstant(),
             senderName = senderName,
-            isCurrentUser = false,
+            isCurrentUser = isCurrentUser,
             isRead = false,
-            senderId = metadata.senderOdinId!!,
+            senderId = metadata.senderOdinId ?: "Me",
             content = parsedContent.message,
             //            versionTag = metadata.versionTag,
             //            previewThumbnail = previewThumbnail,
