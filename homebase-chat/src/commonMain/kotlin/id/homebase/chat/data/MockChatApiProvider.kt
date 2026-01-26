@@ -199,7 +199,8 @@ class MockChatApiProvider {
             senderId = "user1",
             senderName = "Alice Johnson",
             isCurrentUser = false,
-            isRead = true
+            isRead = true,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m1_2",
@@ -209,7 +210,8 @@ class MockChatApiProvider {
             senderId = "me",
             senderName = "Me",
             isCurrentUser = true,
-            isRead = true
+            isRead = true,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m1_3",
@@ -219,7 +221,8 @@ class MockChatApiProvider {
             senderId = "user1",
             senderName = "Alice Johnson",
             isCurrentUser = false,
-            isRead = false
+            isRead = false,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m1_4",
@@ -229,7 +232,8 @@ class MockChatApiProvider {
             senderId = "user1",
             senderName = "Alice Johnson",
             isCurrentUser = false,
-            isRead = false
+            isRead = false,
+            messageAppData = MessageAppData()
         ),
         
         // Conversation 2 - Bob Smith
@@ -241,7 +245,8 @@ class MockChatApiProvider {
             senderId = "user2",
             senderName = "Bob Smith",
             isCurrentUser = false,
-            isRead = true
+            isRead = true,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m2_2",
@@ -251,7 +256,8 @@ class MockChatApiProvider {
             senderId = "me",
             senderName = "Me",
             isCurrentUser = true,
-            isRead = true
+            isRead = true,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m2_3",
@@ -261,7 +267,8 @@ class MockChatApiProvider {
             senderId = "user2",
             senderName = "Bob Smith",
             isCurrentUser = false,
-            isRead = true
+            isRead = true,
+            messageAppData = MessageAppData()
         ),
         
         // Conversation 3 - Team Planning
@@ -273,7 +280,8 @@ class MockChatApiProvider {
             senderId = "user3",
             senderName = "David",
             isCurrentUser = false,
-            isRead = true
+            isRead = true,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m3_2",
@@ -283,7 +291,8 @@ class MockChatApiProvider {
             senderId = "me",
             senderName = "Me",
             isCurrentUser = true,
-            isRead = true
+            isRead = true,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m3_3",
@@ -293,7 +302,8 @@ class MockChatApiProvider {
             senderId = "user4",
             senderName = "Charlie",
             isCurrentUser = false,
-            isRead = false
+            isRead = false,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m3_4",
@@ -303,7 +313,8 @@ class MockChatApiProvider {
             senderId = "user5",
             senderName = "Sarah",
             isCurrentUser = false,
-            isRead = false
+            isRead = false,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m3_5",
@@ -313,7 +324,8 @@ class MockChatApiProvider {
             senderId = "user6",
             senderName = "Mike",
             isCurrentUser = false,
-            isRead = false
+            isRead = false,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m3_6",
@@ -323,7 +335,8 @@ class MockChatApiProvider {
             senderId = "user3",
             senderName = "David",
             isCurrentUser = false,
-            isRead = false
+            isRead = false,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m3_7",
@@ -333,7 +346,8 @@ class MockChatApiProvider {
             senderId = "user5",
             senderName = "Sarah",
             isCurrentUser = false,
-            isRead = false
+            isRead = false,
+            messageAppData = MessageAppData()
         ),
         
         // Conversation 4 - Diana Martinez
@@ -345,7 +359,8 @@ class MockChatApiProvider {
             senderId = "user5",
             senderName = "Diana Martinez",
             isCurrentUser = false,
-            isRead = false
+            isRead = false,
+            messageAppData = MessageAppData()
         ),
         
         // Conversation 5 - Project Starlight
@@ -357,7 +372,8 @@ class MockChatApiProvider {
             senderId = "user6",
             senderName = "Emily",
             isCurrentUser = false,
-            isRead = true
+            isRead = true,
+            messageAppData = MessageAppData()
         ),
         Message(
             id = "m5_2",
@@ -367,7 +383,8 @@ class MockChatApiProvider {
             senderId = "me",
             senderName = "Me",
             isCurrentUser = true,
-            isRead = true
+            isRead = true,
+            messageAppData = MessageAppData()
         ),
     )
     
@@ -453,7 +470,8 @@ class MockChatApiProvider {
             senderId = senderId,
             senderName = senderName,
             isCurrentUser = isCurrentUser,
-            isRead = isCurrentUser // Current user's messages are always read
+            isRead = isCurrentUser, // Current user's messages are always read
+            messageAppData = MessageAppData()
         )
         _messages.value = _messages.value + newMessage
         

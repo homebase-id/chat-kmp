@@ -15,7 +15,7 @@ CREATE INDEX IF NOT EXISTS idx_chatmessage_convid_created ON DriveMainIndex(grou
 -- Get full list of conversations (8888) from the DriveMainIndex table
 -- here to not contaminate it. Can also be easily fetched with QB()
 selectAllCoversations:
-SELECT *
+SELECT jsonHeader
 FROM DriveMainIndex
 WHERE fileType = 8888;
 
@@ -28,7 +28,7 @@ WITH LatestMessages AS (
   FROM DriveMainIndex AS m
   WHERE fileType = 7878
 )
-SELECT d.fileId AS convFileId,d.jsonHeader AS convJsonHeader,m.fileId AS msgFileId,m.jsonHeader AS msgJsonHeader,m.created AS msgCreated
+SELECT d.jsonHeader AS convJsonHeader,m.jsonHeader AS msgJsonHeader,m.created AS msgCreated
 FROM DriveMainIndex AS d
 LEFT JOIN LatestMessages m ON d.fileId = m.groupId AND m.rn = 1
 WHERE d.fileType = 8888
@@ -36,8 +36,8 @@ ORDER BY msgCreated DESC;
 
 -- Return unread message count for a specific groupId
 -- probably shouldn't be needed - with good design we should only need to call selectAllReadCount
-selectReadCountForConversation:
-SELECT COUNT(*) AS unreadCount
+selectUnreadCountForConversation:
+SELECT d.jsonHeader,COUNT(*) AS unreadCount
 FROM DriveMainIndex d
 LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
 WHERE d.groupId = ?
@@ -47,8 +47,8 @@ WHERE d.groupId = ?
 -- Return list of {groupId, unreadCount} for all chat conversations (8888)
 -- Will return (groupId, unread-count) for all Chat conversations with 1 or more unread messages.
 -- Any conversation missing in this table will be included and considered to have all messages unread.
-selectAllReadCount:
-SELECT d.groupId, COUNT(*) AS unreadCount
+selectAllUnreadCount:
+SELECT d.jsonHeader, COUNT(*) AS unreadCount
 FROM DriveMainIndex AS d
 LEFT JOIN ChatReadCount ON d.groupId = ChatReadCount.groupId
 WHERE d.fileType = 7878
