@@ -57,9 +57,15 @@ class ConversationService(
 
     private suspend fun refresh() {
 
-        // TODO: MS XXX Call the CharUnreadCountWrapper thingy to get the full list.
-
         val result = fetchConversations()
+        val unread = dbm.chatReadCount.selectAllUnreadCount()
+
+        for (u in unread)
+        {
+            result.find { it.id == u.conversationId }?.let { conversation ->
+                conversation.unreadCount = u.unreadCount.toInt()
+            }
+        }
 
         _conversations.value = result
     }
@@ -101,7 +107,7 @@ class ConversationService(
                 name = conversation.title ?: "",
                 lastMessage = message?.messageAppData?.message?.truncateToCodePoints(40) ?: "",
                 timestamp = message?.timestamp ?: UnixTimeUtc(0).toInstant(),
-                unreadCount = 10,
+                unreadCount = 0,
                 avatarTiny = null, // TODO: WHERE DO WE FETCH THIS ONE?
                 avatarInitials = "",
                 avatarUrl = "",

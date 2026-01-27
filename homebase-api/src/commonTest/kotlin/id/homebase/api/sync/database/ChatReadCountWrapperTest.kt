@@ -1,13 +1,6 @@
 package id.homebase.api.sync.database
 
-import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.files.FileMetadata
-import id.homebase.api.client.drives.files.FileState
-import id.homebase.api.client.drives.files.FileSystemType
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.ServerMetadata
-import id.homebase.homebasekmppoc.prototype.lib.database.DatabaseManager
 import id.homebase.homebasekmppoc.prototype.lib.database.createInMemoryDatabase
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.test.runTest
@@ -286,7 +279,7 @@ class ChatReadCountWrapperTest {
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
             
-            val allReadCounts = wrapper.selectAllReadCount()
+            val allReadCounts = wrapper.selectAllUnreadCount()
             
             // Should only return conversations with unread messages (conv2 and conv3)
             assertEquals(2, allReadCounts.size, "Should return only conversations with unread messages")
@@ -313,7 +306,7 @@ class ChatReadCountWrapperTest {
             val readTime = Clock.System.now().epochSeconds + 3500
             wrapper.upsertLastReadTime(testData.convWithThreeMessages.first.fileId, readTime)
             
-            val allReadCounts = wrapper.selectAllReadCount()
+            val allReadCounts = wrapper.selectAllUnreadCount()
             
             // Should return conv2 with 1 unread and conv3 with 1 unread
             assertEquals(2, allReadCounts.size, "Should return only conversations with unread messages")
@@ -334,7 +327,7 @@ class ChatReadCountWrapperTest {
         DatabaseManager { createInMemoryDatabase() }.use { dbm ->
             val wrapper = dbm.chatReadCount
             
-            val allReadCounts = wrapper.selectAllReadCount()
+            val allReadCounts = wrapper.selectAllUnreadCount()
             
             assertTrue(allReadCounts.isEmpty(), "Should return empty list when no conversations exist")
         }

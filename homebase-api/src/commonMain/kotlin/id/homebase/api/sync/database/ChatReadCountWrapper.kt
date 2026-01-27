@@ -11,7 +11,7 @@ data class ConversationWithLastMessage(
 )
 
 data class ConversationUnreadCount(
-    val conversation: HomebaseFile,
+    val conversationId: Uuid,
     val unreadCount: Long
 )
 
@@ -72,11 +72,11 @@ class ChatReadCountWrapper(
      * Get all conversation read counts
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
-    suspend fun selectAllReadCount(): List<ConversationUnreadCount> {
+    suspend fun selectAllUnreadCount(): List<ConversationUnreadCount> {
         val list = delegate.selectAllUnreadCount().executeAsList()
         return list.map {
             ConversationUnreadCount(
-                conversation = OdinSystemSerializer.deserialize<HomebaseFile>(it.jsonHeader),
+                conversationId = it.groupId,
                 unreadCount = it.unreadCount
             )
         }

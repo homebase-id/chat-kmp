@@ -48,11 +48,12 @@ WHERE d.groupId = ?
 -- Will return (groupId, unread-count) for all Chat conversations with 1 or more unread messages.
 -- Any conversation missing in this table will be included and considered to have all messages unread.
 selectAllUnreadCount:
-SELECT d.jsonHeader, COUNT(*) AS unreadCount
+SELECT d.groupId, COUNT(*) AS unreadCount
 FROM DriveMainIndex AS d
 LEFT JOIN ChatReadCount ON d.groupId = ChatReadCount.groupId
-WHERE d.fileType = 7878
+WHERE d.fileType = 7878 -- Message
   AND (ChatReadCount.lastReadTime IS NULL OR d.created > ChatReadCount.lastReadTime)
+  AND d.groupId IS NOT NULL
 GROUP BY d.groupId;
 
 -- Upsert lastReadTime (only increase)

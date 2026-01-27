@@ -43,7 +43,7 @@ data class Conversation(
     val name: String,
     val lastMessage: String,
     val timestamp: Instant,
-    val unreadCount: Int = 0,
+    var unreadCount: Int = 0,
     val avatarInitials: String,
     val avatarUrl: String = "",
     val avatarTiny: ThumbnailDescriptor?,
