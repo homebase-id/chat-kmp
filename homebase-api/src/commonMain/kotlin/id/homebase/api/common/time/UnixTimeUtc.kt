@@ -17,7 +17,6 @@ import kotlin.time.Instant
  *
  * Ported from C# Odin.Core.Time.UnixTimeUtc
  */
-
 object UnixTimeUtcSerializer : KSerializer<UnixTimeUtc> {
     override val descriptor: SerialDescriptor =
         PrimitiveSerialDescriptor("UnixTimeUtc", PrimitiveKind.LONG)

@@ -12,7 +12,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.Conversation
 import id.homebase.chat.config.chatTargetDrive
-import id.homebase.core.model.UnixTimeUtc
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,12 +20,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-const val CHAT_CONVERSATION_FILE_TYPE:Int = 8888
+const val CHAT_CONVERSATION_FILE_TYPE: Int = 8888
 const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889
 const val ConversationWithYourselfId = "e4ef2382-ab3c-405d-a8b5-ad3e09e980dd"
 const val CONVERSATION_PAYLOAD_KEY = "convo_pk"
@@ -96,6 +93,36 @@ class ConversationService(
         )
     }
 
+    suspend fun getConversationById(
+        conversationId: Uuid
+    ): Conversation? {
+
+        // 1️⃣ Fast path: in-memory lookup
+        _conversations.value.firstOrNull { it.id == conversationId }?.let {
+            return it
+        }
+
+        val c = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(c.getIdentityId())
+
+        val result =
+            queryBatch.queryBatchAsync(
+                dbm = dbm,
+                driveId = chatDrive,
+                noOfItems = 1,
+                cursor = null,
+                sortOrder = QueryBatchSortOrder.NewestFirst,
+                sortField = QueryBatchSortField.CreatedDate,
+                fileSystemType = 0,
+                filetypesAnyOf = listOf(CHAT_CONVERSATION_FILE_TYPE),
+                groupIdAnyOf = listOf(conversationId)
+            )
+
+        val header = result.records.firstOrNull() ?: return null
+        return mapToConversation(header)
+    }
+
+
     private suspend fun mapToConversation(header: HomebaseFile): Conversation {
         val metadata = header.fileMetadata
         val appData = metadata.appData
@@ -111,7 +138,8 @@ class ConversationService(
             unreadCount = 10,
             avatarInitials = "",
             avatarUrl = "",
-            isPinned = false
+            isPinned = false,
+            participants = conversation.recipients
         )
     }
 }

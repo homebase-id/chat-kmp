@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.chat.data.ChatMessageReaderService
+import id.homebase.chat.data.ChatMessageSenderService
 import id.homebase.chat.data.Contact
 import id.homebase.chat.data.ContactService
 import id.homebase.chat.data.ConversationService
@@ -45,7 +46,8 @@ data class Conversation(
     val unreadCount: Int = 0,
     val avatarInitials: String,
     val avatarUrl: String = "",
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    val participants: List<String> = listOf()
 )
 
 @Immutable
@@ -61,7 +63,8 @@ class ChatListViewModel(
     private val apiProvider: MockChatApiProvider,
     private val contactService: ContactService,
     private val conversationService: ConversationService,
-    private val chatMessageService: ChatMessageReaderService
+    private val chatMessageService: ChatMessageReaderService,
+    private val chatMessageSenderService: ChatMessageSenderService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatListUiState())
@@ -141,7 +144,6 @@ class ChatListViewModel(
                         senderName = "Me",
                         isCurrentUser = true
                     )
-                    loadMessagesForConversation(action.conversationId)
                 }
             }
         }
@@ -201,8 +203,13 @@ class ChatListViewModel(
         senderId: String,
         senderName: String,
         isCurrentUser: Boolean = false
-    ): Message {
-        return apiProvider.addMessage(conversationId, content, senderId, senderName, isCurrentUser)
+    ) {
+        viewModelScope.launch {
+            chatMessageSenderService.sendNewMessage(
+                conversationId,
+                content
+            )
+        }
     }
 
     fun updateMessage(message: Message) {
