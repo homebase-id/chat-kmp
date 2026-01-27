@@ -1,5 +1,4 @@
 package id.homebase.chat.widget
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -42,6 +41,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,8 +84,18 @@ fun MessageInputBar(
     onSendMessage: (String) -> Unit = {}
 ) {
     val textFieldState = rememberRichTextState()
-    //val textFieldState = rememberTextFieldState()
-    var showDropdownMenu by remember { mutableStateOf(false) }
+    //textFieldState.config.linkColor = Color.Blue
+    //textFieldState.config.linkTextDecoration = TextDecoration.Underline
+    //textFieldState.config.codeSpanColor = Color.Blue
+    //textFieldState.config.codeSpanBackgroundColor = Color.Magenta
+    //textFieldState.config.codeSpanStrokeColor = Color.Yellow
+    textFieldState.config.listIndent = 0
+
+    LaunchedEffect(Unit) {
+        // TODO - restored stored draft here
+        textFieldState.clear()
+    }
+
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     var showExpanded by remember { mutableStateOf(false) }
@@ -98,7 +108,7 @@ fun MessageInputBar(
     }
 
     Column(
-        modifier = Modifier.hoverable(interactionSource),
+        modifier = modifier.hoverable(interactionSource),
     ) {
         if (isDesktopOrWeb()) {
             Row(
@@ -130,118 +140,31 @@ fun MessageInputBar(
         }
         if (showExpanded) {
             MessageTextFieldExpanded(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
                     .padding(bottom = 16.dp),
                 state = textFieldState,
+                onSmileyClick = onSmileyClick,
+                onPlusClick = onPlusClick,
+                sendMessage = {
+                    showExpanded = false
+                    sendMessage()
+                }
             )
-            Row(
-                modifier = modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .padding(bottom = 16.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                IconButton(onClick = onSmileyClick) {
-                    Icon(
-                        imageVector = Icons.Default.EmojiEmotions,
-                        contentDescription = "Emoji"
-                    )
-                }
-                Box {
-                    IconButton(
-                        onClick = {
-                            showDropdownMenu = true
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Add attachment"
-                        )
-                    }
-
-                    if (showDropdownMenu) {
-                        DropdownMenu(
-                            expanded = showDropdownMenu,
-                            onDismissRequest = { showDropdownMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Photo") },
-                                onClick = {
-                                    showDropdownMenu = false
-                                    onPlusClick()
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Photo, contentDescription = null)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("File") },
-                                onClick = {
-                                    showDropdownMenu = false
-                                    onPlusClick()
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.AttachFile, contentDescription = null)
-                                }
-                            )
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                IconButton(
-                    onClick = {
-                        showExpanded = false
-                        sendMessage()
-                    },
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send message",
-                    )
-                }
-            }
         } else {
-            Row(
-                modifier = modifier
+            MessageTextFieldCompact(
+                modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .imePadding(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                val showSendButton = !isDesktopOrWeb() && textFieldState.toText().isNotBlank()
-
-                MessageTextFieldCompact(
-                    modifier = Modifier.weight(1f),
-                    state = textFieldState,
-                    onSmileyClick = onSmileyClick,
-                    onMediaClick = onPlusClick,
-                    onFileClick = onPlusClick,
-                    onCameraClick = onPlusClick,
-                    onSendMessage = { sendMessage() },
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                if (showSendButton) {
-                    IconButton(
-                        onClick = { sendMessage() },
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send message",
-                        )
-                    }
-                } else {
-                    AddAttachmentIcon(
-                        onMediaClick = onPlusClick,
-                        onFileClick = onPlusClick,
-                    )
-                }
-            }
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 16.dp),
+                state = textFieldState,
+                onSmileyClick = onSmileyClick,
+                onMediaClick = onPlusClick,
+                onFileClick = onPlusClick,
+                onCameraClick = onPlusClick,
+                onSendMessage = { sendMessage() },
+            )
         }
     }
 }
@@ -251,103 +174,296 @@ fun MessageInputBar(
 fun MessageTextFieldExpanded(
     modifier: Modifier = Modifier,
     state: RichTextState,
+    onSmileyClick: () -> Unit,
+    onPlusClick: () -> Unit,
+    sendMessage: () -> Unit
 ) {
-//    state.config.linkColor = Color.Blue
-//    state.config.linkTextDecoration = TextDecoration.Underline
-//    state.config.codeSpanColor = Color.Blue
-//    state.config.codeSpanBackgroundColor = Color.Magenta
-//    state.config.codeSpanStrokeColor = Color.Yellow
-    state.config.listIndent = 0
-
-    Column {
-        LazyRow(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = modifier
+    var showDropdownMenu by remember { mutableStateOf(false) }
+    Column(
+        modifier = modifier
+    ) {
+        RichTextEditorButtons(
+            modifier = Modifier.fillMaxWidth(),
+            state = state,
+        )
+        RichTextEditor(
+            state = state,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+            shape = RoundedCornerShape(12.dp),
+            minLines = 10,
+            maxLines = 10,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Sentences,
+                imeAction = ImeAction.Default
+            ),
+            colors = RichTextEditorDefaults.richTextEditorColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+            ),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
         ) {
-            item {
-                RichTextStyleButton(
+            IconButton(onClick = onSmileyClick) {
+                Icon(
+                    imageVector = Icons.Default.EmojiEmotions,
+                    contentDescription = "Emoji"
+                )
+            }
+            Box {
+                IconButton(
                     onClick = {
-                        state.toggleSpanStyle(
-                            SpanStyle(
-                                fontWeight = FontWeight.Bold
-                            )
+                        showDropdownMenu = true
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add attachment"
+                    )
+                }
+
+                if (showDropdownMenu) {
+                    DropdownMenu(
+                        expanded = showDropdownMenu,
+                        onDismissRequest = { showDropdownMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Photo") },
+                            onClick = {
+                                showDropdownMenu = false
+                                onPlusClick()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Photo, contentDescription = null)
+                            }
                         )
-                    },
-                    isSelected = state.currentSpanStyle.fontWeight == FontWeight.Bold,
-                    icon = Icons.Outlined.FormatBold
-                )
-            }
-
-            item {
-                RichTextStyleButton(
-                    onClick = {
-                        state.toggleSpanStyle(
-                            SpanStyle(
-                                fontStyle = FontStyle.Italic
-                            )
+                        DropdownMenuItem(
+                            text = { Text("File") },
+                            onClick = {
+                                showDropdownMenu = false
+                                onPlusClick()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.AttachFile, contentDescription = null)
+                            }
                         )
-                    },
-                    isSelected = state.currentSpanStyle.fontStyle == FontStyle.Italic,
-                    icon = Icons.Outlined.FormatItalic
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(
+                onClick = {
+                    sendMessage()
+                },
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send message",
                 )
             }
+        }
+    }
+}
 
-            item {
-                RichTextStyleButton(
-                    onClick = {
-                        state.toggleSpanStyle(
-                            SpanStyle(
-                                textDecoration = TextDecoration.Underline
-                            )
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MessageTextFieldCompact(
+    modifier: Modifier = Modifier,
+    state: RichTextState,
+    onSmileyClick: () -> Unit,
+    onMediaClick: () -> Unit,
+    onFileClick: () -> Unit,
+    onCameraClick: () -> Unit,
+    onSendMessage: () -> Unit
+) {
+    Column(
+        modifier = modifier
+    ) {
+        RichTextEditorButtons(
+            modifier = Modifier.fillMaxWidth(),
+            state = state,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val showSendButton = state.toText().isNotBlank()
+            RichTextEditor(
+                state = state,
+                modifier = Modifier.weight(1f)
+                    .onPreviewKeyEvent { keyEvent ->
+                        if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                            if (keyEvent.isShiftPressed) {
+                                // Manually insert newline for Shift+Enter
+                                state.setText(state.toText() + "\n")
+                                true
+                            } else {
+                                // Regular Enter: send message
+                                onSendMessage()
+                                true
+                            }
+                        } else {
+                            false
+                        }
+                    },
+                placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+                leadingIcon = {
+                    IconButton(onClick = onSmileyClick) {
+                        Icon(
+                            imageVector = Icons.Default.EmojiEmotions,
+                            contentDescription = "Emoji"
                         )
-                    },
-                    isSelected = state.currentSpanStyle.textDecoration?.contains(TextDecoration.Underline) == true,
-                    icon = Icons.Outlined.FormatUnderlined
-                )
-            }
-
-            item {
-                RichTextStyleButton(
-                    onClick = {
-                        state.toggleSpanStyle(
-                            SpanStyle(
-                                textDecoration = TextDecoration.LineThrough
-                            )
+                    }
+                },
+                trailingIcon = {
+                    if (!isDesktopOrWeb() && state.toText().isNotBlank()) {
+                        AddAttachmentIcon(
+                            onMediaClick = onMediaClick,
+                            onFileClick = onFileClick,
                         )
-                    },
-                    isSelected = state.currentSpanStyle.textDecoration?.contains(TextDecoration.LineThrough) == true,
-                    icon = Icons.Outlined.FormatStrikethrough
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = RichTextEditorDefaults.richTextEditorColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                ),
+                minLines = 1,
+                maxLines = 3,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Default
+                )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            if (showSendButton) {
+                IconButton(
+                    onClick = onSendMessage,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send message",
+                    )
+                }
+            } else {
+                AddAttachmentIcon(
+                    onMediaClick = onMediaClick,
+                    onFileClick = onFileClick,
                 )
             }
+        }
+    }
+}
 
-            item {
-                Box(
-                    Modifier
-                        .height(24.dp)
-                        .width(1.dp)
-                        .background(Color(0xFF393B3D))
-                )
-            }
+@Composable
+fun RichTextEditorButtons(
+    modifier: Modifier = Modifier,
+    state: RichTextState
+) {
+    LazyRow(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+    ) {
+        item {
+            RichTextStyleButton(
+                onClick = {
+                    state.toggleSpanStyle(
+                        SpanStyle(
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                },
+                isSelected = state.currentSpanStyle.fontWeight == FontWeight.Bold,
+                icon = Icons.Outlined.FormatBold
+            )
+        }
 
-            item {
-                RichTextStyleButton(
-                    onClick = {
-                        state.toggleUnorderedList()
-                    },
-                    isSelected = state.isUnorderedList,
-                    icon = Icons.AutoMirrored.Outlined.FormatListBulleted,
-                )
-            }
+        item {
+            RichTextStyleButton(
+                onClick = {
+                    state.toggleSpanStyle(
+                        SpanStyle(
+                            fontStyle = FontStyle.Italic
+                        )
+                    )
+                },
+                isSelected = state.currentSpanStyle.fontStyle == FontStyle.Italic,
+                icon = Icons.Outlined.FormatItalic
+            )
+        }
 
-            item {
-                RichTextStyleButton(
-                    onClick = {
-                        state.toggleOrderedList()
-                    },
-                    isSelected = state.isOrderedList,
-                    icon = Icons.Outlined.FormatListNumbered,
-                )
-            }
+        item {
+            RichTextStyleButton(
+                onClick = {
+                    state.toggleSpanStyle(
+                        SpanStyle(
+                            textDecoration = TextDecoration.Underline
+                        )
+                    )
+                },
+                isSelected = state.currentSpanStyle.textDecoration?.contains(TextDecoration.Underline) == true,
+                icon = Icons.Outlined.FormatUnderlined
+            )
+        }
+
+        item {
+            RichTextStyleButton(
+                onClick = {
+                    state.toggleSpanStyle(
+                        SpanStyle(
+                            textDecoration = TextDecoration.LineThrough
+                        )
+                    )
+                },
+                isSelected = state.currentSpanStyle.textDecoration?.contains(TextDecoration.LineThrough) == true,
+                icon = Icons.Outlined.FormatStrikethrough
+            )
+        }
+
+        item {
+            Box(
+                Modifier
+                    .height(24.dp)
+                    .width(1.dp)
+                    .background(Color(0xFF393B3D))
+            )
+        }
+
+        item {
+            RichTextStyleButton(
+                onClick = {
+                    state.toggleUnorderedList()
+                },
+                isSelected = state.isUnorderedList,
+                icon = Icons.AutoMirrored.Outlined.FormatListBulleted,
+            )
+        }
+
+        item {
+            RichTextStyleButton(
+                onClick = {
+                    state.toggleOrderedList()
+                },
+                isSelected = state.isOrderedList,
+                icon = Icons.Outlined.FormatListNumbered,
+            )
+        }
 
 //            item {
 //                Box(
@@ -366,88 +482,7 @@ fun MessageTextFieldExpanded(
 //                    icon = Icons.Outlined.Code,
 //                )
 //            }
-        }
-        RichTextEditor(
-            state = state,
-            modifier = modifier,
-            placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
-            shape = RoundedCornerShape(12.dp),
-            minLines = 10,
-            maxLines = 10,
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Sentences,
-                imeAction = ImeAction.Default
-            ),
-            colors = RichTextEditorDefaults.richTextEditorColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent,
-            ),
-        )
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun MessageTextFieldCompact(
-    modifier: Modifier = Modifier,
-    state: RichTextState,
-    onSmileyClick: () -> Unit,
-    onMediaClick: () -> Unit,
-    onFileClick: () -> Unit,
-    onCameraClick: () -> Unit,
-    onSendMessage: () -> Unit
-) {
-    RichTextEditor(
-        state = state,
-        modifier = modifier
-            .onPreviewKeyEvent { keyEvent ->
-                if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                    if (keyEvent.isShiftPressed) {
-                        // Manually insert newline for Shift+Enter
-                        state.setText(state.toText() + "\n")
-                        true
-                    } else {
-                        // Regular Enter: send message
-                        onSendMessage()
-                        true
-                    }
-                } else {
-                    false
-                }
-            },
-        placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
-        leadingIcon = {
-            IconButton(onClick = onSmileyClick) {
-                Icon(
-                    imageVector = Icons.Default.EmojiEmotions,
-                    contentDescription = "Emoji"
-                )
-            }
-        },
-        trailingIcon = {
-            if (!isDesktopOrWeb() && state.toText().isNotBlank()) {
-                AddAttachmentIcon(
-                    onMediaClick = onMediaClick,
-                    onFileClick = onFileClick,
-                )
-            }
-        },
-        shape = RoundedCornerShape(12.dp),
-        colors = RichTextEditorDefaults.richTextEditorColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent,
-        ),
-        minLines = 1,
-        maxLines = 3,
-        keyboardOptions = KeyboardOptions(
-            capitalization = KeyboardCapitalization.Sentences,
-            imeAction = ImeAction.Default
-        )
-    )
 }
 
 @Composable

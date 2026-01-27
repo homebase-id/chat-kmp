@@ -35,6 +35,7 @@ fun main() = application {
     val minWidth = 480
     val minHeight = 400
     val config = DesktopPreferences()
+
     val state = rememberWindowState(
         placement = config.windowPlacement,
         position = config.windowPosition,

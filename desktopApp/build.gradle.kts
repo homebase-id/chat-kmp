@@ -97,6 +97,15 @@ tasks.matching { it.name.contains("KotlinMetadata") }.configureEach {
 compose.desktop {
     application {
         mainClass = "id.homebase.app.MainKt"
+
+        jvmArgs += listOf(
+            "-Dapple.awt.application.appearance=system",
+        )
+
+        buildTypes.release.proguard {
+            configurationFiles.from("compose-desktop.pro")
+        }
+
         nativeDistributions {
             macOS {
                 iconFile.set(project.rootProject.file("icons/icon.icns"))  // Path to your .icns file

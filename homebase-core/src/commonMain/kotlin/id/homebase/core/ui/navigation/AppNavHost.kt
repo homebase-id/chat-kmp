@@ -178,6 +178,7 @@ fun AppNavHost(
                         ChatListScreen(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
+                            onNavigateToSettingsScreen = { navController.navigate(Route.Settings) },
                             onDetailPaneVisibilityChanged = {
                                 shouldHideBottomMenu = it
                             }

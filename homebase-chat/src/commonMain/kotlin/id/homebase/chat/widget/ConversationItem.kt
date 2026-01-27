@@ -47,7 +47,7 @@ fun ConversationItem(
                 else MaterialTheme.colorScheme.surfaceContainerLow
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 20.dp),
+            .padding(horizontal = 12.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AvatarImage(

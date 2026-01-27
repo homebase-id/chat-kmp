@@ -109,6 +109,7 @@ import kotlin.uuid.Uuid
 fun ChatListScreen(
     viewModel: ChatListViewModel,
     onNavigateBack: () -> Unit,
+    onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -127,6 +128,7 @@ fun ChatListScreen(
     ChatListUi(
         uiState = uiState,
         onUiAction = viewModel::onAction,
+        onNavigateToSettingsScreen = onNavigateToSettingsScreen,
         onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
     )
 }
@@ -136,6 +138,7 @@ fun ChatListScreen(
 fun ChatListUi(
     uiState: ChatListUiState,
     onUiAction: (ChatListUiAction) -> Unit,
+    onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
@@ -233,6 +236,7 @@ fun ChatListUi(
                                 )
                             }
                         },
+                        onProfileClick = onNavigateToSettingsScreen,
                         onUiAction = onUiAction,
                     )
                 }
@@ -303,10 +307,11 @@ fun ChatListUi(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListPane(
-    conversationViewModels: ImmutableList<ConversationUiModel>,
-    onConversationClick: (Uuid) -> Unit,
-    onNewChatClick: () -> Unit,
-    selectedConversationId: Uuid? = null,
+    conversations: ImmutableList<ConversationUiModel>,
+    selectedConversationId: String? = null,
+    onProfileClick: () -> Unit ,
+    onConversationClick: (String) -> Unit,
+    onUiAction: (ChatListUiAction) -> Unit
 ) {
     val searchState = rememberTextFieldState()
     var filterByUnread by remember { mutableStateOf(false) }
@@ -326,11 +331,25 @@ fun ChatListPane(
                     if (!iconOnlyMode) {
                         TopAppBar(
                             title = {
-                                Text(
-                                    text = stringResource(MR.string.app_name),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    AvatarImage(
+                                        avatarUrl = null,
+                                        avatarInitials = "CH",
+                                        size = 32.dp,
+                                        fontSize = 12.sp,
+                                        onClick = {
+                                            onProfileClick()
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Text(
+                                        text = stringResource(MR.string.app_name),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             },
                             actions = {
                                 IconButton(onClick = {
@@ -672,6 +691,7 @@ fun ChatListUiPreview() {
     HomebaseTheme {
         ChatListUi(
             uiState = ChatListUiState(),
+            onNavigateToSettingsScreen = {},
             onUiAction = {}
         )
     }
