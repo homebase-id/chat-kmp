@@ -3,6 +3,7 @@ package id.homebase.chat
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ChatMessageService
 import id.homebase.chat.data.Contact
 import id.homebase.chat.data.ContactService
@@ -10,6 +11,7 @@ import id.homebase.chat.data.ConversationService
 import id.homebase.chat.data.Message
 import id.homebase.chat.data.MockChatApiProvider
 import id.homebase.core.model.ThumbnailDescriptor
+import id.homebase.core.model.UnixTimeUtc
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
@@ -41,14 +43,20 @@ sealed interface ChatListUiAction {
 data class Conversation(
     val id: Uuid,
     val name: String,
-    val lastMessage: String,
-    val timestamp: Instant,
+    var lastMessage: String,
+    var timestamp: Instant,
     var unreadCount: Int = 0,
     val avatarInitials: String,
     val avatarUrl: String = "",
     val avatarTiny: ThumbnailDescriptor?,
     val isPinned: Boolean = false
-)
+) {
+    public fun updateWithLatestMessage(msg : Message)
+    {
+        lastMessage = msg.messageAppData?.message?.truncateToCodePoints(40) ?: ""
+        timestamp = msg.timestamp
+    }
+}
 
 @Immutable
 data class ChatListUiState(
