@@ -3,7 +3,7 @@ package id.homebase.chat
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import id.homebase.chat.data.ChatMessageService
+import id.homebase.chat.data.ChatMessageReaderService
 import id.homebase.chat.data.Contact
 import id.homebase.chat.data.ContactService
 import id.homebase.chat.data.ConversationService
@@ -61,7 +61,7 @@ class ChatListViewModel(
     private val apiProvider: MockChatApiProvider,
     private val contactService: ContactService,
     private val conversationService: ConversationService,
-    private val chatMessageService: ChatMessageService
+    private val chatMessageService: ChatMessageReaderService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatListUiState())
