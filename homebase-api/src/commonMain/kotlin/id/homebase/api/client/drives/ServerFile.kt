@@ -72,7 +72,7 @@ data class ServerFile(
 }
 
 fun FileMetadata.withDecryptedContent(bytes: ByteArray): FileMetadata =
-    FileMetadata(
+    this.copy(
         appData = appData.copy(
             content = bytes.decodeToString()
         ),
