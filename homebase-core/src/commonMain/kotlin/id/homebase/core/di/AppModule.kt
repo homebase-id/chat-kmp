@@ -3,7 +3,8 @@ package id.homebase.core.di
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.api.di.apiModule
 import id.homebase.chat.ChatListViewModel
-import id.homebase.chat.data.ChatMessageService
+import id.homebase.chat.data.ChatMessageReaderService
+import id.homebase.chat.data.ChatMessageSenderService
 import id.homebase.chat.data.ContactService
 import id.homebase.chat.data.ConversationService
 import id.homebase.chat.data.MockChatApiProvider
@@ -25,7 +26,8 @@ val appModule = module {
     singleOf(::ContactService)
     singleOf(::ConversationService)
     singleOf(::ContactService)
-    singleOf(::ChatMessageService)
+    singleOf(::ChatMessageReaderService)
+    singleOf(::ChatMessageSenderService)
 
     viewModelOf(::HomeViewModel)
     viewModelOf(::ChatListViewModel)

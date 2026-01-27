@@ -44,7 +44,6 @@ Conversation(
             unreadCount = 2,
             avatarInitials = "AJ",
             avatarUrl = "https://i.pravatar.cc/150?img=1",
-            isPinned = true,
             avatarTiny = null
         ),
 Conversation(
@@ -65,7 +64,6 @@ Conversation(
             unreadCount = 5,
             avatarInitials = "TP",
             avatarUrl = "https://i.pravatar.cc/150?img=60",
-            isPinned = true,
             avatarTiny = null
 ),
 Conversation(
@@ -460,7 +458,6 @@ Message(
             unreadCount = 0,
             avatarInitials = avatarInitials,
             avatarUrl = avatarUrl,
-            isPinned = isPinned,
             avatarTiny = null
         )
         _conversations.value = _conversations.value + newConversation

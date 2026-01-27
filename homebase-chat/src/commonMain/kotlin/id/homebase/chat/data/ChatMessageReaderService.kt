@@ -27,7 +27,8 @@ const val ChatDeletedArchivalStatus = 2
 const val CHAT_MESSAGE_PAYLOAD_KEY = "chat_mbl"
 const val CHAT_LINKS_PAYLOAD_KEY = "chat_links"
 
-class ChatMessageService(
+
+class ChatMessageReaderService(
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
