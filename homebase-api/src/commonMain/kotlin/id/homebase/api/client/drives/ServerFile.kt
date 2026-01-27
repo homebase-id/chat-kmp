@@ -128,7 +128,7 @@ private suspend fun FileMetadata.decryptLocalAppData(
         throw FileDecryptionException.ContentDecryptionFailed(e)
     }
 
-    return FileMetadata(
+    return this.copy(
         localAppData = local.copy(
             content = decryptedBytes.decodeToString(),
             iv = null
