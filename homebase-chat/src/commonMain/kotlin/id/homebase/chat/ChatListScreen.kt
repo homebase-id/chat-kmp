@@ -78,8 +78,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import id.homebase.chat.data.Contact
-import id.homebase.chat.data.MessageViewModel
+import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatTimestamp
@@ -230,7 +230,7 @@ fun ChatListUi(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListPane(
-    conversationViewModels: ImmutableList<ConversationViewModel>,
+    conversationViewModels: ImmutableList<ConversationUiModel>,
     onConversationClick: (Uuid) -> Unit,
     onNewChatClick: () -> Unit,
     selectedConversationId: Uuid? = null,
@@ -298,7 +298,7 @@ fun ChatListPane(
 
 @Composable
 fun ConversationItem(
-    conversationViewModel: ConversationViewModel,
+    conversationViewModel: ConversationUiModel,
     onClick: () -> Unit,
     isSelected: Boolean = false,
 ) {
@@ -390,8 +390,8 @@ fun ConversationItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatDetailPane(
-    conversationViewModel: ConversationViewModel,
-    messageViewModels: ImmutableList<MessageViewModel>,
+    conversationViewModel: ConversationUiModel,
+    messageViewModels: ImmutableList<MessageUiModel>,
     onBackClick: () -> Unit,
     onSendMessage: (String) -> Unit,
     showBackButton: Boolean,
@@ -558,7 +558,7 @@ fun ChatDetailPane(
 
 @Composable
 fun SentMessageBubble(
-    messageViewModel: MessageViewModel,
+    messageViewModel: MessageUiModel,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -611,7 +611,7 @@ fun SentMessageBubble(
 
 @Composable
 fun ReceivedMessageBubble(
-    messageViewModel: MessageViewModel,
+    messageViewModel: MessageUiModel,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -793,10 +793,10 @@ fun EmptyDetailPane() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewChatPane(
-    contacts: ImmutableList<Contact>,
+    contacts: ImmutableList<ContactUiModel>,
     searchQuery: String,
     onBackClick: () -> Unit,
-    onContactClick: (Contact) -> Unit,
+    onContactClick: (ContactUiModel) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
 ) {
     val filteredContacts = remember(contacts, searchQuery) {
@@ -878,7 +878,7 @@ fun NewChatPane(
 
 @Composable
 fun ContactItem(
-    contact: Contact,
+    contact: ContactUiModel,
     onClick: () -> Unit,
 ) {
     Row(

@@ -25,7 +25,6 @@ val appModule = module {
 
     singleOf(::ContactService)
     singleOf(::ConversationService)
-    singleOf(::ContactService)
     singleOf(::ChatMessageReaderService)
     singleOf(::ChatMessageSenderService)
 

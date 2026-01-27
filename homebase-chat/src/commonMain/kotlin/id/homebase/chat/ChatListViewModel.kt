@@ -7,10 +7,10 @@ import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.chat.data.ChatMessageReaderService
 import id.homebase.chat.data.ChatMessageSenderService
 import id.homebase.api.util.truncateToCodePoints
-import id.homebase.chat.data.Contact
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ContactService
 import id.homebase.chat.data.ConversationService
-import id.homebase.chat.data.MessageViewModel
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.data.MockChatApiProvider
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -34,13 +34,13 @@ sealed interface ChatListUiAction {
     data object BackClicked : ChatListUiAction
     data object NewChatClicked : ChatListUiAction
     data object BackToListClicked : ChatListUiAction
-    data class ContactClicked(val contact: Contact) : ChatListUiAction
+    data class ContactClicked(val contact: ContactUiModel) : ChatListUiAction
     data class SearchQueryChanged(val query: String) : ChatListUiAction
     data class SendMessage(val conversationId: Uuid, val content: String) : ChatListUiAction
 }
 
 @Immutable
-data class ConversationViewModel(  // TODO: Move the data objects / classes into Conversation.kt ?
+data class ConversationUiModel(  // TODO: Move the data objects / classes into Conversation.kt ?
     val id: Uuid,
     val name: String,
     var lastMessage: String,
@@ -53,7 +53,7 @@ data class ConversationViewModel(  // TODO: Move the data objects / classes into
     val isPinned: Boolean = false,
     val lastRead: Instant
 ) {
-    public fun updateWithLatestMessage(msg : MessageViewModel)
+    public fun updateWithLatestMessage(msg : MessageUiModel)
     {
         // TODO: Should we also increase unread count here if it's a new message?
         if (msg.timestamp >= timestamp)
@@ -66,11 +66,11 @@ data class ConversationViewModel(  // TODO: Move the data objects / classes into
 
 @Immutable
 data class ChatListUiState(
-    val conversationViewModels: ImmutableList<ConversationViewModel> = persistentListOf(),
+    val conversationViewModels: ImmutableList<ConversationUiModel> = persistentListOf(),
     val showingNewChatPane: Boolean = false,
-    val contacts: ImmutableList<Contact> = persistentListOf(),
+    val contacts: ImmutableList<ContactUiModel> = persistentListOf(),
     val searchQuery: String = "",
-    val currentConversationMessageViewModels: ImmutableList<MessageViewModel> = persistentListOf(),
+    val currentConversationMessageViewModels: ImmutableList<MessageUiModel> = persistentListOf(),
 )
 
 class ChatListViewModel(
@@ -185,11 +185,11 @@ class ChatListViewModel(
         name: String,
         avatarInitials: String,
         isPinned: Boolean = false
-    ): ConversationViewModel {
+    ): ConversationUiModel {
         return apiProvider.createConversation(name, avatarInitials, isPinned)
     }
 
-    fun updateConversation(conversationViewModel: ConversationViewModel) {
+    fun updateConversation(conversationViewModel: ConversationUiModel) {
         apiProvider.updateConversation(conversationViewModel)
     }
 
@@ -197,7 +197,7 @@ class ChatListViewModel(
         apiProvider.deleteConversation(conversationId)
     }
 
-    fun getMessagesByConversationId(conversationId: Uuid): List<MessageViewModel> {
+    fun getMessagesByConversationId(conversationId: Uuid): List<MessageUiModel> {
         return apiProvider.getMessagesByConversationId(conversationId)
     }
 
@@ -216,7 +216,7 @@ class ChatListViewModel(
         }
     }
 
-    fun updateMessage(messageViewModel: MessageViewModel) {
+    fun updateMessage(messageViewModel: MessageUiModel) {
         apiProvider.updateMessage(messageViewModel)
     }
 
@@ -224,7 +224,7 @@ class ChatListViewModel(
         apiProvider.deleteMessage(messageId)
     }
 
-    fun getFilteredContacts(): List<Contact> {
+    fun getFilteredContacts(): List<ContactUiModel> {
         return apiProvider.searchContacts(_uiState.value.searchQuery)
     }
 }

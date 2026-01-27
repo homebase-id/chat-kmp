@@ -13,14 +13,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -29,19 +26,38 @@ import id.homebase.core.ui.assets.HomebaseIcons
 
 @Composable
 fun LoginScreen(
-    state: LoginUiState,
-    onAction: (LoginUiAction) -> Unit,
+    viewModel: LoginViewModel,
+    onNavigateHome: () -> Unit,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    val uiState by viewModel.uiState.collectAsState()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                onAction(LoginUiAction.AppResumed)
+                viewModel.onAction(LoginUiAction.AppResumed)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(uiState.uiEvent) {
+        when (val uiEvent = uiState.uiEvent) {
+            is LoginUiEvent.NavigateToHome -> {
+                viewModel.eventConsumed()
+                onNavigateHome()
+            }
+
+            is LoginUiEvent.ShowError -> {
+                viewModel.eventConsumed()
+
+                // TODO: Show snackbar
+            }
+
+            null -> {}
+        }
     }
 
     Surface(
@@ -84,18 +100,19 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(48.dp))
 
             when {
-                state.isLoading -> LoginLoading()
-                state.isAuthenticated -> LoginSuccess()
-                state.errorMessage != null -> LoginError(
-                    message = state.errorMessage,
-                    homebaseId = state.homebaseId,
-                    onHomebaseIdChange = { onAction(LoginUiAction.HomebaseIdChanged(it)) },
-                    onRetryClick = { onAction(LoginUiAction.RetryClicked) }
+                uiState.isLoading -> LoginLoading()
+                uiState.isAuthenticated -> LoginSuccess()
+                uiState.errorMessage != null -> LoginError(
+                    message = uiState.errorMessage ?: "",
+                    homebaseId = uiState.homebaseId,
+                    onHomebaseIdChange = { viewModel.onAction(LoginUiAction.HomebaseIdChanged(it)) },
+                    onRetryClick = { viewModel.onAction(LoginUiAction.RetryClicked) }
                 )
+
                 else -> LoginForm(
-                    homebaseId = state.homebaseId,
-                    onHomebaseIdChange = { onAction(LoginUiAction.HomebaseIdChanged(it)) },
-                    onLoginClick = { onAction(LoginUiAction.LoginClicked) }
+                    homebaseId = uiState.homebaseId,
+                    onHomebaseIdChange = { viewModel.onAction(LoginUiAction.HomebaseIdChanged(it)) },
+                    onLoginClick = { viewModel.onAction(LoginUiAction.LoginClicked) }
                 )
             }
         }

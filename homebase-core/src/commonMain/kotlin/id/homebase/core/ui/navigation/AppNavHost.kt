@@ -35,7 +35,6 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.ChatListScreen
 import id.homebase.chat.login.LoginScreen
-import id.homebase.chat.login.LoginUiEvent
 import id.homebase.chat.login.LoginViewModel
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.home.HomeScreen
@@ -68,7 +67,7 @@ fun AppNavHost(
     val topLevelRoutes = remember {
         listOf(TopLevelRoute.Chat, TopLevelRoute.Settings)
     }
-    
+
     // Track if we are in a screen where bottom menu should be hidden
     var shouldHideBottomMenu by remember { mutableStateOf(false) }
     val shouldShowBottomNav =
@@ -136,27 +135,15 @@ fun AppNavHost(
                 startDestination = if (isAuthenticated) Route.ChatList else Route.Login,
                 modifier = Modifier.weight(1f)
             ) {
-
                 composable<Route.Login> {
-                    val viewModel = koinViewModel<LoginViewModel>()
-
-                    ObserveAsEvents(viewModel.uiEvent) { event ->
-                        when (event) {
-                            is LoginUiEvent.NavigateToHome -> {
-                                navController.navigate(Route.Home) {
-                                    popUpTo(Route.Login) { inclusive = true }
-                                }
-                            }
-
-                            is LoginUiEvent.ShowError -> {
-                                // TODO: Show snackbar
+                    val vm = koinViewModel<LoginViewModel>();
+                    LoginScreen(
+                        viewModel = vm,
+                        onNavigateHome = {
+                            navController.navigate(Route.Home) {
+                                popUpTo(Route.Login) { inclusive = true }
                             }
                         }
-                    }
-
-                    LoginScreen(
-                        state = viewModel.uiState.collectAsState().value,
-                        onAction = viewModel::onAction
                     )
                 }
 

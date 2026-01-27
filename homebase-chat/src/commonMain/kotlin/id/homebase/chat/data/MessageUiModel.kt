@@ -6,7 +6,7 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 @Immutable
-data class MessageViewModel(
+data class MessageUiModel(
     val id: Uuid, // uniqueId
     val conversationId: Uuid, // groupId
     val content: String, // the message
@@ -22,7 +22,7 @@ data class MessageViewModel(
          * Convert HomebaseFile to Message object
          * Handles fileType 7878 (chat messages)
          */
-        fun fromHomebaseFile(homebaseFile: HomebaseFile): MessageViewModel? {
+        fun fromHomebaseFile(homebaseFile: HomebaseFile): MessageUiModel? {
             return try {
                 val metadata = homebaseFile.fileMetadata
                 val appData = metadata.appData
@@ -44,7 +44,7 @@ data class MessageViewModel(
 
                 val messageAppData = MessageAppData.fromMessageAppDataJson(appData.content!!)
 
-                MessageViewModel(
+                MessageUiModel(
                     id = appData.uniqueId!!,
                     conversationId = appData.groupId!!,
                     content = messageAppData.message,

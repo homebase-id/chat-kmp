@@ -1,5 +1,6 @@
 package id.homebase.chat.data
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
@@ -30,9 +31,9 @@ class ContactService(
 ) {
 
     private val contactDrive = contactTargetDrive.alias
-    private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
+    private val _contacts = MutableStateFlow<List<ContactUiModel>>(emptyList())
 
-    val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
+    val contacts: StateFlow<List<ContactUiModel>> = _contacts.asStateFlow()
 
     init {
         scope.launch {
@@ -60,7 +61,7 @@ class ContactService(
     suspend fun fetchContacts(
         limit: Int = 1000,
         cursor: QueryBatchCursor? = null
-    ): BatchResult<Contact> {
+    ): BatchResult<ContactUiModel> {
 
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
@@ -78,21 +79,27 @@ class ContactService(
             )
 
         return BatchResult(
-            records = result.records.map { mapToContact(it) },
+            records = result.records.mapNotNull { mapToContact(it) },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
     }
 
-    private suspend fun mapToContact(header: HomebaseFile): Contact {
+    private suspend fun mapToContact(header: HomebaseFile): ContactUiModel? {
         val metadata = header.fileMetadata
         val appData = metadata.appData
+
+        val uid = appData.uniqueId
+        if (uid == null) {
+            Logger.e("Contact found with null uniqueId")
+            return null
+        }
 
         val content = appData.content ?: ""
         val parsedContact = OdinSystemSerializer.deserialize<ContactServerFile>(content)
 
-        return Contact(
-            id = parsedContact.id,
+        return ContactUiModel(
+            id = uid,
             name = parsedContact.name.displayName,
             avatarInitials = "TD",
             avatarUrl = ""
@@ -103,7 +110,6 @@ class ContactService(
 
 @Serializable
 data class ContactServerFile(
-    val id: Uuid,
     val odinId: String?,
     val name: ContactName,
     val source: String?, // 'contact' | 'public' | 'user';

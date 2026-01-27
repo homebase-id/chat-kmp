@@ -4,7 +4,7 @@ import androidx.compose.runtime.Immutable
 import kotlin.uuid.Uuid
 
 @Immutable
-data class Contact(
+data class ContactUiModel(
     val id: Uuid,
     val name: String, //TODO: change to ContactName class?
     val avatarInitials: String,

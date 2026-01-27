@@ -36,9 +36,9 @@ class ChatMessageReaderService(
 ) {
 
     private val chatDrive = chatTargetDrive.alias
-    private val _messages = MutableStateFlow<List<MessageViewModel>>(emptyList())
+    private val _messages = MutableStateFlow<List<MessageUiModel>>(emptyList())
 
-    val messages: StateFlow<List<MessageViewModel>> = _messages.asStateFlow()
+    val messages: StateFlow<List<MessageUiModel>> = _messages.asStateFlow()
 
     private var currentConversationId: Uuid? = null
 
@@ -81,7 +81,7 @@ class ChatMessageReaderService(
         conversationId: Uuid,
         limit: Int = 1000,
         cursor: QueryBatchCursor? = null
-    ): BatchResult<MessageViewModel> {
+    ): BatchResult<MessageUiModel> {
 
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
@@ -114,7 +114,7 @@ class ChatMessageReaderService(
 
 
         /** Maps a SharedSecretEncryptedFileHeader to ChatMessageData with decrypted content. */
-        public suspend fun mapToMessageData(header: HomebaseFile): MessageViewModel {
+        public suspend fun mapToMessageData(header: HomebaseFile): MessageUiModel {
             val metadata = header.fileMetadata
             val appData = metadata.appData
 
@@ -142,7 +142,7 @@ class ChatMessageReaderService(
             val isCurrentUser = metadata.senderOdinId.isNullOrEmpty()
             // todo: resolve from contacts
 
-            return MessageViewModel(
+            return MessageUiModel(
                 id = appData.uniqueId!!,
                 conversationId = appData.groupId!!,
                 timestamp = metadata.created.toInstant(),

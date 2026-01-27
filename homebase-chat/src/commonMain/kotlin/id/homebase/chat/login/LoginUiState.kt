@@ -5,4 +5,5 @@ data class LoginUiState(
     val isLoading: Boolean = false,
     val isAuthenticated: Boolean = false,
     val errorMessage: String? = null,
+    val uiEvent: LoginUiEvent? = null
 )

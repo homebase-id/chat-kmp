@@ -1,6 +1,6 @@
 package id.homebase.chat.data
 
-import id.homebase.chat.ConversationViewModel
+import id.homebase.chat.ConversationUiModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,16 +27,16 @@ class MockChatApiProvider {
     }
     
     private val _conversations = MutableStateFlow(getInitialConversations())
-    val conversations: StateFlow<List<ConversationViewModel>> = _conversations.asStateFlow()
+    val conversations: StateFlow<List<ConversationUiModel>> = _conversations.asStateFlow()
     
     private val _messages = MutableStateFlow(getInitialMessages())
-    val messages: StateFlow<List<MessageViewModel>> = _messages.asStateFlow()
+    val messages: StateFlow<List<MessageUiModel>> = _messages.asStateFlow()
     
     private val _contacts = MutableStateFlow(getInitialContacts())
-    val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
+    val contacts: StateFlow<List<ContactUiModel>> = _contacts.asStateFlow()
     
-    private fun getInitialConversations(): List<ConversationViewModel> = listOf(
-ConversationViewModel(
+    private fun getInitialConversations(): List<ConversationUiModel> = listOf(
+ConversationUiModel(
             id = CONVERSATION_ALICE,
             name = "Alice Johnson",
             lastMessage = "Hey! Are we still on for dinner tonight?",
@@ -47,7 +47,7 @@ ConversationViewModel(
             avatarTiny = null,
             lastRead = Clock.System.now()
         ),
-ConversationViewModel(
+ConversationUiModel(
             id = CONVERSATION_BOB,
             name = "Bob Smith",
             lastMessage = "Thanks for your help earlier! 👍",
@@ -58,7 +58,7 @@ ConversationViewModel(
             avatarTiny = null,
             lastRead = Clock.System.now()
         ),
-ConversationViewModel(
+ConversationUiModel(
             id = CONVERSATION_TEAM,
             name = "Team Planning",
             lastMessage = "Charlie: The meeting is rescheduled to 3 PM",
@@ -69,7 +69,7 @@ ConversationViewModel(
             avatarTiny = null,
             lastRead = Clock.System.now()
 ),
-ConversationViewModel(
+ConversationUiModel(
             id = CONVERSATION_DIANA,
             name = "Diana Martinez",
             lastMessage = "Can you send me those files?",
@@ -80,7 +80,7 @@ ConversationViewModel(
             avatarTiny = null,
             lastRead = Clock.System.now()
 ),
-ConversationViewModel(
+ConversationUiModel(
             id = CONVERSATION_STARLIGHT,
             name = "Project Starlight",
             lastMessage = "Emily: I've pushed the latest changes",
@@ -91,7 +91,7 @@ ConversationViewModel(
             avatarTiny = null,
             lastRead = Clock.System.now()
         ),
-ConversationViewModel(
+ConversationUiModel(
             id = CONVERSATION_FRANK,
             name = "Frank Wilson",
             lastMessage = "See you tomorrow!",
@@ -102,7 +102,7 @@ ConversationViewModel(
             avatarTiny = null,
             lastRead = Clock.System.now()
         ),
-ConversationViewModel(
+ConversationUiModel(
             id = CONVERSATION_GRACE,
             name = "Grace Lee",
             lastMessage = "That sounds great! 😊",
@@ -113,7 +113,7 @@ ConversationViewModel(
             avatarTiny = null,
             lastRead = Clock.System.now()
 ),
-ConversationViewModel(
+ConversationUiModel(
             id = CONVERSATION_HENRY,
             name = "Henry Davis",
             lastMessage = "I'll take a look at it",
@@ -124,7 +124,7 @@ ConversationViewModel(
             avatarTiny = null,
             lastRead = Clock.System.now()
 ),
-ConversationViewModel(
+ConversationUiModel(
             id = CONVERSATION_FAMILY,
             name = "Family",
             lastMessage = "Mom: Don't forget to call grandma",
@@ -135,7 +135,7 @@ ConversationViewModel(
             avatarTiny = null,
             lastRead = Clock.System.now()
         ),
-ConversationViewModel(
+ConversationUiModel(
             id = CONVERSATION_IVY,
             name = "Ivy Chen",
             lastMessage = "Perfect! See you there",
@@ -148,71 +148,71 @@ ConversationViewModel(
         ),
     )
     
-    private fun getInitialContacts(): List<Contact> = listOf(
-Contact(
+    private fun getInitialContacts(): List<ContactUiModel> = listOf(
+ContactUiModel(
             id = Uuid.random(),
             name = "Alice Johnson",
             avatarInitials = "AJ",
             avatarUrl = "https://i.pravatar.cc/150?img=1",
             status = "Available"
         ),
-Contact(
+ContactUiModel(
             id = Uuid.random(),
             name = "Bob Smith",
             avatarInitials = "BS",
             avatarUrl = "https://i.pravatar.cc/150?img=12",
             status = "Away"
         ),
-Contact(
+ContactUiModel(
             id = Uuid.random(),
             name = "Diana Martinez",
             avatarInitials = "DM",
             avatarUrl = "https://i.pravatar.cc/150?img=5",
             status = "Available"
         ),
-Contact(
+ContactUiModel(
             id = Uuid.random(),
             name = "Frank Wilson",
             avatarInitials = "FW",
             avatarUrl = "https://i.pravatar.cc/150?img=13",
             status = "Available"
         ),
-Contact(
+ContactUiModel(
             id = Uuid.random(),
             name = "Grace Lee",
             avatarInitials = "GL",
             avatarUrl = "https://i.pravatar.cc/150?img=9",
             status = "Busy"
         ),
-Contact(
+ContactUiModel(
             id = Uuid.random(),
             name = "Henry Davis",
             avatarInitials = "HD",
             avatarUrl = "https://i.pravatar.cc/150?img=14",
             status = "Available"
         ),
-Contact(
+ContactUiModel(
             id = Uuid.random(),
             name = "Ivy Chen",
             avatarInitials = "IC",
             avatarUrl = "https://i.pravatar.cc/150?img=10",
             status = "Available"
         ),
-Contact(
+ContactUiModel(
             id = Uuid.random(),
             name = "Jack Brown",
             avatarInitials = "JB",
             avatarUrl = "https://i.pravatar.cc/150?img=15",
             status = "Away"
         ),
-Contact(
+ContactUiModel(
             id = Uuid.random(),
             name = "Kate Wilson",
             avatarInitials = "KW",
             avatarUrl = "https://i.pravatar.cc/150?img=20",
             status = "Available"
         ),
-Contact(
+ContactUiModel(
             id = Uuid.random(),
             name = "Liam Taylor",
             avatarInitials = "LT",
@@ -221,9 +221,9 @@ Contact(
         ),
     )
     
-    private fun getInitialMessages(): List<MessageViewModel> = listOf(
+    private fun getInitialMessages(): List<MessageUiModel> = listOf(
         // Conversation 1 - Alice Johnson
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_ALICE,
             content = "Hi! How are you doing?",
@@ -234,7 +234,7 @@ MessageViewModel(
             isRead = true,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_ALICE,
             content = "I'm doing great, thanks! How about you?",
@@ -245,7 +245,7 @@ MessageViewModel(
             isRead = true,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_ALICE,
             content = "Hey! Are we still on for dinner tonight?",
@@ -256,7 +256,7 @@ MessageViewModel(
             isRead = false,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_ALICE,
             content = "What time works for you?",
@@ -269,7 +269,7 @@ MessageViewModel(
         ),
         
         // Conversation 2 - Bob Smith
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_BOB,
             content = "Could you help me with that bug we discussed?",
@@ -280,7 +280,7 @@ MessageViewModel(
             isRead = true,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_BOB,
             content = "Sure! I'll take a look at it now.",
@@ -291,7 +291,7 @@ MessageViewModel(
             isRead = true,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_BOB,
             content = "Thanks for your help earlier! 👍",
@@ -304,7 +304,7 @@ MessageViewModel(
         ),
         
         // Conversation 3 - Team Planning
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_TEAM,
             content = "What time is our meeting today?",
@@ -315,7 +315,7 @@ MessageViewModel(
             isRead = true,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_TEAM,
             content = "It was scheduled for 2 PM",
@@ -326,7 +326,7 @@ MessageViewModel(
             isRead = true,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_TEAM,
             content = "The meeting is rescheduled to 3 PM",
@@ -337,7 +337,7 @@ MessageViewModel(
             isRead = false,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_TEAM,
             content = "Can everyone make it at that time?",
@@ -348,7 +348,7 @@ MessageViewModel(
             isRead = false,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_TEAM,
             content = "I need to check the agenda",
@@ -359,7 +359,7 @@ MessageViewModel(
             isRead = false,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_TEAM,
             content = "The updated agenda is in the shared folder",
@@ -370,7 +370,7 @@ MessageViewModel(
             isRead = false,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_TEAM,
             content = "Thanks David!",
@@ -383,7 +383,7 @@ MessageViewModel(
         ),
         
         // Conversation 4 - Diana Martinez
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_DIANA,
             content = "Can you send me those files?",
@@ -396,7 +396,7 @@ MessageViewModel(
         ),
         
         // Conversation 5 - Project Starlight
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_STARLIGHT,
             content = "I've pushed the latest changes",
@@ -407,7 +407,7 @@ MessageViewModel(
             isRead = true,
             messageAppData = MessageAppData()
         ),
-MessageViewModel(
+MessageUiModel(
             id = Uuid.random(),
             conversationId = CONVERSATION_STARLIGHT,
             content = "Great! I'll review them soon.",
@@ -420,11 +420,11 @@ MessageViewModel(
         ),
     )
     
-    fun getConversationById(id: Uuid): ConversationViewModel? {
+    fun getConversationById(id: Uuid): ConversationUiModel? {
         return _conversations.value.find { it.id == id }
     }
     
-    fun getMessagesByConversationId(conversationId: Uuid): List<MessageViewModel> {
+    fun getMessagesByConversationId(conversationId: Uuid): List<MessageUiModel> {
         return _messages.value.filter { it.conversationId == conversationId }
     }
     
@@ -458,9 +458,9 @@ MessageViewModel(
         avatarInitials: String,
         isPinned: Boolean = false,
         avatarUrl: String = "https://i.pravatar.cc/150?img=${(1..70).random()}"
-    ): ConversationViewModel {
+    ): ConversationUiModel {
         val newId = Uuid.random()
-        val newConversationViewModel = ConversationViewModel(
+        val newConversationViewModel = ConversationUiModel(
             id = newId,
             name = name,
             lastMessage = "",
@@ -475,7 +475,7 @@ MessageViewModel(
         return newConversationViewModel
     }
     
-    fun updateConversation(conversationViewModel: ConversationViewModel) {
+    fun updateConversation(conversationViewModel: ConversationUiModel) {
         _conversations.value = _conversations.value.map { 
             if (it.id == conversationViewModel.id) conversationViewModel else it
         }
@@ -493,9 +493,9 @@ MessageViewModel(
         senderName: String,
         isCurrentUser: Boolean = false,
         timestamp: Instant = Clock.System.now()
-    ): MessageViewModel {
+    ): MessageUiModel {
         val newId = Uuid.random()
-        val newMessageViewModel = MessageViewModel(
+        val newMessageViewModel = MessageUiModel(
             id = newId,
             conversationId = conversationId,
             content = content,
@@ -524,7 +524,7 @@ MessageViewModel(
         return newMessageViewModel
     }
 
-    fun updateMessage(messageViewModel: MessageViewModel) {
+    fun updateMessage(messageViewModel: MessageUiModel) {
         _messages.value = _messages.value.map { 
             if (it.id == messageViewModel.id) messageViewModel else it
         }
@@ -564,11 +564,11 @@ MessageViewModel(
         }
     }
     
-    fun getAllContacts(): List<Contact> {
+    fun getAllContacts(): List<ContactUiModel> {
         return _contacts.value
     }
     
-    fun searchContacts(query: String): List<Contact> {
+    fun searchContacts(query: String): List<ContactUiModel> {
         return if (query.isBlank()) {
             _contacts.value
         } else {
@@ -578,7 +578,7 @@ MessageViewModel(
         }
     }
     
-    fun createConversationFromContact(contact: Contact): ConversationViewModel {
+    fun createConversationFromContact(contact: ContactUiModel): ConversationUiModel {
         val existingConversation = _conversations.value.find { 
             it.name == contact.name 
         }

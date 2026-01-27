@@ -32,9 +32,6 @@ class LoginViewModel(
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState
 
-    private val _uiEvent = Channel<LoginUiEvent>(Channel.BUFFERED)
-    val uiEvent = _uiEvent.receiveAsFlow()
-
     init {
         loadUsernameFromStorage()
         observeAuthState()
@@ -48,6 +45,11 @@ class LoginViewModel(
         }
     }
 
+    fun eventConsumed() {
+        _uiState.update {
+            it.copy(uiEvent = null)
+        }
+    }
 
     fun onAction(action: LoginUiAction) {
         when (action) {
@@ -91,8 +93,7 @@ class LoginViewModel(
                 200 -> true
                 else -> false
             }
-        }catch (t: Throwable)
-        {
+        } catch (t: Throwable) {
 //            Logger.e("LoginViewModel", t, "failed while trying to ping $identity")
             return false
         }
@@ -162,8 +163,12 @@ class LoginViewModel(
 
     private suspend fun checkExistingSession() {
         if (youAuthFlowManager.restoreSession()) {
-            _uiState.update { it.copy(isAuthenticated = true) }
-            viewModelScope.launch { _uiEvent.send(LoginUiEvent.NavigateToHome) }
+            _uiState.update {
+                it.copy(
+                    isAuthenticated = true,
+                    uiEvent = LoginUiEvent.NavigateToHome
+                )
+            }
         }
     }
 
@@ -178,11 +183,10 @@ class LoginViewModel(
                             it.copy(
                                 isLoading = false,
                                 isAuthenticated = true,
-                                errorMessage = null
+                                errorMessage = null,
+                                uiEvent = LoginUiEvent.NavigateToHome
                             )
                         }
-                        _uiEvent.send(LoginUiEvent.NavigateToHome)
-
                     }
 
                     is YouAuthState.Unauthenticated -> {

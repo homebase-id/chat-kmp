@@ -6,7 +6,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.chat.ConversationViewModel
+import id.homebase.chat.ConversationUiModel
 import id.homebase.chat.config.chatTargetDrive
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
@@ -32,9 +32,9 @@ class ConversationService(
 ) {
 
     private val chatDrive = chatTargetDrive.alias
-    private val _conversations = MutableStateFlow<List<ConversationViewModel>>(emptyList())
+    private val _conversations = MutableStateFlow<List<ConversationUiModel>>(emptyList())
 
-    val conversations: StateFlow<List<ConversationViewModel>> = _conversations.asStateFlow()
+    val conversations: StateFlow<List<ConversationUiModel>> = _conversations.asStateFlow()
 
     init {
         scope.launch {
@@ -68,14 +68,14 @@ class ConversationService(
         _conversations.value = result
     }
 
-    suspend fun fetchConversations(): List<ConversationViewModel> {
+    suspend fun fetchConversations(): List<ConversationUiModel> {
         val result = dbm.chatReadCount.selectAllConversationPlusLastMessage();
         return result.map { mapToConversation(it.conversation, it.message) }
     }
 
     fun getConversationById(
         conversationId: Uuid
-    ): ConversationViewModel? {
+    ): ConversationUiModel? {
         return _conversations.value.firstOrNull { it.id == conversationId }?.let {
             return it
         }
@@ -96,7 +96,7 @@ class ConversationService(
         public suspend fun mapToConversation(
             conversation: HomebaseFile,
             lastMsg: HomebaseFile?
-        ): ConversationViewModel {
+        ): ConversationUiModel {
             val metadata = conversation.fileMetadata
             val appData = metadata.appData
             val appDataObj =
@@ -116,7 +116,7 @@ class ConversationService(
                     OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(localAppData)
             }
 
-            val result = ConversationViewModel(
+            val result = ConversationUiModel(
                 id = appData.uniqueId ?: throw Exception("missing unique id, data error"),
                 name = appDataObj.title ?: "",
                 lastMessage = "",
