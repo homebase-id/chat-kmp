@@ -109,10 +109,9 @@ class ConversationService(
                 isPinned = false
             )
 
-            var message: Message? = null
             if (lastMsg != null)
             {
-                message = ChatMessageService.mapToMessageData(lastMsg)
+                val message = ChatMessageService.mapToMessageData(lastMsg)
                 result.updateWithLatestMessage(message)
             }
 
