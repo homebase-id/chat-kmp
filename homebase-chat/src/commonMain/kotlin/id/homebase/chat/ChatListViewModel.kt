@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.chat.data.ChatMessageReaderService
 import id.homebase.chat.data.ChatMessageSenderService
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.Contact
 import id.homebase.chat.data.ContactService
 import id.homebase.chat.data.ConversationService
@@ -42,14 +43,21 @@ sealed interface ChatListUiAction {
 data class Conversation(
     val id: Uuid,
     val name: String,
-    val lastMessage: String,
-    val timestamp: Instant,
+    var lastMessage: String,
+    var timestamp: Instant,
     var unreadCount: Int = 0,
     val avatarInitials: String,
     val avatarUrl: String = "",
     val avatarTiny: ThumbnailDescriptor?,
-    val participants: List<String> = listOf()
-)
+    val participants: List<String> = listOf(),
+    val isPinned: Boolean = false
+) {
+    public fun updateWithLatestMessage(msg : Message)
+    {
+        lastMessage = msg.messageAppData?.message?.truncateToCodePoints(40) ?: ""
+        timestamp = msg.timestamp
+    }
+}
 
 @Immutable
 data class ChatListUiState(

@@ -7,7 +7,6 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.Conversation
 import id.homebase.chat.config.chatTargetDrive
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
@@ -103,10 +102,6 @@ class ConversationService(
             conversation: HomebaseFile,
             lastMsg: HomebaseFile?
         ): Conversation {
-            var message: Message? = null
-            if (lastMsg != null)
-                message = ChatMessageReaderService.mapToMessageData(lastMsg)
-
             val metadata = conversation.fileMetadata
             val appData = metadata.appData
             val conversation =
@@ -118,17 +113,25 @@ class ConversationService(
             if (appData.content == null)
                 throw IllegalArgumentException("AppData is empty")
 
-            return Conversation(
+            val result = Conversation(
                 id = appData.uniqueId ?: throw Exception("missing unique id, data error"),
                 name = conversation.title ?: "",
-                lastMessage = message?.messageAppData?.message?.truncateToCodePoints(40) ?: "",
-                timestamp = message?.timestamp ?: UnixTimeUtc(0).toInstant(),
+                lastMessage = "",
+                timestamp = UnixTimeUtc(0).toInstant(),
                 unreadCount = 0,
                 avatarTiny = null, // TODO: WHERE DO WE FETCH THIS ONE?
                 avatarInitials = "",
                 avatarUrl = "",
                 participants = conversation.recipients
             )
+
+            if (lastMsg != null)
+            {
+                val message = ChatMessageReaderService.mapToMessageData(lastMsg)
+                result.updateWithLatestMessage(message)
+            }
+
+            return result
         }
     }
 }
