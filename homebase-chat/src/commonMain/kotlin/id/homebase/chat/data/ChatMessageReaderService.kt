@@ -24,7 +24,7 @@ const val CHAT_MESSAGE_FILE_TYPE = 7878
 /** Archival status indicating a deleted chat */
 const val ChatDeletedArchivalStatus = 2
 
-const val CHAT_MESSAGE_PAYLOAD_KEY = "chat_mbl"
+const val CHAT_MESSAGE_PAYLOAD_KEY = "chat_mbl"  // Is this for "more text" ?
 const val CHAT_LINKS_PAYLOAD_KEY = "chat_links"
 
 
@@ -36,9 +36,9 @@ class ChatMessageReaderService(
 ) {
 
     private val chatDrive = chatTargetDrive.alias
-    private val _messages = MutableStateFlow<List<Message>>(emptyList())
+    private val _messages = MutableStateFlow<List<MessageViewModel>>(emptyList())
 
-    val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+    val messages: StateFlow<List<MessageViewModel>> = _messages.asStateFlow()
 
     private var currentConversationId: Uuid? = null
 
@@ -81,7 +81,7 @@ class ChatMessageReaderService(
         conversationId: Uuid,
         limit: Int = 1000,
         cursor: QueryBatchCursor? = null
-    ): BatchResult<Message> {
+    ): BatchResult<MessageViewModel> {
 
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
@@ -114,7 +114,7 @@ class ChatMessageReaderService(
 
 
         /** Maps a SharedSecretEncryptedFileHeader to ChatMessageData with decrypted content. */
-        public suspend fun mapToMessageData(header: HomebaseFile): Message {
+        public suspend fun mapToMessageData(header: HomebaseFile): MessageViewModel {
             val metadata = header.fileMetadata
             val appData = metadata.appData
 
@@ -142,7 +142,7 @@ class ChatMessageReaderService(
             val isCurrentUser = metadata.senderOdinId.isNullOrEmpty()
             // todo: resolve from contacts
 
-            return Message(
+            return MessageViewModel(
                 id = appData.uniqueId!!,
                 conversationId = appData.groupId!!,
                 timestamp = metadata.created.toInstant(),
@@ -160,17 +160,18 @@ class ChatMessageReaderService(
         }
 
         /** Parses a JSON string as ChatMessageContent. */
-        private fun parseMessageAppDataJson(content: String): MessageAppData {
+        private fun parseMessageAppDataJson(jsonContent: String): MessageAppData {
             return try {
-                OdinSystemSerializer.deserialize<MessageAppData>(content)
+                OdinSystemSerializer.deserialize<MessageAppData>(jsonContent)
             } catch (e: Exception) {
                 println(
-                    "ChatProvider: Failed to parse ChatMetadata: ${e.message}\nContent: [${content}]"
+                    "ChatProvider: Failed to parse ChatMetadata: ${e.message}\nContent: [${jsonContent}]"
                 )
 
                 // If parsing fails, create a simple message with the raw content
+                // TODO: Why? :point_up:
                 try {
-                    MessageAppData(message = content)
+                    MessageAppData(message = jsonContent)
                 } catch (e2: Exception) {
                     MessageAppData()
                 }

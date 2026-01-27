@@ -2,12 +2,11 @@ package id.homebase.chat.data
 
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.chat.Conversation
+import id.homebase.chat.ConversationViewModel
 import id.homebase.chat.config.chatTargetDrive
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
@@ -16,13 +15,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
 
 const val CHAT_CONVERSATION_FILE_TYPE: Int = 8888
-const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889
+// const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889 // TODO: OBSOLETE - We switched to localAppData
 const val ConversationWithYourselfId = "e4ef2382-ab3c-405d-a8b5-ad3e09e980dd"
-const val CONVERSATION_PAYLOAD_KEY = "convo_pk"
-const val CONVERSATION_IMAGE_KEY = "convo_img"
+const val CONVERSATION_PAYLOAD_KEY = "convo_pk" // TODO: Explain what this represents
+const val CONVERSATION_IMAGE_KEY = "convo_img"// TODO: Explain what this represents (and where's the tiny)
 
 class ConversationService(
     private val credentialsManager: CredentialsManager,
@@ -32,9 +32,9 @@ class ConversationService(
 ) {
 
     private val chatDrive = chatTargetDrive.alias
-    private val _conversations = MutableStateFlow<List<Conversation>>(emptyList())
+    private val _conversations = MutableStateFlow<List<ConversationViewModel>>(emptyList())
 
-    val conversations: StateFlow<List<Conversation>> = _conversations.asStateFlow()
+    val conversations: StateFlow<List<ConversationViewModel>> = _conversations.asStateFlow()
 
     init {
         scope.launch {
@@ -68,19 +68,14 @@ class ConversationService(
         _conversations.value = result
     }
 
-    suspend fun fetchConversations(
-        limit: Int = 1000,
-        cursor: QueryBatchCursor? = null
-    ): List<Conversation> {
-
+    suspend fun fetchConversations(): List<ConversationViewModel> {
         val result = dbm.chatReadCount.selectAllConversationPlusLastMessage();
         return result.map { mapToConversation(it.conversation, it.message) }
     }
 
     fun getConversationById(
         conversationId: Uuid
-    ): Conversation? {
-
+    ): ConversationViewModel? {
         return _conversations.value.firstOrNull { it.id == conversationId }?.let {
             return it
         }
@@ -101,11 +96,11 @@ class ConversationService(
         public suspend fun mapToConversation(
             conversation: HomebaseFile,
             lastMsg: HomebaseFile?
-        ): Conversation {
+        ): ConversationViewModel {
             val metadata = conversation.fileMetadata
             val appData = metadata.appData
-            val conversation =
-                OdinSystemSerializer.deserialize<ConversationFromServer>(appData.content ?: "")
+            val appDataObj =
+                OdinSystemSerializer.deserialize<ConversationAppDataJson>(appData.content ?: "")
 
             if (appData.fileType != CHAT_CONVERSATION_FILE_TYPE)
                 throw IllegalArgumentException("HomebaseFile must be of type Chat_conversation")
@@ -113,16 +108,25 @@ class ConversationService(
             if (appData.content == null)
                 throw IllegalArgumentException("AppData is empty")
 
-            val result = Conversation(
+            var localAppDataObj: ConversationLocalAppDataJson? = null
+            val localAppData = metadata.localAppData?.content
+            if (localAppData != null)
+            {
+                localAppDataObj =
+                    OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(localAppData)
+            }
+
+            val result = ConversationViewModel(
                 id = appData.uniqueId ?: throw Exception("missing unique id, data error"),
-                name = conversation.title ?: "",
+                name = appDataObj.title ?: "",
                 lastMessage = "",
                 timestamp = UnixTimeUtc(0).toInstant(),
                 unreadCount = 0,
-                avatarTiny = null, // TODO: WHERE DO WE FETCH THIS ONE?
+                avatarTiny = appData.previewThumbnail, // TODO: Is this even populated?
                 avatarInitials = "",
                 avatarUrl = "",
-                participants = conversation.recipients
+                participants = appDataObj.recipients,
+                lastRead = localAppDataObj?.lastReadTime?.toInstant() ?: UnixTimeUtc(0).toInstant()
             )
 
             if (lastMsg != null)
@@ -138,12 +142,17 @@ class ConversationService(
 
 
 @Serializable
-data class ConversationFromServer(
-    //FROM JS
+data class ConversationAppDataJson(
     val title: String? = "",
     val recipient: String? = "",
     val version: Int = 0,
-    val conversationId: Uuid = Uuid.random(),
-    val lastReadTime: UnixTimeUtc? = null,
+    @Transient val conversationId: Uuid = Uuid.NIL, // TODO: LOOKS OBSOLETE / WRONG, ID IS ON UNIQUEID
+    @Transient val lastReadTime: UnixTimeUtc? = null, // TODO: OBSOLETE / WRONG
     val recipients: List<String> = listOf()
+)
+
+@Serializable
+data class ConversationLocalAppDataJson(
+    @Transient val conversationId: Uuid = Uuid.NIL,  // TODO: Obsolete, ignore. Same as uniqueId for conversation
+    val lastReadTime: UnixTimeUtc?
 )
