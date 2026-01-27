@@ -9,6 +9,7 @@ import id.homebase.chat.data.ContactService
 import id.homebase.chat.data.ConversationService
 import id.homebase.chat.data.Message
 import id.homebase.chat.data.MockChatApiProvider
+import id.homebase.core.model.ThumbnailDescriptor
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
@@ -45,6 +46,7 @@ data class Conversation(
     val unreadCount: Int = 0,
     val avatarInitials: String,
     val avatarUrl: String = "",
+    val avatarTiny: ThumbnailDescriptor?,
     val isPinned: Boolean = false
 )
 
@@ -149,16 +151,6 @@ class ChatListViewModel(
 
     private fun loadMessagesForConversation(conversationId: Uuid) {
 //        apiProvider.markConversationAsRead(conversationId)
-
-        viewModelScope.launch {
-            conversationService.start()
-            conversationService.conversations.collect { conversations ->
-                val sorted = conversations.sortedByDescending { it.timestamp }
-                _uiState.value = _uiState.value.copy(
-                    conversations = sorted.toPersistentList()
-                )
-            }
-        }
 
         viewModelScope.launch {
             chatMessageService.start(conversationId)

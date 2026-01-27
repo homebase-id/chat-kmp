@@ -2,14 +2,11 @@ package id.homebase.chat.data
 
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchSortField
-import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.common.BatchResult
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.QueryBatch
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.Conversation
 import id.homebase.chat.config.chatTargetDrive
 import id.homebase.core.model.UnixTimeUtc
@@ -20,9 +17,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 const val CHAT_CONVERSATION_FILE_TYPE:Int = 8888
@@ -62,57 +56,58 @@ class ConversationService(
     }
 
     private suspend fun refresh() {
-        val result =
-            fetchConversations()
 
-        _conversations.value = result.records
+        // TODO: MS XXX Call the CharUnreadCountWrapper thingy to get the full list.
+
+        val result = fetchConversations()
+
+        _conversations.value = result
     }
 
     suspend fun fetchConversations(
         limit: Int = 1000,
         cursor: QueryBatchCursor? = null
-    ): BatchResult<Conversation> {
+    ): List<Conversation> {
 
-        val c = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(c.getIdentityId())
-
-        val result =
-            queryBatch.queryBatchAsync(
-                dbm = dbm,
-                driveId = chatDrive,
-                noOfItems = limit,
-                cursor = cursor,
-                sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
-                fileSystemType = 0,
-                filetypesAnyOf = listOf(CHAT_CONVERSATION_FILE_TYPE),
-                groupIdAnyOf = null
-            )
-
-        return BatchResult(
-            records = result.records.map { mapToConversation(it) },
-            hasMoreRows = result.hasMoreRows,
-            cursor = result.cursor
-        )
+        val result = dbm.chatReadCount.selectAllConversationPlusLastMessage();
+        return result.map { mapToConversation(it.conversation, it.message) }
     }
 
-    private suspend fun mapToConversation(header: HomebaseFile): Conversation {
-        val metadata = header.fileMetadata
-        val appData = metadata.appData
+    companion object
+    {
+        // You must pass in the last message of the conversation to generate a properly
+        // populated Conversation object (we fetch data like last 40 chars, message time, etc)
+        public suspend fun mapToConversation(
+            conversation: HomebaseFile,
+            lastMsg: HomebaseFile?
+        ): Conversation
+        {
+            var message: Message? = null
+            if (lastMsg != null)
+                message = ChatMessageService.mapToMessageData(lastMsg)
 
-        val content = appData.content ?: "";
-        val conversation = OdinSystemSerializer.deserialize<ConversationFromServer>(content)
+            val metadata = conversation.fileMetadata
+            val appData = metadata.appData
+            val conversation = OdinSystemSerializer.deserialize<ConversationFromServer>(appData.content ?: "")
 
-        return Conversation(
-            id = appData.uniqueId ?: throw Exception("missing unique id, data error"),
-            name = conversation.title ?: "",
-            lastMessage = "TODO last message via michael",
-            timestamp = metadata.transitCreated.toInstant(),
-            unreadCount = 10,
-            avatarInitials = "",
-            avatarUrl = "",
-            isPinned = false
-        )
+            if (appData.fileType != CHAT_CONVERSATION_FILE_TYPE)
+                throw IllegalArgumentException("HomebaseFile must be of type Chat_conversation")
+
+            if (appData.content == null)
+                throw IllegalArgumentException("AppData is empty")
+
+            return Conversation(
+                id = appData.uniqueId ?: throw Exception("missing unique id, data error"),
+                name = conversation.title ?: "",
+                lastMessage = message?.messageAppData?.message?.truncateToCodePoints(40) ?: "",
+                timestamp = message?.timestamp ?: UnixTimeUtc(0).toInstant(),
+                unreadCount = 10,
+                avatarTiny = null, // TODO: WHERE DO WE FETCH THIS ONE?
+                avatarInitials = "",
+                avatarUrl = "",
+                isPinned = false
+            )
+        }
     }
 }
 
