@@ -26,12 +26,12 @@ selectAllConversationPlusLastMessage:
 WITH LatestMessages AS (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY groupId ORDER BY created DESC) AS rn
   FROM DriveMainIndex AS m
-  WHERE fileType = 7878
+  WHERE fileType = 7878 -- Message
 )
 SELECT d.jsonHeader AS convJsonHeader,m.jsonHeader AS msgJsonHeader,m.created AS msgCreated
 FROM DriveMainIndex AS d
-LEFT JOIN LatestMessages m ON d.fileId = m.groupId AND m.rn = 1
-WHERE d.fileType = 8888
+LEFT JOIN LatestMessages m ON m.groupId = d.uniqueId AND m.rn = 1
+WHERE d.fileType = 8888 -- Conversation
 ORDER BY msgCreated DESC;
 
 -- Return unread message count for a specific groupId

@@ -44,7 +44,8 @@ Conversation(
             unreadCount = 2,
             avatarInitials = "AJ",
             avatarUrl = "https://i.pravatar.cc/150?img=1",
-            isPinned = true
+            isPinned = true,
+            avatarTiny = null
         ),
 Conversation(
             id = CONVERSATION_BOB,
@@ -54,6 +55,7 @@ Conversation(
             unreadCount = 0,
             avatarInitials = "BS",
             avatarUrl = "https://i.pravatar.cc/150?img=12",
+            avatarTiny = null
         ),
 Conversation(
             id = CONVERSATION_TEAM,
@@ -63,8 +65,9 @@ Conversation(
             unreadCount = 5,
             avatarInitials = "TP",
             avatarUrl = "https://i.pravatar.cc/150?img=60",
-            isPinned = true
-        ),
+            isPinned = true,
+            avatarTiny = null
+),
 Conversation(
             id = CONVERSATION_DIANA,
             name = "Diana Martinez",
@@ -73,7 +76,8 @@ Conversation(
             unreadCount = 1,
             avatarInitials = "DM",
             avatarUrl = "https://i.pravatar.cc/150?img=5",
-        ),
+            avatarTiny = null
+),
 Conversation(
             id = CONVERSATION_STARLIGHT,
             name = "Project Starlight",
@@ -82,6 +86,7 @@ Conversation(
             unreadCount = 0,
             avatarInitials = "PS",
             avatarUrl = "https://i.pravatar.cc/150?img=70",
+            avatarTiny = null
         ),
 Conversation(
             id = CONVERSATION_FRANK,
@@ -91,6 +96,7 @@ Conversation(
             unreadCount = 0,
             avatarInitials = "FW",
             avatarUrl = "",
+            avatarTiny = null
         ),
 Conversation(
             id = CONVERSATION_GRACE,
@@ -100,6 +106,7 @@ Conversation(
             unreadCount = 0,
             avatarInitials = "GL",
             avatarUrl = "https://i.pravatar.cc/150?img=9",
+            avatarTiny = null
         ),
 Conversation(
             id = CONVERSATION_HENRY,
@@ -109,6 +116,7 @@ Conversation(
             unreadCount = 0,
             avatarInitials = "HD",
             avatarUrl = "https://i.pravatar.cc/150?img=14",
+            avatarTiny = null
         ),
 Conversation(
             id = CONVERSATION_FAMILY,
@@ -118,6 +126,7 @@ Conversation(
             unreadCount = 0,
             avatarInitials = "FM",
             avatarUrl = "https://i.pravatar.cc/150?img=65",
+            avatarTiny = null
         ),
 Conversation(
             id = CONVERSATION_IVY,
@@ -127,6 +136,7 @@ Conversation(
             unreadCount = 0,
             avatarInitials = "IC",
             avatarUrl = "https://i.pravatar.cc/150?img=10",
+            avatarTiny = null
         ),
     )
     
@@ -211,7 +221,7 @@ Message(
             content = "Hi! How are you doing?",
             timestamp = Clock.System.now() - 30.minutes,
             senderId = "user1",
-            senderName = "Alice Johnson",
+            senderOdinId = "Alice Johnson",
             isCurrentUser = false,
             isRead = true,
             messageAppData = MessageAppData()
@@ -222,7 +232,7 @@ Message(
             content = "I'm doing great, thanks! How about you?",
             timestamp = Clock.System.now() - 28.minutes,
             senderId = "me",
-            senderName = "Me",
+            senderOdinId = "Me",
             isCurrentUser = true,
             isRead = true,
             messageAppData = MessageAppData()
@@ -233,7 +243,7 @@ Message(
             content = "Hey! Are we still on for dinner tonight?",
             timestamp = Clock.System.now() - 15.minutes,
             senderId = "user1",
-            senderName = "Alice Johnson",
+            senderOdinId = "Alice Johnson",
             isCurrentUser = false,
             isRead = false,
             messageAppData = MessageAppData()
@@ -244,7 +254,7 @@ Message(
             content = "What time works for you?",
             timestamp = Clock.System.now() - 10.minutes,
             senderId = "user1",
-            senderName = "Alice Johnson",
+            senderOdinId = "Alice Johnson",
             isCurrentUser = false,
             isRead = false,
             messageAppData = MessageAppData()
@@ -257,7 +267,7 @@ Message(
             content = "Could you help me with that bug we discussed?",
             timestamp = Clock.System.now() - 2.hours,
             senderId = "user2",
-            senderName = "Bob Smith",
+            senderOdinId = "Bob Smith",
             isCurrentUser = false,
             isRead = true,
             messageAppData = MessageAppData()
@@ -268,7 +278,7 @@ Message(
             content = "Sure! I'll take a look at it now.",
             timestamp = Clock.System.now() - 1.hours - 45.minutes,
             senderId = "me",
-            senderName = "Me",
+            senderOdinId = "Me",
             isCurrentUser = true,
             isRead = true,
             messageAppData = MessageAppData()
@@ -279,7 +289,7 @@ Message(
             content = "Thanks for your help earlier! 👍",
             timestamp = Clock.System.now() - 1.hours - 15.minutes,
             senderId = "user2",
-            senderName = "Bob Smith",
+            senderOdinId = "Bob Smith",
             isCurrentUser = false,
             isRead = true,
             messageAppData = MessageAppData()
@@ -292,7 +302,7 @@ Message(
             content = "What time is our meeting today?",
             timestamp = Clock.System.now() - 3.hours,
             senderId = "user3",
-            senderName = "David",
+            senderOdinId = "David",
             isCurrentUser = false,
             isRead = true,
             messageAppData = MessageAppData()
@@ -303,7 +313,7 @@ Message(
             content = "It was scheduled for 2 PM",
             timestamp = Clock.System.now() - 2.hours - 45.minutes,
             senderId = "me",
-            senderName = "Me",
+            senderOdinId = "Me",
             isCurrentUser = true,
             isRead = true,
             messageAppData = MessageAppData()
@@ -314,7 +324,7 @@ Message(
             content = "The meeting is rescheduled to 3 PM",
             timestamp = Clock.System.now() - 2.hours - 30.minutes,
             senderId = "user4",
-            senderName = "Charlie",
+            senderOdinId = "Charlie",
             isCurrentUser = false,
             isRead = false,
             messageAppData = MessageAppData()
@@ -325,7 +335,7 @@ Message(
             content = "Can everyone make it at that time?",
             timestamp = Clock.System.now() - 2.hours - 20.minutes,
             senderId = "user5",
-            senderName = "Sarah",
+            senderOdinId = "Sarah",
             isCurrentUser = false,
             isRead = false,
             messageAppData = MessageAppData()
@@ -336,7 +346,7 @@ Message(
             content = "I need to check the agenda",
             timestamp = Clock.System.now() - 2.hours - 15.minutes,
             senderId = "user6",
-            senderName = "Mike",
+            senderOdinId = "Mike",
             isCurrentUser = false,
             isRead = false,
             messageAppData = MessageAppData()
@@ -347,7 +357,7 @@ Message(
             content = "The updated agenda is in the shared folder",
             timestamp = Clock.System.now() - 2.hours - 10.minutes,
             senderId = "user3",
-            senderName = "David",
+            senderOdinId = "David",
             isCurrentUser = false,
             isRead = false,
             messageAppData = MessageAppData()
@@ -358,7 +368,7 @@ Message(
             content = "Thanks David!",
             timestamp = Clock.System.now() - 2.hours - 5.minutes,
             senderId = "user5",
-            senderName = "Sarah",
+            senderOdinId = "Sarah",
             isCurrentUser = false,
             isRead = false,
             messageAppData = MessageAppData()
@@ -371,7 +381,7 @@ Message(
             content = "Can you send me those files?",
             timestamp = Clock.System.now() - 3.hours - 20.minutes,
             senderId = "user5",
-            senderName = "Diana Martinez",
+            senderOdinId = "Diana Martinez",
             isCurrentUser = false,
             isRead = false,
             messageAppData = MessageAppData()
@@ -384,7 +394,7 @@ Message(
             content = "I've pushed the latest changes",
             timestamp = Clock.System.now() - 1.days,
             senderId = "user6",
-            senderName = "Emily",
+            senderOdinId = "Emily",
             isCurrentUser = false,
             isRead = true,
             messageAppData = MessageAppData()
@@ -395,7 +405,7 @@ Message(
             content = "Great! I'll review them soon.",
             timestamp = Clock.System.now() - 1.days + 10.minutes,
             senderId = "me",
-            senderName = "Me",
+            senderOdinId = "Me",
             isCurrentUser = true,
             isRead = true,
             messageAppData = MessageAppData()
@@ -450,7 +460,8 @@ Message(
             unreadCount = 0,
             avatarInitials = avatarInitials,
             avatarUrl = avatarUrl,
-            isPinned = isPinned
+            isPinned = isPinned,
+            avatarTiny = null
         )
         _conversations.value = _conversations.value + newConversation
         return newConversation
@@ -482,7 +493,7 @@ Message(
             content = content,
             timestamp = timestamp,
             senderId = senderId,
-            senderName = senderName,
+            senderOdinId = senderName,
             isCurrentUser = isCurrentUser,
             isRead = isCurrentUser, // Current user's messages are always read
             messageAppData = MessageAppData()

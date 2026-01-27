@@ -12,7 +12,7 @@ data class Message(
     val content: String,
     val timestamp: Instant,
     val senderId: String,
-    val senderName: String,
+    val senderOdinId: String,
     val isCurrentUser: Boolean = false,
     val isRead: Boolean = false,
     val messageAppData: MessageAppData
@@ -50,7 +50,7 @@ data class Message(
                     content = messageAppData.message,
                     timestamp = metadata.transitCreated.toInstant(),
                     senderId = metadata.senderOdinId!!,
-                    senderName = "Lookup Contacts", // Lookup in contacts via senderOdinId
+                    senderOdinId = "Lookup Contacts", // Lookup in contacts via senderOdinId
                     isCurrentUser = false,
                     isRead = false,
                     messageAppData = messageAppData

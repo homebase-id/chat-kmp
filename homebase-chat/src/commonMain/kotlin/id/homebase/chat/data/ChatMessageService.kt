@@ -105,53 +105,74 @@ class ChatMessageService(
         )
     }
 
+    companion object {
+        /**
+         * Convert HomebaseFile to ConversationData object
+         * Handles fileType 8888 (chat conversations)
+         */
 
-    /** Maps a SharedSecretEncryptedFileHeader to ChatMessageData with decrypted content. */
-    private suspend fun mapToMessageData(header: HomebaseFile): Message {
-        val metadata = header.fileMetadata
-        val appData = metadata.appData
 
-        val parsedContent = parseMessageContent(header.fileMetadata.appData.content ?: "")
+        /** Maps a SharedSecretEncryptedFileHeader to ChatMessageData with decrypted content. */
+        public suspend fun mapToMessageData(header: HomebaseFile): Message {
+            val metadata = header.fileMetadata
+            val appData = metadata.appData
 
-        // Get preview thumbnail from appData or first payload
-//        val previewThumbnail =
-//            appData.previewThumbnail ?: metadata.payloads?.firstOrNull()?.previewThumbnail
+            if (appData.fileType != CHAT_MESSAGE_FILE_TYPE)
+                throw IllegalArgumentException("HomebaseFile must be of type Chat_message")
 
-        val isCurrentUser = metadata.senderOdinId.isNullOrEmpty()
-        // todo: resolve from contacts
-        val senderName = metadata.senderOdinId ?: "Me"
+//            if (metadata.senderOdinId.isNullOrBlank())
+//                throw IllegalArgumentException("SenderId must be set")
 
-        return Message(
-            id = appData.uniqueId!!,
-            conversationId = appData.groupId!!,
-            timestamp = metadata.created.toInstant(),
-            senderName = senderName,
-            isCurrentUser = isCurrentUser,
-            isRead = false,
-            senderId = metadata.senderOdinId ?: "Me",
-            content = parsedContent.message,
-            messageAppData = parsedContent
-            //            versionTag = metadata.versionTag,
-            //            previewThumbnail = previewThumbnail,
-            //            contentIsComplete = metadata.payloads?.find { it.keyEquals(CHAT_MESSAGE_PAYLOAD_KEY) } == null,
-            //            reactionSummary = metadata.reactionPreview,
-        )
-    }
+            if (appData.content == null)
+                throw IllegalArgumentException("AppData is empty")
 
-    /** Parses a JSON string as ChatMessageContent. */
-    private fun parseMessageContent(content: String): MessageAppData {
-        return try {
-            OdinSystemSerializer.deserialize<MessageAppData>(content)
-        } catch (e: Exception) {
-            println(
-                "ChatProvider: Failed to parse ChatMetadata: ${e.message}\nContent: [${content}]"
+            if (appData.uniqueId == null)
+                throw IllegalArgumentException("UniqueId is empty")
+
+            if (appData.groupId == null)
+                throw IllegalArgumentException("GroupId is empty")
+
+            val messageAppData = parseMessageAppDataJson(header.fileMetadata.appData.content!!)
+
+            // Get preview thumbnail from appData or first payload
+            //        val previewThumbnail =
+            //            appData.previewThumbnail ?: metadata.payloads?.firstOrNull()?.previewThumbnail
+
+            val isCurrentUser = metadata.senderOdinId.isNullOrEmpty()
+            // todo: resolve from contacts
+
+            return Message(
+                id = appData.uniqueId!!,
+                conversationId = appData.groupId!!,
+                timestamp = metadata.created.toInstant(),
+                senderOdinId = metadata.senderOdinId ?: "",
+                isCurrentUser = isCurrentUser,
+                isRead = false,
+                senderId = metadata.senderOdinId ?: "Me",
+                content = messageAppData.message,
+                messageAppData = messageAppData
+                //            versionTag = metadata.versionTag,
+                //            previewThumbnail = previewThumbnail,
+                //            contentIsComplete = metadata.payloads?.find { it.keyEquals(CHAT_MESSAGE_PAYLOAD_KEY) } == null,
+                //            reactionSummary = metadata.reactionPreview,
             )
+        }
 
-            // If parsing fails, create a simple message with the raw content
-            try {
-                MessageAppData(message = content)
-            } catch (e2: Exception) {
-                MessageAppData()
+        /** Parses a JSON string as ChatMessageContent. */
+        private fun parseMessageAppDataJson(content: String): MessageAppData {
+            return try {
+                OdinSystemSerializer.deserialize<MessageAppData>(content)
+            } catch (e: Exception) {
+                println(
+                    "ChatProvider: Failed to parse ChatMetadata: ${e.message}\nContent: [${content}]"
+                )
+
+                // If parsing fails, create a simple message with the raw content
+                try {
+                    MessageAppData(message = content)
+                } catch (e2: Exception) {
+                    MessageAppData()
+                }
             }
         }
     }
