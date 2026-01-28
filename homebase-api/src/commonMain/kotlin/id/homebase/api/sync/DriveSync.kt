@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.joinAll
 import kotlin.collections.mutableListOf
 
 
@@ -103,6 +104,7 @@ class DriveSync(
         var totalCount = 0
         var queryBatchResponse: QueryBatchResponse? = null
         var keepGoing = true
+        val dbJobs = mutableListOf<Job>()
 
         eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
 
@@ -133,7 +135,7 @@ class DriveSync(
                         totalCount += recordsRead
 
                         // Run DB operation in background without waiting - fire and forget
-                        scope.launch {
+                        val job = scope.launch {
                             try {
                                 val dbMs = measureTimedValue {
                                     fileHeaderProcessor.baseUpsertEntryZapZap(
@@ -148,6 +150,7 @@ class DriveSync(
                                 Logger.e("DB upsert failed for batch: ${e.message}")
                             }
                         }
+                        dbJobs.add(job)
 
                         val latestModified = searchResults.last().fileMetadata.updated
 
@@ -186,6 +189,8 @@ class DriveSync(
             }
         }
 
+        // Wait for all DB ops to finish
+        dbJobs.joinAll()
         eventBus.emit(BackendEvent.DriveEvent.Completed(driveId, totalCount))
     }
 }
