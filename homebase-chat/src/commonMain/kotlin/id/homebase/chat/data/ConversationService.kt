@@ -1,14 +1,15 @@
 package id.homebase.chat.data
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.ConversationUiModel
 import id.homebase.chat.config.chatTargetDrive
-import id.homebase.core.ui.theme.Dimens
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,18 +56,27 @@ class ConversationService(
                         // so that everything in the client is up to date.
                     }
                     is BackendEvent.DriveEvent.Failed -> {
-                        isSyncing = false
-                        refresh()
-                        // Optionally handle failure, e.g., log or partial refresh
+                        if (event.source == BackendEvent.SyncSource.DriveSync)
+                        {
+                            isSyncing = false
+                            refresh()
+                            // Optionally handle failure, e.g., log or partial refresh
+                        }
                     }
                     is BackendEvent.DriveEvent.BatchReceived -> {
                         if (!isSyncing) {
                             val conversationFiles = event.batchData.filter {
                                 it.fileMetadata.appData.fileType == CHAT_CONVERSATION_FILE_TYPE
                             }
+                            val messageFiles = event.batchData.filter {
+                                it.fileMetadata.appData.fileType == CHAT_MESSAGE_FILE_TYPE
+                            }
 
                             if (!conversationFiles.isEmpty())
-                                processBatchIncrementally(conversationFiles)
+                                processConversationBatchIncrementally(conversationFiles)
+
+                            if (!messageFiles.isEmpty())
+                                processMessageBatchIncrementally(conversationFiles)
                         }
                         // Ignore during sync; refresh() will cover it post-Completed
                     }
@@ -75,14 +85,84 @@ class ConversationService(
         }
     }
 
-    suspend fun processBatchIncrementally(conversationFiles: List<HomebaseFile>)
+    suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>)
+    {
+        // For each file in the batch, map to model (fetch last message from DB if needed)
+        val incomingMessages = messageFiles.map { file ->
+            ChatMessageReaderService.mapToMessageData(file)
+        }
+
+        for (m in incomingMessages)
+        {
+            val matchingConversation = _conversations.value.find { it.id == m.id }
+            if (matchingConversation != null) {
+                updateConversationFromNewMessage(matchingConversation, m)
+            }
+            else
+                Logger.e { "BOOM" }
+        }
+
+        // Sort by descending timestamp (adjust based on your UI needs)
+        val sortedList = _conversations.value.sortedByDescending { it.timestamp }
+        _conversations.value = sortedList
+    }
+
+    suspend fun updateConversationFromNewMessage(c : ConversationUiModel, m : MessageUiModel)
+    {
+        if (m.timestamp > c.timestamp)
+        {
+            c.unreadCount++;
+            c.timestamp = m.timestamp
+            c.lastMessage = m.content.truncateToCodePoints(40) // TODO: Global constant
+        }
+    }
+
+
+    suspend fun processConversationBatchIncrementally(conversationFiles: List<HomebaseFile>)
     {
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingConversations = conversationFiles.map { file ->
             mapToConversation(file, null)
         }
 
-        // Merge the new incomingConversations
+        for (c in incomingConversations)
+        {
+            val matchingConversation = _conversations.value.find { it.id == c.id }
+            if (matchingConversation == null)
+                insertNewConversation(c)
+            else
+                updateConversation(matchingConversation, c)
+        }
+
+        // Sort by descending timestamp (adjust based on your UI needs)
+        val sortedList = _conversations.value.sortedByDescending { it.timestamp }
+        _conversations.value = sortedList
+    }
+
+    fun insertNewConversation(conversation: ConversationUiModel)
+    {
+        // We should optimize later to not copy the full list
+        val currentList = _conversations.value.toMutableList()
+        currentList.add(conversation)
+
+        _conversations.value = currentList
+    }
+
+    fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel)
+    {
+        // Update the existing conversation
+        if (incoming.timestamp >= existing.timestamp)
+        {
+            existing.copy(
+                name = incoming.name,
+                avatarTiny = incoming.avatarTiny,
+                avatarUrl = incoming.avatarUrl,
+                avatarInitials = incoming.avatarInitials,
+                participants = incoming.participants,
+                timestamp = incoming.timestamp,
+                lastMessage = incoming.lastMessage
+            )
+        }
     }
 
     fun start() {

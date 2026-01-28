@@ -44,7 +44,7 @@ data class ConversationUiModel(  // TODO: Move the data objects / classes into C
     val id: Uuid,
     val name: String,
     var lastMessage: String,
-    var timestamp: Instant,
+    var timestamp: Instant, // Timestamp of the last message in this convo
     var unreadCount: Int = 0,
     val avatarInitials: String,
     val avatarUrl: String = "",
