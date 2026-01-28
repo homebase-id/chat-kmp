@@ -76,7 +76,7 @@ class ConversationService(
                                 processConversationBatchIncrementally(conversationFiles)
 
                             if (!messageFiles.isEmpty())
-                                processMessageBatchIncrementally(conversationFiles)
+                                processMessageBatchIncrementally(messageFiles)
                         }
                         // Ignore during sync; refresh() will cover it post-Completed
                     }
@@ -87,14 +87,20 @@ class ConversationService(
 
     suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>)
     {
+        if (messageFiles.isEmpty())
+            throw IllegalArgumentException("It can't be empty")
+
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingMessages = messageFiles.map { file ->
             ChatMessageReaderService.mapToMessageData(file)
         }
 
+        if (messageFiles.size != incomingMessages.size)
+            throw IllegalArgumentException("Size mismatch - conversion problem")
+
         for (m in incomingMessages)
         {
-            val matchingConversation = _conversations.value.find { it.id == m.id }
+            val matchingConversation = _conversations.value.find { it.id == m.conversationId }
             if (matchingConversation != null) {
                 updateConversationFromNewMessage(matchingConversation, m)
             }
