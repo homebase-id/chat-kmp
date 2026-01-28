@@ -68,11 +68,15 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.chat.data.Message
+import id.homebase.chat.widget.AttachmentOptions
+import id.homebase.chat.widget.AttachmentOptionsDisplay
 import id.homebase.chat.widget.ConversationAvatarItem
 import id.homebase.chat.widget.ConversationItem
 import id.homebase.chat.widget.ConversationMenu
@@ -88,6 +92,7 @@ import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.keyboardAsState
 import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
@@ -354,36 +359,36 @@ fun ChatListPane(
                     if (!iconOnlyMode) {
                         TopAppBar(
                             title = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                AvatarImage(
-                                    avatarUrl = null,
-                                    avatarInitials = "CH",
-                                    size = 32.dp,
-                                    fontSize = 12.sp,
-                                    onClick = {
-                                        onProfileClick()
-                                    })
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Text(
-                                    text = stringResource(MR.string.app_name),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }, actions = {
-                            IconButton(onClick = {
-                                onUiAction(ChatListUiAction.NewChatClicked)
-                            }) {
-                                Icon(
-                                    imageVector = FeatherEdit,
-                                    contentDescription = stringResource(MR.string.chat_new_conversation)
-                                )
-                            }
-                        }, colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    AvatarImage(
+                                        avatarUrl = null,
+                                        avatarInitials = "CH",
+                                        size = 32.dp,
+                                        fontSize = 12.sp,
+                                        onClick = {
+                                            onProfileClick()
+                                        })
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Text(
+                                        text = stringResource(MR.string.app_name),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }, actions = {
+                                IconButton(onClick = {
+                                    onUiAction(ChatListUiAction.NewChatClicked)
+                                }) {
+                                    Icon(
+                                        imageVector = FeatherEdit,
+                                        contentDescription = stringResource(MR.string.chat_new_conversation)
+                                    )
+                                }
+                            }, colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            )
                         )
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -542,12 +547,18 @@ fun ChatDetailPane(
     onScrollPositionChanged: (conversationId: String, index: Int, offset: Int) -> Unit,
     showBackButton: Boolean,
 ) {
-    var showMenu by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    var showConversationMenu by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    var showAttachmentSheet by remember { mutableStateOf(false) }
+    val isKeyboardVisible by keyboardAsState()
+    var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
+    val focusManager = LocalFocusManager.current
 
-    // Track previous message count to detect new messages
-    val previousMessageCount = remember { mutableStateOf(messages.size) }
+    // Track previous message count to detect new messages where want to scroll to bottom and not restore scroll
+    val previousMessageCount = remember(conversation.id) { mutableStateOf(messages.size) }
 
     // Restore scroll position once when conversation changes and messages are loaded
     LaunchedEffect(conversation.id, messages.size) {
@@ -573,13 +584,13 @@ fun ChatDetailPane(
     val groupedMessages = remember(messages) {
         val timezone = TimeZone.currentSystemDefault()
         messages.groupBy { message ->
-                val date = message.timestamp.toLocalDateTime(timezone).date
-                date
-            }.map { (date, msgs) ->
-                MessageSectionItem(
-                    firstMessageTime = msgs.first().timestamp, messages = msgs, date = date
-                )
-            }.sortedBy { it.date }
+            val date = message.timestamp.toLocalDateTime(timezone).date
+            date
+        }.map { (date, msgs) ->
+            MessageSectionItem(
+                firstMessageTime = msgs.first().timestamp, messages = msgs, date = date
+            )
+        }.sortedBy { it.date }
     }
 
     // Calculate total items including date headers
@@ -590,67 +601,112 @@ fun ChatDetailPane(
     Scaffold(topBar = {
         TopAppBar(
             title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AvatarImage(
-                    avatarUrl = conversation.avatarUrl,
-                    avatarInitials = conversation.avatarInitials,
-                    size = 32.dp,
-                    fontSize = 12.sp,
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(
-                    text = conversation.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }, navigationIcon = {
-            if (showBackButton) {
-                IconButton(onClick = onBackClick) {
-                    Icon(
-                        imageVector = Icons.Default.ChevronLeft, contentDescription = "Back"
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AvatarImage(
+                        avatarUrl = conversation.avatarUrl,
+                        avatarInitials = conversation.avatarInitials,
+                        size = 32.dp,
+                        fontSize = 12.sp,
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = conversation.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
-            }
-        }, actions = {
-            IconButton(onClick = {
-                showMenu = true
-            }) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "More options"
-                )
-            }
-            ConversationMenu(
-                showMenu = showMenu,
-                conversationId = conversation.id,
-                onDelete = { showMenu = false },
-                dismissMenu = { showMenu = false })
-        }, colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        )
+            }, navigationIcon = {
+                if (showBackButton) {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            imageVector = Icons.Default.ChevronLeft, contentDescription = "Back"
+                        )
+                    }
+                }
+            }, actions = {
+                IconButton(onClick = {
+                    showConversationMenu = true
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "More options"
+                    )
+                }
+                ConversationMenu(
+                    showMenu = showConversationMenu,
+                    conversationId = conversation.id,
+                    onDelete = { showConversationMenu = false },
+                    dismissMenu = { showConversationMenu = false })
+            }, colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            )
         )
     }, bottomBar = {
         Surface(
             shadowElevation = 8.dp, tonalElevation = 0.dp
         ) {
-            MessageInputBar(
-                onSendMessage = {
-                    if (it.isNotBlank()) {
-                        onSendMessage(it)
-                        // Scroll to bottom after sending
-                        coroutineScope.launch {
-                            listState.animateScrollToItem(totalItems - 1)
+            Column {
+                MessageInputBar(
+                    focusRequester = focusRequester,
+                    onSendMessage = {
+                        if (it.isNotBlank()) {
+                            onSendMessage(it)
+                            // Scroll to bottom after sending
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(totalItems - 1)
+                            }
+                        }
+                    },
+                    onAddAttachmentClick = {
+                        if (showAttachmentSheet) {
+                            showAttachmentSheet = false
+                            if (wasKeyboardVisible) {
+                                focusRequester.requestFocus()
+                                keyboardController?.show()
+                            }
+                        } else {
+                            if (isKeyboardVisible) {
+                                wasKeyboardVisible = true
+                                focusManager.clearFocus()
+                                keyboardController?.hide()
+                            } else {
+                                wasKeyboardVisible = false
+                            }
+                            showAttachmentSheet = true
                         }
                     }
-                },
-            )
+                )
+
+                AttachmentOptionsDisplay(
+                    visible = showAttachmentSheet,
+                    height = 400.dp,
+                ) {
+                    AttachmentOptions(
+                        onImageClick = {
+                            showAttachmentSheet = false
+                            // Handle image selection
+                        },
+                        onFileClick = {
+                            showAttachmentSheet = false
+                            // Handle file selection
+                        },
+                        onCameraClick = {
+                            showAttachmentSheet = false
+                            // Handle camera
+                        },
+                        onLocationClick = {
+                            showAttachmentSheet = false
+                            // Handle location
+                        }
+                    )
+                }
+            }
         }
     }) { innerPadding ->
         Box(
-            modifier = Modifier.fillMaxSize().padding(innerPadding)
+            modifier = Modifier.fillMaxSize(1f).padding(innerPadding)
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
             LazyColumn(
@@ -717,7 +773,8 @@ fun ChatDetailPane(
                 }
             }
             HomebaseVerticalScrollbar(
-                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(), state = listState
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                state = listState
             )
         }
     }

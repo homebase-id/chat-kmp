@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.FormatListNumbered
@@ -49,6 +50,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -72,6 +75,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_new_message_placeholder
 import org.jetbrains.compose.resources.stringResource
@@ -79,9 +83,10 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun MessageInputBar(
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester,
     onSmileyClick: () -> Unit = {},
-    onPlusClick: () -> Unit = {},
-    onSendMessage: (String) -> Unit = {}
+    onAddAttachmentClick: () -> Unit,
+    onSendMessage: (String) -> Unit,
 ) {
     val textFieldState = rememberRichTextState()
     //textFieldState.config.linkColor = Color.Blue
@@ -143,10 +148,11 @@ fun MessageInputBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp),
+                    .padding(bottom = 16.dp)
+                    .focusRequester(focusRequester),
                 state = textFieldState,
                 onSmileyClick = onSmileyClick,
-                onPlusClick = onPlusClick,
+                onAddAttachmentClick = onAddAttachmentClick,
                 sendMessage = {
                     showExpanded = false
                     sendMessage()
@@ -157,12 +163,12 @@ fun MessageInputBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp),
+                    .padding(bottom = 16.dp)
+                    .focusRequester(focusRequester),
                 state = textFieldState,
                 onSmileyClick = onSmileyClick,
-                onMediaClick = onPlusClick,
-                onFileClick = onPlusClick,
-                onCameraClick = onPlusClick,
+                onAddAttachmentClick = onAddAttachmentClick,
+                onCameraClick = onAddAttachmentClick,
                 onSendMessage = { sendMessage() },
             )
         }
@@ -175,7 +181,7 @@ fun MessageTextFieldExpanded(
     modifier: Modifier = Modifier,
     state: RichTextState,
     onSmileyClick: () -> Unit,
-    onPlusClick: () -> Unit,
+    onAddAttachmentClick: () -> Unit,
     sendMessage: () -> Unit
 ) {
     var showDropdownMenu by remember { mutableStateOf(false) }
@@ -218,9 +224,7 @@ fun MessageTextFieldExpanded(
             }
             Box {
                 IconButton(
-                    onClick = {
-                        showDropdownMenu = true
-                    }
+                    onClick = onAddAttachmentClick,
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
@@ -237,7 +241,7 @@ fun MessageTextFieldExpanded(
                             text = { Text("Photo") },
                             onClick = {
                                 showDropdownMenu = false
-                                onPlusClick()
+                                onAddAttachmentClick()
                             },
                             leadingIcon = {
                                 Icon(Icons.Default.Photo, contentDescription = null)
@@ -247,7 +251,7 @@ fun MessageTextFieldExpanded(
                             text = { Text("File") },
                             onClick = {
                                 showDropdownMenu = false
-                                onPlusClick()
+                                onAddAttachmentClick()
                             },
                             leadingIcon = {
                                 Icon(Icons.Default.AttachFile, contentDescription = null)
@@ -280,8 +284,7 @@ fun MessageTextFieldCompact(
     modifier: Modifier = Modifier,
     state: RichTextState,
     onSmileyClick: () -> Unit,
-    onMediaClick: () -> Unit,
-    onFileClick: () -> Unit,
+    onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
     onSendMessage: () -> Unit
 ) {
@@ -327,11 +330,22 @@ fun MessageTextFieldCompact(
                     }
                 },
                 trailingIcon = {
-                    if (!isDesktopOrWeb() && state.annotatedString.isNotBlank()) {
-                        AddAttachmentIcon(
-                            onMediaClick = onMediaClick,
-                            onFileClick = onFileClick,
-                        )
+                    if (state.annotatedString.isNotBlank()) {
+                        IconButton(
+                            onClick = onAddAttachmentClick,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add attachment"
+                            )
+                        }
+                    } else if (isMobile()) {
+                        IconButton(onClick = onCameraClick) {
+                            Icon(
+                                imageVector = Icons.Default.PhotoCamera,
+                                contentDescription = "Camera"
+                            )
+                        }
                     }
                 },
                 shape = RoundedCornerShape(12.dp),
@@ -362,10 +376,17 @@ fun MessageTextFieldCompact(
                     )
                 }
             } else {
-                AddAttachmentIcon(
-                    onMediaClick = onMediaClick,
-                    onFileClick = onFileClick,
-                )
+                IconButton(
+                    onClick = onAddAttachmentClick,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor =  HomebaseTheme.extendedColors.bubbleSentSurface,
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add attachment"
+                    )
+                }
             }
         }
     }
@@ -489,6 +510,7 @@ fun RichTextEditorButtons(
 fun AddAttachmentIcon(
     onMediaClick: () -> Unit,
     onFileClick: () -> Unit,
+    containerColor: Color = Color.Unspecified,
 ) {
     Box {
         var showDropdownMenu by remember { mutableStateOf(false) }
@@ -496,7 +518,10 @@ fun AddAttachmentIcon(
             onClick = {
                 // TODO - handle different on mobile
                 showDropdownMenu = true
-            }
+            },
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = containerColor,
+            )
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
