@@ -5,6 +5,11 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 sealed class Route {
+
+    @Serializable
+    @SerialName("login")
+    data object Login : Route()
+
     @Serializable @SerialName("home") data object Home : Route()
     @Serializable @SerialName("settings") data object Settings : Route()
     @Serializable @SerialName("chat") data object ChatList : Route()

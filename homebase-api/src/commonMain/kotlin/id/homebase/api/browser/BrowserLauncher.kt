@@ -1,0 +1,29 @@
+package id.homebase.api.browser
+
+import kotlinx.coroutines.CoroutineScope
+
+/**
+ * Platform-specific browser launching for OAuth/authentication flows.
+ *
+ * Platform implementations:
+ * - Android: Chrome Custom Tabs
+ * - iOS: ASWebAuthenticationSession
+ * - Desktop: System browser with local callback server
+ */
+expect object BrowserLauncher {
+    /**
+     * Launch browser for OAuth/authentication flow.
+     *
+     * @param url The authorization URL to open
+     * @param scope CoroutineScope for async callback handling (iOS/Desktop need this)
+     */
+    fun launchAuthBrowser(url: String, scope: CoroutineScope)
+
+    /**
+     * Open a URL in the system browser without OAuth callback handling. Used for simple external
+     * URLs like permission extension pages.
+     *
+     * @param url The URL to open
+     */
+    fun openUrl(url: String)
+}

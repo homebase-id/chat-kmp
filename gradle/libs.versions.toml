@@ -40,6 +40,7 @@ runner = "1.0.2"
 espressoCore = "3.0.2"
 appcompatV7 = "28.0.0"
 uiToolingPreview = "1.10.1"
+kotlinStdlib = "2.3.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -123,6 +124,7 @@ coil3-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref
 coil3-network = { group = "io.coil-kt.coil3", name = "coil-network-ktor3", version.ref = "coil3" }
 coil3-video = { group = "io.coil-kt.coil3", name = "coil-video", version.ref = "coil3" } # Android only
 coil3-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil3" }
+kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlinStdlib" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
@@ -134,3 +136,4 @@ kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref =
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+androidLint = { id = "com.android.lint", version.ref = "agp" }

@@ -1,0 +1,24 @@
+import kotlin.uuid.Uuid;
+
+CREATE TABLE IF NOT EXISTS KeyValue(
+   key BLOB AS Uuid PRIMARY KEY,
+   data BLOB NOT NULL
+);
+
+-- Upsert a value
+upsertValue:
+INSERT INTO KeyValue(key, data)
+VALUES (?,?)
+ON CONFLICT(key) DO UPDATE
+SET data = excluded.data;
+
+
+-- Select a value
+selectByKey:
+SELECT * FROM KeyValue
+WHERE key = ?;
+
+-- Delete a value
+deleteByKey:
+DELETE FROM KeyValue
+WHERE key = ?;

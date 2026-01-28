@@ -50,6 +50,10 @@ fun SettingsScreen(
                 is SettingsUiEvent.SetLanguage -> {
                     setPlatformSystemLocale(event.language)
                 }
+
+                SettingsUiEvent.LoggedOut -> {
+                    // navigation handled at AppNavHost / auth gate
+                }
             }
         }
     }
@@ -100,7 +104,27 @@ fun SettingsUi(
                 }
             }
 
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onAction(SettingsUiAction.LogoutClicked) }
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Log out",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.weight(1f))
+
         }
     }
 }

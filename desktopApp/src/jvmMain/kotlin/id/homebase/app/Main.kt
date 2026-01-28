@@ -3,6 +3,9 @@ package id.homebase.app
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import id.homebase.api.browser.DesktopAppFocusManager
+import id.homebase.api.sync.database.DatabaseDriverFactory
+import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.App
 import id.homebase.core.di.allModules
 import id.homebase.core.settings.UserPreferences
@@ -33,6 +36,10 @@ fun main() = application {
         height = config.windowHeightDp,
     )
 
+    runBlocking {
+        DatabaseManager.initialize { DatabaseDriverFactory().createDriver() }
+    }
+
     Window(
         onCloseRequest = {
             try {
@@ -45,10 +52,11 @@ fun main() = application {
             }
             exitApplication()
         },
-        alwaysOnTop = true,
+        alwaysOnTop = false, //sorry anders, just change it back but it was driving me crazy
         title = "Homebase Chat",
         state = state,
     ) {
+        DesktopAppFocusManager.registerWindowProvider { window }
         App()
     }
 }

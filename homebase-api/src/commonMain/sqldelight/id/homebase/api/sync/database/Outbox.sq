@@ -1,0 +1,101 @@
+import kotlin.uuid.Uuid;
+
+CREATE TABLE IF NOT EXISTS Outbox(
+   rowId INTEGER PRIMARY KEY AUTOINCREMENT,
+   driveId BLOB AS Uuid NOT NULL,
+   fileId BLOB AS Uuid NOT NULL,
+   dependencyFileId BLOB AS Uuid,
+   priority INTEGER NOT NULL,
+   lastAttempt INTEGER NOT NULL, -- UnixTimeUtc
+   nextRunTime INTEGER NOT NULL, -- UnixTimeUtc
+   checkOutCount INTEGER NOT NULL,
+   checkOutStamp INTEGER UNIQUE, -- Allow NULL
+   uploadType INTEGER NOT NULL,
+   json BLOB NOT NULL,
+   files BLOB,
+
+   -- TODO: Is it unique? How about the same file queued many times?
+   UNIQUE(driveId,fileId)
+);
+
+-- Insert into outbox
+insert:
+INSERT INTO Outbox(driveId, fileId, dependencyFileId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType,json,files)
+VALUES (?,?, ?, ?, ?, ?, ?, ?,?, ?, ?);
+
+
+-- Checkout for sending
+checkout:
+UPDATE Outbox
+SET checkOutStamp=:checkOutStamp
+WHERE checkOutStamp IS NULL AND
+    rowId = (
+    SELECT rowId
+    FROM Outbox AS o
+    WHERE o.checkOutStamp IS NULL
+        AND o.nextRunTime <= :now
+        AND ((o.dependencyFileId IS NULL)
+            OR (NOT EXISTS (
+                  SELECT 1
+                  FROM Outbox AS ib
+                  WHERE ib.fileId = o.dependencyFileId)
+        )
+    )
+    ORDER BY o.priority ASC, o.nextRunTime ASC
+    LIMIT 1
+)
+RETURNING rowId, driveId, fileId, dependencyFileId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType, json, files;
+
+-- What's the lowest timestamp of the next item to process in the outbox?
+nextScheduled:
+SELECT nextRunTime
+FROM Outbox AS o
+WHERE o.checkOutStamp IS NULL
+    AND (
+        (o.dependencyFileId IS NULL)
+        OR (NOT EXISTS (
+              SELECT 1
+              FROM Outbox AS ib
+              WHERE ib.fileId = o.dependencyFileId
+        ))
+    )
+ORDER BY o.priority ASC, o.nextRunTime ASC
+LIMIT 1;
+
+
+-- Checkin as failed (when sending didn't work)
+checkInFailed:
+UPDATE Outbox
+SET checkOutStamp=NULL,
+    checkOutCount=checkOutCount+1,
+    nextRunTime=:nextRunTime
+WHERE checkOutStamp=:checkOutStamp;
+
+-- When the app starts, clear all checked out items
+clearCheckedOut:
+UPDATE Outbox
+SET checkOutStamp=NULL,
+    checkOutCount=checkOutCount+1,
+    nextRunTime=42 -- re-run as soon as possible
+WHERE checkOutStamp IS NOT NULL;
+
+-- Delete a row by rowId
+deleteByRowId:
+DELETE FROM Outbox
+WHERE rowId = ?;
+
+-- Delete a row by driveId,fileId
+deleteBy:
+DELETE FROM Outbox
+WHERE driveId = ? AND fileId = ?;
+
+
+-- Select checked out item
+selectCheckedOut:
+SELECT rowId,driveId,fileId,dependencyFileId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
+FROM Outbox
+WHERE checkOutStamp = ?;
+
+-- Get count
+count:
+SELECT count(*) FROM Outbox;

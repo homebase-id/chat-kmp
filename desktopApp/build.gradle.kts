@@ -48,6 +48,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":homebase-api"))
             implementation(project(":homebase-common"))
             implementation(project(":homebase-core"))
             implementation(project(":homebase-chat"))
@@ -70,6 +71,7 @@ kotlin {
             implementation(libs.jetbrains.compose.desktop.jvm.linux.arm64)
             implementation(libs.jetbrains.compose.desktop.jvm.linux.x64)
             implementation(libs.kotlinx.coroutinesSwing)
+            implementation(libs.sqldelight.sqlite.driver)
         }
 
         commonTest.dependencies {

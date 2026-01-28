@@ -78,8 +78,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import id.homebase.chat.data.Contact
-import id.homebase.chat.data.Message
+import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatTimestamp
@@ -92,6 +92,7 @@ import id.homebase.resources.chat_select_a_conversation
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @Composable
 fun ChatListScreen(
@@ -124,7 +125,7 @@ fun ChatListUi(
     onAction: (ChatListUiAction) -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
-    val scaffoldNavigator = rememberListDetailPaneScaffoldNavigator<String>()
+    val scaffoldNavigator = rememberListDetailPaneScaffoldNavigator<Uuid>()
     val scope = rememberCoroutineScope()
     val backNavigationBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
 
@@ -183,7 +184,7 @@ fun ChatListUi(
                     //   scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
 
                     ChatListPane(
-                        conversations = uiState.conversations,
+                        conversationViewModels = uiState.conversationViewModels,
                         selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
                         onConversationClick = { conversationId ->
                             onAction(ChatListUiAction.ConversationClicked(conversationId))
@@ -202,11 +203,11 @@ fun ChatListUi(
         detailPane = {
             AnimatedPane {
                 scaffoldNavigator.currentDestination?.contentKey?.let { conversationId ->
-                    val conversation = uiState.conversations.find { it.id == conversationId }
+                    val conversation = uiState.conversationViewModels.find { it.id == conversationId }
                     if (conversation != null) {
                         ChatDetailPane(
-                            conversation = conversation,
-                            messages = uiState.currentConversationMessages,
+                            conversationViewModel = conversation,
+                            messageViewModels = uiState.currentConversationMessageViewModels,
                             onBackClick = {
                                 scope.launch {
                                     scaffoldNavigator.navigateBack(backNavigationBehavior)
@@ -229,10 +230,10 @@ fun ChatListUi(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListPane(
-    conversations: ImmutableList<Conversation>,
-    onConversationClick: (String) -> Unit,
+    conversationViewModels: ImmutableList<ConversationUiModel>,
+    onConversationClick: (Uuid) -> Unit,
     onNewChatClick: () -> Unit,
-    selectedConversationId: String? = null,
+    selectedConversationId: Uuid? = null,
 ) {
     Scaffold(
         topBar = {
@@ -284,9 +285,9 @@ fun ChatListPane(
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
         ) {
-            items(conversations.toList()) { conversation ->
+            items(conversationViewModels.toList()) { conversation ->
                 ConversationItem(
-                    conversation = conversation,
+                    conversationViewModel = conversation,
                     onClick = { onConversationClick(conversation.id) },
                     isSelected = conversation.id == selectedConversationId
                 )
@@ -297,7 +298,7 @@ fun ChatListPane(
 
 @Composable
 fun ConversationItem(
-    conversation: Conversation,
+    conversationViewModel: ConversationUiModel,
     onClick: () -> Unit,
     isSelected: Boolean = false,
 ) {
@@ -313,8 +314,8 @@ fun ConversationItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         AvatarImage(
-            avatarUrl = conversation.avatarUrl,
-            avatarInitials = conversation.avatarInitials,
+            avatarUrl = conversationViewModel.avatarUrl,
+            avatarInitials = conversationViewModel.avatarInitials,
         )
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -329,9 +330,9 @@ fun ConversationItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = conversation.name,
+                    text = conversationViewModel.name,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                    fontWeight = if (conversationViewModel.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -340,13 +341,13 @@ fun ConversationItem(
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Text(
-                    text = formatTimestamp(conversation.timestamp),
+                    text = formatTimestamp(conversationViewModel.timestamp),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (conversation.unreadCount > 0)
+                    color = if (conversationViewModel.unreadCount > 0)
                         MaterialTheme.colorScheme.primary
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (conversation.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
+                    fontWeight = if (conversationViewModel.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
                 )
             }
 
@@ -358,7 +359,7 @@ fun ConversationItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = conversation.lastMessage,
+                    text = conversationViewModel.lastMessage,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -366,7 +367,7 @@ fun ConversationItem(
                     modifier = Modifier.weight(1f)
                 )
 
-                if (conversation.unreadCount > 0) {
+                if (conversationViewModel.unreadCount > 0) {
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Badge(
@@ -375,7 +376,7 @@ fun ConversationItem(
                     ) {
                         Text(
                             modifier = Modifier.padding(2.dp),
-                            text = conversation.unreadCount.toString(),
+                            text = conversationViewModel.unreadCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -389,8 +390,8 @@ fun ConversationItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatDetailPane(
-    conversation: Conversation,
-    messages: ImmutableList<Message>,
+    conversationViewModel: ConversationUiModel,
+    messageViewModels: ImmutableList<MessageUiModel>,
     onBackClick: () -> Unit,
     onSendMessage: (String) -> Unit,
     showBackButton: Boolean,
@@ -406,14 +407,14 @@ fun ChatDetailPane(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         AvatarImage(
-                            avatarUrl = conversation.avatarUrl,
-                            avatarInitials = conversation.avatarInitials,
+                            avatarUrl = conversationViewModel.avatarUrl,
+                            avatarInitials = conversationViewModel.avatarInitials,
                             size = 32.dp,
                             fontSize = 12.sp,
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = conversation.name,
+                            text = conversationViewModel.name,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -440,7 +441,7 @@ fun ChatDetailPane(
                     }
                     ConversationMenu(
                         showMenu = showMenu,
-                        conversationId = conversation.id,
+                        conversationId = conversationViewModel.id,
                         onDelete = { showMenu = false },
                         dismissMenu = { showMenu = false }
                     )
@@ -518,14 +519,14 @@ fun ChatDetailPane(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             AvatarImage(
-                                avatarUrl = conversation.avatarUrl,
-                                avatarInitials = conversation.avatarInitials,
+                                avatarUrl = conversationViewModel.avatarUrl,
+                                avatarInitials = conversationViewModel.avatarInitials,
                                 size = 72.dp,
                                 fontSize = 24.sp,
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = conversation.name,
+                                text = conversationViewModel.name,
                                 style = MaterialTheme.typography.headlineSmall,
                             )
                         }
@@ -535,14 +536,14 @@ fun ChatDetailPane(
                     Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                items(messages.toList()) { message ->
+                items(messageViewModels.toList()) { message ->
                     if (message.isCurrentUser) {
                         SentMessageBubble(
-                            message = message,
+                            messageViewModel = message,
                         )
                     } else {
                         ReceivedMessageBubble(
-                            message = message,
+                            messageViewModel = message,
                         )
                     }
                 }
@@ -557,7 +558,7 @@ fun ChatDetailPane(
 
 @Composable
 fun SentMessageBubble(
-    message: Message,
+    messageViewModel: MessageUiModel,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -588,7 +589,7 @@ fun SentMessageBubble(
                     }
                     SentMessageMenu(
                         showMenu = showMenu,
-                        messageId = message.id,
+                        messageId = messageViewModel.id.toString(),
                         onDelete = { showMenu = false },
                         dismissMenu = { showMenu = false }
                     )
@@ -596,8 +597,8 @@ fun SentMessageBubble(
                 ChatBubble(
                     modifier = Modifier
                         .heightIn(min = 48.dp),
-                    text = message.content,
-                    timestamp = formatTimestamp(message.timestamp),
+                    text = messageViewModel.content,
+                    timestamp = formatTimestamp(messageViewModel.timestamp),
                     sentByYou = true,
                     onLongClick = {
                         showMenu = true
@@ -610,7 +611,7 @@ fun SentMessageBubble(
 
 @Composable
 fun ReceivedMessageBubble(
-    message: Message,
+    messageViewModel: MessageUiModel,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -629,8 +630,8 @@ fun ReceivedMessageBubble(
                 ChatBubble(
                     modifier = Modifier
                         .heightIn(min = 48.dp),
-                    text = message.content,
-                    timestamp = formatTimestamp(message.timestamp),
+                    text = messageViewModel.content,
+                    timestamp = formatTimestamp(messageViewModel.timestamp),
                     sentByYou = false,
                     onLongClick = {
                         showMenu = true
@@ -650,7 +651,7 @@ fun ReceivedMessageBubble(
                     }
                     ReceivedMessageMenu(
                         showMenu = showMenu,
-                        messageId = message.id,
+                        messageId = messageViewModel.id.toString(),
                         onDelete = { showMenu = false },
                         dismissMenu = { showMenu = false }
                     )
@@ -792,10 +793,10 @@ fun EmptyDetailPane() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewChatPane(
-    contacts: ImmutableList<Contact>,
+    contacts: ImmutableList<ContactUiModel>,
     searchQuery: String,
     onBackClick: () -> Unit,
-    onContactClick: (Contact) -> Unit,
+    onContactClick: (ContactUiModel) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
 ) {
     val filteredContacts = remember(contacts, searchQuery) {
@@ -877,7 +878,7 @@ fun NewChatPane(
 
 @Composable
 fun ContactItem(
-    contact: Contact,
+    contact: ContactUiModel,
     onClick: () -> Unit,
 ) {
     Row(
@@ -918,8 +919,8 @@ fun ContactItem(
 @Composable
 fun ConversationMenu(
     showMenu: Boolean,
-    conversationId: String,
-    onDelete: (conversationId: String) -> Unit,
+    conversationId: Uuid,
+    onDelete: (conversationId: Uuid) -> Unit,
     dismissMenu: () -> Unit,
 ) {
     DropdownMenu(

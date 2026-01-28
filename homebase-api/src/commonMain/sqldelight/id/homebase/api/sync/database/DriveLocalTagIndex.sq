@@ -1,0 +1,32 @@
+import kotlin.uuid.Uuid;
+
+CREATE TABLE IF NOT EXISTS DriveLocalTagIndex(
+   rowId INTEGER PRIMARY KEY AUTOINCREMENT,
+   identityId BLOB AS Uuid NOT NULL,
+   driveId BLOB AS Uuid NOT NULL,
+   fileId BLOB AS Uuid NOT NULL,
+   tagId BLOB AS Uuid NOT NULL,
+   UNIQUE(identityId,driveId,fileId,tagId)
+);
+
+-- Insert a local tag
+insertLocalTag:
+INSERT INTO DriveLocalTagIndex(identityId, driveId, fileId, tagId)
+VALUES (?, ?, ?, ?);
+
+-- Select local tags for a file
+selectByFile:
+SELECT * FROM DriveLocalTagIndex
+WHERE identityId = ? AND driveId = ? AND fileId = ?;
+
+-- Delete all local tags (for testing)
+deleteByFile:
+DELETE FROM DriveLocalTagIndex
+WHERE identityId = ? AND driveId = ? AND fileId = ?;
+
+-- Delete all records (for testing)
+deleteAll:
+DELETE FROM DriveLocalTagIndex;
+
+countAll:
+SELECT count(*) FROM DriveLocalTagIndex;
