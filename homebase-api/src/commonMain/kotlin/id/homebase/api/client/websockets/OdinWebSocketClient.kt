@@ -297,6 +297,7 @@ class OdinWebSocketClient(
         val identityId = credentialsManager.getActiveCredentials()!!.getIdentityId()
 
         try {
+            // Can be done in a F&F thread to save 50ms
             fileHeaderProcessor.baseUpsertEntryZapZap(
                 identityId = identityId,
                 driveId = theFileNotification.targetDrive!!.alias,
@@ -317,12 +318,12 @@ class OdinWebSocketClient(
             )
         )
 
-        eventBus.emit(
-            BackendEvent.DriveEvent.Completed(
-                theFile.driveId,
-                1
-            )
-        )
+//        eventBus.emit(
+//            BackendEvent.DriveEvent.Completed(
+//                theFile.driveId,
+//                1
+//            )
+//        )
     }
 
     private suspend fun handleAuthError(notification: ClientNotificationPayload) {

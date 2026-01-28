@@ -8,6 +8,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.chat.ConversationUiModel
 import id.homebase.chat.config.chatTargetDrive
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +20,6 @@ import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
 
 const val CHAT_CONVERSATION_FILE_TYPE: Int = 8888
-// const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889 // TODO: OBSOLETE - We switched to localAppData
 const val ConversationWithYourselfId = "e4ef2382-ab3c-405d-a8b5-ad3e09e980dd"
 const val CONVERSATION_PAYLOAD_KEY = "convo_pk" // TODO: Explain what this represents
 const val CONVERSATION_IMAGE_KEY = "convo_img"// TODO: Explain what this represents (and where's the tiny)
@@ -33,19 +33,56 @@ class ConversationService(
 
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow<List<ConversationUiModel>>(emptyList())
+    private var isSyncing = false  // Track if chat drive sync is in progress
 
     val conversations: StateFlow<List<ConversationUiModel>> = _conversations.asStateFlow()
 
     init {
         scope.launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.Completed &&
-                    event.driveId == chatDrive
-                ) {
-                    refresh()
+                if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
+
+                when (event) {
+                    is BackendEvent.DriveEvent.Started -> {
+                        isSyncing = true
+                    }
+                    is BackendEvent.DriveEvent.Completed -> {
+                        isSyncing = false
+                        // After the drive has been synchronized we fetch all conversations once
+                        // and their unread counts
+                        refresh()
+                        // From this point on we need to process all incoming messages / conversations
+                        // so that everything in the client is up to date.
+                    }
+                    is BackendEvent.DriveEvent.Failed -> {
+                        isSyncing = false
+                        refresh()
+                        // Optionally handle failure, e.g., log or partial refresh
+                    }
+                    is BackendEvent.DriveEvent.BatchReceived -> {
+                        if (!isSyncing) {
+                            val conversationFiles = event.batchData.filter {
+                                it.fileMetadata.appData.fileType == CHAT_CONVERSATION_FILE_TYPE
+                            }
+
+                            if (!conversationFiles.isEmpty())
+                                processBatchIncrementally(conversationFiles)
+                        }
+                        // Ignore during sync; refresh() will cover it post-Completed
+                    }
                 }
             }
         }
+    }
+
+    suspend fun processBatchIncrementally(conversationFiles: List<HomebaseFile>)
+    {
+        // For each file in the batch, map to model (fetch last message from DB if needed)
+        val incomingConversations = conversationFiles.map { file ->
+            mapToConversation(file, null)
+        }
+
+        // Merge the new incomingConversations
     }
 
     fun start() {

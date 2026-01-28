@@ -22,7 +22,7 @@ sealed interface  BackendEvent {
         data class Completed(
             override val driveId: Uuid,
             val totalCount: Int
-        ) : DriveEvent  // Only raised by Drive.sync()
+        ) : DriveEvent  // Only raised by Drive.sync() when a drive is fully synced
 
         data class Failed(
             override val driveId: Uuid,

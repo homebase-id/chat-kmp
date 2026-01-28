@@ -73,6 +73,12 @@ class AuthConnectionCoordinator(
 
     private fun handleWsConnect() {
         for (drive in driveSyncs) {
+            // Important note. If we want to display the Conversations right after the app starts
+            // but before the drive syncs then we can call ConversationService.refresh (here?)
+            // and once the drive.sync() is finished it will call it again, causing the UI to update.
+            // But we'd need to check if it throw events for all incoming data, and if it thus updates
+            // anyways, and the Completed->refresh() is duplicate. So in one instance the UI would probably
+            // speed through all the changes, in the other instance, the UI would update once.
             drive.sync()
         }
     }

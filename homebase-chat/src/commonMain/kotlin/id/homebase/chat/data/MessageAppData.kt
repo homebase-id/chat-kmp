@@ -3,14 +3,13 @@ package id.homebase.chat.data
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
 
 /** Data class representing chat message homebaseFile.AppData (parsed from JSON) */
 @Serializable
 data class MessageAppData(
-    /** Optional reply ID if this message is a reply to another message -
-     *  OBSOLETE - only on old messages */
-    val replyId: Uuid? = null,
+    @Transient val replyId: Uuid? = null, // OBSOLETE - needed for old data
     val replyPreview: ReplyPreview? = null,
 
     /** Content of the message - can be a simple string or rich text */
@@ -32,10 +31,10 @@ data class MessageAppData(
         /**
          * Parse JSON string as MessageAppData
          */
-        fun fromMessageAppDataJson(messageAppData: String): MessageAppData {
+        fun fromMessageAppDataJson(messageAppDataJson: String): MessageAppData {
             return try {
                 // Parse JSON as MessageAppData
-                OdinSystemSerializer.deserialize<MessageAppData>(messageAppData)
+                OdinSystemSerializer.deserialize<MessageAppData>(messageAppDataJson)
             } catch (e: Exception) {
                 throw e
             }
@@ -47,8 +46,8 @@ data class MessageAppData(
 data class ReplyPreview(
     val replyUniqueId: Uuid, // FileId of the message that was replied to
     val authorOdinId: String, // frodo.baggins.demo.rocks
-    val message: String, // ~40 chars (IDK how many you use?)
-    val previewThumbnail: EmbeddedThumb
+    val message: String, // chopped chars (IDK how many you use? 40? 80? use truncateToCodePoints(80))
+    val previewThumbnail: EmbeddedThumb // Real thumb via replyUniqueId
 ) // Tiny tiny thumb, can be even smaller than tinyThumb even a 1px color
 
 enum class ChatDeliveryStatus(val value: Int) {
