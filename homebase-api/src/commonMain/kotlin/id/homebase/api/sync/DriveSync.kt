@@ -166,6 +166,7 @@ class DriveSync(
                     keepGoing = queryBatchResponse.hasMoreRows
 
                 } catch (e: Exception) {
+                    Logger.e("Exception on drive $driveId message ${e.message}")
                     eventBus.emit(
                         BackendEvent.DriveEvent.Failed(
                             driveId,
