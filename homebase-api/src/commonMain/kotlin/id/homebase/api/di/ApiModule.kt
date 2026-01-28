@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.youauth.SecurityContextProvider
@@ -31,8 +32,9 @@ val apiModule = module {
     // this creates the HttpClient
     single { HttpClientProvider.create() }
 
-    singleOf(::YouAuthFlowManager)
     singleOf(::CredentialsManager)
+    singleOf(::DriveSyncManager)
+    singleOf(::YouAuthFlowManager)
 
     single { UsernameStorage() }
 

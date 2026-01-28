@@ -15,6 +15,7 @@ import id.homebase.api.crypto.EccKeySize
 import id.homebase.api.crypto.generateEccKeyPair
 import id.homebase.api.crypto.publicKeyToJwkBase64Url
 import id.homebase.api.client.http.UriBuilder
+import id.homebase.api.sync.DriveSyncManager
 import io.ktor.client.HttpClient
 import kotlin.io.encoding.Base64
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +57,7 @@ private data class AuthCodeFlowState(
  * This is the recommended entry point for UI components like LoginViewModel.
  */
 class YouAuthFlowManager(
+    private val driveSyncManager: DriveSyncManager,
     private val credentialsManager: CredentialsManager,
     private val httpClient: HttpClient
 ) {
@@ -304,7 +306,7 @@ class YouAuthFlowManager(
         Logger.i(TAG) { "User logged out" }
 
         credentialsManager.removeActiveCredentials()
-
+        driveSyncManager.clearStorage()
     }
 
     /** Check if authentication is in progress. */

@@ -52,7 +52,7 @@ fun main() = application {
             }
             exitApplication()
         },
-        alwaysOnTop = true,
+        alwaysOnTop = false, //sorry anders, just change it back but it was driving me crazy
         title = "Homebase Chat",
         state = state,
     ) {

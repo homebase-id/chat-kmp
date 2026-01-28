@@ -5,6 +5,8 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.serialization.UuidSerializer
+import io.ktor.utils.io.charsets.Charsets
+import io.ktor.utils.io.core.toByteArray
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
@@ -93,11 +95,20 @@ private suspend fun FileMetadata.decryptAppData(
         throw FileDecryptionException.ContentBase64DecodeFailed(e)
     }
 
+//    val decryptedBytes = try {
+//        keyHeader.decrypt(encryptedBytes)
+//    } catch (e: Throwable) {
+//        throw FileDecryptionException.ContentDecryptionFailed(e)
+//    }
+
     val decryptedBytes = try {
         keyHeader.decrypt(encryptedBytes)
-    } catch (e: Throwable) {
-        throw FileDecryptionException.ContentDecryptionFailed(e)
+    } catch (_: Throwable) {
+        "Decryption Failure".toByteArray(Charsets.UTF_8)
     }
+
+    return withDecryptedContent(decryptedBytes)
+
 
     return withDecryptedContent(decryptedBytes)
 }
