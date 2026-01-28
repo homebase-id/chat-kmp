@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -83,6 +85,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.AvatarImage
+import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_new_conversation
@@ -314,6 +317,7 @@ fun ChatListPane(
     onUiAction: (ChatListUiAction) -> Unit
 ) {
     val searchState = rememberTextFieldState()
+    val listState = rememberLazyListState()
     var filterByUnread by remember { mutableStateOf(false) }
     var selectedFilterConversationId by remember { mutableStateOf<String?>(null) }
     val filteredConversations = remember(conversations, filterByUnread) {
@@ -414,77 +418,85 @@ fun ChatListPane(
             },
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ) { innerPadding ->
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .consumeWindowInsets(innerPadding)
-            ) {
-                if (filterByUnread) {
-                    item {
-                        Text(
-                            text = "Filtered by unread",
-                            modifier = Modifier.padding(24.dp),
-                            style = MaterialTheme.typography.titleSmall
-                        )
+            Box {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .consumeWindowInsets(innerPadding),
+                    state = listState,
+                ) {
+                    if (filterByUnread) {
+                        item {
+                            Text(
+                                text = "Filtered by unread",
+                                modifier = Modifier.padding(24.dp),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                        }
                     }
-                }
-                items(filteredConversations.toList()) { conversation ->
-                    if (iconOnlyMode) {
-                        ConversationAvatarItem(
-                            conversation = conversation,
-                            onClick = {
-                                if (filterByUnread) {
-                                    selectedFilterConversationId = conversation.id
-                                }
-                                onConversationClick(conversation.id)
-                            },
-                            isSelected = conversation.id == selectedConversationId
-                        )
-                    } else {
-                        ConversationItem(
-                            conversation = conversation,
-                            onClick = {
-                                if (filterByUnread) {
-                                    selectedFilterConversationId = conversation.id
-                                }
-                                onConversationClick(conversation.id)
-                            },
-                            isSelected = conversation.id == selectedConversationId
-                        )
+                    items(filteredConversations.toList()) { conversation ->
+                        if (iconOnlyMode) {
+                            ConversationAvatarItem(
+                                conversation = conversation,
+                                onClick = {
+                                    if (filterByUnread) {
+                                        selectedFilterConversationId = conversation.id
+                                    }
+                                    onConversationClick(conversation.id)
+                                },
+                                isSelected = conversation.id == selectedConversationId
+                            )
+                        } else {
+                            ConversationItem(
+                                conversation = conversation,
+                                onClick = {
+                                    if (filterByUnread) {
+                                        selectedFilterConversationId = conversation.id
+                                    }
+                                    onConversationClick(conversation.id)
+                                },
+                                isSelected = conversation.id == selectedConversationId
+                            )
+                        }
                     }
-                }
-                if (filterByUnread) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-                            horizontalArrangement = Arrangement.Center,
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally
+                    if (filterByUnread) {
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                horizontalArrangement = Arrangement.Center,
                             ) {
-                                if (filteredConversations.isEmpty()) {
-                                    Text(
-                                        text = "No unread chats",
-                                        modifier = Modifier.padding(24.dp),
-                                    )
-                                }
-                                ElevatedButton(
-                                    onClick = {
-                                        filterByUnread = false
-                                    }, colors = ButtonDefaults.elevatedButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                                    )
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Text(text = "Clear filter")
+                                    if (filteredConversations.isEmpty()) {
+                                        Text(
+                                            text = "No unread chats",
+                                            modifier = Modifier.padding(24.dp),
+                                        )
+                                    }
+                                    ElevatedButton(
+                                        onClick = {
+                                            filterByUnread = false
+                                        }, colors = ButtonDefaults.elevatedButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                        )
+                                    ) {
+                                        Text(text = "Clear filter")
+                                    }
                                 }
                             }
                         }
                     }
+                    item {
+                        Spacer(modifier = Modifier.height(48.dp))
+                    }
                 }
-                item {
-                    Spacer(modifier = Modifier.height(48.dp))
-                }
+                HomebaseVerticalScrollbar(
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                        .fillMaxHeight(),
+                    state = listState
+                )
             }
         }
     }
@@ -522,6 +534,7 @@ fun ChatDetailPane(
     showBackButton: Boolean,
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
 
     val groupedMessages = remember(messages) {
         val timezone = TimeZone.currentSystemDefault()
@@ -616,6 +629,7 @@ fun ChatDetailPane(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
+                state = listState,
             ) {
                 item {
                     Spacer(modifier = Modifier.height(24.dp))
@@ -681,6 +695,11 @@ fun ChatDetailPane(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
+            HomebaseVerticalScrollbar(
+                modifier = Modifier.align(Alignment.CenterEnd)
+                    .fillMaxHeight(),
+                state = listState
+            )
         }
     }
 }
