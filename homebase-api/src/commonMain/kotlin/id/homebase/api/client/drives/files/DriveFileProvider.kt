@@ -639,8 +639,8 @@ enum class DeleteLinkedFileStatus(val value: String) {
     @SerialName("enqueued")
     Enqueued("enqueued"),
 
-    @SerialName("enqueuedfailed")
-    EnqueuedFailed("enqueuedfailed"),
+    @SerialName("enqueuedFailed")
+    EnqueuedFailed("enqueuedFailed"),
 }
 
 @Serializable

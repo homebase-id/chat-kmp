@@ -70,8 +70,8 @@ enum class TransferUploadStatus(val value: String) {
     @SerialName("enqueued")
     Enqueued("enqueued"),
     
-    @SerialName("enqueuedfailed")
-    EnqueuedFailed("enqueuedfailed"),
+    @SerialName("enqueuedFailed")
+    EnqueuedFailed("enqueuedFailed"),
     
     @SerialName("deliveredtoinbox")
     DeliveredToInbox("deliveredtoinbox"),
