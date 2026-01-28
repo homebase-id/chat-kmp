@@ -12,6 +12,7 @@ import id.homebase.chat.data.ContactService
 import id.homebase.chat.data.ConversationService
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.data.MockChatApiProvider
+import id.homebase.core.settings.UserPreferences
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
@@ -35,6 +36,12 @@ sealed interface ChatListUiAction {
     data class ContactClicked(val contact: ContactUiModel) : ChatListUiAction
     data class SearchQueryChanged(val query: String) : ChatListUiAction
     data class SendMessage(val conversationId: Uuid, val content: String) : ChatListUiAction
+
+    data class SaveScrollPosition(
+        val conversationId: String,
+        val firstVisibleItemIndex: Int,
+        val firstVisibleItemScrollOffset: Int
+    ) : ChatListUiAction
 }
 
 @Immutable
@@ -70,7 +77,13 @@ data class ChatListUiState(
     val contacts: ImmutableList<ContactUiModel> = persistentListOf(),
     val searchQuery: String = "",
     val currentConversationMessages: ImmutableList<MessageUiModel> = persistentListOf(),
+    val conversationScrollPosition: ScrollPosition = ScrollPosition(0,0),
     val uiEvent: ChatListUiEvent? = null,
+)
+
+data class ScrollPosition(
+    val firstVisibleItemIndex: Int = 0,
+    val firstVisibleItemScrollOffset: Int = 0
 )
 
 class ChatListViewModel(
@@ -78,7 +91,8 @@ class ChatListViewModel(
     private val contactService: ContactService,
     private val conversationService: ConversationService,
     private val chatMessageService: ChatMessageReaderService,
-    private val chatMessageSenderService: ChatMessageSenderService
+    private val chatMessageSenderService: ChatMessageSenderService,
+    private val userPreferences: UserPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatListUiState())
@@ -159,12 +173,25 @@ class ChatListViewModel(
                     )
                 }
             }
+            is ChatListUiAction.SaveScrollPosition -> {
+                _uiState.update { it.copy(conversationScrollPosition = ScrollPosition(action.firstVisibleItemIndex, action.firstVisibleItemScrollOffset)) }
+
+                // Persist to user settings
+                viewModelScope.launch {
+                    userPreferences.setConversationScrollIndex(
+                        action.conversationId,
+                        action.firstVisibleItemIndex
+                    )
+                    userPreferences.setConversationScrollOffset(
+                        action.conversationId,
+                        action.firstVisibleItemScrollOffset
+                    )
+                }
+            }
         }
     }
-
-    private fun loadMessagesForConversation(conversationId: Uuid) {
-//        apiProvider.markConversationAsRead(conversationId)
-
+    
+    private fun loadMessagesForConversation(conversationId: String) {
         viewModelScope.launch {
             chatMessageService.start(conversationId)
             chatMessageService.messages.collect { messages ->
@@ -180,6 +207,7 @@ class ChatListViewModel(
     private fun sendEvent(event: ChatListUiEvent) {
         _uiState.update { it.copy(uiEvent = event) }
     }
+
 
     fun createConversation(
         name: String,

@@ -6,6 +6,22 @@ class UserPreferences(private val settings: Settings) {
     var language: String
         get() = settings.getString("language", "system")
         set(value) = settings.putString("language", value)
+
+    fun getConversationScrollIndex(conversationId: String): Int {
+        return settings.getInt("conversationScrollIndex-$conversationId", 0)
+    }
+
+    fun setConversationScrollIndex(conversationId: String, position: Int) {
+        settings.putInt("conversationScrollIndex-$conversationId", position)
+    }
+
+    fun getConversationScrollOffset(conversationId: String): Int {
+        return settings.getInt("conversationScrollOffset-$conversationId", 0)
+    }
+
+    fun setConversationScrollOffset(conversationId: String, position: Int) {
+        settings.putInt("conversationScrollOffset-$conversationId", position)
+    }
 }
 
 expect fun createSettings(): Settings

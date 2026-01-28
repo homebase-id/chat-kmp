@@ -1,6 +1,7 @@
 package id.homebase.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,10 +60,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -94,6 +98,9 @@ import id.homebase.resources.chat_select_a_conversation_subtitle
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -146,8 +153,7 @@ fun ChatListUi(
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
-    val isExpanded =
-        windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(800)
+    val isExpanded = windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(800)
     val scaffoldDirective = PaneScaffoldDirective(
         maxHorizontalPartitions = if (isExpanded) 2 else 1,
         horizontalPartitionSpacerSize = 0.dp, // Remove the white border
@@ -224,8 +230,7 @@ fun ChatListUi(
                         },
                         onSearchQueryChanged = { query ->
                             onUiAction(ChatListUiAction.SearchQueryChanged(query))
-                        }
-                    )
+                        })
                 } else {
                     ChatListPane(
                         conversationViewModels = uiState.conversationViewModels,
@@ -234,8 +239,7 @@ fun ChatListUi(
                             onUiAction(ChatListUiAction.ConversationClicked(conversationId))
                             scope.launch {
                                 scaffoldNavigator.navigateTo(
-                                    ListDetailPaneScaffoldRole.Detail,
-                                    conversationId
+                                    ListDetailPaneScaffoldRole.Detail, conversationId
                                 )
                             }
                         },
@@ -251,8 +255,9 @@ fun ChatListUi(
                     val conversation = uiState.conversations.find { it.id == conversationId }
                     if (conversation != null) {
                         ChatDetailPane(
-                            conversationViewModel = conversation,
-                            messageViewModels = uiState.currentConversationMessageViewModels,
+                            conversation = conversation,
+                            messages = uiState.currentConversationMessages,
+                            savedScrollPosition = uiState.conversationScrollPosition,
                             onBackClick = {
                                 scope.launch {
                                     scaffoldNavigator.navigateBack(backNavigationBehavior)
@@ -261,8 +266,16 @@ fun ChatListUi(
                             onSendMessage = { content ->
                                 onUiAction(
                                     ChatListUiAction.SendMessage(
-                                        conversationId,
-                                        content
+                                        conversationId, content
+                                    )
+                                )
+                            },
+                            onScrollPositionChanged = { id, index, offset ->
+                                onUiAction(
+                                    ChatListUiAction.SaveScrollPosition(
+                                        conversationId = id,
+                                        firstVisibleItemIndex = index,
+                                        firstVisibleItemScrollOffset = offset
                                     )
                                 )
                             },
@@ -280,31 +293,26 @@ fun ChatListUi(
                 )
             }
         },
-        paneExpansionState =
-            rememberPaneExpansionState(
-                keyProvider = scaffoldNavigator.scaffoldValue,
-                anchors = listOf(
-                    PaneExpansionAnchor.Offset.fromStart(96.dp),
-                    PaneExpansionAnchor.Offset.fromStart(280.dp),
-                    PaneExpansionAnchor.Offset.fromStart(320.dp),
-                    PaneExpansionAnchor.Offset.fromStart(360.dp),
-                    PaneExpansionAnchor.Offset.fromStart(400.dp),
-                    PaneExpansionAnchor.Offset.fromStart(440.dp),
-                    PaneExpansionAnchor.Offset.fromStart(480.dp),
-                ),
+        paneExpansionState = rememberPaneExpansionState(
+            keyProvider = scaffoldNavigator.scaffoldValue,
+            anchors = listOf(
+                PaneExpansionAnchor.Offset.fromStart(96.dp),
+                PaneExpansionAnchor.Offset.fromStart(280.dp),
+                PaneExpansionAnchor.Offset.fromStart(320.dp),
+                PaneExpansionAnchor.Offset.fromStart(360.dp),
+                PaneExpansionAnchor.Offset.fromStart(400.dp),
+                PaneExpansionAnchor.Offset.fromStart(440.dp),
+                PaneExpansionAnchor.Offset.fromStart(480.dp),
             ),
+        ),
         paneExpansionDragHandle = { state ->
             val interactionSource = remember { MutableInteractionSource() }
             VerticalDragHandle(
-                modifier =
-                    Modifier.paneExpansionDraggable(
-                        state,
-                        LocalMinimumInteractiveComponentSize.current,
-                        interactionSource
-                    ), interactionSource = interactionSource
+                modifier = Modifier.paneExpansionDraggable(
+                    state, LocalMinimumInteractiveComponentSize.current, interactionSource
+                ), interactionSource = interactionSource
             )
-        }
-    )
+        })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -312,12 +320,13 @@ fun ChatListUi(
 fun ChatListPane(
     conversations: ImmutableList<ConversationUiModel>,
     selectedConversationId: String? = null,
-    onProfileClick: () -> Unit ,
+    onProfileClick: () -> Unit,
     onConversationClick: (String) -> Unit,
     onUiAction: (ChatListUiAction) -> Unit
 ) {
     val searchState = rememberTextFieldState()
     val listState = rememberLazyListState()
+    val focusRequester = remember { FocusRequester() }
     var filterByUnread by remember { mutableStateOf(false) }
     var selectedFilterConversationId by remember { mutableStateOf<String?>(null) }
     val filteredConversations = remember(conversations, filterByUnread) {
@@ -327,7 +336,17 @@ fun ChatListPane(
             conversations
         }
     }
-    BoxWithConstraints {
+
+    // Request focus on box element to prevent soft keyboard popping up
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .focusRequester(focusRequester)
+            .focusable()
+    ) {
         val iconOnlyMode by derivedStateOf { maxWidth <= 96.dp }
         Scaffold(
             topBar = {
@@ -335,43 +354,39 @@ fun ChatListPane(
                     if (!iconOnlyMode) {
                         TopAppBar(
                             title = {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    AvatarImage(
-                                        avatarUrl = null,
-                                        avatarInitials = "CH",
-                                        size = 32.dp,
-                                        fontSize = 12.sp,
-                                        onClick = {
-                                            onProfileClick()
-                                        }
-                                    )
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    Text(
-                                        text = stringResource(MR.string.app_name),
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            },
-                            actions = {
-                                IconButton(onClick = {
-                                    onUiAction(ChatListUiAction.NewChatClicked)
-                                }) {
-                                    Icon(
-                                        imageVector = FeatherEdit,
-                                        contentDescription = stringResource(MR.string.chat_new_conversation)
-                                    )
-                                }
-                            },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AvatarImage(
+                                    avatarUrl = null,
+                                    avatarInitials = "CH",
+                                    size = 32.dp,
+                                    fontSize = 12.sp,
+                                    onClick = {
+                                        onProfileClick()
+                                    })
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text(
+                                    text = stringResource(MR.string.app_name),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }, actions = {
+                            IconButton(onClick = {
+                                onUiAction(ChatListUiAction.NewChatClicked)
+                            }) {
+                                Icon(
+                                    imageVector = FeatherEdit,
+                                    contentDescription = stringResource(MR.string.chat_new_conversation)
+                                )
+                            }
+                        }, colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        )
                         )
                         Row(
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             MinimalTextField(
@@ -385,8 +400,7 @@ fun ChatListPane(
                                     if (!filterByUnread) {
                                         selectedFilterConversationId = null
                                     }
-                                },
-                                colors = IconButtonDefaults.iconButtonColors(
+                                }, colors = IconButtonDefaults.iconButtonColors(
                                     containerColor = if (filterByUnread) HomebaseTheme.extendedColors.bubbleSentSurface else Color.Unspecified
                                 )
                             ) {
@@ -420,9 +434,7 @@ fun ChatListPane(
         ) { innerPadding ->
             Box {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
+                    modifier = Modifier.fillMaxSize().padding(innerPadding)
                         .consumeWindowInsets(innerPadding),
                     state = listState,
                 ) {
@@ -438,25 +450,21 @@ fun ChatListPane(
                     items(filteredConversations.toList()) { conversation ->
                         if (iconOnlyMode) {
                             ConversationAvatarItem(
-                                conversation = conversation,
-                                onClick = {
+                                conversation = conversation, onClick = {
                                     if (filterByUnread) {
                                         selectedFilterConversationId = conversation.id
                                     }
                                     onConversationClick(conversation.id)
-                                },
-                                isSelected = conversation.id == selectedConversationId
+                                }, isSelected = conversation.id == selectedConversationId
                             )
                         } else {
                             ConversationItem(
-                                conversation = conversation,
-                                onClick = {
+                                conversation = conversation, onClick = {
                                     if (filterByUnread) {
                                         selectedFilterConversationId = conversation.id
                                     }
                                     onConversationClick(conversation.id)
-                                },
-                                isSelected = conversation.id == selectedConversationId
+                                }, isSelected = conversation.id == selectedConversationId
                             )
                         }
                     }
@@ -493,8 +501,7 @@ fun ChatListPane(
                     }
                 }
                 HomebaseVerticalScrollbar(
-                    modifier = Modifier.align(Alignment.CenterEnd)
-                        .fillMaxHeight(),
+                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                     state = listState
                 )
             }
@@ -524,106 +531,126 @@ private fun getDateSectionLabel(timestamp: Instant): String {
 }
 
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun ChatDetailPane(
-    conversationViewModel: ConversationUiModel,
-    messageViewModels: ImmutableList<MessageUiModel>,
+    conversation: ConversationUiModel,
+    messages: ImmutableList<MessageUiModel>,
+    savedScrollPosition: ScrollPosition?,
     onBackClick: () -> Unit,
     onSendMessage: (String) -> Unit,
+    onScrollPositionChanged: (conversationId: String, index: Int, offset: Int) -> Unit,
     showBackButton: Boolean,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // Track previous message count to detect new messages
+    val previousMessageCount = remember { mutableStateOf(messages.size) }
+
+    // Restore scroll position once when conversation changes and messages are loaded
+    LaunchedEffect(conversation.id, messages.size) {
+        if (messages.isNotEmpty() && savedScrollPosition != null && previousMessageCount.value == messages.size) {
+            listState.scrollToItem(
+                index = savedScrollPosition.firstVisibleItemIndex.coerceIn(0, messages.size - 1),
+                scrollOffset = savedScrollPosition.firstVisibleItemScrollOffset
+            )
+        }
+        previousMessageCount.value = messages.size
+    }
+
+    // Save scroll position when it changes
+    LaunchedEffect(listState, conversation.id) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.debounce(300) // Only save after 300ms of no scrolling
+            .distinctUntilChanged().collect { (index, offset) ->
+                onScrollPositionChanged(conversation.id, index, offset)
+            }
+    }
 
     val groupedMessages = remember(messages) {
         val timezone = TimeZone.currentSystemDefault()
-        messages
-            .groupBy { message ->
+        messages.groupBy { message ->
                 val date = message.timestamp.toLocalDateTime(timezone).date
                 date
-            }
-            .map { (date, msgs) ->
+            }.map { (date, msgs) ->
                 MessageSectionItem(
-                    firstMessageTime = msgs.first().timestamp,
-                    messages = msgs,
-                    date = date
+                    firstMessageTime = msgs.first().timestamp, messages = msgs, date = date
                 )
-            }
-            .sortedBy { it.date }
+            }.sortedBy { it.date }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AvatarImage(
-                            avatarUrl = conversationViewModel.avatarUrl,
-                            avatarInitials = conversationViewModel.avatarInitials,
-                            size = 32.dp,
-                            fontSize = 12.sp,
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            text = conversationViewModel.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                },
-                navigationIcon = {
-                    if (showBackButton) {
-                        IconButton(onClick = onBackClick) {
-                            Icon(
-                                imageVector = Icons.Default.ChevronLeft,
-                                contentDescription = "Back"
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        showMenu = true
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "More options"
-                        )
-                    }
-                    ConversationMenu(
-                        showMenu = showMenu,
-                        conversationId = conversationViewModel.id,
-                        onDelete = { showMenu = false },
-                        dismissMenu = { showMenu = false }
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                )
-            )
-        },
-        bottomBar = {
-            Surface(
-                shadowElevation = 8.dp,
-                tonalElevation = 0.dp
+    // Calculate total items including date headers
+    val totalItems = remember(groupedMessages) {
+        groupedMessages.sumOf { it.messages.size + 1 } + 2
+    }
+
+    Scaffold(topBar = {
+        TopAppBar(
+            title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                MessageInputBar(
-                    onSendMessage = {
-                        if (it.isNotBlank()) {
-                            onSendMessage(it)
-                        }
-                    },
+                AvatarImage(
+                    avatarUrl = conversation.avatarUrl,
+                    avatarInitials = conversation.avatarInitials,
+                    size = 32.dp,
+                    fontSize = 12.sp,
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = conversation.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
+        }, navigationIcon = {
+            if (showBackButton) {
+                IconButton(onClick = onBackClick) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronLeft, contentDescription = "Back"
+                    )
+                }
+            }
+        }, actions = {
+            IconButton(onClick = {
+                showMenu = true
+            }) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "More options"
+                )
+            }
+            ConversationMenu(
+                showMenu = showMenu,
+                conversationId = conversation.id,
+                onDelete = { showMenu = false },
+                dismissMenu = { showMenu = false })
+        }, colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
+        )
+    }, bottomBar = {
+        Surface(
+            shadowElevation = 8.dp, tonalElevation = 0.dp
+        ) {
+            MessageInputBar(
+                onSendMessage = {
+                    if (it.isNotBlank()) {
+                        onSendMessage(it)
+                        // Scroll to bottom after sending
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(totalItems - 1)
+                        }
+                    }
+                },
+            )
         }
-    ) { innerPadding ->
+    }) { innerPadding ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
+            modifier = Modifier.fillMaxSize().padding(innerPadding)
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
             LazyColumn(
@@ -636,9 +663,7 @@ fun ChatDetailPane(
                 }
                 item {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Column(
@@ -665,9 +690,7 @@ fun ChatDetailPane(
                 groupedMessages.forEach { section ->
                     item(key = "date_${section.date}") {
                         Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 16.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             MessagesSection(
@@ -676,9 +699,7 @@ fun ChatDetailPane(
                         }
                     }
                     items(
-                        items = section.messages,
-                        key = { message -> message.id }
-                    ) { message ->
+                        items = section.messages, key = { message -> message.id }) { message ->
                         if (message.isCurrentUser) {
                             SentMessageBubble(
                                 message = message,
@@ -696,9 +717,7 @@ fun ChatDetailPane(
                 }
             }
             HomebaseVerticalScrollbar(
-                modifier = Modifier.align(Alignment.CenterEnd)
-                    .fillMaxHeight(),
-                state = listState
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(), state = listState
             )
         }
     }
@@ -708,10 +727,6 @@ fun ChatDetailPane(
 @Composable
 fun ChatListUiPreview() {
     HomebaseTheme {
-        ChatListUi(
-            uiState = ChatListUiState(),
-            onNavigateToSettingsScreen = {},
-            onUiAction = {}
-        )
+        ChatListUi(uiState = ChatListUiState(), onNavigateToSettingsScreen = {}, onUiAction = {})
     }
 }

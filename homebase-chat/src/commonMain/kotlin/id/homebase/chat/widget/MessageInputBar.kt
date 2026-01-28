@@ -101,7 +101,7 @@ fun MessageInputBar(
     var showExpanded by remember { mutableStateOf(false) }
 
     fun sendMessage() {
-        if (textFieldState.toText().isNotBlank()) {
+        if (textFieldState.annotatedString.isNotBlank()) {
             onSendMessage(textFieldState.toHtml())
             textFieldState.clear()
         }
@@ -298,7 +298,7 @@ fun MessageTextFieldCompact(
                 .imePadding(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val showSendButton = state.toText().isNotBlank()
+            val showSendButton = state.annotatedString.isNotBlank()
             RichTextEditor(
                 state = state,
                 modifier = Modifier.weight(1f)
@@ -327,7 +327,7 @@ fun MessageTextFieldCompact(
                     }
                 },
                 trailingIcon = {
-                    if (!isDesktopOrWeb() && state.toText().isNotBlank()) {
+                    if (!isDesktopOrWeb() && state.annotatedString.isNotBlank()) {
                         AddAttachmentIcon(
                             onMediaClick = onMediaClick,
                             onFileClick = onFileClick,
