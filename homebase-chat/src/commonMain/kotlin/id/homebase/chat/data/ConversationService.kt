@@ -19,10 +19,34 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
 
+
+/**
+ * File type constant used to identify conversation files in the chat drive.
+ *
+ * Used to filter and recognize HomebaseFile entries that represent chat conversations
+ * (for example when processing drive batches or querying storage).
+ */
 const val CHAT_CONVERSATION_FILE_TYPE: Int = 8888
+
+/**
+ * Constant UUID used for the "conversation with yourself" special-case.
+ *
+ * This id is treated as a static conversation identifier when the user chats with their own account.
+ */
 const val ConversationWithYourselfId = "e4ef2382-ab3c-405d-a8b5-ad3e09e980dd"
-const val CONVERSATION_PAYLOAD_KEY = "convo_pk" // TODO: Explain what this represents
-const val CONVERSATION_IMAGE_KEY = "convo_img"// TODO: Explain what this represents (and where's the tiny)
+
+/**
+ * Key stored in the file header to indicate that the conversation's JSON content
+ * is incomplete and additional data should be loaded from payloads.
+ *
+ * If this key is absent, the header's jsonContent is assumed to be complete.
+ */
+const val CONVERSATION_PAYLOAD_KEY = "convo_pk"
+
+/**
+ *  PayloadKey for conversation image. Used for group Chats
+ */
+const val CONVERSATION_IMAGE_KEY = "convo_img"
 
 class ConversationService(
     private val credentialsManager: CredentialsManager,
@@ -116,7 +140,7 @@ class ConversationService(
     {
         if (m.timestamp > c.timestamp)
         {
-            if (m.isEdited == false)
+            if (!m.isEdited)
                 c.unreadCount++;
             c.timestamp = m.timestamp
             c.lastMessage = m.content.truncateToCodePoints(40) // TODO: Global constant
@@ -161,7 +185,7 @@ class ConversationService(
         // Update the existing conversation
         if (incoming.timestamp >= existing.timestamp)
         {
-            existing.copy(
+         val updatedConvo = existing.copy(
                 name = incoming.name,
                 avatarTiny = incoming.avatarTiny,
                 avatarUrl = incoming.avatarUrl,
@@ -170,6 +194,11 @@ class ConversationService(
                 timestamp = incoming.timestamp,
                 lastMessage = incoming.lastMessage
             )
+            // We should optimize later to not  map the full list
+            _conversations.value = _conversations.value.map {
+                if (it.id == existing.id) existing else it
+            }
+
         }
     }
 
@@ -244,10 +273,10 @@ class ConversationService(
             val result = ConversationUiModel(
                 id = appData.uniqueId ?: throw Exception("missing unique id, data error"),
                 name = appDataObj.title ?: "",
-                lastMessage = "",
+                lastMessage = " ", // use the ConversationLastMessageContent
                 timestamp = UnixTimeUtc(0).toInstant(),
                 unreadCount = 0,
-                avatarTiny = appData.previewThumbnail, // TODO: Is this even populated?
+                avatarTiny = appData.previewThumbnail, // Populated only if the group Conversation has an image
                 avatarInitials = "AB",
                 avatarUrl = "",
                 participants = appDataObj.recipients,
@@ -274,13 +303,14 @@ data class ConversationAppDataJson(
     val title: String? = "",
     val recipient: String? = "",
     val version: Int = 0,
-    @Transient val conversationId: Uuid = Uuid.NIL, // TODO: LOOKS OBSOLETE / WRONG, ID IS ON UNIQUEID
-    @Transient val lastReadTime: UnixTimeUtc? = null, // TODO: OBSOLETE / WRONG
     val recipients: List<String> = listOf()
 )
 
 @Serializable
 data class ConversationLocalAppDataJson(
+    /**
+     * DEPRECATED: But we still needed for backwards compatibility. Remove it after April Launch 2026
+     */
     @Transient val conversationId: Uuid = Uuid.NIL,  // TODO: Obsolete, ignore. Same as uniqueId for conversation
     val lastReadTime: UnixTimeUtc?
 )

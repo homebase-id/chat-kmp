@@ -77,6 +77,13 @@ kotlin {
             implementation(libs.coil3)
             implementation(libs.coil3.compose)
             implementation(libs.coil3.network)
+            implementation(libs.coil3.svg)
+            implementation(libs.kermit)
+            implementation(libs.filekit.core)
+        }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
         }
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)

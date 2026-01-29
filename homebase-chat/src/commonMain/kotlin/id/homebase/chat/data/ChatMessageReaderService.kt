@@ -26,7 +26,7 @@ const val CHAT_MESSAGE_FILE_TYPE = 7878
 /** Archival status indicating a deleted chat */
 const val ChatDeletedArchivalStatus = 2
 
-const val CHAT_MESSAGE_PAYLOAD_KEY = "chat_mbl"  // Is this for "more text" ?
+const val CHAT_MESSAGE_PAYLOAD_KEY = "chat_mbl"  // Is this for "more text" ? YESS
 const val CHAT_LINKS_PAYLOAD_KEY = "chat_links"
 
 
@@ -163,7 +163,7 @@ class ChatMessageReaderService(
                     id = appData.uniqueId!!,
                     conversationId = appData.groupId!!,
                     timestamp = metadata.created.toInstant(),
-                    senderOdinId = metadata.senderOdinId ?: "",
+                    senderOdinId = metadata.originalAuthor ?: "",
                     isCurrentUser = metadata.senderOdinId.isNullOrEmpty(),
                     isRead = false,
                     isEdited = (metadata.created == metadata.updated),
