@@ -55,7 +55,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -307,14 +307,11 @@ fun MessageTextFieldCompact(
                 modifier = Modifier.weight(1f)
                     .onPreviewKeyEvent { keyEvent ->
                         if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                            if (keyEvent.isShiftPressed) {
-                                // Manually insert newline for Shift+Enter
-                                state.setText(state.toText() + "\n")
-                                true
-                            } else {
-                                // Regular Enter: send message
+                            if (keyEvent.isCtrlPressed) {
                                 onSendMessage()
                                 true
+                            } else {
+                                false
                             }
                         } else {
                             false

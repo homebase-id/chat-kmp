@@ -559,14 +559,39 @@ fun ChatDetailPane(
 
     // Track previous message count to detect new messages where want to scroll to bottom and not restore scroll
     val previousMessageCount = remember(conversation.id) { mutableStateOf(messages.size) }
+    // Group messages within day sections
+    val groupedMessages = remember(messages) {
+        val timezone = TimeZone.currentSystemDefault()
+        messages.groupBy { message ->
+            val date = message.timestamp.toLocalDateTime(timezone).date
+            date
+        }.map { (date, msgs) ->
+            MessageSectionItem(
+                firstMessageTime = msgs.first().timestamp, messages = msgs, date = date
+            )
+        }.sortedBy { it.date }
+    }
+    // Calculate total items including date headers
+    val totalItems = remember(groupedMessages) {
+        groupedMessages.sumOf { it.messages.size + 1 } + 2
+    }
 
     // Restore scroll position once when conversation changes and messages are loaded
     LaunchedEffect(conversation.id, messages.size) {
-        if (messages.isNotEmpty() && savedScrollPosition != null && previousMessageCount.value == messages.size) {
-            listState.scrollToItem(
-                index = savedScrollPosition.firstVisibleItemIndex.coerceIn(0, messages.size - 1),
-                scrollOffset = savedScrollPosition.firstVisibleItemScrollOffset
-            )
+        if (messages.isNotEmpty() && previousMessageCount.value == messages.size) {
+            if (savedScrollPosition != null) {
+                listState.scrollToItem(
+                    index = savedScrollPosition.firstVisibleItemIndex.coerceIn(
+                        0,
+                        messages.size - 1
+                    ),
+                    scrollOffset = savedScrollPosition.firstVisibleItemScrollOffset
+                )
+            } else {
+                coroutineScope.launch {
+                    listState.animateScrollToItem(totalItems - 1)
+                }
+            }
         }
         previousMessageCount.value = messages.size
     }
@@ -579,23 +604,6 @@ fun ChatDetailPane(
             .distinctUntilChanged().collect { (index, offset) ->
                 onScrollPositionChanged(conversation.id, index, offset)
             }
-    }
-
-    val groupedMessages = remember(messages) {
-        val timezone = TimeZone.currentSystemDefault()
-        messages.groupBy { message ->
-            val date = message.timestamp.toLocalDateTime(timezone).date
-            date
-        }.map { (date, msgs) ->
-            MessageSectionItem(
-                firstMessageTime = msgs.first().timestamp, messages = msgs, date = date
-            )
-        }.sortedBy { it.date }
-    }
-
-    // Calculate total items including date headers
-    val totalItems = remember(groupedMessages) {
-        groupedMessages.sumOf { it.messages.size + 1 } + 2
     }
 
     Scaffold(topBar = {

@@ -77,7 +77,7 @@ data class ChatListUiState(
     val contacts: ImmutableList<ContactUiModel> = persistentListOf(),
     val searchQuery: String = "",
     val currentConversationMessages: ImmutableList<MessageUiModel> = persistentListOf(),
-    val conversationScrollPosition: ScrollPosition = ScrollPosition(0,0),
+    val conversationScrollPosition: ScrollPosition? = null,
     val uiEvent: ChatListUiEvent? = null,
 )
 
@@ -198,10 +198,24 @@ class ChatListViewModel(
                 val sorted = messages.sortedBy { it.timestamp }
                 _uiState.value = _uiState.value.copy(
                     selectedConversationId = conversationId,
-                    currentConversationMessageViewModels = sorted.toPersistentList()
+                    currentConversationMessageViewModels = sorted.toPersistentList(),
+                    conversationScrollPosition = getScrollPosition(conversationId),
                 )
             }
         }
+    }
+
+    private fun getScrollPosition(conversationId: String): ScrollPosition? {
+        val firstVisibleItemIndex = userPreferences.getConversationScrollIndex(conversationId)
+        val firstVisibleItemScrollOffset = userPreferences.getConversationScrollOffset(conversationId)
+
+        if (firstVisibleItemIndex != null && firstVisibleItemScrollOffset != null) {
+            return ScrollPosition(
+                firstVisibleItemIndex = firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = firstVisibleItemScrollOffset
+            )
+        }
+        return null
     }
 
     private fun sendEvent(event: ChatListUiEvent) {

@@ -7,16 +7,16 @@ class UserPreferences(private val settings: Settings) {
         get() = settings.getString("language", "system")
         set(value) = settings.putString("language", value)
 
-    fun getConversationScrollIndex(conversationId: String): Int {
-        return settings.getInt("conversationScrollIndex-$conversationId", 0)
+    fun getConversationScrollIndex(conversationId: String): Int? {
+        return settings.getIntOrNull("conversationScrollIndex-$conversationId")
     }
 
     fun setConversationScrollIndex(conversationId: String, position: Int) {
         settings.putInt("conversationScrollIndex-$conversationId", position)
     }
 
-    fun getConversationScrollOffset(conversationId: String): Int {
-        return settings.getInt("conversationScrollOffset-$conversationId", 0)
+    fun getConversationScrollOffset(conversationId: String): Int? {
+        return settings.getIntOrNull("conversationScrollOffset-$conversationId")
     }
 
     fun setConversationScrollOffset(conversationId: String, position: Int) {
