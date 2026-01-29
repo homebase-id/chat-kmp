@@ -11,7 +11,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.ServerFile
 import id.homebase.api.client.drives.upload.TransferUploadStatus
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.*
 import io.ktor.http.*

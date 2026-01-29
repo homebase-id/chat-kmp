@@ -1,7 +1,7 @@
 package id.homebase.chat.data
 
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid

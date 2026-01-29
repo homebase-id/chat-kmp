@@ -10,7 +10,7 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.Uuid
 

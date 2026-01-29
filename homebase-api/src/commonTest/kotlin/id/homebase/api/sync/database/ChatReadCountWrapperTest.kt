@@ -2,7 +2,7 @@ package id.homebase.api.sync.database
 
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.homebasekmppoc.prototype.lib.database.createInMemoryDatabase
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

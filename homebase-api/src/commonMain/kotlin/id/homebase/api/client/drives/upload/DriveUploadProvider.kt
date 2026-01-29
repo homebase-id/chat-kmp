@@ -16,7 +16,7 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.*
 import kotlin.io.encoding.Base64

@@ -2,7 +2,7 @@ package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.uuid.Uuid
 
 data class ConversationWithLastMessage(

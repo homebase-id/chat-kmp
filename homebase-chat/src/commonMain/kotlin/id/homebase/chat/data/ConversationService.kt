@@ -9,7 +9,8 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.chat.ConversationUiModel
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
