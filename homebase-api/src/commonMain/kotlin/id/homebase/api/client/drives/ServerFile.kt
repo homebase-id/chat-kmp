@@ -95,17 +95,17 @@ private suspend fun FileMetadata.decryptAppData(
         throw FileDecryptionException.ContentBase64DecodeFailed(e)
     }
 
-    val decryptedBytes = try {
-        keyHeader.decrypt(encryptedBytes)
-    } catch (e: Throwable) {
-        throw FileDecryptionException.ContentDecryptionFailed(e)
-    }
-//
 //    val decryptedBytes = try {
 //        keyHeader.decrypt(encryptedBytes)
-//    } catch (_: Throwable) {
-//        "Decryption Failure".toByteArray(Charsets.UTF_8)
+//    } catch (e: Throwable) {
+//        throw FileDecryptionException.ContentDecryptionFailed(e)
 //    }
+
+    val decryptedBytes = try {
+        keyHeader.decrypt(encryptedBytes)
+    } catch (_: Throwable) {
+        "Decryption Failure".toByteArray(Charsets.UTF_8)
+    }
 
     return withDecryptedContent(decryptedBytes)
 }
