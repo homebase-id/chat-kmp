@@ -317,13 +317,6 @@ class OdinWebSocketClient(
                 files
             )
         )
-
-//        eventBus.emit(
-//            BackendEvent.DriveEvent.Completed(
-//                theFile.driveId,
-//                1
-//            )
-//        )
     }
 
     private suspend fun handleAuthError(notification: ClientNotificationPayload) {

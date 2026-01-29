@@ -1,7 +1,7 @@
 package id.homebase.chat.data
 
 import androidx.compose.runtime.Immutable
-import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.ReactionSummary
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -15,5 +15,7 @@ data class MessageUiModel(
     val senderOdinId: String, // frodo.baggins.demo.rocks
     val isCurrentUser: Boolean = false, // TODO: What is that?
     val isRead: Boolean = false,
-    val messageAppData: MessageAppData // TODO: Should we copy these up into the message?
+    val isEdited: Boolean = false,
+    val messageAppData: MessageAppData, // TODO: Should we copy these up into the message?
+    val reactionPreview: ReactionSummary?
 )

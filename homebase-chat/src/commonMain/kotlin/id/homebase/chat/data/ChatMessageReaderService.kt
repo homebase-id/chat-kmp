@@ -166,9 +166,11 @@ class ChatMessageReaderService(
                     senderOdinId = metadata.senderOdinId ?: "",
                     isCurrentUser = metadata.senderOdinId.isNullOrEmpty(),
                     isRead = false,
+                    isEdited = (metadata.created == metadata.updated),
                     senderId = metadata.senderOdinId ?: "Me",
                     content = messageAppData.message,
-                    messageAppData = messageAppData
+                    messageAppData = messageAppData,
+                    reactionPreview = metadata.reactionPreview
                 )
             } catch (t: Throwable) {
 
@@ -182,9 +184,11 @@ class ChatMessageReaderService(
                         senderOdinId = metadata.senderOdinId ?: "",
                         isCurrentUser = metadata.senderOdinId.isNullOrEmpty(),
                         isRead = false,
+                        isEdited = (metadata.created == metadata.updated),
                         senderId = metadata.senderOdinId ?: "Me",
                         content = "Failed to parse message from server",
-                        messageAppData = MessageAppData()
+                        messageAppData = MessageAppData(),
+                        reactionPreview = metadata.reactionPreview
                     )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {
