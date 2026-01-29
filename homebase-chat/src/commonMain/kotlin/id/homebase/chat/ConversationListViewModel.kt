@@ -102,12 +102,16 @@ class ChatListViewModel(
                     )
                 }
             }
+
             is ConversationListUiAction.SaveScrollPosition -> {
-                _uiState.update { it.copy(conversationScrollPosition = ScrollPosition(
-                    action.firstVisibleItemIndex,
-                    action.firstVisibleItemScrollOffset
-                )
-                ) }
+                _uiState.update {
+                    it.copy(
+                        conversationScrollPosition = ScrollPosition(
+                            action.firstVisibleItemIndex,
+                            action.firstVisibleItemScrollOffset
+                        )
+                    )
+                }
 
                 // Persist to user settings
                 viewModelScope.launch {
@@ -123,11 +127,13 @@ class ChatListViewModel(
             }
         }
     }
-    
+
     private fun loadMessagesForConversation(conversationId: Uuid) {
         viewModelScope.launch {
-            chatMessageService.start(conversationId)
-            chatMessageService.messages.collect { messages ->
+            chatMessageService.loadConversation(conversationId)
+
+            chatMessageService
+                .observeMessages(conversationId).collect { messages ->
                 val sorted = messages.sortedBy { it.timestamp }
                 _uiState.value = _uiState.value.copy(
                     selectedConversationId = conversationId,
@@ -139,8 +145,10 @@ class ChatListViewModel(
     }
 
     private fun getScrollPosition(conversationId: Uuid): ScrollPosition? {
-        val firstVisibleItemIndex = userPreferences.getConversationScrollIndex(conversationId.toString())
-        val firstVisibleItemScrollOffset = userPreferences.getConversationScrollOffset(conversationId.toString())
+        val firstVisibleItemIndex =
+            userPreferences.getConversationScrollIndex(conversationId.toString())
+        val firstVisibleItemScrollOffset =
+            userPreferences.getConversationScrollOffset(conversationId.toString())
 
         if (firstVisibleItemIndex != null && firstVisibleItemScrollOffset != null) {
             return ScrollPosition(

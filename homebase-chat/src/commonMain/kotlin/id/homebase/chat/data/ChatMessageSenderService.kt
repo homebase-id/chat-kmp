@@ -9,11 +9,7 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
-<<<<<<< HEAD
 import id.homebase.core.config.chatTargetDrive
-=======
-import id.homebase.chat.config.chatTargetDrive
->>>>>>> d3de184e1c771e8ee19034483d913fb2e005d325
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.Uuid

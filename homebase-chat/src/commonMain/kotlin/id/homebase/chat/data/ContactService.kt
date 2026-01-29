@@ -12,12 +12,7 @@ import id.homebase.api.common.BatchResult
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
-<<<<<<< HEAD
 import id.homebase.core.config.contactTargetDrive
-=======
-import id.homebase.chat.config.contactTargetDrive
-import id.homebase.api.serialization.OdinSystemSerializer
->>>>>>> d3de184e1c771e8ee19034483d913fb2e005d325
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

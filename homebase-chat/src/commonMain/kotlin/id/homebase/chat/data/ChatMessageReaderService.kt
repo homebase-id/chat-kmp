@@ -11,8 +11,8 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.BatchResult
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
-import id.homebase.chat.config.chatTargetDrive
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
