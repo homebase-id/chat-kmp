@@ -119,7 +119,7 @@ class ConversationService(
             c.lastMessage = m.content.truncateToCodePoints(40) // TODO: Global constant
         }
 
-        Logger.i("Unread count now ${c.unreadCount} on coversation id ${c.id}")
+        // Logger.i("Unread count now ${c.unreadCount} edited ${m.isEdited} on coversation id ${c.id}")
     }
 
 
