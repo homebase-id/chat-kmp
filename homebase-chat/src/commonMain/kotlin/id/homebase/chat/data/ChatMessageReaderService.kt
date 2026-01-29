@@ -12,6 +12,7 @@ import id.homebase.api.common.BatchResult
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,15 +21,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
-
-const val CHAT_MESSAGE_FILE_TYPE = 7878
-
-/** Archival status indicating a deleted chat */
-const val ChatDeletedArchivalStatus = 2
-
-const val CHAT_MESSAGE_PAYLOAD_KEY = "chat_mbl"  // Is this for "more text" ?
-const val CHAT_LINKS_PAYLOAD_KEY = "chat_links"
-
 
 class ChatMessageReaderService(
     private val credentialsManager: CredentialsManager,
@@ -95,7 +87,7 @@ class ChatMessageReaderService(
         val messages =
             files
                 .filter {
-                    it.fileMetadata.appData.fileType == CHAT_MESSAGE_FILE_TYPE
+                    it.fileMetadata.appData.fileType == ChatProtocol.MESSAGE_FILE_TYPE
                 }
                 .mapNotNull { mapToMessageData(it) }
 
@@ -133,7 +125,7 @@ class ChatMessageReaderService(
                 sortOrder = QueryBatchSortOrder.NewestFirst,
                 sortField = QueryBatchSortField.CreatedDate,
                 fileSystemType = 0,
-                filetypesAnyOf = listOf(CHAT_MESSAGE_FILE_TYPE),
+                filetypesAnyOf = listOf(ChatProtocol.MESSAGE_FILE_TYPE),
                 groupIdAnyOf = listOf(conversationId)
             )
 
@@ -151,7 +143,7 @@ class ChatMessageReaderService(
             val appData = metadata.appData
 
             try {
-                require(appData.fileType == CHAT_MESSAGE_FILE_TYPE)
+                require(appData.fileType == ChatProtocol.MESSAGE_FILE_TYPE)
                 val content = appData.content
                 require(content != null)
                 require(appData.uniqueId != null)

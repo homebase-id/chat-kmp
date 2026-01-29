@@ -26,20 +26,6 @@ data class MessageAppData(
 ) {
     /** Get the delivery status as enum */
     fun getDeliveryStatusEnum(): ChatDeliveryStatus? = ChatDeliveryStatus.fromValue(deliveryStatus)
-
-    companion object {
-        /**
-         * Parse JSON string as MessageAppData
-         */
-        fun fromMessageAppDataJson(messageAppDataJson: String): MessageAppData {
-            return try {
-                // Parse JSON as MessageAppData
-                OdinSystemSerializer.deserialize<MessageAppData>(messageAppDataJson)
-            } catch (e: Exception) {
-                throw e
-            }
-        }
-    }
 }
 
 @Serializable
