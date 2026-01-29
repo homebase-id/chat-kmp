@@ -71,7 +71,6 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.atomicfu)
             implementation(libs.kotlinx.datetime)
-            implementation(libs.kotlinx.io.core)
             implementation(libs.kermit)
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
@@ -88,6 +87,7 @@ kotlin {
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
+            implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.5.1")
         }
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
@@ -115,7 +115,6 @@ kotlin {
 
             implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.11.0")
             implementation("io.ktor:ktor-server-html-builder:2.3.7")
-
         }
     }
 }

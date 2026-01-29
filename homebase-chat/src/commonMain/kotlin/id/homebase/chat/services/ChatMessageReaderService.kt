@@ -87,7 +87,7 @@ class ChatMessageReaderService(
         val messages =
             files
                 .filter {
-                    it.fileMetadata.appData.fileType == ChatProtocol.MESSAGE_FILE_TYPE
+                    it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType
                 }
                 .mapNotNull { mapToMessageData(it) }
 
@@ -125,7 +125,7 @@ class ChatMessageReaderService(
                 sortOrder = QueryBatchSortOrder.NewestFirst,
                 sortField = QueryBatchSortField.CreatedDate,
                 fileSystemType = 0,
-                filetypesAnyOf = listOf(ChatProtocol.MESSAGE_FILE_TYPE),
+                filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
                 groupIdAnyOf = listOf(conversationId)
             )
 
@@ -143,7 +143,7 @@ class ChatMessageReaderService(
             val appData = metadata.appData
 
             try {
-                require(appData.fileType == ChatProtocol.MESSAGE_FILE_TYPE)
+                require(appData.fileType == ChatProtocol.MessageFileType)
                 val content = appData.content
                 require(content != null)
                 require(appData.uniqueId != null)
