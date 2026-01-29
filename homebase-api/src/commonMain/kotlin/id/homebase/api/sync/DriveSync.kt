@@ -54,7 +54,7 @@ class DriveSync(
             throw IllegalStateException("Another instance with the same driveId is already connected.")
         }
         drives.add(driveId);
-        //XXX DETECT but battery!!!
+
         // Load cursor from database
         val cursorStorage = CursorStorage(databaseManager, driveId)
         cursor = cursorStorage.loadCursor()
