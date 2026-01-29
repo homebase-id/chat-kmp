@@ -9,14 +9,11 @@ import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 /**
- * Unit tests for HomebaseImageLoader cache logic.
+ * Unit tests for HomebaseImageLoader.
  *
- * Note: Tests for actual API calls require integration testing with a mocked DriveFileProvider or
- * actual server.
+ * Logic is streamlined to just data fetching, so tests focus on data models and constants.
  */
 class HomebaseImageLoaderTest {
-
-    // ==================== HomebaseImageData Tests ====================
 
     @Test
     fun `ImageSize comparison works correctly`() {
@@ -76,21 +73,6 @@ class HomebaseImageLoaderTest {
         assertNull(data.contentTypeHint)
     }
 
-    // ==================== CachedImage Tests ====================
-
-    @Test
-    fun `CachedImage equality based on content`() {
-        val bytes = byteArrayOf(1, 2, 3, 4)
-        val cache1 = CachedImage(bytes.copyOf(), "image/png", ImageSize(100, 100))
-        val cache2 = CachedImage(bytes.copyOf(), "image/png", ImageSize(100, 100))
-        val cache3 = CachedImage(bytes.copyOf(), "image/jpeg", ImageSize(100, 100))
-
-        assertEquals(cache1, cache2)
-        assertFalse(cache1 == cache3)
-    }
-
-    // ==================== ImageSize Presets Tests ====================
-
     @Test
     fun `ImageSize presets are correctly defined`() {
         assertEquals(320, ImageSize.THUMB_SMALL.pixelWidth)
@@ -98,8 +80,6 @@ class HomebaseImageLoaderTest {
         assertEquals(1080, ImageSize.THUMB_LARGE.pixelWidth)
         assertEquals(1600, ImageSize.THUMB_XLARGE.pixelWidth)
     }
-
-    // ==================== Content Type Detection Tests ====================
 
     @Test
     fun `THUMBLESS_CONTENT_TYPES contains svg and gif`() {

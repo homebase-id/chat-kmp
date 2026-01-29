@@ -33,10 +33,12 @@ class HomebaseImageFetcher(
             return result?.toFetchResult()
         }
 
-        // Determine target size from options
-        val targetSize = data.requestedSize ?: ImageSize.THUMB_MEDIUM
+        // Determine target size from Coil options
+        val width = (options.size.width as? coil3.size.Dimension.Pixels)?.px ?: 1600
+        val height = (options.size.height as? coil3.size.Dimension.Pixels)?.px ?: 1600
+        val targetSize = ImageSize(width, height)
 
-        // Load image (cache-aware)
+        // Load image
         val result =
                 if (data.loadFullPayload) {
                     homebaseImageLoader.loadFullPayload(data)
