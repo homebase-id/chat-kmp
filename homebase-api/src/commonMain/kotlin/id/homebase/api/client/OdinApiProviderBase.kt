@@ -2,8 +2,7 @@ package id.homebase.api.client
 
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.SecureByteArray
-import id.homebase.api.client.CryptoHelper
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.post

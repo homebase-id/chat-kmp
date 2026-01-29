@@ -3,7 +3,7 @@ package id.homebase.api.client.drives.upload
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.openFileInput
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.request.forms.InputProvider
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData

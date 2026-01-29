@@ -1,6 +1,5 @@
-package id.homebase.homebasekmppoc.prototype.lib.serialization
+package id.homebase.api.serialization
 
-import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNamingStrategy
 import kotlinx.serialization.descriptors.SerialDescriptor

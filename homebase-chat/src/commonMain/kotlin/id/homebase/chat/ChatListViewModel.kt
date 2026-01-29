@@ -164,18 +164,22 @@ class ChatListViewModel(
     }
 
     private fun loadMessagesForConversation(conversationId: Uuid) {
-//        apiProvider.markConversationAsRead(conversationId)
-
         viewModelScope.launch {
-            chatMessageService.start(conversationId)
-            chatMessageService.messages.collect { messages ->
-                val sorted = messages.sortedBy { it.timestamp }
-                _uiState.value = _uiState.value.copy(
-                    currentConversationMessageViewModels = sorted.toPersistentList()
-                )
-            }
+            chatMessageService.loadConversation(conversationId)
+
+            chatMessageService
+                .observeMessages(conversationId)
+                .collect { messages ->
+                    val sorted = messages.sortedBy { it.timestamp }
+
+                    _uiState.value = _uiState.value.copy(
+                        currentConversationMessageViewModels =
+                            sorted.toPersistentList()
+                    )
+                }
         }
     }
+
 
     private fun sendEvent(event: ChatListUiEvent) {
         viewModelScope.launch { _uiEvent.send(event) }

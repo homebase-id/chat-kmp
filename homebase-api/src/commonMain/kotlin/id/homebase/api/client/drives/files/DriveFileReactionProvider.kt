@@ -2,7 +2,7 @@ package id.homebase.api.client.drives.files
 
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
