@@ -33,9 +33,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
-import id.homebase.chat.ChatListScreen
-import id.homebase.chat.login.LoginScreen
-import id.homebase.chat.login.LoginViewModel
+import id.homebase.auth.login.LoginScreen
+import id.homebase.auth.login.LoginViewModel
+import id.homebase.chat.ConversationListScreen
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
@@ -175,7 +175,7 @@ fun AppNavHost(
                             }
                         }
                     ) {
-                        ChatListScreen(
+                        ConversationListScreen(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
                             onNavigateToSettingsScreen = { navController.navigate(Route.Settings) },

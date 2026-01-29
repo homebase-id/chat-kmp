@@ -1,4 +1,4 @@
-package id.homebase.chat.login
+package id.homebase.auth.login
 
 data class LoginUiState(
     val homebaseId: String = "",

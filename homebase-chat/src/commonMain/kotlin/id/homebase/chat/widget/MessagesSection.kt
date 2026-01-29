@@ -8,7 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import id.homebase.chat.data.Message
+import id.homebase.chat.data.MessageUiModel
 import kotlinx.datetime.LocalDate
 import kotlin.time.Instant
 
@@ -33,7 +33,7 @@ fun MessagesSection(text: String) {
 
 data class MessageSectionItem(
     val firstMessageTime: Instant,
-    val messages: List<Message>,
+    val messages: List<MessageUiModel>,
     val date: LocalDate
 )
 

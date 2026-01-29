@@ -1,4 +1,4 @@
-package id.homebase.chat.login
+package id.homebase.auth.login
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,18 +8,16 @@ import id.homebase.api.getPlatform
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
-import id.homebase.chat.config.AUTO_CONNECTIONS_CIRCLE_ID
-import id.homebase.chat.config.AppConfig
-import id.homebase.chat.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
-import id.homebase.chat.config.appPermissions
-import id.homebase.chat.config.circleDriveTargetRequest
-import id.homebase.chat.config.targetDriveAccessRequest
+import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
+import id.homebase.core.config.AppConfig
+import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
+import id.homebase.core.config.appPermissions
+import id.homebase.core.config.circleDriveTargetRequest
+import id.homebase.core.config.targetDriveAccessRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -53,28 +51,18 @@ class LoginViewModel(
 
     fun onAction(action: LoginUiAction) {
         when (action) {
-            is LoginUiAction.HomebaseIdChanged -> {
-                _uiState.update {
-                    it.copy(
-                        homebaseId = action.value,
-                        errorMessage = null
-                    )
-                }
+            is LoginUiAction.LoginClicked -> {
+                startLogin(action.homebaseId)
             }
 
-            LoginUiAction.LoginClicked -> {
-                startLogin()
-            }
-
-            LoginUiAction.RetryClicked -> {
+            is LoginUiAction.RetryClicked -> {
                 _uiState.update {
                     it.copy(
                         errorMessage = null,
                         isLoading = false
                     )
                 }
-                startLogin()
-
+                startLogin(action.homebaseId)
             }
 
             LoginUiAction.AppResumed -> {
@@ -93,14 +81,14 @@ class LoginViewModel(
                 200 -> true
                 else -> false
             }
-        } catch (t: Throwable) {
+        } catch (_: Throwable) {
 //            Logger.e("LoginViewModel", t, "failed while trying to ping $identity")
             return false
         }
     }
 
-    private fun startLogin() {
-        val homebaseId = _uiState.value.homebaseId.trim()
+    private fun startLogin(homebaseIdValue: String) {
+        val homebaseId = homebaseIdValue.trim()
 
         if (homebaseId.isEmpty()) {
             _uiState.update {
@@ -112,6 +100,7 @@ class LoginViewModel(
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
+                    homebaseId = homebaseId,
                     isLoading = true,
                     errorMessage = null
                 )

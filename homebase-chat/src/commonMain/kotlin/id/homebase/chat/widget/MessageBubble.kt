@@ -34,7 +34,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
-import id.homebase.chat.data.Message
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
@@ -42,7 +42,7 @@ import id.homebase.core.util.isMobile
 
 @Composable
 fun SentMessageBubble(
-    message: Message,
+    message: MessageUiModel,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -80,7 +80,7 @@ fun SentMessageBubble(
                         dismissMenu = { showMenu = false }
                     )
                 }
-                ChatBubble(
+                MessageBubble(
                     modifier = Modifier
                         .heightIn(min = 48.dp),
                     text = message.content,
@@ -97,7 +97,7 @@ fun SentMessageBubble(
 
 @Composable
 fun ReceivedMessageBubble(
-    message: Message,
+    message: MessageUiModel,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -113,7 +113,7 @@ fun ReceivedMessageBubble(
             horizontalAlignment = Alignment.Start,
         ) {
             Row {
-                ChatBubble(
+                MessageBubble(
                     modifier = Modifier
                         .heightIn(min = 48.dp),
                     text = message.content,
@@ -151,7 +151,7 @@ fun ReceivedMessageBubble(
 }
 
 @Composable
-fun ChatBubble(
+fun MessageBubble(
     modifier: Modifier = Modifier,
     text: String,
     timestamp: String,

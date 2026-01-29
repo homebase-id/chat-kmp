@@ -11,7 +11,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.BatchResult
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
-import id.homebase.chat.config.contactTargetDrive
+import id.homebase.core.config.contactTargetDrive
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlin.uuid.Uuid
 
 const val CONTACT_FILE_TYPE = 100
 

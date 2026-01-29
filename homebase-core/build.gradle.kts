@@ -43,6 +43,7 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":homebase-api"))
             implementation(project(":homebase-common"))
+            implementation(project(":homebase-auth"))
             implementation(project(":homebase-chat"))
 
             implementation(libs.ktor.client.core)

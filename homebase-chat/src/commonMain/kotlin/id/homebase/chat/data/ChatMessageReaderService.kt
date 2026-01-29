@@ -10,7 +10,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.BatchResult
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
-import id.homebase.chat.config.chatTargetDrive
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,7 +45,7 @@ class ChatMessageReaderService(
     init {
         scope.launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.Completed &&
+                if ((event is BackendEvent.DriveEvent.Completed || event is BackendEvent.DriveEvent.BatchReceived) &&
                     event.driveId == chatDrive
                 ) {
                     refresh()

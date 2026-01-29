@@ -8,8 +8,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
-import id.homebase.chat.ConversationUiModel
-import id.homebase.chat.config.chatTargetDrive
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -246,7 +245,7 @@ class ConversationService(
                 timestamp = UnixTimeUtc(0).toInstant(),
                 unreadCount = 0,
                 avatarTiny = appData.previewThumbnail, // TODO: Is this even populated?
-                avatarInitials = "",
+                avatarInitials = "AB",
                 avatarUrl = "",
                 participants = appDataObj.recipients,
                 lastRead = localAppDataObj?.lastReadTime?.toInstant() ?: UnixTimeUtc(0).toInstant()

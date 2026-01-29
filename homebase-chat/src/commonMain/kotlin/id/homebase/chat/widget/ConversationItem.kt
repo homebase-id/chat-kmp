@@ -23,14 +23,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
-import id.homebase.chat.Conversation
+import id.homebase.chat.data.ConversationUiModel
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.widget.AvatarImage
 
 @Composable
 fun ConversationItem(
-    conversation: Conversation,
+    conversation: ConversationUiModel,
     onClick: () -> Unit,
     isSelected: Boolean = false,
 ) {
@@ -126,7 +126,7 @@ fun ConversationItem(
 
 @Composable
 fun ConversationAvatarItem(
-    conversation: Conversation,
+    conversation: ConversationUiModel,
     onClick: () -> Unit,
     isSelected: Boolean = false,
 ) {

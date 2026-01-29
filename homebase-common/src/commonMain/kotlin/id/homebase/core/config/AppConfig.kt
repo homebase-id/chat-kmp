@@ -1,10 +1,10 @@
-package id.homebase.chat.config
+package id.homebase.core.config
 
+import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermissionType
-import id.homebase.homebasekmppoc.lib.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
-import id.homebase.api.client.drives.TargetDrive
+import id.homebase.homebasekmppoc.lib.youauth.PermissionExtensionConfig
 import kotlin.uuid.Uuid
 
 /**

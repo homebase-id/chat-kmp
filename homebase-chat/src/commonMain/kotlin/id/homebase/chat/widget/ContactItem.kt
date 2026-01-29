@@ -16,12 +16,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import id.homebase.chat.data.Contact
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.widget.AvatarImage
 
 @Composable
 fun ContactItem(
-    contact: Contact,
+    contact: ContactUiModel,
     onClick: () -> Unit,
 ) {
     Row(

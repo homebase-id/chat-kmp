@@ -10,12 +10,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import kotlin.uuid.Uuid
 
 @Composable
 fun ConversationMenu(
     showMenu: Boolean,
-    conversationId: String,
-    onDelete: (conversationId: String) -> Unit,
+    conversationId: Uuid,
+    onDelete: (conversationId: Uuid) -> Unit,
     dismissMenu: () -> Unit,
 ) {
     DropdownMenu(
@@ -70,8 +71,8 @@ fun ConversationMenu(
 @Composable
 fun ReceivedMessageMenu(
     showMenu: Boolean,
-    messageId: String,
-    onDelete: (messageId: String) -> Unit,
+    messageId: Uuid,
+    onDelete: (messageId: Uuid) -> Unit,
     dismissMenu: () -> Unit,
 ) {
     DropdownMenu(
@@ -126,8 +127,8 @@ fun ReceivedMessageMenu(
 @Composable
 fun SentMessageMenu(
     showMenu: Boolean,
-    messageId: String,
-    onDelete: (messageId: String) -> Unit,
+    messageId: Uuid,
+    onDelete: (messageId: Uuid) -> Unit,
     dismissMenu: () -> Unit,
 ) {
     DropdownMenu(

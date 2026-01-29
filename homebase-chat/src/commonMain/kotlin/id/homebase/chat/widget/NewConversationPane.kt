@@ -24,16 +24,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import id.homebase.chat.data.Contact
+import id.homebase.chat.data.ContactUiModel
 import kotlinx.collections.immutable.ImmutableList
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewConversationPane(
-    contacts: ImmutableList<Contact>,
+    contacts: ImmutableList<ContactUiModel>,
     searchQuery: String,
     onBackClick: () -> Unit,
-    onContactClick: (Contact) -> Unit,
+    onContactClick: (ContactUiModel) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
 ) {
     val filteredContacts = remember(contacts, searchQuery) {

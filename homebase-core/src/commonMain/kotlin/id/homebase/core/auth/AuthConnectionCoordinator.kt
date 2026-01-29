@@ -6,7 +6,7 @@ import id.homebase.api.client.websockets.OdinWebSocketClient
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.youauth.YouAuthState
-import id.homebase.chat.config.syncDrives
+import id.homebase.core.config.syncDrives
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 

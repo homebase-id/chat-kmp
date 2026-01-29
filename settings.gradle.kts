@@ -31,6 +31,7 @@ dependencyResolutionManagement {
 // KMP Modules
 include(":homebase-common")
 include(":homebase-core")
+include(":homebase-auth")
 include(":homebase-chat")
 include(":homebase-api")
 
