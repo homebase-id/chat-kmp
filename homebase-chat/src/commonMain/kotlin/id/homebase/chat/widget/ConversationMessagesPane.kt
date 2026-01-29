@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
@@ -83,9 +83,7 @@ fun ConversationMessagesPane(
     onUiAction: (ConversationListUiAction) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
-
     val keyboardController = LocalSoftwareKeyboardController.current
-    val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val isKeyboardVisible by keyboardAsState()
     val focusManager = LocalFocusManager.current
@@ -97,6 +95,8 @@ fun ConversationMessagesPane(
     val previousMessageCount = remember(conversation.id) { mutableStateOf(-1) }
     // Flag to prevent saving scroll position during restoration
     var isRestoringScrollPosition by remember(conversation.id) { mutableStateOf(false) }
+    // Flag to hide content until scroll position is set (prevents flash)
+    var isScrollPositionReady by remember(conversation.id) { mutableStateOf(false) }
     // Group messages within day sections
     val groupedMessages = remember(messages) {
         val timezone = TimeZone.currentSystemDefault()
@@ -114,18 +114,34 @@ fun ConversationMessagesPane(
         groupedMessages.sumOf { it.messages.size + 1 } + 2
     }
 
+    // Initialize list state with saved position to prevent flash
+    // Key by conversation.id so a new state is created when switching conversations
+    val listState = remember(conversation.id) {
+        val initialIndex = savedScrollPosition?.firstVisibleItemIndex ?: 0
+        val initialOffset = savedScrollPosition?.firstVisibleItemScrollOffset ?: 0
+        LazyListState(
+            firstVisibleItemIndex = initialIndex,
+            firstVisibleItemScrollOffset = initialOffset
+        )
+    }
+
     // Restore scroll position once when conversation changes and messages are loaded
     LaunchedEffect(conversation.id, messages.size) {
         if (messages.isNotEmpty()) {
             val isFirstLoad = previousMessageCount.value == -1
-            val messagesUnchanged = previousMessageCount.value == messages.size
             val newMessagesAdded =
                 previousMessageCount.value > 0 && messages.size > previousMessageCount.value
 
-            if (isFirstLoad || messagesUnchanged) {
+            if (isFirstLoad) {
                 isRestoringScrollPosition = true
-                if (savedScrollPosition != null && isFirstLoad) {
+                // Show content first at initialized position
+                isScrollPositionReady = true
+                // Small delay to let composition happen with initialized state
+                kotlinx.coroutines.delay(1)
+                // On first load, scroll to saved position or bottom
+                if (savedScrollPosition != null) {
                     println("Scroll to saved position: id=${conversation.id} -> ${savedScrollPosition.firstVisibleItemIndex}:${savedScrollPosition.firstVisibleItemScrollOffset}")
+                    // Use scrollToItem (no animation) to prevent flash
                     listState.scrollToItem(
                         index = savedScrollPosition.firstVisibleItemIndex.coerceIn(
                             0,
@@ -133,11 +149,10 @@ fun ConversationMessagesPane(
                         ),
                         scrollOffset = savedScrollPosition.firstVisibleItemScrollOffset
                     )
-                } else if (isFirstLoad && savedScrollPosition == null) {
-                    println("Scroll to bottom (new conversation): id=${conversation.id}")
-                    coroutineScope.launch {
-                        listState.animateScrollToItem(totalItems - 1)
-                    }
+                } else {
+                    println("Scroll to bottom: id=${conversation.id}")
+                    // Use scrollToItem for instant scroll to bottom
+                    listState.scrollToItem(totalItems - 1)
                 }
                 // Wait a bit longer than the debounce time to ensure we don't save the restored position
                 kotlinx.coroutines.delay(500)
@@ -151,6 +166,9 @@ fun ConversationMessagesPane(
                 // Don't set isRestoringScrollPosition flag here - we want to save this scroll position
             }
             previousMessageCount.value = messages.size
+        } else {
+            // Show empty state
+            isScrollPositionReady = true
         }
     }
 
@@ -318,123 +336,127 @@ fun ConversationMessagesPane(
             modifier = Modifier.fillMaxSize(1f).padding(innerPadding)
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                state = listState,
-            ) {
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
+            if (isScrollPositionReady) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    state = listState,
+                ) {
+                    item {
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            AvatarImage(
-                                avatarUrl = conversation.avatarUrl,
-                                avatarInitials = conversation.avatarInitials,
-                                size = 72.dp,
-                                fontSize = 24.sp,
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = conversation.name,
-                                style = MaterialTheme.typography.headlineSmall,
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                AvatarImage(
+                                    avatarUrl = conversation.avatarUrl,
+                                    avatarInitials = conversation.avatarInitials,
+                                    size = 72.dp,
+                                    fontSize = 24.sp,
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = conversation.name,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                )
+                            }
                         }
                     }
-                }
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
+                    item {
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
 
-                groupedMessages.forEach { section ->
-                    item(key = "date_${section.date}") {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            MessagesSection(
-                                text = getDateSectionLabel(section.firstMessageTime)
-                            )
+                    groupedMessages.forEach { section ->
+                        item(key = "date_${section.date}") {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                MessagesSection(
+                                    text = getDateSectionLabel(section.firstMessageTime)
+                                )
+                            }
+                        }
+                        items(
+                            items = section.messages, key = { message -> message.id }) { message ->
+                            if (message.isCurrentUser) {
+                                SentMessageBubble(
+                                    message = message,
+                                    onMessageInfo = {
+                                        onUiAction(
+                                            ConversationListUiAction.ShowMessageInfo(message.id)
+                                        )
+                                    },
+                                    onReply = {
+                                        onUiAction(
+                                            ConversationListUiAction.ReplyToMessage(message.id)
+                                        )
+                                    },
+                                    onStar = {
+                                        onUiAction(
+                                            ConversationListUiAction.StarMessage(message.id)
+                                        )
+                                    },
+                                    onEdit = {
+                                        onUiAction(
+                                            ConversationListUiAction.EditMessage(message.id)
+                                        )
+                                    },
+                                    onDeleteForMe = {
+                                        onUiAction(
+                                            ConversationListUiAction.DeleteMessageForMe(message.id)
+                                        )
+                                    },
+                                    onDeleteForEveryone = {
+                                        onUiAction(
+                                            ConversationListUiAction.DeleteMessageForEveryone(
+                                                message.id
+                                            )
+                                        )
+                                    },
+                                )
+                            } else {
+                                ReceivedMessageBubble(
+                                    message = message,
+                                    onMessageInfo = {
+                                        onUiAction(
+                                            ConversationListUiAction.ShowMessageInfo(message.id)
+                                        )
+                                    },
+                                    onReply = {
+                                        onUiAction(
+                                            ConversationListUiAction.ReplyToMessage(message.id)
+                                        )
+                                    },
+                                    onStar = {
+                                        onUiAction(
+                                            ConversationListUiAction.StarMessage(message.id)
+                                        )
+                                    },
+                                    onDeleteForMe = {
+                                        onUiAction(
+                                            ConversationListUiAction.DeleteMessageForMe(message.id)
+                                        )
+                                    },
+                                )
+                            }
                         }
                     }
-                    items(
-                        items = section.messages, key = { message -> message.id }) { message ->
-                        if (message.isCurrentUser) {
-                            SentMessageBubble(
-                                message = message,
-                                onMessageInfo = {
-                                    onUiAction(
-                                        ConversationListUiAction.ShowMessageInfo(message.id)
-                                    )
-                                },
-                                onReply = {
-                                    onUiAction(
-                                        ConversationListUiAction.ReplyToMessage(message.id)
-                                    )
-                                },
-                                onStar = {
-                                    onUiAction(
-                                        ConversationListUiAction.StarMessage(message.id)
-                                    )
-                                },
-                                onEdit = {
-                                    onUiAction(
-                                        ConversationListUiAction.EditMessage(message.id)
-                                    )
-                                },
-                                onDeleteForMe = {
-                                    onUiAction(
-                                        ConversationListUiAction.DeleteMessageForMe(message.id)
-                                    )
-                                },
-                                onDeleteForEveryone = {
-                                    onUiAction(
-                                        ConversationListUiAction.DeleteMessageForEveryone(message.id)
-                                    )
-                                },
-                            )
-                        } else {
-                            ReceivedMessageBubble(
-                                message = message,
-                                onMessageInfo = {
-                                    onUiAction(
-                                        ConversationListUiAction.ShowMessageInfo(message.id)
-                                    )
-                                },
-                                onReply = {
-                                    onUiAction(
-                                        ConversationListUiAction.ReplyToMessage(message.id)
-                                    )
-                                },
-                                onStar = {
-                                    onUiAction(
-                                        ConversationListUiAction.StarMessage(message.id)
-                                    )
-                                },
-                                onDeleteForMe = {
-                                    onUiAction(
-                                        ConversationListUiAction.DeleteMessageForMe(message.id)
-                                    )
-                                },
-                            )
-                        }
-                    }
-                }
 
-                item {
-                    Spacer(modifier = Modifier.height(16.dp))
+                    item {
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
                 }
+                HomebaseVerticalScrollbar(
+                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    state = listState
+                )
             }
-            HomebaseVerticalScrollbar(
-                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-                state = listState
-            )
         }
     }
 }

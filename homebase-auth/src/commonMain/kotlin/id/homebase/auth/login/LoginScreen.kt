@@ -35,11 +35,15 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewModelScope
+import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
 
@@ -48,8 +52,8 @@ fun LoginScreen(
     viewModel: LoginViewModel,
     onNavigateHome: () -> Unit,
 ) {
+    val uriHandler = id.homebase.core.util.getUriHandler()
     val lifecycleOwner = LocalLifecycleOwner.current
-
     val uiState by viewModel.uiState.collectAsState()
 
     DisposableEffect(lifecycleOwner) {
@@ -73,6 +77,16 @@ fun LoginScreen(
                 viewModel.eventConsumed()
 
                 // TODO: Show snackbar
+            }
+
+            is LoginUiEvent.OpenUrl -> {
+                viewModel.eventConsumed()
+                BrowserLauncher.launchAuthBrowser(
+                    url = uiEvent.url,
+                    scope = viewModel.viewModelScope,
+                    onOpenUrl = {
+                        uriHandler.openUrl(it)
+                    })
             }
 
             null -> {}
@@ -261,7 +275,11 @@ private fun HomebaseIdField(
         label = { Text("Homebase ID") },
         singleLine = true,
         shape = RoundedCornerShape(24.dp),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Uri,
+            capitalization = KeyboardCapitalization.None,
+            imeAction = ImeAction.Done,
+        ),
         keyboardActions = KeyboardActions(onDone = { onDone() })
     )
 }

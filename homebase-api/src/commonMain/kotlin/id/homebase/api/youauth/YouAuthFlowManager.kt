@@ -1,28 +1,27 @@
 package id.homebase.api.youauth
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.browser.BrowserLauncher
 import id.homebase.api.browser.RedirectConfig
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.decodeUrl
-import id.homebase.api.generateUuidBytes
-import id.homebase.api.generateUuidString
-import id.homebase.api.storage.SecureStorage
+import id.homebase.api.client.http.UriBuilder
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.EccKeyPair
 import id.homebase.api.crypto.EccKeySize
 import id.homebase.api.crypto.generateEccKeyPair
 import id.homebase.api.crypto.publicKeyToJwkBase64Url
-import id.homebase.api.client.http.UriBuilder
+import id.homebase.api.decodeUrl
+import id.homebase.api.generateUuidBytes
+import id.homebase.api.generateUuidString
+import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.DriveSyncManager
 import io.ktor.client.HttpClient
-import kotlin.io.encoding.Base64
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.io.encoding.Base64
 
 /** Authentication state for the YouAuth flow. */
 sealed class YouAuthState {
@@ -158,12 +157,12 @@ class YouAuthFlowManager(
         circleDrives: List<TargetDriveAccessRequest>? = null,
         circles: List<String>? = null,
         clientFriendlyName: String? = null
-    ) {
+    ): String {
         if (_authState.value == YouAuthState.Authenticating ||
             _authState.value is YouAuthState.Authenticated
         ) {
             Logger.e(TAG) { "Already authenticating or authenticated" }
-            return
+            return ""
         }
 
         _authState.value = YouAuthState.Authenticating
@@ -214,12 +213,12 @@ class YouAuthFlowManager(
                     .apply { query = authRequest.toQueryString() }
                     .toString()
 
-            // Launch browser
-            BrowserLauncher.launchAuthBrowser(authorizeUrl, scope)
+            return authorizeUrl
         } catch (e: Exception) {
             Logger.e(TAG, e) { "Error starting authorization" }
             _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
         }
+        return ""
     }
 
     /** Complete the authentication flow after browser callback. */
