@@ -77,7 +77,12 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
+import id.homebase.resources.chat_message_attachment_options
+import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_new_message_placeholder
+import id.homebase.resources.chat_send_message_button
+import id.homebase.resources.collapse
+import id.homebase.resources.expand
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -137,7 +142,8 @@ fun MessageInputBar(
                 ) {
                     Icon(
                         imageVector = if (showExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                        contentDescription = "More options",
+                        contentDescription = if (showExpanded) stringResource(MR.string.collapse) else stringResource(MR.string.expand),
+                        modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                     )
                 }
@@ -228,7 +234,7 @@ fun MessageTextFieldExpanded(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "Add attachment"
+                        contentDescription = stringResource(MR.string.chat_message_attachment_options)
                     )
                 }
 
@@ -271,7 +277,7 @@ fun MessageTextFieldExpanded(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send message",
+                    contentDescription = stringResource(MR.string.chat_send_message_button),
                 )
             }
         }
@@ -322,7 +328,7 @@ fun MessageTextFieldCompact(
                     IconButton(onClick = onSmileyClick) {
                         Icon(
                             imageVector = Icons.Default.EmojiEmotions,
-                            contentDescription = "Emoji"
+                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
                         )
                     }
                 },
@@ -333,7 +339,7 @@ fun MessageTextFieldCompact(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
-                                contentDescription = "Add attachment"
+                                contentDescription = stringResource(MR.string.chat_message_attachment_options)
                             )
                         }
                     } else if (isMobile()) {
@@ -369,7 +375,7 @@ fun MessageTextFieldCompact(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send message",
+                        contentDescription = stringResource(MR.string.chat_send_message_button),
                     )
                 }
             } else {
@@ -381,7 +387,7 @@ fun MessageTextFieldCompact(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "Add attachment"
+                        contentDescription = stringResource(MR.string.chat_message_attachment_options)
                     )
                 }
             }
@@ -522,7 +528,7 @@ fun AddAttachmentIcon(
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
-                contentDescription = "Add attachment"
+                contentDescription = stringResource(MR.string.chat_message_attachment_options)
             )
         }
 

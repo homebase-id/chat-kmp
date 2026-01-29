@@ -54,6 +54,10 @@ import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
+import id.homebase.resources.chat_filter_by_unread_button
+import id.homebase.resources.chat_filter_by_unread_clear_button
+import id.homebase.resources.chat_filter_by_unread_description
+import id.homebase.resources.chat_filter_by_unread_empty_description
 import id.homebase.resources.chat_new_conversation
 import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
@@ -150,7 +154,7 @@ fun ConversationListPane(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.FilterList,
-                                    contentDescription = "Filter by unread",
+                                    contentDescription = stringResource(MR.string.chat_filter_by_unread_button),
                                 )
                             }
                         }
@@ -185,7 +189,7 @@ fun ConversationListPane(
                     if (filterByUnread) {
                         item {
                             Text(
-                                text = "Filtered by unread",
+                                text = stringResource(MR.string.chat_filter_by_unread_description),
                                 modifier = Modifier.padding(24.dp),
                                 style = MaterialTheme.typography.titleSmall
                             )
@@ -223,7 +227,7 @@ fun ConversationListPane(
                                 ) {
                                     if (filteredConversations.isEmpty()) {
                                         Text(
-                                            text = "No unread chats",
+                                            text = stringResource(MR.string.chat_filter_by_unread_empty_description),
                                             modifier = Modifier.padding(24.dp),
                                         )
                                     }
@@ -234,7 +238,7 @@ fun ConversationListPane(
                                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                                         )
                                     ) {
-                                        Text(text = "Clear filter")
+                                        Text(text = stringResource(MR.string.chat_filter_by_unread_clear_button))
                                     }
                                 }
                             }

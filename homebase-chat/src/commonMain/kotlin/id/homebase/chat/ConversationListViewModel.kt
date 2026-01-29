@@ -125,6 +125,10 @@ class ChatListViewModel(
                     )
                 }
             }
+
+            else -> {
+                println("Unhandled action: $action")
+            }
         }
     }
 

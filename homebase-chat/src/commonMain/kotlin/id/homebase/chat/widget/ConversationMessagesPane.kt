@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.util.ScrollPosition
@@ -50,6 +51,8 @@ import id.homebase.core.util.keyboardAsState
 import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
+import id.homebase.resources.chat_options
+import id.homebase.resources.menu_back
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import kotlinx.collections.immutable.ImmutableList
@@ -68,7 +71,6 @@ import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 import kotlin.time.Instant
-import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
@@ -76,10 +78,9 @@ fun ConversationMessagesPane(
     conversation: ConversationUiModel,
     messages: ImmutableList<MessageUiModel>,
     savedScrollPosition: ScrollPosition?,
-    onBackClick: () -> Unit,
-    onSendMessage: (String) -> Unit,
-    onScrollPositionChanged: (conversationId: Uuid, index: Int, offset: Int) -> Unit,
     showBackButton: Boolean,
+    onBackClick: () -> Unit,
+    onUiAction: (ConversationListUiAction) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -170,7 +171,13 @@ fun ConversationMessagesPane(
                     !isRestoringScrollPosition
                 ) {
                     println("Scroll changed: id=${conversation.id} -> $index:$offset")
-                    onScrollPositionChanged(conversation.id, index, offset)
+                    onUiAction(
+                        ConversationListUiAction.SaveScrollPosition(
+                            conversationId = conversation.id,
+                            firstVisibleItemIndex = index,
+                            firstVisibleItemScrollOffset = offset
+                        )
+                    )
                 }
             }
     }
@@ -198,7 +205,8 @@ fun ConversationMessagesPane(
                 if (showBackButton) {
                     IconButton(onClick = onBackClick) {
                         Icon(
-                            imageVector = Icons.Default.ChevronLeft, contentDescription = "Back"
+                            imageVector = Icons.Default.ChevronLeft,
+                            contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
                 }
@@ -208,14 +216,37 @@ fun ConversationMessagesPane(
                 }) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
-                        contentDescription = "More options"
+                        contentDescription = stringResource(MR.string.chat_options)
                     )
                 }
                 ConversationMenu(
                     showMenu = showConversationMenu,
-                    conversationId = conversation.id,
-                    onDelete = { showConversationMenu = false },
-                    dismissMenu = { showConversationMenu = false })
+                    dismissMenu = { showConversationMenu = false },
+                    onConversationInfo = {
+                        showConversationMenu = false
+                        onUiAction(
+                            ConversationListUiAction.ShowConversationInfo(conversation.id)
+                        )
+                    },
+                    onDelete = {
+                        showConversationMenu = false
+                        onUiAction(
+                            ConversationListUiAction.DeleteConversation(conversation.id)
+                        )
+                    },
+                    onArchive = {
+                        showConversationMenu = false
+                        onUiAction(
+                            ConversationListUiAction.ArchiveConversation(conversation.id)
+                        )
+                    },
+                    onClear = {
+                        showConversationMenu = false
+                        onUiAction(
+                            ConversationListUiAction.ClearConversation(conversation.id)
+                        )
+                    },
+                )
             }, colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = MaterialTheme.colorScheme.surface,
             )
@@ -229,7 +260,11 @@ fun ConversationMessagesPane(
                     focusRequester = focusRequester,
                     onSendMessage = {
                         if (it.isNotBlank()) {
-                            onSendMessage(it)
+                            onUiAction(
+                                ConversationListUiAction.SendMessage(
+                                    conversation.id, it
+                                )
+                            )
                             // Scroll to bottom will happen automatically when the message is added to UI state
                         }
                     },
@@ -333,10 +368,60 @@ fun ConversationMessagesPane(
                         if (message.isCurrentUser) {
                             SentMessageBubble(
                                 message = message,
+                                onMessageInfo = {
+                                    onUiAction(
+                                        ConversationListUiAction.ShowMessageInfo(message.id)
+                                    )
+                                },
+                                onReply = {
+                                    onUiAction(
+                                        ConversationListUiAction.ReplyToMessage(message.id)
+                                    )
+                                },
+                                onStar = {
+                                    onUiAction(
+                                        ConversationListUiAction.StarMessage(message.id)
+                                    )
+                                },
+                                onEdit = {
+                                    onUiAction(
+                                        ConversationListUiAction.EditMessage(message.id)
+                                    )
+                                },
+                                onDeleteForMe = {
+                                    onUiAction(
+                                        ConversationListUiAction.DeleteMessageForMe(message.id)
+                                    )
+                                },
+                                onDeleteForEveryone = {
+                                    onUiAction(
+                                        ConversationListUiAction.DeleteMessageForEveryone(message.id)
+                                    )
+                                },
                             )
                         } else {
                             ReceivedMessageBubble(
                                 message = message,
+                                onMessageInfo = {
+                                    onUiAction(
+                                        ConversationListUiAction.ShowMessageInfo(message.id)
+                                    )
+                                },
+                                onReply = {
+                                    onUiAction(
+                                        ConversationListUiAction.ReplyToMessage(message.id)
+                                    )
+                                },
+                                onStar = {
+                                    onUiAction(
+                                        ConversationListUiAction.StarMessage(message.id)
+                                    )
+                                },
+                                onDeleteForMe = {
+                                    onUiAction(
+                                        ConversationListUiAction.DeleteMessageForMe(message.id)
+                                    )
+                                },
                             )
                         }
                     }

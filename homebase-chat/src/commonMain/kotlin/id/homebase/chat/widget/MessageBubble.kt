@@ -39,10 +39,20 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isMobile
+import id.homebase.resources.MR
+import id.homebase.resources.chat_message_options
+import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @Composable
 fun SentMessageBubble(
     message: MessageUiModel,
+    onMessageInfo: (messageId: Uuid) -> Unit,
+    onReply: (messageId: Uuid) -> Unit,
+    onStar: (messageId: Uuid) -> Unit,
+    onEdit: (messageId: Uuid) -> Unit,
+    onDeleteForMe: (messageId: Uuid) -> Unit,
+    onDeleteForEveryone: (messageId: Uuid) -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -69,15 +79,37 @@ fun SentMessageBubble(
                     ) {
                         Icon(
                             imageVector = Icons.Default.MoreHoriz,
-                            contentDescription = "More options",
+                            contentDescription = stringResource(MR.string.chat_message_options),
                             tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                         )
                     }
                     SentMessageMenu(
                         showMenu = showMenu,
-                        messageId = message.id,
-                        onDelete = { showMenu = false },
-                        dismissMenu = { showMenu = false }
+                        dismissMenu = { showMenu = false },
+                        onMessageInfo = {
+                            showMenu = false
+                            onMessageInfo(message.id)
+                        },
+                        onReply = {
+                            showMenu = false
+                            onReply(message.id)
+                        },
+                        onStar = {
+                            showMenu = false
+                            onStar(message.id)
+                        },
+                        onEdit = {
+                            showMenu = false
+                            onEdit(message.id)
+                        },
+                        onDeleteForMe = {
+                            showMenu = false
+                            onDeleteForMe(message.id)
+                        },
+                        onDeleteForEveryone = {
+                            showMenu = false
+                            onDeleteForEveryone(message.id)
+                        },
                     )
                 }
                 MessageBubble(
@@ -98,6 +130,10 @@ fun SentMessageBubble(
 @Composable
 fun ReceivedMessageBubble(
     message: MessageUiModel,
+    onMessageInfo: (messageId: Uuid) -> Unit,
+    onReply: (messageId: Uuid) -> Unit,
+    onStar: (messageId: Uuid) -> Unit,
+    onDeleteForMe: (messageId: Uuid) -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -133,15 +169,31 @@ fun ReceivedMessageBubble(
                     ) {
                         Icon(
                             imageVector = Icons.Default.MoreHoriz,
-                            contentDescription = "More options",
+                            contentDescription = stringResource(MR.string.chat_message_options),
                             tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                         )
                     }
                     ReceivedMessageMenu(
                         showMenu = showMenu,
-                        messageId = message.id,
-                        onDelete = { showMenu = false },
-                        dismissMenu = { showMenu = false }
+                        dismissMenu = {
+                            showMenu = false
+                        },
+                        onMessageInfo = {
+                            showMenu = false
+                            onMessageInfo(message.id)
+                        },
+                        onReply = {
+                            showMenu = false
+                            onReply(message.id)
+                        },
+                        onStar = {
+                            showMenu = false
+                            onStar(message.id)
+                        },
+                        onDeleteForMe = {
+                            showMenu = false
+                            onDeleteForMe(message.id)
+                        },
                     )
                 }
             }
