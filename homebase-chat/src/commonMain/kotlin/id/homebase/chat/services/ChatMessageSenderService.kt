@@ -1,4 +1,4 @@
-package id.homebase.chat.data
+package id.homebase.chat.services
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -21,7 +21,6 @@ class ChatMessageSenderService(
     private val scope: CoroutineScope
 ) {
 
-    private val CHAT_APP_ID = Uuid.parse("2d781401-3804-4b57-b4aa-d8e4e2ef39f4")
 
     private val chatDrive = chatTargetDrive.alias
 
@@ -47,7 +46,7 @@ class ChatMessageSenderService(
                     UploadAppFileMetaData(
                         uniqueId = uniqueId.toString(),
                         groupId = conversationId.toString(),
-                        fileType = CHAT_MESSAGE_FILE_TYPE,
+                        fileType = ChatProtocol.MESSAGE_FILE_TYPE,
                         userDate = UnixTimeUtc.now().milliseconds,
                         content = OdinSystemSerializer.serialize(content),
                         previewThumbnail = null
@@ -69,7 +68,7 @@ class ChatMessageSenderService(
                         useAppNotification = true,
                         appNotificationOptions =
                             PushNotificationOptions(
-                                appId = CHAT_APP_ID.toString(),
+                                appId = ChatProtocol.CHAT_APP_ID.toString(),
                                 typeId = conversationId.toString(),
                                 tagId = uniqueId.toString(),
                                 silent = false,
@@ -112,7 +111,7 @@ class ChatMessageSenderService(
                     UploadAppFileMetaData(
                         uniqueId = uniqueId.toString(),
                         groupId = conversationId.toString(),
-                        fileType = CHAT_MESSAGE_FILE_TYPE,
+                        fileType = ChatProtocol.MESSAGE_FILE_TYPE,
                         userDate = UnixTimeUtc.now().milliseconds,
                         content = OdinSystemSerializer.serialize(content),
                         previewThumbnail = null
@@ -134,7 +133,7 @@ class ChatMessageSenderService(
                         useAppNotification = true,
                         appNotificationOptions =
                             PushNotificationOptions(
-                                appId = CHAT_APP_ID.toString(),
+                                appId = ChatProtocol.CHAT_APP_ID.toString(),
                                 typeId = conversationId.toString(),
                                 tagId = uniqueId.toString(),
                                 silent = false,

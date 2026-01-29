@@ -1,7 +1,6 @@
-package id.homebase.chat.data
+package id.homebase.chat.services
 
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
@@ -26,20 +25,6 @@ data class MessageAppData(
 ) {
     /** Get the delivery status as enum */
     fun getDeliveryStatusEnum(): ChatDeliveryStatus? = ChatDeliveryStatus.fromValue(deliveryStatus)
-
-    companion object {
-        /**
-         * Parse JSON string as MessageAppData
-         */
-        fun fromMessageAppDataJson(messageAppDataJson: String): MessageAppData {
-            return try {
-                // Parse JSON as MessageAppData
-                OdinSystemSerializer.deserialize<MessageAppData>(messageAppDataJson)
-            } catch (e: Exception) {
-                throw e
-            }
-        }
-    }
 }
 
 @Serializable
@@ -68,6 +53,6 @@ enum class ChatDeliveryStatus(val value: Int) {
 
     companion object {
         fun fromValue(value: Int): ChatDeliveryStatus? =
-            ChatDeliveryStatus.entries.find { it.value == value }
+            entries.find { it.value == value }
     }
 }

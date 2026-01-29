@@ -2,6 +2,7 @@ package id.homebase.chat.data
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.chat.services.MessageAppData
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 

@@ -1,4 +1,4 @@
-package id.homebase.chat.data
+package id.homebase.chat.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
@@ -10,6 +10,8 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.data.MessageUiModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,11 +20,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
-
-const val CHAT_CONVERSATION_FILE_TYPE: Int = 8888
-const val ConversationWithYourselfId = "e4ef2382-ab3c-405d-a8b5-ad3e09e980dd"
-const val CONVERSATION_PAYLOAD_KEY = "convo_pk" // TODO: Explain what this represents
-const val CONVERSATION_IMAGE_KEY = "convo_img"// TODO: Explain what this represents (and where's the tiny)
 
 class ConversationService(
     private val credentialsManager: CredentialsManager,
@@ -65,10 +62,10 @@ class ConversationService(
                     is BackendEvent.DriveEvent.BatchReceived -> {
                         if (!isSyncing) {
                             val conversationFiles = event.batchData.filter {
-                                it.fileMetadata.appData.fileType == CHAT_CONVERSATION_FILE_TYPE
+                                it.fileMetadata.appData.fileType == ChatProtocol.CONVERSATION_FILE_TYPE
                             }
                             val messageFiles = event.batchData.filter {
-                                it.fileMetadata.appData.fileType == CHAT_MESSAGE_FILE_TYPE
+                                it.fileMetadata.appData.fileType ==  ChatProtocol.MESSAGE_FILE_TYPE
                             }
 
                             if (!conversationFiles.isEmpty())
@@ -227,7 +224,7 @@ class ConversationService(
             val appDataObj =
                 OdinSystemSerializer.deserialize<ConversationAppDataJson>(appData.content ?: "")
 
-            if (appData.fileType != CHAT_CONVERSATION_FILE_TYPE)
+            if (appData.fileType != ChatProtocol.CONVERSATION_FILE_TYPE)
                 throw IllegalArgumentException("HomebaseFile must be of type Chat_conversation")
 
             if (appData.content == null)
