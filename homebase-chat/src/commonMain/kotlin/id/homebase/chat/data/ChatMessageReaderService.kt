@@ -4,6 +4,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -151,7 +152,10 @@ class ChatMessageReaderService(
                 isRead = false,
                 senderId = metadata.senderOdinId ?: "Me",
                 content = messageAppData.message,
-                messageAppData = messageAppData
+                messageAppData = messageAppData,
+                isEdited = (metadata.created == metadata.updated),
+                reactionPreview = metadata.reactionPreview
+
                 //            versionTag = metadata.versionTag,
                 //            previewThumbnail = previewThumbnail,
                 //            contentIsComplete = metadata.payloads?.find { it.keyEquals(CHAT_MESSAGE_PAYLOAD_KEY) } == null,

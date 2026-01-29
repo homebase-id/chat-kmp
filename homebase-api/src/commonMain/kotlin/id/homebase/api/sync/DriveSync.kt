@@ -54,7 +54,7 @@ class DriveSync(
             throw IllegalStateException("Another instance with the same driveId is already connected.")
         }
         drives.add(driveId);
-        //XXX DETECT but battery!!!
+
         // Load cursor from database
         val cursorStorage = CursorStorage(databaseManager, driveId)
         cursor = cursorStorage.loadCursor()
@@ -192,7 +192,7 @@ class DriveSync(
             dbDeferreds.awaitAll()  // Suspends until all complete; rethrows the first exception if any
             eventBus.emit(BackendEvent.DriveEvent.Completed(driveId, totalCount))
         } catch (e: Exception) {
-            Logger.e("Sync failed due to DB error: ${e.message}")
+            Logger.e("Sync failed due to error: ${e.message}")
             eventBus.emit(BackendEvent.DriveEvent.Failed(driveId, e.message ?: "DB upsert failed"))
         }
     }
