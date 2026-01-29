@@ -5,3 +5,5 @@ expect fun isDesktop(): Boolean
 expect fun isMobile(): Boolean
 
 expect fun isWeb(): Boolean
+
+expect fun isDesktopOrWeb(): Boolean

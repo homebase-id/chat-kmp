@@ -59,6 +59,8 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            api(project(":homebase-api"))
+
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
             implementation(libs.jetbrains.compose.resources)

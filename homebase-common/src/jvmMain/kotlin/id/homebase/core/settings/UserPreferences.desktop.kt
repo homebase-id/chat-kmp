@@ -5,7 +5,7 @@ import com.russhwolf.settings.Settings
 import java.util.prefs.Preferences
 
 actual fun createSettings(): Settings {
-    return PreferencesSettings(
-        Preferences.userRoot().node("id.homebase.app")
-    )
+    val preferences = Preferences.userRoot().node("/id/homebase/app/window")
+    val settings = PreferencesSettings(preferences)
+    return settings
 }

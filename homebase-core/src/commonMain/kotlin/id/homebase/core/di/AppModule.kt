@@ -1,14 +1,13 @@
 package id.homebase.core.di
 
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.api.di.apiModule
+import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.ChatListViewModel
 import id.homebase.chat.data.ChatMessageReaderService
 import id.homebase.chat.data.ChatMessageSenderService
 import id.homebase.chat.data.ContactService
 import id.homebase.chat.data.ConversationService
-import id.homebase.chat.data.MockChatApiProvider
-import id.homebase.chat.login.LoginViewModel
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
@@ -19,7 +18,6 @@ import org.koin.dsl.module
 
 val appModule = module {
     single { UserPreferences(get()) }
-    single { MockChatApiProvider() }
 
     singleOf(::AuthConnectionCoordinator)
 

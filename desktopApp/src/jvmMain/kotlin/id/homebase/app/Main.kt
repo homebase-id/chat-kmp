@@ -1,5 +1,6 @@
 package id.homebase.app
 
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -10,7 +11,10 @@ import id.homebase.core.App
 import id.homebase.core.di.allModules
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
+import id.homebase.resources.MR
+import id.homebase.resources.app_name
 import kotlinx.coroutines.runBlocking
+import org.jetbrains.compose.resources.stringResource
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.GlobalContext.startKoin
 
@@ -28,12 +32,15 @@ fun main() = application {
         applyStoredLocale(userPreferences)
     }
 
+    val minWidth = 480
+    val minHeight = 400
     val config = DesktopPreferences()
+
     val state = rememberWindowState(
         placement = config.windowPlacement,
         position = config.windowPosition,
-        width = config.windowWidthDp,
-        height = config.windowHeightDp,
+        width = maxOf(config.windowWidthDp, minWidth.dp), // Minimum width
+        height = maxOf(config.windowHeightDp, minHeight.dp), // Minimum height
     )
 
     runBlocking {
@@ -45,18 +52,20 @@ fun main() = application {
             try {
                 config.windowPlacement = state.placement
                 config.windowPosition = state.position
-                config.windowWidthDp = state.size.width
-                config.windowHeightDp = state.size.height
+                config.windowWidthDp = maxOf(state.size.width, minWidth.dp)
+                config.windowHeightDp = maxOf(state.size.height, minHeight.dp)
             } catch (_: Exception) {
                 //Logger.w(TAG, e, "Error saving window state")
             }
             exitApplication()
         },
-        alwaysOnTop = false, //sorry anders, just change it back but it was driving me crazy
-        title = "Homebase Chat",
+        alwaysOnTop = false,
+        title = stringResource(MR.string.app_name),
+        undecorated = false,
         state = state,
     ) {
         DesktopAppFocusManager.registerWindowProvider { window }
+        window.minimumSize = java.awt.Dimension(minWidth, minHeight)
         App()
     }
 }

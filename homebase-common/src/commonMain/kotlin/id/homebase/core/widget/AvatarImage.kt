@@ -1,6 +1,7 @@
 package id.homebase.core.widget
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -20,19 +21,24 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
+import id.homebase.core.util.ifTrue
 
 @Composable
 fun AvatarImage(
+    modifier: Modifier = Modifier,
     avatarUrl: String?,
     avatarInitials: String,
     size: Dp = 48.dp,
     fontSize: TextUnit = 16.sp,
+    onClick: (() -> Unit)? = null,
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .ifTrue(onClick != null) { Modifier.clickable { onClick?.invoke() } }
+        ,
         contentAlignment = Alignment.Center
     ) {
         if (avatarUrl?.isNotEmpty() == true) {
