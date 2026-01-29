@@ -82,17 +82,20 @@ fun ConversationMessagesPane(
     showBackButton: Boolean,
 ) {
     val focusRequester = remember { FocusRequester() }
-    var showConversationMenu by remember { mutableStateOf(false) }
+
     val keyboardController = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    var showAttachmentSheet by remember { mutableStateOf(false) }
     val isKeyboardVisible by keyboardAsState()
-    var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
     val focusManager = LocalFocusManager.current
 
+    var showAttachmentSheet by remember { mutableStateOf(false) }
+    var showConversationMenu by remember { mutableStateOf(false) }
+    var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
     // Track previous message count to detect new messages where want to scroll to bottom and not restore scroll
-    val previousMessageCount = remember(conversation.id) { mutableStateOf(messages.size) }
+    val previousMessageCount = remember(conversation.id) { mutableStateOf(-1) }
+    // Flag to prevent saving scroll position during restoration
+    var isRestoringScrollPosition by remember(conversation.id) { mutableStateOf(false) }
     // Group messages within day sections
     val groupedMessages = remember(messages) {
         val timezone = TimeZone.currentSystemDefault()
@@ -112,31 +115,63 @@ fun ConversationMessagesPane(
 
     // Restore scroll position once when conversation changes and messages are loaded
     LaunchedEffect(conversation.id, messages.size) {
-        if (messages.isNotEmpty() && previousMessageCount.value == messages.size) {
-            if (savedScrollPosition != null) {
-                listState.scrollToItem(
-                    index = savedScrollPosition.firstVisibleItemIndex.coerceIn(
-                        0,
-                        messages.size - 1
-                    ),
-                    scrollOffset = savedScrollPosition.firstVisibleItemScrollOffset
-                )
-            } else {
+        if (messages.isNotEmpty()) {
+            val isFirstLoad = previousMessageCount.value == -1
+            val messagesUnchanged = previousMessageCount.value == messages.size
+            val newMessagesAdded =
+                previousMessageCount.value > 0 && messages.size > previousMessageCount.value
+
+            if (isFirstLoad || messagesUnchanged) {
+                isRestoringScrollPosition = true
+                if (savedScrollPosition != null && isFirstLoad) {
+                    println("Scroll to saved position: id=${conversation.id} -> ${savedScrollPosition.firstVisibleItemIndex}:${savedScrollPosition.firstVisibleItemScrollOffset}")
+                    listState.scrollToItem(
+                        index = savedScrollPosition.firstVisibleItemIndex.coerceIn(
+                            0,
+                            totalItems - 1
+                        ),
+                        scrollOffset = savedScrollPosition.firstVisibleItemScrollOffset
+                    )
+                } else if (isFirstLoad && savedScrollPosition == null) {
+                    println("Scroll to bottom (new conversation): id=${conversation.id}")
+                    coroutineScope.launch {
+                        listState.animateScrollToItem(totalItems - 1)
+                    }
+                }
+                // Wait a bit longer than the debounce time to ensure we don't save the restored position
+                kotlinx.coroutines.delay(500)
+                isRestoringScrollPosition = false
+            } else if (newMessagesAdded) {
+                // New messages added - scroll to bottom and allow saving this position
+                println("New messages added, scrolling to bottom: id=${conversation.id}")
                 coroutineScope.launch {
                     listState.animateScrollToItem(totalItems - 1)
                 }
+                // Don't set isRestoringScrollPosition flag here - we want to save this scroll position
             }
+            previousMessageCount.value = messages.size
         }
-        previousMessageCount.value = messages.size
     }
 
     // Save scroll position when it changes
-    LaunchedEffect(listState, conversation.id) {
+    LaunchedEffect(conversation.id) {
+        // Capture the current conversation ID to prevent race conditions
+        val currentConversationId = conversation.id
+
         snapshotFlow {
             listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-        }.debounce(300) // Only save after 300ms of no scrolling
-            .distinctUntilChanged().collect { (index, offset) ->
-                onScrollPositionChanged(conversation.id, index, offset)
+        }
+            .debounce(300) // Only save after 300ms of no scrolling
+            .distinctUntilChanged()
+            .collect { (index, offset) ->
+                // Only save if we're still viewing the same conversation, messages are loaded, and not restoring
+                if (currentConversationId == conversation.id &&
+                    messages.isNotEmpty() &&
+                    !isRestoringScrollPosition
+                ) {
+                    println("Scroll changed: id=${conversation.id} -> $index:$offset")
+                    onScrollPositionChanged(conversation.id, index, offset)
+                }
             }
     }
 
@@ -195,10 +230,7 @@ fun ConversationMessagesPane(
                     onSendMessage = {
                         if (it.isNotBlank()) {
                             onSendMessage(it)
-                            // Scroll to bottom after sending
-                            coroutineScope.launch {
-                                listState.animateScrollToItem(totalItems - 1)
-                            }
+                            // Scroll to bottom will happen automatically when the message is added to UI state
                         }
                     },
                     onAddAttachmentClick = {
