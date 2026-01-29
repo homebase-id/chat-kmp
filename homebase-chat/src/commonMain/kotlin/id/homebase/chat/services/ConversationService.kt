@@ -1,4 +1,4 @@
-package id.homebase.chat.data
+package id.homebase.chat.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
@@ -10,7 +10,8 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.data.MessageUiModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

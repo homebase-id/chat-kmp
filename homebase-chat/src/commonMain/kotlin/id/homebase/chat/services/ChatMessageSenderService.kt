@@ -1,4 +1,4 @@
-package id.homebase.chat.data
+package id.homebase.chat.services
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
@@ -11,7 +11,6 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.chat.services.ChatProtocol
 import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.Uuid
 

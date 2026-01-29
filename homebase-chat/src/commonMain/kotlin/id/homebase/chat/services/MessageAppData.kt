@@ -1,7 +1,6 @@
-package id.homebase.chat.data
+package id.homebase.chat.services
 
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
@@ -54,6 +53,6 @@ enum class ChatDeliveryStatus(val value: Int) {
 
     companion object {
         fun fromValue(value: Int): ChatDeliveryStatus? =
-            ChatDeliveryStatus.entries.find { it.value == value }
+            entries.find { it.value == value }
     }
 }
