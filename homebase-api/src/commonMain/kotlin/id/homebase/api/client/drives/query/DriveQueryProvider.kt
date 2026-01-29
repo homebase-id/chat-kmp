@@ -7,7 +7,7 @@ import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.ServerFile
 import id.homebase.api.client.drives.files.ValidationUtil
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
@@ -45,7 +45,7 @@ class DriveQueryProvider(
         val internal = deserialize<QueryBatchResponseInternal>(apiResponse.body)
 
         if (internal.invalidDrive) {
-            return QueryBatchResponse.Companion.fromInvalidDrive(internal.name ?: "")
+            return QueryBatchResponse.fromInvalidDrive(internal.name ?: "")
         }
 
         val files = internal.searchResults.map { encryptedFile ->

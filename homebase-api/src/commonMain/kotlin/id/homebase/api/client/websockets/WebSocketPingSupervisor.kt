@@ -1,7 +1,7 @@
 package id.homebase.api.client.websockets
 
 import id.homebase.api.client.SharedSecretEncryptedPayload
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.websocket.Frame
 import kotlinx.coroutines.CoroutineScope

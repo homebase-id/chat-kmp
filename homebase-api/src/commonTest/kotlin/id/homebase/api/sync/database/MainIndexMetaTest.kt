@@ -4,7 +4,7 @@ import id.homebase.homebasekmppoc.prototype.lib.core.time.UnixTimeUtc
 import id.homebase.homebasekmppoc.lib.database.DriveLocalTagIndex
 import id.homebase.homebasekmppoc.lib.database.DriveTagIndex
 import id.homebase.homebasekmppoc.prototype.lib.drives.HomebaseFile
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 
 import id.homebase.homebasekmppoc.prototype.lib.drives.query.QueryBatchCursor
 import id.homebase.homebasekmppoc.prototype.lib.drives.query.TimeRowCursor

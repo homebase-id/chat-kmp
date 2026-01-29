@@ -1,5 +1,6 @@
 package id.homebase.chat.data
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
@@ -10,12 +11,13 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.BatchResult
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -35,47 +37,83 @@ class ChatMessageReaderService(
     private val scope: CoroutineScope
 ) {
 
+    private val conversationState = ActiveConversationState()
     private val chatDrive = chatTargetDrive.alias
-    private val _messages = MutableStateFlow<List<MessageUiModel>>(emptyList())
-
-    val messages: StateFlow<List<MessageUiModel>> = _messages.asStateFlow()
-
-    private var currentConversationId: Uuid? = null
+    private var isSyncing = false
+    private val loadedConversations = mutableSetOf<Uuid>()
 
     init {
         scope.launch {
             eventBus.events.collect { event ->
-                if ((event is BackendEvent.DriveEvent.Completed || event is BackendEvent.DriveEvent.BatchReceived) &&
-                    event.driveId == chatDrive
-                ) {
-                    refresh()
+                if (event !is BackendEvent.DriveEvent ||
+                    event.driveId != chatDrive
+                ) return@collect
+
+                when (event) {
+                    is BackendEvent.DriveEvent.Started -> {
+                        isSyncing = true
+                    }
+
+                    is BackendEvent.DriveEvent.Completed,
+                    is BackendEvent.DriveEvent.Failed -> {
+                        isSyncing = false
+                        refreshLoadedConversations()
+                    }
+
+                    is BackendEvent.DriveEvent.BatchReceived -> {
+                        if (!isSyncing) {
+                            processIncrementalBatch(event.batchData)
+                        }
+                    }
                 }
             }
         }
     }
 
-    fun start(
-        conversationId: Uuid
-    ) {
-        currentConversationId = conversationId
+    // ---------- PUBLIC API ----------
 
-        scope.launch {
-            refresh()
+    fun observeMessages(conversationId: Uuid): StateFlow<List<MessageUiModel>> =
+        conversationState.messages
+            .map { it[conversationId].orEmpty() }
+            .stateIn(
+                scope,
+                SharingStarted.WhileSubscribed(5_000),
+                emptyList()
+            )
+
+    suspend fun loadConversation(conversationId: Uuid) {
+        loadedConversations += conversationId
+        val result = fetchMessages(conversationId)
+        conversationState.set(conversationId, result.records)
+    }
+
+    // ---------- EVENT HANDLING ----------
+
+    private suspend fun processIncrementalBatch(
+        files: List<HomebaseFile>
+    ) {
+        val messages =
+            files
+                .filter {
+                    it.fileMetadata.appData.fileType == CHAT_MESSAGE_FILE_TYPE
+                }
+                .mapNotNull { mapToMessageData(it) }
+
+        messages
+            .groupBy { it.conversationId }
+            .forEach { (conversationId, msgs) ->
+                conversationState.upsert(conversationId, msgs)
+            }
+    }
+
+    private suspend fun refreshLoadedConversations() {
+        loadedConversations.forEach { conversationId ->
+            val result = fetchMessages(conversationId)
+            conversationState.set(conversationId, result.records)
         }
     }
 
-    private suspend fun refresh() {
-        val conversationId = currentConversationId ?: return
-
-        val result =
-            fetchMessages(
-                conversationId = conversationId
-            )
-
-        _messages.value = result.records
-    }
-
-    // ----- existing logic, unchanged -----
+    // ---------- EXISTING LOGIC (UNCHANGED) ----------
 
     suspend fun fetchMessages(
         conversationId: Uuid,
@@ -100,82 +138,64 @@ class ChatMessageReaderService(
             )
 
         return BatchResult(
-            records = result.records.map { mapToMessageData(it) },
+            records = result.records.mapNotNull { mapToMessageData(it) },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
     }
 
     companion object {
-        /**
-         * Convert HomebaseFile to ConversationData object
-         * Handles fileType 8888 (chat conversations)
-         */
 
-
-        /** Maps a SharedSecretEncryptedFileHeader to ChatMessageData with decrypted content. */
-        public suspend fun mapToMessageData(header: HomebaseFile): MessageUiModel {
+        suspend fun mapToMessageData(header: HomebaseFile): MessageUiModel? {
             val metadata = header.fileMetadata
             val appData = metadata.appData
 
-            if (appData.fileType != CHAT_MESSAGE_FILE_TYPE)
-                throw IllegalArgumentException("HomebaseFile must be of type Chat_message")
+            try {
+                require(appData.fileType == CHAT_MESSAGE_FILE_TYPE)
+                val content = appData.content
+                require(content != null)
+                require(appData.uniqueId != null)
+                require(appData.groupId != null)
 
-//            if (metadata.senderOdinId.isNullOrBlank())
-//                throw IllegalArgumentException("SenderId must be set")
+                val messageAppData = OdinSystemSerializer.deserialize<MessageAppData>(content)
 
-            if (appData.content == null)
-                throw IllegalArgumentException("AppData is empty")
-
-            if (appData.uniqueId == null)
-                throw IllegalArgumentException("UniqueId is empty")
-
-            if (appData.groupId == null)
-                throw IllegalArgumentException("GroupId is empty")
-
-            val messageAppData = parseMessageAppDataJson(header.fileMetadata.appData.content!!)
-
-            // Get preview thumbnail from appData or first payload
-            //        val previewThumbnail =
-            //            appData.previewThumbnail ?: metadata.payloads?.firstOrNull()?.previewThumbnail
-
-            val isCurrentUser = metadata.senderOdinId.isNullOrEmpty()
-            // todo: resolve from contacts
-
-            return MessageUiModel(
-                id = appData.uniqueId!!,
-                conversationId = appData.groupId!!,
-                timestamp = metadata.created.toInstant(),
-                senderOdinId = metadata.senderOdinId ?: "",
-                isCurrentUser = isCurrentUser,
-                isRead = false,
-                senderId = metadata.senderOdinId ?: "Me",
-                content = messageAppData.message,
-                messageAppData = messageAppData
-                //            versionTag = metadata.versionTag,
-                //            previewThumbnail = previewThumbnail,
-                //            contentIsComplete = metadata.payloads?.find { it.keyEquals(CHAT_MESSAGE_PAYLOAD_KEY) } == null,
-                //            reactionSummary = metadata.reactionPreview,
-            )
-        }
-
-        /** Parses a JSON string as ChatMessageContent. */
-        private fun parseMessageAppDataJson(jsonContent: String): MessageAppData {
-            return try {
-                OdinSystemSerializer.deserialize<MessageAppData>(jsonContent)
-            } catch (e: Exception) {
-                println(
-                    "ChatProvider: Failed to parse ChatMetadata: ${e.message}\nContent: [${jsonContent}]"
+                return MessageUiModel(
+                    id = appData.uniqueId!!,
+                    conversationId = appData.groupId!!,
+                    timestamp = metadata.created.toInstant(),
+                    senderOdinId = metadata.senderOdinId ?: "",
+                    isCurrentUser = metadata.senderOdinId.isNullOrEmpty(),
+                    isRead = false,
+                    senderId = metadata.senderOdinId ?: "Me",
+                    content = messageAppData.message,
+                    messageAppData = messageAppData
                 )
+            } catch (t: Throwable) {
 
-                // If parsing fails, create a simple message with the raw content
-                // TODO: Why? :point_up:
+                Logger.e(t) { "failed while mapping a message with uniqueId $appData.uniqueId and fileId ${header.fileId}" }
+
                 try {
-                    MessageAppData(message = jsonContent)
-                } catch (e2: Exception) {
-                    MessageAppData()
+                    return MessageUiModel(
+                        id = appData.uniqueId!!,
+                        conversationId = appData.groupId!!,
+                        timestamp = metadata.created.toInstant(),
+                        senderOdinId = metadata.senderOdinId ?: "",
+                        isCurrentUser = metadata.senderOdinId.isNullOrEmpty(),
+                        isRead = false,
+                        senderId = metadata.senderOdinId ?: "Me",
+                        content = "Failed to parse message from server",
+                        messageAppData = MessageAppData()
+                    )
+                } catch (t2: Throwable) {
+                    Logger.e(t2) {
+                        "Failed in fallback handling for parsing a message: fileId ${header.fileId}"
+                        return null
+                    }
                 }
+
+                return null
             }
         }
     }
 }
+

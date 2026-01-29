@@ -9,7 +9,7 @@ import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.query.TimeRowCursor
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.uuid.Uuid
 
 

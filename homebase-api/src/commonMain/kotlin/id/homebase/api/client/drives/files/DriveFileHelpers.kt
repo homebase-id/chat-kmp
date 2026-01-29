@@ -1,6 +1,6 @@
 package id.homebase.api.client.drives.files
 
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.math.abs
 
 /**

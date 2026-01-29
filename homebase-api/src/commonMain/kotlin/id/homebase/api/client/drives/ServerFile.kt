@@ -90,7 +90,7 @@ private suspend fun FileMetadata.decryptAppData(
     }
 
     val encryptedBytes = try {
-        Base64.Default.decode(content)
+        Base64.decode(content)
     } catch (e: Throwable) {
         throw FileDecryptionException.ContentBase64DecodeFailed(e)
     }
@@ -106,9 +106,6 @@ private suspend fun FileMetadata.decryptAppData(
     } catch (_: Throwable) {
         "Decryption Failure".toByteArray(Charsets.UTF_8)
     }
-
-    return withDecryptedContent(decryptedBytes)
-
 
     return withDecryptedContent(decryptedBytes)
 }

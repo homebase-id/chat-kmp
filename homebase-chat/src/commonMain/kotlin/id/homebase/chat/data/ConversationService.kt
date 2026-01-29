@@ -9,7 +9,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -90,7 +90,7 @@ class ConversationService(
             throw IllegalArgumentException("It can't be empty")
 
         // For each file in the batch, map to model (fetch last message from DB if needed)
-        val incomingMessages = messageFiles.map { file ->
+        val incomingMessages = messageFiles.mapNotNull { file ->
             ChatMessageReaderService.mapToMessageData(file)
         }
 
@@ -254,7 +254,10 @@ class ConversationService(
             if (lastMsg != null)
             {
                 val message = ChatMessageReaderService.mapToMessageData(lastMsg)
-                result.updateWithLatestMessage(message)
+                if(message!=null)
+                {
+                    result.updateWithLatestMessage(message)
+                }
             }
 
             return result
