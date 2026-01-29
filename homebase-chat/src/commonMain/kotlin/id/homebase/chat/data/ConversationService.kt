@@ -91,7 +91,7 @@ class ConversationService(
             throw IllegalArgumentException("It can't be empty")
 
         // For each file in the batch, map to model (fetch last message from DB if needed)
-        val incomingMessages = messageFiles.map { file ->
+        val incomingMessages = messageFiles.mapNotNull { file ->
             ChatMessageReaderService.mapToMessageData(file)
         }
 
@@ -255,7 +255,10 @@ class ConversationService(
             if (lastMsg != null)
             {
                 val message = ChatMessageReaderService.mapToMessageData(lastMsg)
-                result.updateWithLatestMessage(message)
+                if(message!=null)
+                {
+                    result.updateWithLatestMessage(message)
+                }
             }
 
             return result

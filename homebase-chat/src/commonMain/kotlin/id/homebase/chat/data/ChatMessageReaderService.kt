@@ -1,5 +1,6 @@
 package id.homebase.chat.data
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
@@ -96,7 +97,7 @@ class ChatMessageReaderService(
                 .filter {
                     it.fileMetadata.appData.fileType == CHAT_MESSAGE_FILE_TYPE
                 }
-                .map { mapToMessageData(it) }
+                .mapNotNull { mapToMessageData(it) }
 
         messages
             .groupBy { it.conversationId }
@@ -137,7 +138,7 @@ class ChatMessageReaderService(
             )
 
         return BatchResult(
-            records = result.records.map { mapToMessageData(it) },
+            records = result.records.mapNotNull { mapToMessageData(it) },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
@@ -145,29 +146,55 @@ class ChatMessageReaderService(
 
     companion object {
 
-        suspend fun mapToMessageData(header: HomebaseFile): MessageUiModel {
+        suspend fun mapToMessageData(header: HomebaseFile): MessageUiModel? {
             val metadata = header.fileMetadata
             val appData = metadata.appData
 
-            require(appData.fileType == CHAT_MESSAGE_FILE_TYPE)
-            val content = appData.content
-            require(content != null)
-            require(appData.uniqueId != null)
-            require(appData.groupId != null)
+            try {
+                require(appData.fileType == CHAT_MESSAGE_FILE_TYPE)
+                val content = appData.content
+                require(content != null)
+                require(appData.uniqueId != null)
+                require(appData.groupId != null)
 
-            val messageAppData = OdinSystemSerializer.deserialize<MessageAppData>(content)
+                val messageAppData = OdinSystemSerializer.deserialize<MessageAppData>(content)
 
-            return MessageUiModel(
-                id = appData.uniqueId!!,
-                conversationId = appData.groupId!!,
-                timestamp = metadata.created.toInstant(),
-                senderOdinId = metadata.senderOdinId ?: "",
-                isCurrentUser = metadata.senderOdinId.isNullOrEmpty(),
-                isRead = false,
-                senderId = metadata.senderOdinId ?: "Me",
-                content = messageAppData.message,
-                messageAppData = messageAppData
-            )
+                return MessageUiModel(
+                    id = appData.uniqueId!!,
+                    conversationId = appData.groupId!!,
+                    timestamp = metadata.created.toInstant(),
+                    senderOdinId = metadata.senderOdinId ?: "",
+                    isCurrentUser = metadata.senderOdinId.isNullOrEmpty(),
+                    isRead = false,
+                    senderId = metadata.senderOdinId ?: "Me",
+                    content = messageAppData.message,
+                    messageAppData = messageAppData
+                )
+            } catch (t: Throwable) {
+
+                Logger.e(t) { "failed while mapping a message with uniqueId $appData.uniqueId and fileId ${header.fileId}" }
+
+                try {
+                    return MessageUiModel(
+                        id = appData.uniqueId!!,
+                        conversationId = appData.groupId!!,
+                        timestamp = metadata.created.toInstant(),
+                        senderOdinId = metadata.senderOdinId ?: "",
+                        isCurrentUser = metadata.senderOdinId.isNullOrEmpty(),
+                        isRead = false,
+                        senderId = metadata.senderOdinId ?: "Me",
+                        content = "Failed to parse message from server",
+                        messageAppData = MessageAppData()
+                    )
+                } catch (t2: Throwable) {
+                    Logger.e(t2) {
+                        "Failed in fallback handling for parsing a message: fileId ${header.fileId}"
+                        return null
+                    }
+                }
+
+                return null
+            }
         }
     }
 }

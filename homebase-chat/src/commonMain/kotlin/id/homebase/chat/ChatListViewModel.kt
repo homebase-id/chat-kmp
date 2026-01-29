@@ -58,7 +58,7 @@ data class ConversationUiModel(  // TODO: Move the data objects / classes into C
         // TODO: Should we also increase unread count here if it's a new message?
         if (msg.timestamp >= timestamp)
         {
-            lastMessage = msg.messageAppData.message.truncateToCodePoints(40)
+            lastMessage = msg.content.truncateToCodePoints(40)
             timestamp = msg.timestamp
         }
     }

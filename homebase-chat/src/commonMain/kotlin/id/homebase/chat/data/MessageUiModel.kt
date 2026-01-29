@@ -16,48 +16,4 @@ data class MessageUiModel(
     val isCurrentUser: Boolean = false, // TODO: What is that?
     val isRead: Boolean = false,
     val messageAppData: MessageAppData // TODO: Should we copy these up into the message?
-) {
-    companion object {
-        /**
-         * Convert HomebaseFile to Message object
-         * Handles fileType 7878 (chat messages)
-         */
-        fun fromHomebaseFile(homebaseFile: HomebaseFile): MessageUiModel? {
-            return try {
-                val metadata = homebaseFile.fileMetadata
-                val appData = metadata.appData
-
-                if (appData.fileType != CHAT_MESSAGE_FILE_TYPE)
-                    throw IllegalArgumentException("HomebaseFile must be of type Chat_message")
-
-                if (metadata.senderOdinId == null)
-                    throw IllegalArgumentException("SenderId must be set")
-
-                if (appData.content == null)
-                    throw IllegalArgumentException("AppData is empty")
-
-                if (appData.uniqueId == null)
-                    throw IllegalArgumentException("UniqueId is empty")
-
-                if (appData.groupId == null)
-                    throw IllegalArgumentException("GroupId is empty")
-
-                val messageAppData = MessageAppData.fromMessageAppDataJson(appData.content!!)
-
-                MessageUiModel(
-                    id = appData.uniqueId!!,
-                    conversationId = appData.groupId!!,
-                    content = messageAppData.message,
-                    timestamp = metadata.transitCreated.toInstant(),
-                    senderId = metadata.senderOdinId!!,
-                    senderOdinId = "Lookup Contacts", // Lookup in contacts via senderOdinId
-                    isCurrentUser = false,
-                    isRead = false,
-                    messageAppData = messageAppData
-                )
-            } catch (e: Exception) {
-                null
-            }
-        }
-    }
-}
+)
