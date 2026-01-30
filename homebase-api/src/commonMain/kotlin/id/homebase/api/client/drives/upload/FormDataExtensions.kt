@@ -178,7 +178,7 @@ private inline fun <reified T> buildFormDataInternal(
             // Thumbnails (streamed)
             thumbnails?.forEach { thumbnail ->
                 append(
-                    thumbnail.key,
+                    "thumbnail",
                     thumbnail.thumbnailBytes,
                     Headers.build {
                         append(HttpHeaders.ContentType, thumbnail.contentType)

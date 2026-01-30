@@ -11,7 +11,7 @@ object MessageAttachmentBuilder {
         val bundles =
             attachments.mapIndexed { index, input ->
                 val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                val descriptorKey = "$ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY$index";
+                val descriptorKey = "${ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index";
 
                 when {
                     input.contentType.startsWith("image/") -> {

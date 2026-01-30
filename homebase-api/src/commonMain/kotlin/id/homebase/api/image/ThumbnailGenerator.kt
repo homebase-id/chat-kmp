@@ -81,7 +81,7 @@ suspend fun createThumbnails(
             pixelWidth = naturalSize.pixelWidth,
             pixelHeight = naturalSize.pixelHeight,
             thumbnailBytes = imageBytes,
-            key = "$payloadKey-${naturalSize.pixelWidth}-x-${naturalSize.pixelHeight}",
+            key = payloadKey,
             contentType = "image/svg+xml",
             quality = 100
         )
@@ -165,7 +165,7 @@ suspend fun createImageThumbnail(
             pixelWidth = naturalSize.pixelWidth,
             pixelHeight = naturalSize.pixelHeight,
             thumbnailBytes = imageBytes,
-            key = "$payloadKey-${naturalSize.pixelWidth}-x-${naturalSize.pixelHeight}",
+            key = payloadKey,
             contentType = "image/${targetFormat.name.lowercase()}",
             quality = quality
         )
@@ -221,7 +221,7 @@ suspend fun createImageThumbnail(
         pixelWidth = result.size.pixelWidth,
         pixelHeight = result.size.pixelHeight,
         thumbnailBytes = finalBytes,
-        key = "$payloadKey-${naturalSize.pixelWidth}-x-${naturalSize.pixelHeight}",
+        key = payloadKey,
         contentType = when (targetFormat) {
             ImageFormat.WEBP -> "image/webp"
             ImageFormat.JPEG -> "image/jpeg"

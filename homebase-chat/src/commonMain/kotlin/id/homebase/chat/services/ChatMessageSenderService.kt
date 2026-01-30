@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.readFileBytes
 import id.homebase.api.client.drives.upload.DriveUploadProvider
@@ -87,25 +88,10 @@ class ChatMessageSenderService(
 
                 payload.copy(
                     filePath = encryptedFile.filePath,
+                    iv = encryptedFile.iv,
                     isPreEncrypted = true
                 )
             } ?: emptyList()
-
-//        val encryptedThumbnails =
-//            payloadBundle?.thumbnails?.map { thumb ->
-//
-//                val payloadIv = ByteArrayUtil.getRndByteArray(16)
-//
-//                val encryptedBytes =
-//                    keyHeader.encryptDataAes(
-//                        data = thumb.thumbnailBytes,
-//                        customIv = payloadIv
-//                    )
-//
-//                thumb.copy(
-//                    thumbnailBytes = encryptedBytes,
-//                )
-//            } ?: emptyList()
 
         val metadata =
             UploadFileMetadata(
@@ -145,17 +131,20 @@ class ChatMessageSenderService(
                     ),
                 payloads = encryptedPayloads,
                 thumbnails = payloadBundle?.thumbnails ?: emptyList()
-//                thumbnails = encryptedThumbnails
             )
+        try {
+            val result =
+                driveUploadProvider.uploadFile(request) ?: error("Failed to upload chat message")
+            return SendMessageResult(
+                fileId = result.fileId,
+                uniqueId = uniqueId,
+                versionTag = result.newVersionTag
+            )
+        } catch (t: Throwable) {
+            Logger.e("ChatMessageSenderService", t)
+        }
 
-        val result =
-            driveUploadProvider.uploadFile(request) ?: error("Failed to upload chat message")
-
-        return SendMessageResult(
-            fileId = result.fileId,
-            uniqueId = uniqueId,
-            versionTag = result.newVersionTag
-        )
+        error("Failed to send chat message")
     }
 
     private suspend fun encryptFile(
@@ -181,7 +170,7 @@ class ChatMessageSenderService(
             writeBytesToTempFile(
                 bytes = encryptedBytes,
                 prefix = "enc",
-                suffix = ".jpg"
+                suffix = ".jpg.encrypted"
             )
 
         return EncryptedFileResult(
