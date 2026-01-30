@@ -130,11 +130,14 @@ fun SentMessageBubble(
 
 @Composable
 fun ReceivedMessageBubble(
-        message: MessageUiModel,
-        onMessageInfo: (messageId: Uuid) -> Unit,
-        onReply: (messageId: Uuid) -> Unit,
-        onStar: (messageId: Uuid) -> Unit,
-        onDeleteForMe: (messageId: Uuid) -> Unit,
+    message: MessageUiModel,
+    onMessageInfo: (messageId: Uuid) -> Unit,
+    onReply: (messageId: Uuid) -> Unit,
+    onStar: (messageId: Uuid) -> Unit,
+    onDeleteForMe: (messageId: Uuid) -> Unit,
+    onMarkAsRead: (messageId: Uuid) -> Unit,
+    onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
+    onDeleteReaction: (messageId: Uuid, reaction: String) -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -171,24 +174,38 @@ fun ReceivedMessageBubble(
                         )
                     }
                     ReceivedMessageMenu(
-                            showMenu = showMenu,
-                            dismissMenu = { showMenu = false },
-                            onMessageInfo = {
-                                showMenu = false
-                                onMessageInfo(message.id)
-                            },
-                            onReply = {
-                                showMenu = false
-                                onReply(message.id)
-                            },
-                            onStar = {
-                                showMenu = false
-                                onStar(message.id)
-                            },
-                            onDeleteForMe = {
-                                showMenu = false
-                                onDeleteForMe(message.id)
-                            },
+                        showMenu = showMenu,
+                        dismissMenu = {
+                            showMenu = false
+                        },
+                        onMessageInfo = {
+                            showMenu = false
+                            onMessageInfo(message.id)
+                        },
+                        onReply = {
+                            showMenu = false
+                            onReply(message.id)
+                        },
+                        onStar = {
+                            showMenu = false
+                            onStar(message.id)
+                        },
+                        onDeleteForMe = {
+                            showMenu = false
+                            onDeleteForMe(message.id)
+                        },
+                        onMarkAsRead = {
+                            showMenu = false
+                            onMarkAsRead(message.id)
+                        },
+                        onAddReaction = {
+                            showMenu = false
+                            onAddReaction(message.id, ":heart:")
+                        },
+                        onDeleteReaction = {
+                            showMenu = false
+                            onDeleteReaction(message.id, ":heart:")
+                        },
                     )
                 }
             }
