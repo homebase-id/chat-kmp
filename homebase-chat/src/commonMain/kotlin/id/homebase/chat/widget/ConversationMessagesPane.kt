@@ -81,6 +81,7 @@ fun ConversationMessagesPane(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
+    currentOdinId: String
 ) {
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -384,7 +385,7 @@ fun ConversationMessagesPane(
                         }
                         items(
                             items = section.messages, key = { message -> message.id }) { message ->
-                            if (message.isCurrentUser) {
+                            if (message.isCurrentUser(currentOdinId)) {
                                 SentMessageBubble(
                                     message = message,
                                     onMessageInfo = {
@@ -418,7 +419,7 @@ fun ConversationMessagesPane(
                                                 message.id
                                             )
                                         )
-                                    },
+                                    }
                                 )
                             } else {
                                 ReceivedMessageBubble(
@@ -443,6 +444,28 @@ fun ConversationMessagesPane(
                                             ConversationListUiAction.DeleteMessageForMe(message.id)
                                         )
                                     },
+                                    onMarkAsRead = {
+                                        onUiAction(
+                                            ConversationListUiAction.MarkAsRead(message.id)
+                                        )
+                                    },
+                                    onAddReaction = { _, reaction ->
+                                        onUiAction(
+                                            ConversationListUiAction.AddReaction(
+                                                message.id,
+                                                reaction = reaction
+                                            )
+                                        )
+                                    },
+                                    onDeleteReaction = { _, reaction ->
+                                        onUiAction(
+                                            ConversationListUiAction.DeleteReaction(
+                                                message.id,
+                                                reaction = reaction
+                                            )
+                                        )
+                                    }
+
                                 )
                             }
                         }

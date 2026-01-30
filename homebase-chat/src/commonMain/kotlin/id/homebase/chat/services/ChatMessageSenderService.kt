@@ -93,6 +93,35 @@ class ChatMessageSenderService(
                 )
             } ?: emptyList()
 
+        val payloadIvByKey: Map<String, ByteArray> =
+            encryptedPayloads.associate { payload ->
+                payload.key to (payload.iv ?: error("Missing IV for payload ${payload.key}"))
+            }
+
+        val encryptedThumbnails =
+            payloadBundle?.thumbnails?.map { thumb ->
+
+                if (thumb.skipEncryption) {
+                    thumb
+                } else {
+                    val payloadIv =
+                        payloadIvByKey[thumb.key]
+                            ?: error("No payload IV found for thumbnail key=${thumb.key}")
+
+                    val encryptedBytes =
+                        keyHeader.encryptDataAes(
+                            data = thumb.thumbnailBytes,
+                            customIv = payloadIv
+                        )
+
+                    thumb.copy(
+                        thumbnailBytes = encryptedBytes,
+                        skipEncryption = true
+                    )
+                }
+            } ?: emptyList()
+
+
         val metadata =
             UploadFileMetadata(
                 allowDistribution = true,
@@ -130,7 +159,7 @@ class ChatMessageSenderService(
                             )
                     ),
                 payloads = encryptedPayloads,
-                thumbnails = payloadBundle?.thumbnails ?: emptyList()
+                thumbnails = encryptedThumbnails
             )
         try {
             val result =

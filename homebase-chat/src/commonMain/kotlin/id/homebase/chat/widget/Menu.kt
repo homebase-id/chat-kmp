@@ -95,6 +95,9 @@ fun ReceivedMessageMenu(
     onReply: () -> Unit,
     onStar: () -> Unit,
     onDeleteForMe: () -> Unit,
+    onMarkAsRead: () -> Unit,
+    onAddReaction: () -> Unit,
+    onDeleteReaction: () -> Unit,
 ) {
     DropdownMenu(
         expanded = showMenu,
@@ -138,6 +141,39 @@ fun ReceivedMessageMenu(
         DropdownMenuItem(
             onClick = onDeleteForMe,
             text = { Text(text = stringResource(MR.string.chat_message_delete_for_me)) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null
+                )
+            }
+        )
+
+        HorizontalDivider()
+
+        DropdownMenuItem(
+            onClick = onMarkAsRead,
+            text = { Text("mark as read") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null
+                )
+            }
+        )
+        DropdownMenuItem(
+            onClick = onAddReaction,
+            text = { Text("add reaction") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = null
+                )
+            }
+        )
+        DropdownMenuItem(
+            onClick = onDeleteReaction,
+            text = { Text(text = "delete reaction") },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Filled.Delete,

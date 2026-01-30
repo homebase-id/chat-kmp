@@ -279,8 +279,7 @@ public class DriveFileProvider(
                 lastModified = lastModified
             ) ?: return null
 
-        val decryptedBytes =
-            decryptBytes(raw.headers, raw.bytes)
+        val decryptedBytes = decryptBytes(raw.headers, raw.bytes)
 
         return BytesResponse(
             bytes = decryptedBytes,

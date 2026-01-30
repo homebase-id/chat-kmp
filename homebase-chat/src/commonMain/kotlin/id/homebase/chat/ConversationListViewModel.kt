@@ -2,7 +2,9 @@ package id.homebase.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.writeBytesToTempFile
+import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageReaderService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ContactService
@@ -21,10 +23,12 @@ import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 class ChatListViewModel(
+    private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
     private val conversationService: ConversationService,
     private val chatMessageService: ChatMessageReaderService,
     private val chatMessageSenderService: ChatMessageSenderService,
+    private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
 ) : ViewModel() {
 
@@ -35,6 +39,19 @@ class ChatListViewModel(
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            val domain =
+                credentialsManager
+                    .requireActiveCredentials()
+                    .domain
+                    .trim()
+                    .lowercase()
+
+            _uiState.update {
+                it.copy(currentOdinId = domain)
+            }
+        }
+
         viewModelScope.launch {
             conversationService.start()
             conversationService.conversations.collect { conversations ->
@@ -130,6 +147,53 @@ class ChatListViewModel(
                 }
             }
 
+            is ConversationListUiAction.DeleteMessageForEveryone -> {
+
+                viewModelScope.launch {
+                    chatMessageActionService.deleteMessage(
+                        action.messageId,
+                        deleteForEveryone = true
+                    )
+                }
+            }
+
+            is ConversationListUiAction.DeleteMessageForMe -> {
+
+                viewModelScope.launch {
+                    chatMessageActionService.deleteMessage(
+                        action.messageId,
+                        deleteForEveryone = false
+                    )
+                }
+            }
+
+            is ConversationListUiAction.MarkAsRead -> {
+                viewModelScope.launch {
+                    chatMessageActionService.markAsRead(listOf(action.messageId))
+                }
+            }
+
+            is ConversationListUiAction.AddReaction -> {
+                viewModelScope.launch {
+                    chatMessageActionService.addReaction(action.messageId, action.reaction)
+                }
+            }
+
+            is ConversationListUiAction.DeleteReaction -> {
+                viewModelScope.launch {
+                    chatMessageActionService.deleteReaction(action.messageId, action.reaction)
+                }
+            }
+
+//            is ConversationListUiAction.ArchiveConversation -> TODO()
+//            is ConversationListUiAction.ClearConversation -> TODO()
+//            is ConversationListUiAction.DeleteConversation -> TODO()
+//            is ConversationListUiAction.EditMessage -> TODO()
+//            is ConversationListUiAction.ReplyToMessage -> TODO()
+//            is ConversationListUiAction.ShowConversationInfo -> TODO()
+//            is ConversationListUiAction.ShowMessageInfo -> TODO()
+//            is ConversationListUiAction.StarMessage -> TODO()
+
             else -> {
                 println("Unhandled action: $action")
             }
@@ -142,13 +206,13 @@ class ChatListViewModel(
 
             chatMessageService
                 .observeMessages(conversationId).collect { messages ->
-                val sorted = messages.sortedBy { it.created }
-                _uiState.value = _uiState.value.copy(
-                    selectedConversationId = conversationId,
-                    currentConversationMessages = sorted.toPersistentList(),
-                    conversationScrollPosition = getScrollPosition(conversationId),
-                )
-            }
+                    val sorted = messages.sortedBy { it.created }
+                    _uiState.value = _uiState.value.copy(
+                        selectedConversationId = conversationId,
+                        currentConversationMessages = sorted.toPersistentList(),
+                        conversationScrollPosition = getScrollPosition(conversationId),
+                    )
+                }
         }
     }
 
@@ -181,7 +245,11 @@ class ChatListViewModel(
             val attachments =
                 listOf(
                     AttachmentInput(
-                        filePath = writeBytesToTempFile(Base64.decode(ExampleImageData), "some-image", ".jpg"),
+                        filePath = writeBytesToTempFile(
+                            Base64.decode(ExampleImageData),
+                            "some-image",
+                            ".jpg"
+                        ),
                         contentType = "image/png",
                         displayName = "diagram.png"
                     )
