@@ -10,6 +10,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.lifecycleScope
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
+import id.homebase.core.auth.ActivityProvider
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -17,6 +18,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Initialize ActivityProvider (replaces old lateinit var instance pattern)
+        ActivityProvider.initialize(this)
         handleIntent(intent)
         setContent { App() }
     }

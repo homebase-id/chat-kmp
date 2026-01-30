@@ -24,7 +24,7 @@ actual object BrowserLauncher {
                     if (callbackURL != null) {
                         val urlString = callbackURL.absoluteString!!
                         scope.launch(Dispatchers.Main) {
-                            YouAuthFlowManager.Companion.handleCallback(urlString)
+                            YouAuthFlowManager.handleCallback(urlString)
                         }
                     } else if (error != null) {
                         println("Auth error: $error")
