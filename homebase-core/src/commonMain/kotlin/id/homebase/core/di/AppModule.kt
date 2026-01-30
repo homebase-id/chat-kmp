@@ -8,6 +8,7 @@ import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ContactService
 import id.homebase.chat.services.ConversationService
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
@@ -25,12 +26,12 @@ val appModule = module {
     singleOf(::ConversationService)
     singleOf(::ChatMessageReaderService)
     singleOf(::ChatMessageSenderService)
+    singleOf(::HomebaseImageLoader)
 
     viewModelOf(::HomeViewModel)
     viewModelOf(::ChatListViewModel)
     viewModelOf(::SettingsViewModel)
     viewModelOf(::LoginViewModel)
-
 }
 
 // Common module that each platform will implement

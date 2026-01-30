@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import kotlinx.serialization.Serializable
 
 @Serializable

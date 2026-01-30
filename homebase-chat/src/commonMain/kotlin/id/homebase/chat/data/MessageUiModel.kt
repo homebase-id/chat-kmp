@@ -13,6 +13,8 @@ data class MessageUiModel(
     val id: Uuid, // uniqueId
     /** GlobalTransitId of the payload - same across all recipients */
     val globalTransitId: Uuid?,
+    /** FileId of the payload - different for each server */
+    val fileId: Uuid, // fileId
     val conversationId: Uuid, // groupId
     val content: String, // the message
     val created: Instant, // When the message was sent

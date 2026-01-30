@@ -14,6 +14,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
@@ -21,6 +22,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
+import org.koin.compose.koinInject
 
 /**
  * Progressive image component for Homebase drives.
@@ -53,12 +55,15 @@ fun HomebaseImage(
         onClick: (() -> Unit)? = null,
         onLongPress: ((Offset) -> Unit)? = null,
 ) {
+    // Get ImageLoader with HomebaseImageFetcher from Koin DI
+    val imageLoader: ImageLoader = koinInject()
+
     // Decode preview thumbnail for immediate display
     val previewBitmap =
             remember(imageData.previewThumbnail) {
                 imageData.previewThumbnail?.content?.let {
                     try {
-                        val bytes = Base64.Default.decode(it)
+                        val bytes = Base64.decode(it)
                         bytes.decodeToImageBitmap()
                     } catch (e: Exception) {
                         null
@@ -81,6 +86,7 @@ fun HomebaseImage(
 
     SubcomposeAsyncImage(
             model = imageData,
+            imageLoader = imageLoader,
             contentDescription = contentDescription,
             modifier = modifier.then(gestureModifier),
             contentScale = contentScale
@@ -109,9 +115,13 @@ fun HomebaseImage(
                 }
             }
             is AsyncImagePainter.State.Success -> {
-                SubcomposeAsyncImageContent(modifier = Modifier.blur(blurRadius.dp))
+                SubcomposeAsyncImageContent(
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = contentScale
+                )
             }
             is AsyncImagePainter.State.Error -> {
+                println("HomebaseImage Error: ${state.result.throwable.message}")
                 error?.invoke() ?: placeholder?.invoke()
             }
         }

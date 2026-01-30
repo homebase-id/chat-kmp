@@ -150,6 +150,7 @@ class ChatMessageReaderService(
                 return MessageUiModel(
                         id = appData.uniqueId!!,
                         globalTransitId = metadata.globalTransitId,
+                        fileId = header.fileId,
                         conversationId = appData.groupId!!,
                         created = metadata.created.toInstant(),
                         modified = metadata.updated.toInstant(),
@@ -175,6 +176,7 @@ class ChatMessageReaderService(
                     return MessageUiModel(
                             id = appData.uniqueId!!,
                             globalTransitId = metadata.globalTransitId,
+                            fileId = header.fileId,
                             conversationId = appData.groupId!!,
                             created = metadata.created.toInstant(),
                             modified = metadata.updated.toInstant(),
