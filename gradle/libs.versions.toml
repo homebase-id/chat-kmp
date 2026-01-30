@@ -1,4 +1,5 @@
 [versions]
+#agp = "8.12.0" # Delete this when IntelliJ supports AGP 9.x
 agp = "9.0.0"
 android-compileSdk = "36"
 android-minSdk = "27"

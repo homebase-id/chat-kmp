@@ -1,0 +1,75 @@
+package id.homebase.core.image
+
+import id.homebase.api.client.drives.upload.EmbeddedThumb
+import io.github.vinceglb.filekit.PlatformFile
+import kotlin.uuid.Uuid
+
+/**
+ * Data class encapsulating all information needed to load a Homebase image.
+ *
+ * Supports progressive loading: tinyThumb → thumbnail → full payload
+ */
+data class HomebaseImageData(
+        /** Drive containing the file */
+        val driveId: Uuid,
+        /** File ID of the image */
+        val fileId: Uuid,
+        /** Payload key for the image content */
+        val payloadKey: String,
+        /** Embedded tiny preview thumbnail (base64) for instant display */
+        val previewThumbnail: EmbeddedThumb? = null,
+        /** Desired resolution for thumbnail loading */
+        val requestedSize: ImageSize? = null,
+        /** If true, load full resolution payload instead of thumbnail */
+        val loadFullPayload: Boolean = false,
+        /** Whether the image is encrypted */
+        val isEncrypted: Boolean = true,
+        /** Last modification timestamp for cache validation */
+        val lastModified: Long? = null,
+        /** Local pending file (for images being uploaded/sent) */
+        val pendingFile: PlatformFile? = null
+) {
+    companion object {
+        /** Create data for a pending (not yet uploaded) image */
+        fun pending(
+                file: PlatformFile,
+                previewThumbnail: EmbeddedThumb? = null
+        ): HomebaseImageData =
+                HomebaseImageData(
+                        driveId = Uuid.NIL,
+                        fileId = Uuid.NIL,
+                        payloadKey = "",
+                        previewThumbnail = previewThumbnail,
+                        pendingFile = file
+                )
+    }
+
+    /** Whether this is a pending/local file not yet uploaded */
+    val isPending: Boolean
+        get() = pendingFile != null
+
+    /** Content type hint from preview thumbnail */
+    val contentTypeHint: String?
+        get() = previewThumbnail?.contentType
+}
+
+/** Represents image dimensions */
+data class ImageSize(val pixelWidth: Int, val pixelHeight: Int) {
+    /** Total pixel count for comparison */
+    val pixelCount: Int
+        get() = pixelWidth * pixelHeight
+
+    /** Check if this size is larger or equal to another */
+    fun isLargerOrEqualTo(other: ImageSize?): Boolean {
+        if (other == null) return true
+        return pixelWidth >= other.pixelWidth && pixelHeight >= other.pixelHeight
+    }
+
+    companion object {
+        /** Preset thumbnail sizes matching server defaults */
+        val THUMB_SMALL = ImageSize(320, 320)
+        val THUMB_MEDIUM = ImageSize(640, 640)
+        val THUMB_LARGE = ImageSize(1080, 1080)
+        val THUMB_XLARGE = ImageSize(1600, 1600)
+    }
+}

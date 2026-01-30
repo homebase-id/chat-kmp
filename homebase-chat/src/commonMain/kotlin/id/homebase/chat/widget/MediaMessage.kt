@@ -1,0 +1,77 @@
+package id.homebase.chat.widget
+
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.theme.Dimens
+import kotlin.uuid.Uuid
+
+/**
+ * Media message component that decides between single item or gallery view.
+ *
+ * - Single payload: Renders MediaItem with max 50% width, preserving aspect ratio
+ * - Multiple payloads: Renders MediaGallery with fixed grid dimensions
+ *
+ * @param payloads List of payload descriptors to display
+ * @param fileId The file ID on the Homebase drive
+ * @param driveId The drive ID where the file is stored
+ * @param previewThumbnail Optional embedded preview thumbnail
+ * @param modifier Modifier for the container
+ * @param onMediaClick Callback when a media item is clicked
+ * @param onMediaLongPress Callback when a media item is long-pressed
+ */
+@Composable
+fun MediaMessage(
+        payloads: List<PayloadDescriptor>,
+        fileId: Uuid,
+        driveId: Uuid,
+        previewThumbnail: EmbeddedThumb? = null,
+        modifier: Modifier = Modifier,
+        onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
+        onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+) {
+        if (payloads.isEmpty()) return
+
+        when (payloads.size) {
+                1 -> {
+                        // Single media item - constrain to max 50% width (~210dp), preserve aspect
+                        // ratio
+                        val widthModifier = modifier.widthIn(max = Dimens.Album.totalWidth)
+                        MediaItem(
+                                payload = payloads[0],
+                                fileId = fileId,
+                                driveId = driveId,
+                                previewThumbnail = previewThumbnail
+                                                ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
+                                modifier =
+                                        widthModifier.heightIn(
+                                                min = Dimens.MediaBubble.minHeight,
+                                                max = Dimens.MediaBubble.maxHeight
+                                        ),
+                                imageSize = ImageSize.THUMB_MEDIUM,
+                                preserveAspectRatio = true,
+                                onClick = { onMediaClick?.invoke(payloads[0]) },
+                                onLongPress = { offset ->
+                                        onMediaLongPress?.invoke(payloads[0], offset)
+                                },
+                        )
+                }
+                else -> {
+                        // Multiple media items - show gallery with fixed dimensions
+                        MediaGallery(
+                                payloads = payloads,
+                                fileId = fileId,
+                                driveId = driveId,
+                                previewThumbnail = previewThumbnail,
+                                modifier = modifier,
+                                onMediaClick = onMediaClick,
+                                onMediaLongPress = onMediaLongPress,
+                        )
+                }
+        }
+}

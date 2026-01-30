@@ -4,12 +4,12 @@ package id.homebase.api.client.drives.files
 
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.UuidSerializer
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 
-/** Client file metadata Ported from C# Odin.Services.Apps.ClientFileMetadata */
 @Serializable
 data class FileMetadata(
     @Serializable(with = UuidSerializer::class) val globalTransitId: Uuid? = null,
@@ -42,7 +42,7 @@ data class AppFileMetaData(
     @Serializable(with = UuidSerializer::class) val groupId: Uuid? = null,
     val userDate: Long? = null,
     val content: String? = null,
-    val previewThumbnail: ThumbnailDescriptor? = null,
+    val previewThumbnail: EmbeddedThumb? = null,
     val archivalStatus: ArchivalStatus? = null
 )
 

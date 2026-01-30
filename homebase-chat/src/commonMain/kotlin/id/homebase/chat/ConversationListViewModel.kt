@@ -142,13 +142,13 @@ class ChatListViewModel(
 
             chatMessageService
                 .observeMessages(conversationId).collect { messages ->
-                    val sorted = messages.sortedBy { it.timestamp }
-                    _uiState.value = _uiState.value.copy(
-                        selectedConversationId = conversationId,
-                        currentConversationMessages = sorted.toPersistentList(),
-                        conversationScrollPosition = getScrollPosition(conversationId),
-                    )
-                }
+                val sorted = messages.sortedBy { it.created }
+                _uiState.value = _uiState.value.copy(
+                    selectedConversationId = conversationId,
+                    currentConversationMessages = sorted.toPersistentList(),
+                    conversationScrollPosition = getScrollPosition(conversationId),
+                )
+            }
         }
     }
 

@@ -155,7 +155,7 @@ public class DriveFileProvider(
 
         if (response.bytes.isEmpty()) return null
 
-        return response;
+        return response
     }
 
     suspend fun getPayloadBytesDecrypted(
@@ -253,11 +253,11 @@ public class DriveFileProvider(
 
         if (response.status == 404) return null
 
-        throwForFailure(response);
+        throwForFailure(response)
 
         if (response.bytes.isEmpty()) return null
 
-        return response;
+        return response
     }
 
     suspend fun getThumbBytesDecrypted(
@@ -318,7 +318,7 @@ public class DriveFileProvider(
             return null
         }
 
-        throwForFailure(response);
+        throwForFailure(response)
 
         return deserialize<TransferHistory>(response.body)
     }
@@ -361,7 +361,7 @@ public class DriveFileProvider(
             secret = creds.secret
         )
 
-        throwForFailure(response);
+        throwForFailure(response)
 
         return deserialize<DeleteFileResult>(response.body)
     }
@@ -393,9 +393,9 @@ public class DriveFileProvider(
             secret = creds.secret
         )
 
-        throwForFailure(response);
+        throwForFailure(response)
 
-        return response.status == 200;
+        return response.status == 200
     }
 
     /** Deletes multiple files from the drive by file IDs. */
@@ -408,7 +408,7 @@ public class DriveFileProvider(
         ValidationUtil.requireValidUuidList(fileIds, "fileIds")
         val creds = requireCreds()
 
-        val endpoint = "/drives/${driveId}/files/delete-batch/by-file-id";
+        val endpoint = "/drives/${driveId}/files/delete-batch/by-file-id"
         val request =
             DeleteFilesBatchRequest(
                 requests =
@@ -427,7 +427,7 @@ public class DriveFileProvider(
             secret = creds.secret
         )
 
-        throwForFailure(response);
+        throwForFailure(response)
 
         return deserialize<DeleteFileIdBatchResult>(response.body)
 
@@ -444,7 +444,7 @@ public class DriveFileProvider(
 
         val creds = requireCreds()
 
-        val endpoint = "/drives/${driveId}/files/delete-batch/by-group-id";
+        val endpoint = "/drives/${driveId}/files/delete-batch/by-group-id"
         val request =
             DeleteByGroupIdBatchRequest(
                 requests =
@@ -463,7 +463,7 @@ public class DriveFileProvider(
             secret = creds.secret
         )
 
-        throwForFailure(response);
+        throwForFailure(response)
 
         return deserialize<DeleteFilesByGroupIdBatchResult>(response.body)
 
@@ -483,11 +483,11 @@ public class DriveFileProvider(
         if (!metadata.isEncrypted) return content
 
         return try {
-            val encryptedBytes = Base64.Default.decode(content)
+            val encryptedBytes = Base64.decode(content)
             val decryptedBytes = keyHeader.decrypt(encryptedBytes)
             decryptedBytes.decodeToString()
         } catch (e: Exception) {
-            Logger.Companion.e(TAG) { "[odin-kt:decryptJsonContent] ${e.message}" }
+            Logger.e(TAG) { "[odin-kt:decryptJsonContent] ${e.message}" }
             null
         }
     }

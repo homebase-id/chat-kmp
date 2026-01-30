@@ -75,10 +75,18 @@ kotlin {
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.ktor.logging)
-            implementation(libs.coil3)
-            implementation(libs.coil3.compose)
-            implementation(libs.coil3.network)
+            api(libs.coil3)
+            api(libs.coil3.compose)
+            api(libs.coil3.network)
+            api(libs.coil3.svg)
             implementation(libs.kermit)
+            api(libs.filekit.core)
+            api(libs.koin.core)
+            api(libs.koin.compose)
+        }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
         }
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)

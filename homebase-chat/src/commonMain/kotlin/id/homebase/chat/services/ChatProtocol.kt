@@ -9,15 +9,19 @@ object ChatProtocol {
     const val ConversationWithYourselfId = "e4ef2382-ab3c-405d-a8b5-ad3e09e980dd"
     const val CONVERSATION_PAYLOAD_KEY = "convo_pk" // TODO: Explain what this represents
     const val CONVERSATION_IMAGE_KEY =
-        "convo_img"// TODO: Explain what this represents (and where's the tiny)
+            "convo_img" // TODO: Explain what this represents (and where's the tiny)
 
     const val ConversationFileType = 8888
     const val MessageFileType = 7878
 
     const val ARCHIVAL_STATUS_DELETED = 2
 
-    const val DEFAULT_PAYLOAD_DESCRIPTOR_KEY = "pld_desc";
+    const val DEFAULT_PAYLOAD_DESCRIPTOR_KEY = "pld_desc"
 
     const val PAYLOAD_KEY_MESSAGE_WEB = "chat_web"
     const val PAYLOAD_KEY_LINKS = "chat_links"
+
+    const val DEFAULT_PAYLOAD_KEY = "dflt_key"
+    const val MAX_PAYLOAD_DESCRIPTOR_BYTES = 1024
+    const val MAX_HEADER_CONTENT_BYTES = 7000
 }
