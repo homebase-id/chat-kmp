@@ -118,7 +118,7 @@ class LoginViewModel(
             }
 
             try {
-                youAuthFlowManager.authorize(
+                val authUrl = youAuthFlowManager.authorize(
                     identity = homebaseId,
                     scope = viewModelScope,
                     appId = AppConfig.APP_ID,
@@ -129,6 +129,7 @@ class LoginViewModel(
                     circles =
                         listOf(CONFIRMED_CONNECTIONS_CIRCLE_ID, AUTO_CONNECTIONS_CIRCLE_ID)
                 )
+                _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenUrl(authUrl)) }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, errorMessage = e.message ?: "Login failed")

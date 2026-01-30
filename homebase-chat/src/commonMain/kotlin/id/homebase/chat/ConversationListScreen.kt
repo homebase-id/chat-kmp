@@ -183,28 +183,13 @@ fun ChatListUi(
                             conversation = conversation,
                             messages = uiState.currentConversationMessages,
                             savedScrollPosition = uiState.conversationScrollPosition,
+                            showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
                             onBackClick = {
                                 scope.launch {
                                     scaffoldNavigator.navigateBack(backNavigationBehavior)
                                 }
                             },
-                            onSendMessage = { content ->
-                                onUiAction(
-                                    ConversationListUiAction.SendMessage(
-                                        conversationId, content
-                                    )
-                                )
-                            },
-                            onScrollPositionChanged = { id, index, offset ->
-                                onUiAction(
-                                    ConversationListUiAction.SaveScrollPosition(
-                                        conversationId = id,
-                                        firstVisibleItemIndex = index,
-                                        firstVisibleItemScrollOffset = offset
-                                    )
-                                )
-                            },
-                            showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
+                            onUiAction = onUiAction,
                         )
                     } else {
                         EmptyDetailPane(
