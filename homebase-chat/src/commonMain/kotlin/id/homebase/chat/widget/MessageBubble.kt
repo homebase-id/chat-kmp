@@ -51,77 +51,77 @@ import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun SentMessageBubble(
-        message: MessageUiModel,
-        onMessageInfo: (messageId: Uuid) -> Unit,
-        onReply: (messageId: Uuid) -> Unit,
-        onStar: (messageId: Uuid) -> Unit,
-        onEdit: (messageId: Uuid) -> Unit,
-        onDeleteForMe: (messageId: Uuid) -> Unit,
-        onDeleteForEveryone: (messageId: Uuid) -> Unit,
+    message: MessageUiModel,
+    onMessageInfo: (messageId: Uuid) -> Unit,
+    onReply: (messageId: Uuid) -> Unit,
+    onStar: (messageId: Uuid) -> Unit,
+    onEdit: (messageId: Uuid) -> Unit,
+    onDeleteForMe: (messageId: Uuid) -> Unit,
+    onDeleteForEveryone: (messageId: Uuid) -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
     Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         Spacer(modifier = Modifier.width(16.dp))
         Column(
-                modifier = Modifier.weight(1f).hoverable(interactionSource),
-                horizontalAlignment = Alignment.End
+            modifier = Modifier.weight(1f).hoverable(interactionSource),
+            horizontalAlignment = Alignment.End
         ) {
             Row {
                 Column {
                     IconButton(
-                            modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                            onClick = { showMenu = true },
-                            enabled = isHovered
+                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                        onClick = { showMenu = true },
+                        enabled = isHovered
                     ) {
                         Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = stringResource(MR.string.chat_message_options),
-                                tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = stringResource(MR.string.chat_message_options),
+                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                         )
                     }
                     SentMessageMenu(
-                            showMenu = showMenu,
-                            dismissMenu = { showMenu = false },
-                            onMessageInfo = {
-                                showMenu = false
-                                onMessageInfo(message.id)
-                            },
-                            onReply = {
-                                showMenu = false
-                                onReply(message.id)
-                            },
-                            onStar = {
-                                showMenu = false
-                                onStar(message.id)
-                            },
-                            onEdit = {
-                                showMenu = false
-                                onEdit(message.id)
-                            },
-                            onDeleteForMe = {
-                                showMenu = false
-                                onDeleteForMe(message.id)
-                            },
-                            onDeleteForEveryone = {
-                                showMenu = false
-                                onDeleteForEveryone(message.id)
-                            },
+                        showMenu = showMenu,
+                        dismissMenu = { showMenu = false },
+                        onMessageInfo = {
+                            showMenu = false
+                            onMessageInfo(message.id)
+                        },
+                        onReply = {
+                            showMenu = false
+                            onReply(message.id)
+                        },
+                        onStar = {
+                            showMenu = false
+                            onStar(message.id)
+                        },
+                        onEdit = {
+                            showMenu = false
+                            onEdit(message.id)
+                        },
+                        onDeleteForMe = {
+                            showMenu = false
+                            onDeleteForMe(message.id)
+                        },
+                        onDeleteForEveryone = {
+                            showMenu = false
+                            onDeleteForEveryone(message.id)
+                        },
                     )
                 }
                 MessageBubble(
-                        modifier = Modifier.heightIn(min = 48.dp),
-                        text = message.content,
-                        timestamp = formatMessageTimestamp(message.created),
-                        sentByYou = true,
-                        payloads = message.payloads,
-                        fileId = message.fileId,
-                        previewThumbnail = message.previewThumbnail,
-                        onLongClick = { showMenu = true },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    text = message.content,
+                    timestamp = formatMessageTimestamp(message.created),
+                    sentByYou = true,
+                    payloads = message.payloads,
+                    fileId = message.fileId,
+                    previewThumbnail = message.previewThumbnail,
+                    onLongClick = { showMenu = true },
                 )
             }
         }
@@ -144,33 +144,33 @@ fun ReceivedMessageBubble(
     val isHovered by interactionSource.collectIsHoveredAsState()
 
     Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         Column(
-                modifier = Modifier.weight(1f).hoverable(interactionSource),
-                horizontalAlignment = Alignment.Start,
+            modifier = Modifier.weight(1f).hoverable(interactionSource),
+            horizontalAlignment = Alignment.Start,
         ) {
             Row {
                 MessageBubble(
-                        modifier = Modifier.heightIn(min = 48.dp),
-                        text = message.content,
-                        timestamp = formatMessageTimestamp(message.created),
-                        sentByYou = false,
-                        payloads = message.payloads,
-                        fileId = message.fileId,
-                        previewThumbnail = message.previewThumbnail,
-                        onLongClick = { showMenu = true },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    text = message.content + "isread: ${message.isRead}",
+                    timestamp = formatMessageTimestamp(message.created),
+                    sentByYou = false,
+                    payloads = message.payloads,
+                    fileId = message.fileId,
+                    previewThumbnail = message.previewThumbnail,
+                    onLongClick = { showMenu = true },
                 )
                 Column {
                     IconButton(
-                            modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                            onClick = { showMenu = true },
-                            enabled = isHovered
+                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                        onClick = { showMenu = true },
+                        enabled = isHovered
                     ) {
                         Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = stringResource(MR.string.chat_message_options),
-                                tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = stringResource(MR.string.chat_message_options),
+                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                         )
                     }
                     ReceivedMessageMenu(
@@ -216,89 +216,89 @@ fun ReceivedMessageBubble(
 
 @Composable
 fun MessageBubble(
-        modifier: Modifier = Modifier,
-        text: String,
-        timestamp: String,
-        sentByYou: Boolean,
-        payloads: List<PayloadDescriptor>? = null,
-        fileId: Uuid,
-        previewThumbnail: EmbeddedThumb? = null,
-        onLongClick: () -> Unit,
-        onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
-        onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    text: String,
+    timestamp: String,
+    sentByYou: Boolean,
+    payloads: List<PayloadDescriptor>? = null,
+    fileId: Uuid,
+    previewThumbnail: EmbeddedThumb? = null,
+    onLongClick: () -> Unit,
+    onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
+    onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
 ) {
     val filteredPayloads =
-            payloads?.filter {
-                !listOf(
-                                ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                                ChatProtocol.DEFAULT_PAYLOAD_KEY,
-                                ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-                        )
-                        .contains(it.key)
-            }
+        payloads?.filter {
+            !listOf(
+                ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
+                ChatProtocol.DEFAULT_PAYLOAD_KEY,
+                ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
+            )
+                .contains(it.key)
+        }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val backgroundColor =
-            if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
-            else MaterialTheme.colorScheme.surfaceContainerHigh
+        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+        else MaterialTheme.colorScheme.surfaceContainerHigh
     val contentColor =
-            if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
-            else MaterialTheme.colorScheme.onSurface
+        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+        else MaterialTheme.colorScheme.onSurface
 
     val textState = RichTextState()
     textState.config.listIndent = 0
     textState.setHtml(text)
 
     val shape =
-            RoundedCornerShape(
-                    topStart = 18.dp,
-                    topEnd = 18.dp,
-                    bottomStart = if (!sentByYou) 4.dp else 18.dp,
-                    bottomEnd = if (sentByYou) 4.dp else 18.dp,
-            )
+        RoundedCornerShape(
+            topStart = 18.dp,
+            topEnd = 18.dp,
+            bottomStart = if (!sentByYou) 4.dp else 18.dp,
+            bottomEnd = if (sentByYou) 4.dp else 18.dp,
+        )
     Surface(
-            modifier =
-                    modifier.clip(shape).ifTrue(isMobile()) {
-                        Modifier.combinedClickable(onClick = {}, onLongClick = onLongClick)
-                    },
-            shape = shape,
-            color = backgroundColor,
+        modifier =
+            modifier.clip(shape).ifTrue(isMobile()) {
+                Modifier.combinedClickable(onClick = {}, onLongClick = onLongClick)
+            },
+        shape = shape,
+        color = backgroundColor,
     ) {
         Column {
             // Render media attachments if present
             if (hasMedia) {
                 MediaMessage(
-                        payloads = filteredPayloads,
-                        fileId = fileId,
-                        driveId = chatTargetDrive.alias,
-                        previewThumbnail = previewThumbnail,
-                        onMediaClick = onMediaClick,
-                        onMediaLongPress = onMediaLongPress,
+                    payloads = filteredPayloads,
+                    fileId = fileId,
+                    driveId = chatTargetDrive.alias,
+                    previewThumbnail = previewThumbnail,
+                    onMediaClick = onMediaClick,
+                    onMediaLongPress = onMediaLongPress,
                 )
             }
 
             // Render text content with timestamp
             Layout(
-                    modifier = Modifier.padding(12.dp),
-                    content = {
-                        SelectionContainer {
-                            Row {
-                                RichText(
-                                        state = textState,
-                                        onTextLayout = { textLayoutResult = it },
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = contentColor
-                                )
-                            }
+                modifier = Modifier.padding(12.dp),
+                content = {
+                    SelectionContainer {
+                        Row {
+                            RichText(
+                                state = textState,
+                                onTextLayout = { textLayoutResult = it },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = contentColor
+                            )
                         }
-                        Text(
-                                modifier = Modifier.padding(top = 16.dp),
-                                text = timestamp,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = contentColor.copy(alpha = 0.7f)
-                        )
                     }
+                    Text(
+                        modifier = Modifier.padding(top = 16.dp),
+                        text = timestamp,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.7f)
+                    )
+                }
             ) { measurables, constraints ->
                 val textPlaceable = measurables[0].measure(constraints)
                 val timePlaceable = measurables[1].measure(constraints)
@@ -323,17 +323,17 @@ fun MessageBubble(
                     // We add a small gap (8dp converted to px) between text and time
                     val horizontalGap = 8.dp.toPx()
                     val fitsOnLastLine =
-                            (constraints.maxWidth - lastLineRight) >
-                                    (timePlaceable.width + horizontalGap)
+                        (constraints.maxWidth - lastLineRight) >
+                                (timePlaceable.width + horizontalGap)
 
                     if (fitsOnLastLine) {
                         // Fits on the same line
                         totalWidth =
-                                maxOf(
-                                        textPlaceable.width,
-                                        (lastLineRight + horizontalGap + timePlaceable.width)
-                                                .toInt()
-                                )
+                            maxOf(
+                                textPlaceable.width,
+                                (lastLineRight + horizontalGap + timePlaceable.width)
+                                    .toInt()
+                            )
                         totalHeight = textPlaceable.height
                         timeX = totalWidth - timePlaceable.width
                         timeY = totalHeight - timePlaceable.height
