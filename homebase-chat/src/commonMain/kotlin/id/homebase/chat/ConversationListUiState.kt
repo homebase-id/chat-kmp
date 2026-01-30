@@ -19,4 +19,5 @@ data class ConversationListUiState(
     val currentConversationMessages: ImmutableList<MessageUiModel> = persistentListOf(),
     val conversationScrollPosition: ScrollPosition? = null,
     val uiEvent: ConversationListUiEvent? = null,
+    val currentOdinId: String = ""
 )

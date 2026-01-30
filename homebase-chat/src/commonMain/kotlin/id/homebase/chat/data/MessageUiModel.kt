@@ -21,7 +21,6 @@ data class MessageUiModel(
     val modified: Instant?, // When the message was last modified
     val senderId: String, // TODO: What is that? The name?
     val senderOdinId: String, // frodo.baggins.demo.rocks
-    val isCurrentUser: Boolean = false, // TODO: What is that?
     val isRead: Boolean = false,
     val isEdited: Boolean = false,
     val messageAppData: MessageAppData, // TODO: Should we copy these up into the message?
@@ -29,6 +28,9 @@ data class MessageUiModel(
     /** Tiny blurry preview thumbnail of the file */
     val previewThumbnail: EmbeddedThumb?,
     /** List of payload descriptors with metadata */
-    val payloads: List<PayloadDescriptor>?,
+    val payloads: List<PayloadDescriptor>?
+) {
+    fun isCurrentUser(domain: String): Boolean =
+        senderOdinId.trim().equals(domain.trim(), ignoreCase = true)
 
-    )
+}

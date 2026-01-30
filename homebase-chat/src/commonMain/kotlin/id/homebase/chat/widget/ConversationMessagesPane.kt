@@ -81,6 +81,7 @@ fun ConversationMessagesPane(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
+    currentOdinId: String
 ) {
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -384,7 +385,7 @@ fun ConversationMessagesPane(
                         }
                         items(
                             items = section.messages, key = { message -> message.id }) { message ->
-                            if (message.isCurrentUser) {
+                            if (message.isCurrentUser(currentOdinId)) {
                                 SentMessageBubble(
                                     message = message,
                                     onMessageInfo = {

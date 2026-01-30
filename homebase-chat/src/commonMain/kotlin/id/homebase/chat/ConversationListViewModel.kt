@@ -2,6 +2,7 @@ package id.homebase.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.writeBytesToTempFile
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageReaderService
@@ -22,6 +23,7 @@ import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 class ChatListViewModel(
+    private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
     private val conversationService: ConversationService,
     private val chatMessageService: ChatMessageReaderService,
@@ -37,6 +39,19 @@ class ChatListViewModel(
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            val domain =
+                credentialsManager
+                    .requireActiveCredentials()
+                    .domain
+                    .trim()
+                    .lowercase()
+
+            _uiState.update {
+                it.copy(currentOdinId = domain)
+            }
+        }
+
         viewModelScope.launch {
             conversationService.start()
             conversationService.conversations.collect { conversations ->
@@ -191,13 +206,13 @@ class ChatListViewModel(
 
             chatMessageService
                 .observeMessages(conversationId).collect { messages ->
-                val sorted = messages.sortedBy { it.created }
-                _uiState.value = _uiState.value.copy(
-                    selectedConversationId = conversationId,
-                    currentConversationMessages = sorted.toPersistentList(),
-                    conversationScrollPosition = getScrollPosition(conversationId),
-                )
-            }
+                    val sorted = messages.sortedBy { it.created }
+                    _uiState.value = _uiState.value.copy(
+                        selectedConversationId = conversationId,
+                        currentConversationMessages = sorted.toPersistentList(),
+                        conversationScrollPosition = getScrollPosition(conversationId),
+                    )
+                }
         }
     }
 

@@ -190,6 +190,7 @@ fun ChatListUi(
                                 }
                             },
                             onUiAction = onUiAction,
+                            currentOdinId = uiState.currentOdinId
                         )
                     } else {
                         EmptyDetailPane(
