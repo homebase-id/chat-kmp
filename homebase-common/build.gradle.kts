@@ -69,6 +69,7 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.kotlinx.datetime)
             implementation(libs.kotlinx.immutableCollections)
+            implementation(libs.kotlinx.io.core)
             implementation(libs.multiplatform.settings)
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
@@ -89,6 +90,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
+            implementation(libs.androidx.browser)
             implementation(libs.ktor.client.okhttp)
         }
         appleMain.dependencies {
@@ -96,6 +98,17 @@ kotlin {
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
+            implementation(libs.kotlinx.io.core.jvm)
+        }
+    }
+
+    targets.all {
+        compilations.all {
+            compileTaskProvider.configure {
+                compilerOptions {
+                    freeCompilerArgs.add("-Xexpect-actual-classes")
+                }
+            }
         }
     }
 }

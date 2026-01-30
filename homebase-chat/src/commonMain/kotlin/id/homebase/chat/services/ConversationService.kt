@@ -91,12 +91,12 @@ class ConversationService(
                             val conversationFiles =
                                     event.batchData.filter {
                                         it.fileMetadata.appData.fileType ==
-                                                ChatProtocol.CONVERSATION_FILE_TYPE
+                                                ChatProtocol.ConversationFileType
                                     }
                             val messageFiles =
                                     event.batchData.filter {
                                         it.fileMetadata.appData.fileType ==
-                                                ChatProtocol.MESSAGE_FILE_TYPE
+                                                ChatProtocol.MessageFileType
                                     }
 
                             if (!conversationFiles.isEmpty())
@@ -236,7 +236,7 @@ class ConversationService(
             val appDataObj =
                     OdinSystemSerializer.deserialize<ConversationAppDataJson>(appData.content ?: "")
 
-            if (appData.fileType != ChatProtocol.CONVERSATION_FILE_TYPE)
+            if (appData.fileType != ChatProtocol.ConversationFileType)
                     throw IllegalArgumentException("HomebaseFile must be of type Chat_conversation")
 
             if (appData.content == null) throw IllegalArgumentException("AppData is empty")

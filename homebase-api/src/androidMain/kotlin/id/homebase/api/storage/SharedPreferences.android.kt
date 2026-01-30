@@ -1,100 +1,93 @@
 package id.homebase.api.storage
 
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.util.Properties
+import android.content.Context
+import androidx.core.content.edit
+import android.content.SharedPreferences as AndroidSharedPreferences
 
-/** Desktop (JVM) implementation of SharedPreferences using Java Properties file. */
+/** Android implementation of SharedPreferences using native Android SharedPreferences. */
 actual object SharedPreferences {
-    private const val PREFS_FILE = "shared_preferences.properties"
+    private const val PREFS_NAME = "homebase_shared_prefs"
 
-    private val storageDir: File by lazy {
-        val userHome = System.getProperty("user.home")
-        val appDir = File(userHome, ".homebase-kmp-poc")
-        appDir.mkdirs()
-        appDir
+    private lateinit var applicationContext: Context
+
+    /**
+     * Initialize SharedPreferences with application context. Must be called before using any other
+     * methods (typically in Application.onCreate()).
+     */
+    fun initialize(context: Context) {
+        applicationContext = context.applicationContext
     }
 
-    private val prefsFile: File by lazy { File(storageDir, PREFS_FILE) }
-
-    private val properties: Properties by lazy {
-        Properties().apply {
-            if (prefsFile.exists()) {
-                FileInputStream(prefsFile).use { load(it) }
-            }
+    private fun getPrefs(): AndroidSharedPreferences {
+        check(::applicationContext.isInitialized) {
+            "SharedPreferences not initialized. Call SharedPreferences.initialize(context) first."
         }
-    }
-
-    private fun save() {
-        FileOutputStream(prefsFile).use { properties.store(it, null) }
+        return applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
     actual fun putString(key: String, value: String) {
-        properties.setProperty(key, value)
-        save()
+        getPrefs().edit { putString(key, value) }
     }
 
     actual fun getString(key: String): String? {
-        return properties.getProperty(key)
+        return getPrefs().getString(key, null)
     }
 
     actual fun putInt(key: String, value: Int) {
-        properties.setProperty(key, value.toString())
-        save()
+        getPrefs().edit { putInt(key, value) }
     }
 
     actual fun getInt(key: String, defaultValue: Int): Int {
-        return properties.getProperty(key)?.toIntOrNull() ?: defaultValue
+        return getPrefs().getInt(key, defaultValue)
     }
 
     actual fun putLong(key: String, value: Long) {
-        properties.setProperty(key, value.toString())
-        save()
+        getPrefs().edit { putLong(key, value) }
     }
 
     actual fun getLong(key: String, defaultValue: Long): Long {
-        return properties.getProperty(key)?.toLongOrNull() ?: defaultValue
+        return getPrefs().getLong(key, defaultValue)
     }
 
     actual fun putBoolean(key: String, value: Boolean) {
-        properties.setProperty(key, value.toString())
-        save()
+        getPrefs().edit { putBoolean(key, value) }
     }
 
     actual fun getBoolean(key: String, defaultValue: Boolean): Boolean {
-        return properties.getProperty(key)?.toBooleanStrictOrNull() ?: defaultValue
+        return getPrefs().getBoolean(key, defaultValue)
     }
 
     actual fun putFloat(key: String, value: Float) {
-        properties.setProperty(key, value.toString())
-        save()
+        getPrefs().edit { putFloat(key, value) }
     }
 
     actual fun getFloat(key: String, defaultValue: Float): Float {
-        return properties.getProperty(key)?.toFloatOrNull() ?: defaultValue
+        return getPrefs().getFloat(key, defaultValue)
     }
 
     actual fun putDouble(key: String, value: Double) {
-        properties.setProperty(key, value.toString())
-        save()
+        // Android SharedPreferences doesn't have putDouble, so we use putLong with bit conversion
+        getPrefs().edit { putLong(key, value.toRawBits()) }
     }
 
     actual fun getDouble(key: String, defaultValue: Double): Double {
-        return properties.getProperty(key)?.toDoubleOrNull() ?: defaultValue
+        val prefs = getPrefs()
+        return if (prefs.contains(key)) {
+            Double.fromBits(prefs.getLong(key, 0L))
+        } else {
+            defaultValue
+        }
     }
 
     actual fun remove(key: String) {
-        properties.remove(key)
-        save()
+        getPrefs().edit { remove(key) }
     }
 
     actual fun contains(key: String): Boolean {
-        return properties.containsKey(key)
+        return getPrefs().contains(key)
     }
 
     actual fun clear() {
-        properties.clear()
-        save()
+        getPrefs().edit { clear() }
     }
 }

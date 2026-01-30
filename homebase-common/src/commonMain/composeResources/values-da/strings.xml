@@ -3,6 +3,11 @@
     <!-- Menu options -->
     <string name="settings">Indstillinger</string>
 
+    <!-- Common -->
+    <string name="menu_back">Tilbage</string>
+    <string name="expand">Udvid</string>
+    <string name="collapse">Gør mindre</string>
+
     <!-- Language options -->
     <string name="language">Sprog</string>
     <string name="language_system">Systemstandard</string>
@@ -26,10 +31,34 @@
     <string name="day_saturday">Lørdag</string>
     <string name="day_sunday">Søndag</string>
 
-    <!-- Chat -->
+    <!-- Conversation list -->
+    <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
+    <string name="chat_filter_by_unread_clear_button">Ryd filter</string>
+    <string name="chat_filter_by_unread_description">Filtreret på ulæste</string>
+    <string name="chat_filter_by_unread_empty_description">Ingen ulæste samtaler</string>
     <string name="chat_select_a_conversation">Vælg en samtale</string>
     <string name="chat_select_a_conversation_subtitle">Vælg en samtale fra listen for at se beskederne</string>
     <string name="chat_new_conversation">Ny samtale</string>
     <string name="chat_search_placeholder">Søg</string>
+
+    <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>
+    <string name="chat_send_message_button">Send besked</string>
+    <string name="chat_info">Samtale info</string>
+    <string name="chat_delete">Slet</string>
+    <string name="chat_archive">Arkivér</string>
+    <string name="chat_clear">Ryd</string>
+    <string name="chat_options">Samtale menu</string>
+
+    <!-- Conversation message -->
+    <string name="chat_message_info">Besked info</string>
+    <string name="chat_message_reply">Svar</string>
+    <string name="chat_message_star">Stjerne</string>
+    <string name="chat_message_edit">Redigér</string>
+    <string name="chat_message_delete_for_everyone">Slet for alle</string>
+    <string name="chat_message_delete_for_me">Slet for mig</string>
+    <string name="chat_message_options">Besked menu</string>
+    <string name="chat_message_attachment_options">Vedhæftelses menu</string>
+    <string name="chat_message_emoji_options">Emoji menu</string>
+
 </resources>

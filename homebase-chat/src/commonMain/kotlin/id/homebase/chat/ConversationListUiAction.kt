@@ -17,4 +17,16 @@ sealed interface ConversationListUiAction {
         val firstVisibleItemIndex: Int,
         val firstVisibleItemScrollOffset: Int
     ) : ConversationListUiAction
+
+    data class ShowConversationInfo(val conversationId: Uuid) : ConversationListUiAction
+    data class DeleteConversation(val conversationId: Uuid) : ConversationListUiAction
+    data class ArchiveConversation(val conversationId: Uuid) : ConversationListUiAction
+    data class ClearConversation(val conversationId: Uuid) : ConversationListUiAction
+
+    data class ShowMessageInfo(val messageId: Uuid) : ConversationListUiAction
+    data class ReplyToMessage(val messageId: Uuid) : ConversationListUiAction
+    data class StarMessage(val messageId: Uuid) : ConversationListUiAction
+    data class EditMessage(val messageId: Uuid) : ConversationListUiAction
+    data class DeleteMessageForMe(val messageId: Uuid) : ConversationListUiAction
+    data class DeleteMessageForEveryone(val messageId: Uuid) : ConversationListUiAction
 }

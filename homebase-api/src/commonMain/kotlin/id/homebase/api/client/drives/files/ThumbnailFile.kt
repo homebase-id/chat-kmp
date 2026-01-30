@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 data class ThumbnailFile(
     val pixelWidth: Int,
     val pixelHeight: Int,
-    val payload: ByteArray, // raw bytes -> equivalent to Blob
+    val thumbnailBytes: ByteArray, // raw bytes -> equivalent to Blob
     val key: String,
     val contentType: String = "image/webp",
     val quality: Int = 76,
@@ -25,7 +25,7 @@ data class ThumbnailFile(
 
         if (pixelWidth != other.pixelWidth) return false
         if (pixelHeight != other.pixelHeight) return false
-        if (!payload.contentEquals(other.payload)) return false
+        if (!thumbnailBytes.contentEquals(other.thumbnailBytes)) return false
         if (key != other.key) return false
         if (contentType != other.contentType) return false
         if (quality != other.quality) return false
@@ -37,7 +37,7 @@ data class ThumbnailFile(
     override fun hashCode(): Int {
         var result = pixelWidth
         result = 31 * result + pixelHeight
-        result = 31 * result + payload.contentHashCode()
+        result = 31 * result + thumbnailBytes.contentHashCode()
         result = 31 * result + key.hashCode()
         result = 31 * result + contentType.hashCode()
         result = 31 * result + quality

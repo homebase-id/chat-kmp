@@ -84,9 +84,7 @@ class ChatMessageReaderService(
     private suspend fun processIncrementalBatch(files: List<HomebaseFile>) {
         val messages =
                 files
-                        .filter {
-                            it.fileMetadata.appData.fileType == ChatProtocol.MESSAGE_FILE_TYPE
-                        }
+                        .filter { it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType }
                         .mapNotNull { mapToMessageData(it) }
 
         messages.groupBy { it.conversationId }.forEach { (conversationId, msgs) ->
@@ -121,7 +119,7 @@ class ChatMessageReaderService(
                         sortOrder = QueryBatchSortOrder.NewestFirst,
                         sortField = QueryBatchSortField.CreatedDate,
                         fileSystemType = 0,
-                        filetypesAnyOf = listOf(ChatProtocol.MESSAGE_FILE_TYPE),
+                        filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
                         groupIdAnyOf = listOf(conversationId)
                 )
 
@@ -139,7 +137,7 @@ class ChatMessageReaderService(
             val appData = metadata.appData
 
             try {
-                require(appData.fileType == ChatProtocol.MESSAGE_FILE_TYPE)
+                require(appData.fileType == ChatProtocol.MessageFileType)
                 val content = appData.content
                 require(content != null)
                 require(appData.uniqueId != null)
@@ -164,7 +162,6 @@ class ChatMessageReaderService(
                         reactionPreview = metadata.reactionPreview,
                         previewThumbnail = metadata.appData.previewThumbnail,
                         payloads = metadata.payloads,
-
                 )
             } catch (t: Throwable) {
 

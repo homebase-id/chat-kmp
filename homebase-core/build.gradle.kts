@@ -32,6 +32,8 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+            linkerOpts("-lsqlite3")
+            linkerOpts("-lz", "-lbz2", "-liconv")
         }
     }
 
@@ -61,13 +63,17 @@ kotlin {
             implementation(libs.kotlinx.io.core)
             implementation(libs.kermit)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.cryptography.core)
+            implementation(libs.cryptography.provider.optimal)
+            implementation(libs.sqldelight.runtime)
+            implementation(libs.sqldelight.coroutines.extensions)
             implementation(libs.navigation.compose)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.multiplatform.settings)
         }
-        iosMain.dependencies {
+        nativeMain.dependencies {
             implementation(libs.ktor.client.darwin)
             implementation(libs.sqldelight.native.driver)
         }
@@ -85,4 +91,13 @@ kotlin {
         }
     }
 
+    targets.all {
+        compilations.all {
+            compileTaskProvider.configure {
+                compilerOptions {
+                    freeCompilerArgs.add("-Xexpect-actual-classes")
+                }
+            }
+        }
+    }
 }

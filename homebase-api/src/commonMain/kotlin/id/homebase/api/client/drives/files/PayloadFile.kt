@@ -16,7 +16,7 @@ data class PayloadFile(
     val previewThumbnail: EmbeddedThumb? = null,
     val contentType: String = "",
     val descriptorContent: String? = null,
-    val skipEncryption: Boolean = false,
+    val isPreEncrypted: Boolean = false,
     /** IV for manual encryption mode (when skipEncryption = true). */
     val iv: ByteArray? = null
 ) {
@@ -30,7 +30,7 @@ data class PayloadFile(
         if (!filePath.contentEquals(other.filePath)) return false
         if (previewThumbnail != other.previewThumbnail) return false
         if (descriptorContent != other.descriptorContent) return false
-        if (skipEncryption != other.skipEncryption) return false
+        if (isPreEncrypted != other.isPreEncrypted) return false
         if (iv != null) {
             if (other.iv == null) return false
             if (!iv.contentEquals(other.iv)) return false
@@ -44,7 +44,7 @@ data class PayloadFile(
         result = 31 * result + filePath.hashCode()
         result = 31 * result + (previewThumbnail?.hashCode() ?: 0)
         result = 31 * result + (descriptorContent?.hashCode() ?: 0)
-        result = 31 * result + skipEncryption.hashCode()
+        result = 31 * result + isPreEncrypted.hashCode()
         result = 31 * result + (iv?.contentHashCode() ?: 0)
         return result
     }

@@ -1,4 +1,4 @@
-package id.homebase.api.browser
+package id.homebase.core.auth
 
 import kotlinx.coroutines.CoroutineScope
 
@@ -17,13 +17,6 @@ expect object BrowserLauncher {
      * @param url The authorization URL to open
      * @param scope CoroutineScope for async callback handling (iOS/Desktop need this)
      */
-    fun launchAuthBrowser(url: String, scope: CoroutineScope)
-
-    /**
-     * Open a URL in the system browser without OAuth callback handling. Used for simple external
-     * URLs like permission extension pages.
-     *
-     * @param url The URL to open
-     */
-    fun openUrl(url: String)
+    fun launchAuthBrowser(url: String, scope: CoroutineScope, onOpenUrl: (String) -> Unit)
 }
+
