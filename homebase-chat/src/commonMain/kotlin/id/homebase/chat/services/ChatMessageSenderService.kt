@@ -1,107 +1,97 @@
 package id.homebase.chat.services
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.readFileBytes
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.PushNotificationOptions
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.drives.writeBytesToTempFile
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.api.serialization.OdinSystemSerializer
-import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
-    private val credentialsManager: CredentialsManager,
     private val driveUploadProvider: DriveUploadProvider,
-    private val conversationService: ConversationService,
-    private val scope: CoroutineScope
+    private val conversationService: ConversationService
 ) {
-
-
     private val chatDrive = chatTargetDrive.alias
 
     suspend fun sendNewMessage(
         conversationId: Uuid,
-        messageText: String
-    ): SendMessageResult {
-
-        val uniqueId = Uuid.random()
-
-        val content = MessageAppData(
-            replyId = null,
-            replyPreview = null,
-            message = messageText,
-            deliveryStatus = ChatDeliveryStatus.Sent.value
+        messageText: String,
+        payloadBundle: PayloadBundle?
+    ): SendMessageResult =
+        sendMessageInternal(
+            conversationId = conversationId,
+            content =
+                MessageAppData(
+                    replyId = null,
+                    replyPreview = null,
+                    message = messageText,
+                    deliveryStatus = ChatDeliveryStatus.Sent.value
+                ),
+            notificationText = "You have a new message",
+            payloadBundle = payloadBundle
         )
-
-        val metadata =
-            UploadFileMetadata(
-                allowDistribution = true,
-                isEncrypted = true,
-                appData =
-                    UploadAppFileMetaData(
-                        uniqueId = uniqueId.toString(),
-                        groupId = conversationId.toString(),
-                        fileType = ChatProtocol.MESSAGE_FILE_TYPE,
-                        userDate = UnixTimeUtc.now().milliseconds,
-                        content = OdinSystemSerializer.serialize(content),
-                        previewThumbnail = null
-                    )
-            )
-
-        val keyHeader = KeyHeader.newRandom16()
-
-        val recipients = conversationService.getRecipients(conversationId)
-
-        val request =
-            UploadFileRequest(
-                driveId = chatDrive,
-                keyHeader = keyHeader,
-                metadata = metadata.encryptContent(keyHeader),
-                transitOptions =
-                    TransitOptions(
-                        recipients = recipients,
-                        useAppNotification = true,
-                        appNotificationOptions =
-                            PushNotificationOptions(
-                                appId = ChatProtocol.CHAT_APP_ID.toString(),
-                                typeId = conversationId.toString(),
-                                tagId = uniqueId.toString(),
-                                silent = false,
-                                unEncryptedMessage = "You have a new message"
-                            )
-                    )
-            )
-
-        val result =
-            driveUploadProvider.uploadFile(request)
-                ?: error("Failed to upload chat message")
-
-        return SendMessageResult(
-            fileId = result.fileId,
-            uniqueId = uniqueId,
-            versionTag = result.newVersionTag
-        )
-    }
 
     suspend fun replyToMessage(
         conversationId: Uuid,
         replyTo: ReplyPreview,
-        messageText: String
+        messageText: String,
+        payloadBundle: PayloadBundle?
+    ): SendMessageResult =
+        sendMessageInternal(
+            conversationId = conversationId,
+            content =
+                MessageAppData(
+                    replyId = replyTo.replyUniqueId,
+                    replyPreview = replyTo,
+                    message = messageText,
+                    deliveryStatus = ChatDeliveryStatus.Sent.value
+                ),
+            notificationText = "You have a new reply",
+            payloadBundle = payloadBundle
+        )
+
+    private suspend fun sendMessageInternal(
+        conversationId: Uuid,
+        content: MessageAppData,
+        notificationText: String,
+        payloadBundle: PayloadBundle?
     ): SendMessageResult {
 
         val uniqueId = Uuid.random()
+        val keyHeader = KeyHeader.newRandom16()
+        val recipients = conversationService.getRecipients(conversationId)
 
-        val content = MessageAppData(
-            replyId = replyTo.replyUniqueId,
-            replyPreview = replyTo,
-            message = messageText,
-            deliveryStatus = ChatDeliveryStatus.Sent.value
-        )
+        val encryptedPayloads =
+            payloadBundle?.payloads?.map { payload ->
+
+                val encryptedFile =
+                    if (payload.contentType.startsWith("video/")) {
+                        encodeAndEncryptVideo(
+                            inputFile = payload.filePath,
+                            keyHeader = keyHeader
+                        )
+                    } else {
+                        encryptFile(
+                            inputFile = payload.filePath,
+                            keyHeader = keyHeader
+                        )
+                    }
+
+                payload.copy(
+                    filePath = encryptedFile.filePath,
+                    iv = encryptedFile.iv,
+                    isPreEncrypted = true
+                )
+            } ?: emptyList()
 
         val metadata =
             UploadFileMetadata(
@@ -111,16 +101,15 @@ class ChatMessageSenderService(
                     UploadAppFileMetaData(
                         uniqueId = uniqueId.toString(),
                         groupId = conversationId.toString(),
-                        fileType = ChatProtocol.MESSAGE_FILE_TYPE,
+                        fileType = ChatProtocol.MessageFileType,
                         userDate = UnixTimeUtc.now().milliseconds,
                         content = OdinSystemSerializer.serialize(content),
-                        previewThumbnail = null
+                        previewThumbnail =
+                            payloadBundle
+                                ?.previewThumbs
+                                ?.minByOrNull { it.pixelWidth }
                     )
             )
-
-        val keyHeader = KeyHeader.newRandom16()
-
-        val recipients = conversationService.getRecipients(conversationId)
 
         val request =
             UploadFileRequest(
@@ -133,24 +122,86 @@ class ChatMessageSenderService(
                         useAppNotification = true,
                         appNotificationOptions =
                             PushNotificationOptions(
-                                appId = ChatProtocol.CHAT_APP_ID.toString(),
+                                appId = ChatProtocol.ChatAppId.toString(),
                                 typeId = conversationId.toString(),
                                 tagId = uniqueId.toString(),
                                 silent = false,
-                                unEncryptedMessage = "You have a new reply"
+                                unEncryptedMessage = notificationText
                             )
-                    )
+                    ),
+                payloads = encryptedPayloads,
+                thumbnails = payloadBundle?.thumbnails ?: emptyList()
+            )
+        try {
+            val result =
+                driveUploadProvider.uploadFile(request) ?: error("Failed to upload chat message")
+            return SendMessageResult(
+                fileId = result.fileId,
+                uniqueId = uniqueId,
+                versionTag = result.newVersionTag
+            )
+        } catch (t: Throwable) {
+            Logger.e("ChatMessageSenderService", t)
+        }
+
+        error("Failed to send chat message")
+    }
+
+    private suspend fun encryptFile(
+        inputFile: String,
+        keyHeader: KeyHeader
+    ): EncryptedFileResult {
+
+        // Read full file from disk
+        val plainBytes = readFileBytes(inputFile)
+
+        // Per-payload IV
+        val payloadIv = ByteArrayUtil.getRndByteArray(16)
+
+        // Encrypt with shared AES key + payload IV
+        val encryptedBytes =
+            keyHeader.encryptDataAes(
+                data = plainBytes,
+                customIv = payloadIv
             )
 
-        val result =
-            driveUploadProvider.uploadFile(request)
-                ?: error("Failed to upload reply message")
+        // Write encrypted payload to temp file
+        val encryptedPath =
+            writeBytesToTempFile(
+                bytes = encryptedBytes,
+                prefix = "enc",
+                suffix = ".jpg.encrypted"
+            )
 
-        return SendMessageResult(
-            fileId = result.fileId,
-            uniqueId = uniqueId,
-            versionTag = result.newVersionTag
+        return EncryptedFileResult(
+            filePath = encryptedPath,
+            iv = payloadIv
         )
     }
 
+
+    private suspend fun encodeAndEncryptVideo(
+        inputFile: String,
+        keyHeader: KeyHeader
+    ): EncryptedFileResult {
+
+        //TODO: BIshwa, we call encoding and encryption here
+//        val encodedVideoPath = videoEncoder.encodeToFile(inputFile) // your existing encoder
+//
+//        return encryptFile(
+//            inputFile = encodedVideoPath,
+//            keyHeader = keyHeader
+//        )
+
+
+        // for now
+        return encryptFile(inputFile, keyHeader);
+    }
+
 }
+
+data class EncryptedFileResult(
+    val filePath: String,
+    val iv: ByteArray
+)
+

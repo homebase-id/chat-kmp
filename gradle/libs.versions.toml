@@ -128,7 +128,6 @@ coil3-network = { group = "io.coil-kt.coil3", name = "coil-network-ktor3", versi
 coil3-video = { group = "io.coil-kt.coil3", name = "coil-video", version.ref = "coil3" } # Android only
 coil3-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil3" }
 kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlinStdlib" }
-
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }

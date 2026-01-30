@@ -67,6 +67,7 @@ kotlin {
             implementation(libs.coil3.compose)
             implementation(libs.coil3.network)
             implementation(libs.richeditor.compose)
+            implementation(libs.filekit.core)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
