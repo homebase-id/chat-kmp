@@ -6,11 +6,16 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -18,6 +23,9 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
+import id.homebase.core.ui.assets.Homebase
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.Warning
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -123,7 +131,32 @@ fun HomebaseImage(
             is AsyncImagePainter.State.Error -> {
                 val errorState = state as AsyncImagePainter.State.Error
                 println("HomebaseImage Error: ${errorState.result.throwable.message}")
-                error?.invoke() ?: placeholder?.invoke()
+
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    if (previewBitmap != null) {
+                        Image(
+                                bitmap = previewBitmap,
+                                contentDescription = contentDescription,
+                                contentScale = contentScale,
+                                modifier = Modifier.fillMaxSize().blur(blurRadius.dp)
+                        )
+                    } else {
+                        placeholder?.invoke()
+                    }
+
+                    // Show error overlay on top
+                    if (error != null) {
+                        error.invoke()
+                    } else {
+                        // Default error icon if no custom error composable provided
+                        Icon(
+                                imageVector = HomebaseIcons.Warning,
+                                contentDescription = "Error",
+                            tint = Color.Gray,
+                                modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
             }
         }
     }

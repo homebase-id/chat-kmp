@@ -2,11 +2,13 @@ package id.homebase.chat.widget
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,10 +53,35 @@ fun MediaItem(
         preserveAspectRatio: Boolean = false,
         onClick: (() -> Unit)? = null,
         onLongPress: ((Offset) -> Unit)? = null,
+        shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(Dimens.Message.cornerRadius),
 ) {
         val contentType = payload.contentType ?: ""
-        val cornerShape = RoundedCornerShape(Dimens.Message.cornerRadius)
         val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
+
+        // Calculate aspect ratio if available
+        val aspectRatio =
+                remember(payload.previewThumbnail) {
+                        val width = payload.previewThumbnail?.pixelWidth
+                        val height = payload.previewThumbnail?.pixelHeight
+                        if (width != null && height != null && width > 0 && height > 0) {
+                                width.toFloat() / height.toFloat()
+                        } else {
+                                null
+                        }
+                }
+
+        // Base modifier with shape clip
+        val baseModifier = modifier.clip(shape)
+
+        // Apply aspect ratio only if needed and available.
+        // Note: For aspect ratio to work for "fitting inside", we typically want fillMaxWidth()
+        // with aspect ratio, but here we might have width constraints from parent.
+        val finalModifier =
+                if (preserveAspectRatio && aspectRatio != null) {
+                        baseModifier.aspectRatio(aspectRatio)
+                } else {
+                        baseModifier
+                }
 
         when {
                 contentType.startsWith("image/") -> {
@@ -64,7 +91,9 @@ fun MediaItem(
                                         driveId = driveId,
                                         fileId = fileId,
                                         payloadKey = payload.key,
-                                        previewThumbnail = previewThumbnail,
+                                        previewThumbnail =
+                                                payload.previewThumbnail?.toEmbeddedThumb()
+                                                        ?: previewThumbnail,
                                         requestedSize = imageSize,
                                         lastModified = payload.lastModified,
                                         isEncrypted = true,
@@ -72,7 +101,7 @@ fun MediaItem(
 
                         HomebaseImage(
                                 imageData = imageData,
-                                modifier = modifier.clip(cornerShape),
+                                modifier = finalModifier,
                                 contentScale = imageContentScale,
                                 contentDescription = "Image attachment",
                                 onClick = onClick,
@@ -85,7 +114,7 @@ fun MediaItem(
                         MediaPlaceholder(
                                 emoji = "📹",
                                 label = "Video",
-                                modifier = modifier.clip(cornerShape),
+                                modifier = baseModifier,
                         )
                 }
                 contentType.startsWith("audio/") -> {
@@ -93,7 +122,7 @@ fun MediaItem(
                         MediaPlaceholder(
                                 emoji = "🎵",
                                 label = "Audio",
-                                modifier = modifier.clip(cornerShape),
+                                modifier = baseModifier,
                         )
                 }
                 contentType.startsWith("application/") -> {
@@ -101,7 +130,7 @@ fun MediaItem(
                         MediaPlaceholder(
                                 emoji = "📄",
                                 label = "File",
-                                modifier = modifier.clip(cornerShape),
+                                modifier = baseModifier,
                         )
                 }
                 else -> {
@@ -110,7 +139,7 @@ fun MediaItem(
                         MediaPlaceholder(
                                 emoji = "❓",
                                 label = "Unknown",
-                                modifier = modifier.clip(cornerShape),
+                                modifier = baseModifier,
                         )
                 }
         }

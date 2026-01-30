@@ -1,7 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -35,40 +35,43 @@ fun MediaMessage(
         onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
         onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
 ) {
-    if (payloads.isEmpty()) return
+        if (payloads.isEmpty()) return
 
-    when (payloads.size) {
-        1 -> {
-            // Single media item - constrain to max 50% width (~210dp), preserve aspect ratio
-            MediaItem(
-                    payload = payloads[0],
-                    fileId = fileId,
-                    driveId = driveId,
-                    previewThumbnail = previewThumbnail
-                                    ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
-                    modifier =
-                            modifier.width(Dimens.Album.totalWidth)
-                                    .heightIn(
-                                            min = Dimens.MediaBubble.minHeight,
-                                            max = Dimens.MediaBubble.maxHeight
-                                    ),
-                    imageSize = ImageSize.THUMB_LARGE,
-                    preserveAspectRatio = true,
-                    onClick = { onMediaClick?.invoke(payloads[0]) },
-                    onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
-            )
+        when (payloads.size) {
+                1 -> {
+                        // Single media item - constrain to max 50% width (~210dp), preserve aspect
+                        // ratio
+                        val widthModifier = modifier.widthIn(max = Dimens.Album.totalWidth)
+                        MediaItem(
+                                payload = payloads[0],
+                                fileId = fileId,
+                                driveId = driveId,
+                                previewThumbnail = previewThumbnail
+                                                ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
+                                modifier =
+                                        widthModifier.heightIn(
+                                                min = Dimens.MediaBubble.minHeight,
+                                                max = Dimens.MediaBubble.maxHeight
+                                        ),
+                                imageSize = ImageSize.THUMB_MEDIUM,
+                                preserveAspectRatio = true,
+                                onClick = { onMediaClick?.invoke(payloads[0]) },
+                                onLongPress = { offset ->
+                                        onMediaLongPress?.invoke(payloads[0], offset)
+                                },
+                        )
+                }
+                else -> {
+                        // Multiple media items - show gallery with fixed dimensions
+                        MediaGallery(
+                                payloads = payloads,
+                                fileId = fileId,
+                                driveId = driveId,
+                                previewThumbnail = previewThumbnail,
+                                modifier = modifier,
+                                onMediaClick = onMediaClick,
+                                onMediaLongPress = onMediaLongPress,
+                        )
+                }
         }
-        else -> {
-            // Multiple media items - show gallery with fixed dimensions
-            MediaGallery(
-                    payloads = payloads,
-                    fileId = fileId,
-                    driveId = driveId,
-                    previewThumbnail = previewThumbnail,
-                    modifier = modifier,
-                    onMediaClick = onMediaClick,
-                    onMediaLongPress = onMediaLongPress,
-            )
-        }
-    }
 }
