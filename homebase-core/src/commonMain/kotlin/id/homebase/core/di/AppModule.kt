@@ -3,10 +3,10 @@ package id.homebase.core.di
 import id.homebase.api.di.apiModule
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.ChatListViewModel
-import id.homebase.chat.data.ChatMessageReaderService
-import id.homebase.chat.data.ChatMessageSenderService
-import id.homebase.chat.data.ContactService
-import id.homebase.chat.data.ConversationService
+import id.homebase.chat.services.ChatMessageReaderService
+import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ContactService
+import id.homebase.chat.services.ConversationService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.home.HomeViewModel

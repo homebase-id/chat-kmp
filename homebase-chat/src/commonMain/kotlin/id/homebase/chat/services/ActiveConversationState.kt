@@ -1,5 +1,6 @@
-package id.homebase.chat.data
+package id.homebase.chat.services
 
+import id.homebase.chat.data.MessageUiModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

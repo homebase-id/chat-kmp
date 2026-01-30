@@ -2,10 +2,10 @@ package id.homebase.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import id.homebase.chat.data.ChatMessageReaderService
-import id.homebase.chat.data.ChatMessageSenderService
-import id.homebase.chat.data.ContactService
-import id.homebase.chat.data.ConversationService
+import id.homebase.chat.services.ChatMessageReaderService
+import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ContactService
+import id.homebase.chat.services.ConversationService
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.ScrollPosition
 import kotlinx.collections.immutable.toPersistentList
