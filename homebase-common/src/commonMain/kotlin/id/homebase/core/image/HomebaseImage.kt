@@ -91,7 +91,7 @@ fun HomebaseImage(
             modifier = modifier.then(gestureModifier),
             contentScale = contentScale
     ) {
-        val state = painter.state
+        val state by painter.state.collectAsState()
 
         // Animate blur: 10f -> 0f on success
         val blurRadius by
@@ -121,7 +121,8 @@ fun HomebaseImage(
                 )
             }
             is AsyncImagePainter.State.Error -> {
-                println("HomebaseImage Error: ${state.result.throwable.message}")
+                val errorState = state as AsyncImagePainter.State.Error
+                println("HomebaseImage Error: ${errorState.result.throwable.message}")
                 error?.invoke() ?: placeholder?.invoke()
             }
         }

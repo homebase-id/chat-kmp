@@ -7,6 +7,7 @@ import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.readBytes
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.CancellationException
 
 /** Image data container */
 data class CachedImage(val bytes: ByteArray, val contentType: String, val size: ImageSize?) {
@@ -87,6 +88,9 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
                     contentType = response.contentType,
                     size = targetSize
             )
+        } catch (e: CancellationException) {
+            // Expected when composable leaves composition - rethrow to let Coil handle it
+            throw e
         } catch (e: Exception) {
             Logger.e(TAG) { "Failed to load thumbnail: ${e.message}" }
             null
@@ -114,6 +118,8 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
                     contentType = response.contentType,
                     size = null // null indicates full resolution
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(TAG) { "Failed to load full payload: ${e.message}" }
             null
