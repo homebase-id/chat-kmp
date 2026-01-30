@@ -1,6 +1,8 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.time.UnixTimeUtc
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
@@ -56,3 +58,27 @@ enum class ChatDeliveryStatus(val value: Int) {
             entries.find { it.value == value }
     }
 }
+
+
+@Serializable
+data class LinkPreview(
+    val title: String,
+    val url: String,
+    val description: String,
+    val imageUrl: String?,
+    val imageHeight: Int?,
+    val imageWidth: Int?,
+    )
+{
+    fun getThumbUrl() : String { return "" }
+}
+
+@Serializable
+data class ConversationLastMessageContent(
+    val message: String?,
+    val deliveryStatus: ChatDeliveryStatus,
+    val sender: String,
+    val uniqueId: Uuid,
+    val time: UnixTimeUtc,
+    val reactionSummary: ReactionSummary?,
+)

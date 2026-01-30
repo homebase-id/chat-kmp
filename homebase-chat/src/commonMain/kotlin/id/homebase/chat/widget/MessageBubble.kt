@@ -84,7 +84,7 @@ fun SentMessageBubble(
                     modifier = Modifier
                         .heightIn(min = 48.dp),
                     text = message.content,
-                    timestamp = formatMessageTimestamp(message.timestamp),
+                    timestamp = formatMessageTimestamp(message.created),
                     sentByYou = true,
                     onLongClick = {
                         showMenu = true
@@ -117,7 +117,7 @@ fun ReceivedMessageBubble(
                     modifier = Modifier
                         .heightIn(min = 48.dp),
                     text = message.content,
-                    timestamp = formatMessageTimestamp(message.timestamp),
+                    timestamp = formatMessageTimestamp(message.created),
                     sentByYou = false,
                     onLongClick = {
                         showMenu = true

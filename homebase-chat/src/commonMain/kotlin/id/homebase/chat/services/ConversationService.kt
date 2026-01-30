@@ -135,9 +135,9 @@ class ConversationService(
     }
 
     suspend fun updateConversationFromNewMessage(c: ConversationUiModel, m: MessageUiModel) {
-        if (m.timestamp > c.timestamp) {
+        if (m.created > c.timestamp) {
             if (!m.isEdited) c.unreadCount++
-            c.timestamp = m.timestamp
+            c.timestamp = m.created
             c.lastMessage = m.content.truncateToCodePoints(40) // TODO: Global constant
         }
 

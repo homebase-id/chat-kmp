@@ -149,8 +149,10 @@ class ChatMessageReaderService(
 
                 return MessageUiModel(
                         id = appData.uniqueId!!,
+                        globalTransitId = metadata.globalTransitId,
                         conversationId = appData.groupId!!,
-                        timestamp = metadata.created.toInstant(),
+                        created = metadata.created.toInstant(),
+                        modified = metadata.updated.toInstant(),
                         senderOdinId = metadata.originalAuthor ?: "",
                         isCurrentUser = metadata.senderOdinId.isNullOrEmpty(),
                         isRead = false,
@@ -158,7 +160,10 @@ class ChatMessageReaderService(
                         senderId = metadata.senderOdinId ?: "Me",
                         content = messageAppData.message,
                         messageAppData = messageAppData,
-                        reactionPreview = metadata.reactionPreview
+                        reactionPreview = metadata.reactionPreview,
+                        previewThumbnail = metadata.appData.previewThumbnail,
+                        payloads = metadata.payloads,
+
                 )
             } catch (t: Throwable) {
 
@@ -169,8 +174,10 @@ class ChatMessageReaderService(
                 try {
                     return MessageUiModel(
                             id = appData.uniqueId!!,
+                            globalTransitId = metadata.globalTransitId,
                             conversationId = appData.groupId!!,
-                            timestamp = metadata.created.toInstant(),
+                            created = metadata.created.toInstant(),
+                            modified = metadata.updated.toInstant(),
                             senderOdinId = metadata.senderOdinId ?: "",
                             isCurrentUser = metadata.senderOdinId.isNullOrEmpty(),
                             isRead = false,
@@ -178,7 +185,9 @@ class ChatMessageReaderService(
                             senderId = metadata.senderOdinId ?: "Me",
                             content = "Failed to parse message from server",
                             messageAppData = MessageAppData(),
-                            reactionPreview = metadata.reactionPreview
+                            reactionPreview = metadata.reactionPreview,
+                            previewThumbnail = metadata.appData.previewThumbnail,
+                            payloads = metadata.payloads,
                     )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {

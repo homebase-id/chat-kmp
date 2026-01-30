@@ -1,7 +1,9 @@
 package id.homebase.chat.data
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.services.MessageAppData
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -9,14 +11,22 @@ import kotlin.uuid.Uuid
 @Immutable
 data class MessageUiModel(
     val id: Uuid, // uniqueId
+    /** GlobalTransitId of the payload - same across all recipients */
+    val globalTransitId: Uuid?,
     val conversationId: Uuid, // groupId
     val content: String, // the message
-    val timestamp: Instant, // When the message was sent
+    val created: Instant, // When the message was sent
+    val modified: Instant?, // When the message was last modified
     val senderId: String, // TODO: What is that? The name?
     val senderOdinId: String, // frodo.baggins.demo.rocks
     val isCurrentUser: Boolean = false, // TODO: What is that?
     val isRead: Boolean = false,
     val isEdited: Boolean = false,
     val messageAppData: MessageAppData, // TODO: Should we copy these up into the message?
-    val reactionPreview: ReactionSummary?
-)
+    val reactionPreview: ReactionSummary?,
+    /** Tiny blurry preview thumbnail of the file */
+    val previewThumbnail: EmbeddedThumb?,
+    /** List of payload descriptors with metadata */
+    val payloads: List<PayloadDescriptor>?,
+
+    )

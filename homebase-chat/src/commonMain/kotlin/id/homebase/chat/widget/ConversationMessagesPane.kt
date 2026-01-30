@@ -100,11 +100,11 @@ fun ConversationMessagesPane(
     val groupedMessages = remember(messages) {
         val timezone = TimeZone.currentSystemDefault()
         messages.groupBy { message ->
-            val date = message.timestamp.toLocalDateTime(timezone).date
+            val date = message.created.toLocalDateTime(timezone).date
             date
         }.map { (date, msgs) ->
             MessageSectionItem(
-                firstMessageTime = msgs.first().timestamp, messages = msgs, date = date
+                firstMessageTime = msgs.first().created, messages = msgs, date = date
             )
         }.sortedBy { it.date }
     }

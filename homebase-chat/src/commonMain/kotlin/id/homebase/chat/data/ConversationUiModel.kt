@@ -1,7 +1,7 @@
 package id.homebase.chat.data
 
 import androidx.compose.runtime.Immutable
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.util.truncateToCodePoints
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -15,7 +15,7 @@ data class ConversationUiModel(  // TODO: Move the data objects / classes into C
     var unreadCount: Int = 0,
     val avatarInitials: String,
     val avatarUrl: String = "",
-    val avatarTiny: ThumbnailDescriptor?,
+    val avatarTiny: EmbeddedThumb?,
     val participants: List<String> = listOf(),
     val isPinned: Boolean = false,
     val lastRead: Instant
@@ -23,10 +23,10 @@ data class ConversationUiModel(  // TODO: Move the data objects / classes into C
     fun updateWithLatestMessage(msg : MessageUiModel)
     {
         // TODO: Should we also increase unread count here if it's a new message?
-        if (msg.timestamp >= timestamp)
+        if (msg.created >= timestamp)
         {
             lastMessage = msg.messageAppData.message.truncateToCodePoints(40)
-            timestamp = msg.timestamp
+            timestamp = msg.created
         }
     }
 }
