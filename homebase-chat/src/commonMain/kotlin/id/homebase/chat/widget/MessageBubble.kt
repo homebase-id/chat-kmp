@@ -134,6 +134,9 @@ fun ReceivedMessageBubble(
     onReply: (messageId: Uuid) -> Unit,
     onStar: (messageId: Uuid) -> Unit,
     onDeleteForMe: (messageId: Uuid) -> Unit,
+    onMarkAsRead: (messageId: Uuid) -> Unit,
+    onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
+    onDeleteReaction: (messageId: Uuid, reaction: String) -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -152,7 +155,7 @@ fun ReceivedMessageBubble(
                 MessageBubble(
                     modifier = Modifier
                         .heightIn(min = 48.dp),
-                    text = message.content,
+                    text = message.content + "isread: ${message.isRead}",
                     timestamp = formatMessageTimestamp(message.timestamp),
                     sentByYou = false,
                     onLongClick = {
@@ -193,6 +196,18 @@ fun ReceivedMessageBubble(
                         onDeleteForMe = {
                             showMenu = false
                             onDeleteForMe(message.id)
+                        },
+                        onMarkAsRead = {
+                            showMenu = false
+                            onMarkAsRead(message.id)
+                        },
+                        onAddReaction = {
+                            showMenu = false
+                            onAddReaction(message.id, ":heart:")
+                        },
+                        onDeleteReaction = {
+                            showMenu = false
+                            onDeleteReaction(message.id, ":heart:")
                         },
                     )
                 }

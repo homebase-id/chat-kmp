@@ -418,7 +418,7 @@ fun ConversationMessagesPane(
                                                 message.id
                                             )
                                         )
-                                    },
+                                    }
                                 )
                             } else {
                                 ReceivedMessageBubble(
@@ -443,6 +443,28 @@ fun ConversationMessagesPane(
                                             ConversationListUiAction.DeleteMessageForMe(message.id)
                                         )
                                     },
+                                    onMarkAsRead = {
+                                        onUiAction(
+                                            ConversationListUiAction.MarkAsRead(message.id)
+                                        )
+                                    },
+                                    onAddReaction = { _, reaction ->
+                                        onUiAction(
+                                            ConversationListUiAction.AddReaction(
+                                                message.id,
+                                                reaction = reaction
+                                            )
+                                        )
+                                    },
+                                    onDeleteReaction = { _, reaction ->
+                                        onUiAction(
+                                            ConversationListUiAction.DeleteReaction(
+                                                message.id,
+                                                reaction = reaction
+                                            )
+                                        )
+                                    }
+
                                 )
                             }
                         }

@@ -3,6 +3,7 @@ package id.homebase.core.di
 import id.homebase.api.di.apiModule
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.ChatListViewModel
+import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageReaderService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ContactService
@@ -25,6 +26,7 @@ val appModule = module {
     singleOf(::ConversationService)
     singleOf(::ChatMessageReaderService)
     singleOf(::ChatMessageSenderService)
+    singleOf(::ChatMessageActionService)
 
     viewModelOf(::HomeViewModel)
     viewModelOf(::ChatListViewModel)
