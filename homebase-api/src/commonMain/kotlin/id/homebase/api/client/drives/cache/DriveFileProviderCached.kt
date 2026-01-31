@@ -1,9 +1,13 @@
 package id.homebase.api.client.drives.cache
 
 import com.mayakapps.kache.FileKache
-import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileProvider
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.collections.mutableMapOf
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.SYSTEM
@@ -13,10 +17,15 @@ import okio.use
 
 
 class DriveFileProviderCached(
-    private val delegate: DriveFileProvider
-) {
+    private val delegate: DriveFileProvider)
+{
 
     private val fileSystem = FileSystem.SYSTEM
+
+    private val payloadSemaphore = Semaphore(3)
+    private val thumbnailSemaphore = Semaphore(30)
+    private val keyLocks = mutableMapOf<String, Mutex>()
+    private val lock = Mutex()
 
     private val payloadCache by lazy {
         kotlinx.coroutines.runBlocking {
@@ -49,11 +58,12 @@ class DriveFileProviderCached(
         } != null
     }
 
-    suspend fun getFileHeader(
-        driveId: Uuid,
-        fileId: Uuid
-    ): HomebaseFile? =
-        delegate.getFileHeader(driveId, fileId)
+    // NOT to be cached - if you want cached, get it from the database...
+    //    suspend fun getFileHeader(
+    //        driveId: Uuid,
+    //        fileId: Uuid
+    //    ): HomebaseFile? =
+    //        delegate.getFileHeader(driveId, fileId)
 
     // -------------------- CACHED METHODS --------------------
 
@@ -74,27 +84,48 @@ class DriveFileProviderCached(
                 chunkLength
             )
 
-        // 1️⃣ Try cache
+        // 1️⃣ Peek in cache and return if it's there
         payloadCache.get(cacheKey)?.let { filePath ->
             return readBytesResponse(filePath)
         }
 
-        // 2️⃣ Fetch from network
-        val result =
-            delegate.getPayloadBytesDecrypted(
-                driveId,
-                fileId,
-                key,
-                chunkStart,
-                chunkLength
-            ) ?: return null
-
-        // 3️⃣ Store to disk
-        payloadCache.put(cacheKey) { filePath ->
-            writeBytesResponse(filePath, result)
+        // 2️⃣ Fetch from network but lock to make sure that we don't load the same
+        // resource twice over the network
+        val mutex: Mutex
+        lock.withLock {
+            mutex = keyLocks.getOrPut(cacheKey) { Mutex() }
         }
 
-        return result
+        return mutex.withLock {
+            // Re-try cache JIC there's a thread race
+            payloadCache.get(cacheKey)?.let { filePath ->
+                return@withLock readBytesResponse(filePath)
+            }
+
+            // we allow up to 3 concurrent semaphore payloads over the network
+            return payloadSemaphore.withPermit {
+                val result =
+                    delegate.getPayloadBytesDecrypted(
+                        driveId,
+                        fileId,
+                        key,
+                        chunkStart,
+                        chunkLength
+                    )
+
+                if (result != null) {
+                    // 3️⃣ Store to disk
+                    payloadCache.put(cacheKey) { filePath ->
+                        writeBytesResponse(filePath, result)
+                    }
+                    result
+                }
+                else
+                {
+                    null
+                }
+            }
+        } // Mutex.lock
     }
 
     // -------------------- FILE IO --------------------
