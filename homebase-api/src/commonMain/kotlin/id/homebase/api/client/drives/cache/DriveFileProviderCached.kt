@@ -15,6 +15,9 @@ import kotlin.uuid.Uuid
 import okio.buffer
 import okio.use
 
+// Special marker for non-existent files
+private const val NON_EXISTENT_FILE_MARKER = "__NON_EXISTENT__"
+
 
 class DriveFileProviderCached(
     private val delegate: DriveFileProvider)
@@ -86,7 +89,12 @@ class DriveFileProviderCached(
 
         // 1️⃣ Peek in cache and return if it's there
         payloadCache.get(cacheKey)?.let { filePath ->
-            return readBytesResponse(filePath)
+            val result = readBytesResponse(filePath)
+            // Return null if we previously cached this as non-existent
+            if (result.contentType == NON_EXISTENT_FILE_MARKER) {
+                return null
+            }
+            return result
         }
 
         // 2️⃣ Fetch from network but lock to make sure that we don't load the same
@@ -104,28 +112,47 @@ class DriveFileProviderCached(
 
             // we allow up to 3 concurrent semaphore payloads over the network
             return payloadSemaphore.withPermit {
-                val result =
-                    delegate.getPayloadBytesDecrypted(
-                        driveId,
-                        fileId,
-                        key,
-                        chunkStart,
-                        chunkLength
-                    )
+                try {
+                    val result =
+                        delegate.getPayloadBytesRaw(
+                            driveId,
+                            fileId,
+                            key,
+                            chunkStart,
+                            chunkLength
+                        )
 
-                if (result != null) {
-                    // 3️⃣ Store to disk
-                    payloadCache.put(cacheKey) { filePath ->
-                        writeBytesResponse(filePath, result)
+                    if (result != null) {
+                        // 3️⃣ Store to disk
+                        payloadCache.put(cacheKey) { filePath ->
+                            writeBytesResponse(filePath, result)
+                        }
+                        result
+                    } else {
+                        // 404 case - cache that file doesn't exist
+                        cacheFileNonExistent(cacheKey)
+                        null
                     }
-                    result
-                }
-                else
-                {
-                    null
+                } catch (e: Exception) {
+                    // For other errors (500, network issues, etc.), don't cache and rethrow
+                    throw e
                 }
             }
         } // Mutex.lock
+    }
+
+    // -------------------- CACHE NON-EXISTENT FILES --------------------
+
+    private suspend fun cacheFileNonExistent(cacheKey: String) {
+        payloadCache.put(cacheKey) { filePath ->
+            val path = filePath.toPath()
+            fileSystem.write(path) {
+                writeInt(NON_EXISTENT_FILE_MARKER.length)
+                writeUtf8(NON_EXISTENT_FILE_MARKER)
+                // No bytes for non-existent files
+            }
+            true
+        }
     }
 
     // -------------------- FILE IO --------------------
@@ -153,7 +180,11 @@ class DriveFileProviderCached(
         return fileSystem.read(path) {
             val contentTypeLength = readInt()
             val contentType = readUtf8(contentTypeLength.toLong())
-            val bytes = readByteArray()
+            val bytes = if (contentType == NON_EXISTENT_FILE_MARKER) {
+                ByteArray(0)
+            } else {
+                readByteArray()
+            }
             BytesResponse(bytes, contentType)
         }
     }
