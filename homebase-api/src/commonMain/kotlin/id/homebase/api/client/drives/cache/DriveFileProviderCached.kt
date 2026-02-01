@@ -1,8 +1,9 @@
 package id.homebase.api.client.drives.cache
 
 import com.mayakapps.kache.FileKache
-import id.homebase.api.client.drives.files.BytesResponse
+import id.homebase.api.client.ByteApiResponse
 import id.homebase.api.client.drives.files.DriveFileProvider
+import io.ktor.http.Headers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.sync.Mutex
@@ -15,9 +16,6 @@ import kotlin.uuid.Uuid
 import okio.buffer
 import okio.use
 
-// Special marker for non-existent files
-private const val NON_EXISTENT_FILE_MARKER = "__NON_EXISTENT__"
-
 
 class DriveFileProviderCached(
     private val delegate: DriveFileProvider)
@@ -29,6 +27,9 @@ class DriveFileProviderCached(
     private val thumbnailSemaphore = Semaphore(30)
     private val keyLocks = mutableMapOf<String, Mutex>()
     private val lock = Mutex()
+    
+    // In-memory cache for 404 responses
+    private val notFoundCache = mutableSetOf<String>()
 
     private val payloadCache by lazy {
         kotlinx.coroutines.runBlocking {
@@ -70,14 +71,13 @@ class DriveFileProviderCached(
 
     // -------------------- CACHED METHODS --------------------
 
-    suspend fun getPayloadBytesDecrypted(
+    suspend fun getPayloadBytesRaw(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
         chunkStart: Long? = null,
         chunkLength: Long? = null
-    ): BytesResponse? {
-
+    ): ByteApiResponse? {
         val cacheKey =
             buildPayloadCacheKey(
                 driveId,
@@ -87,14 +87,14 @@ class DriveFileProviderCached(
                 chunkLength
             )
 
-        // 1️⃣ Peek in cache and return if it's there
+        // 1️⃣ Check in-memory 404 cache first
+        if (cacheKey in notFoundCache) {
+            return ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+        }
+        
+        // 2️⃣ Peek in disk cache and return result if it's there
         payloadCache.get(cacheKey)?.let { filePath ->
-            val result = readBytesResponse(filePath)
-            // Return null if we previously cached this as non-existent
-            if (result.contentType == NON_EXISTENT_FILE_MARKER) {
-                return null
-            }
-            return result
+            return readBytesResponse(filePath)
         }
 
         // 2️⃣ Fetch from network but lock to make sure that we don't load the same
@@ -105,7 +105,10 @@ class DriveFileProviderCached(
         }
 
         return mutex.withLock {
-            // Re-try cache JIC there's a thread race
+            // Re-try caches JIC there's a thread race
+            if (cacheKey in notFoundCache) {
+                return@withLock ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+            }
             payloadCache.get(cacheKey)?.let { filePath ->
                 return@withLock readBytesResponse(filePath)
             }
@@ -117,21 +120,19 @@ class DriveFileProviderCached(
                         delegate.getPayloadBytesRaw(
                             driveId,
                             fileId,
-                            key,
-                            chunkStart,
-                            chunkLength
+                            key
                         )
 
-                    if (result != null) {
+                    if (result.status == 404) {
+                        // 404 case - cache that file doesn't exist in memory only
+                        notFoundCache.add(cacheKey)
+                        ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+                    } else {
                         // 3️⃣ Store to disk
                         payloadCache.put(cacheKey) { filePath ->
                             writeBytesResponse(filePath, result)
                         }
                         result
-                    } else {
-                        // 404 case - cache that file doesn't exist
-                        cacheFileNonExistent(cacheKey)
-                        null
                     }
                 } catch (e: Exception) {
                     // For other errors (500, network issues, etc.), don't cache and rethrow
@@ -141,32 +142,22 @@ class DriveFileProviderCached(
         } // Mutex.lock
     }
 
-    // -------------------- CACHE NON-EXISTENT FILES --------------------
 
-    private suspend fun cacheFileNonExistent(cacheKey: String) {
-        payloadCache.put(cacheKey) { filePath ->
-            val path = filePath.toPath()
-            fileSystem.write(path) {
-                writeInt(NON_EXISTENT_FILE_MARKER.length)
-                writeUtf8(NON_EXISTENT_FILE_MARKER)
-                // No bytes for non-existent files
-            }
-            true
-        }
-    }
 
     // -------------------- FILE IO --------------------
 
     private fun writeBytesResponse(
         filePath: String,
-        value: BytesResponse
+        value: ByteApiResponse
     ): Boolean {
         val path = filePath.toPath()
 
         fileSystem.write(path) {
+            writeInt(value.status)
             writeInt(value.contentType.length)
             writeUtf8(value.contentType)
             write(value.bytes)
+            // Note: Headers are not cached to save space and simplify serialization
         }
 
         return true
@@ -174,18 +165,15 @@ class DriveFileProviderCached(
 
     private fun readBytesResponse(
         filePath: String
-    ): BytesResponse {
+    ): ByteApiResponse {
         val path = filePath.toPath()
 
         return fileSystem.read(path) {
+            val status = readInt()
             val contentTypeLength = readInt()
             val contentType = readUtf8(contentTypeLength.toLong())
-            val bytes = if (contentType == NON_EXISTENT_FILE_MARKER) {
-                ByteArray(0)
-            } else {
-                readByteArray()
-            }
-            BytesResponse(bytes, contentType)
+            val bytes = readByteArray()
+            ByteApiResponse(status, Headers.Empty, bytes, contentType)
         }
     }
 

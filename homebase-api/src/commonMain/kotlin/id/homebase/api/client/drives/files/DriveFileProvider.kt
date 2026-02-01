@@ -104,7 +104,7 @@ public class DriveFileProvider(
         fileId: Uuid,
         key: String,
         options: PayloadOperationOptions = PayloadOperationOptions()
-    ): ByteApiResponse? {
+    ): ByteApiResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
@@ -147,13 +147,9 @@ public class DriveFileProvider(
             }
         }
 
-        if (response.status == 404) return null
-
         if (response.status != 200 && response.status != 206) {
             throwForFailure(response)
         }
-
-        if (response.bytes.isEmpty()) return null
 
         return response
     }
@@ -175,7 +171,9 @@ public class DriveFileProvider(
                     chunkStart = chunkStart,
                     chunkLength = chunkLength
                 )
-            ) ?: return null
+            )
+
+        if (raw.status == 404) return null
 
         val rangeResult =
             DriveFileHelpers.getRangeHeader(chunkStart, chunkLength)
@@ -216,7 +214,7 @@ public class DriveFileProvider(
         width: Int,
         height: Int,
         lastModified: Long? = null
-    ): ByteApiResponse? {
+    ): ByteApiResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
@@ -251,11 +249,9 @@ public class DriveFileProvider(
             }
         }
 
-        if (response.status == 404) return null
-
-        throwForFailure(response)
-
-        if (response.bytes.isEmpty()) return null
+        if (response.status != 200 && response.status != 206) {
+            throwForFailure(response)
+        }
 
         return response
     }
@@ -277,7 +273,9 @@ public class DriveFileProvider(
                 width = width,
                 height = height,
                 lastModified = lastModified
-            ) ?: return null
+            )
+
+        if (raw.status == 404) return null
 
         val decryptedBytes = decryptBytes(raw.headers, raw.bytes)
 
