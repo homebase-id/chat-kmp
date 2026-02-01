@@ -3,6 +3,7 @@ package id.homebase.api.client.drives.cache
 import com.mayakapps.kache.FileKache
 import id.homebase.api.client.ByteApiResponse
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.PayloadOperationOptions
 import io.ktor.http.Headers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -29,6 +30,7 @@ class DriveFileProviderCached(
     private val lock = Mutex()
     
     // In-memory cache for 404 responses
+    // Later we should cache 401,403,404,410, but not yet
     private val notFoundCache = mutableSetOf<String>()
 
     private val payloadCache by lazy {
@@ -62,29 +64,21 @@ class DriveFileProviderCached(
         } != null
     }
 
-    // NOT to be cached - if you want cached, get it from the database...
-    //    suspend fun getFileHeader(
-    //        driveId: Uuid,
-    //        fileId: Uuid
-    //    ): HomebaseFile? =
-    //        delegate.getFileHeader(driveId, fileId)
-
     // -------------------- CACHED METHODS --------------------
 
     suspend fun getPayloadBytesRaw(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
-        chunkStart: Long? = null,
-        chunkLength: Long? = null
-    ): ByteApiResponse? {
+        options: PayloadOperationOptions = PayloadOperationOptions()
+    ): ByteApiResponse {
         val cacheKey =
             buildPayloadCacheKey(
                 driveId,
                 fileId,
                 key,
-                chunkStart,
-                chunkLength
+                options.chunkStart,
+                options.chunkLength
             )
 
         // 1️⃣ Check in-memory 404 cache first
@@ -120,7 +114,8 @@ class DriveFileProviderCached(
                         delegate.getPayloadBytesRaw(
                             driveId,
                             fileId,
-                            key
+                            key,
+                            options
                         )
 
                     if (result.status == 404) {

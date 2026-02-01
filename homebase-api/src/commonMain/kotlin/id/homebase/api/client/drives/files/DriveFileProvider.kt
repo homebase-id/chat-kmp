@@ -26,7 +26,7 @@ data class PayloadOperationOptions(
     val fileSystemType: FileSystemType = FileSystemType.Standard,
     val chunkStart: Long? = null,
     val chunkLength: Long? = null,
-    val lastModified: Long? = null
+    val lastModified: Long? = null  // TODO: <-- what is this? Cheapo versionTag check??
 )
 
 /** Response containing bytes and their content type. */
