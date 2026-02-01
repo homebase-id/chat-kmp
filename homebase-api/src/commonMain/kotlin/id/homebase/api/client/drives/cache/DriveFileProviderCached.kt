@@ -21,7 +21,6 @@ import okio.use
 class DriveFileProviderCached(
     private val delegate: DriveFileProvider)
 {
-
     private val fileSystem = FileSystem.SYSTEM
 
     private val payloadSemaphore = Semaphore(3)
@@ -137,6 +136,81 @@ class DriveFileProviderCached(
         } // Mutex.lock
     }
 
+    suspend fun getThumbBytesRaw(
+        driveId: Uuid,
+        fileId: Uuid,
+        payloadKey: String,
+        width: Int,
+        height: Int,
+        lastModified: Long? = null
+    ): ByteApiResponse {
+        val cacheKey =
+            buildThumbCacheKey(
+                driveId,
+                fileId,
+                payloadKey,
+                width,
+                height,
+                lastModified
+            )
+
+        // 1️⃣ Check in-memory 404 cache first
+        if (cacheKey in notFoundCache) {
+            return ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+        }
+        
+        // 2️⃣ Peek in disk cache and return result if it's there
+        payloadCache.get(cacheKey)?.let { filePath ->
+            return readBytesResponse(filePath)
+        }
+
+        // 2️⃣ Fetch from network but lock to make sure that we don't load the same
+        // resource twice over the network
+        val mutex: Mutex
+        lock.withLock {
+            mutex = keyLocks.getOrPut(cacheKey) { Mutex() }
+        }
+
+        return mutex.withLock {
+            // Re-try caches JIC there's a thread race
+            if (cacheKey in notFoundCache) {
+                return@withLock ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+            }
+            payloadCache.get(cacheKey)?.let { filePath ->
+                return@withLock readBytesResponse(filePath)
+            }
+
+            // we allow up to 30 concurrent semaphore thumbnails over the network
+            return thumbnailSemaphore.withPermit {
+                try {
+                    val result =
+                        delegate.getThumbBytesRaw(
+                            driveId,
+                            fileId,
+                            payloadKey,
+                            width,
+                            height,
+                            lastModified
+                        )
+
+                    if (result.status == 404) {
+                        // 404 case - cache that file doesn't exist in memory only
+                        notFoundCache.add(cacheKey)
+                        ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+                    } else {
+                        // 3️⃣ Store to disk
+                        payloadCache.put(cacheKey) { filePath ->
+                            writeBytesResponse(filePath, result)
+                        }
+                        result
+                    }
+                } catch (e: Exception) {
+                    // For other errors (500, network issues, etc.), don't cache and rethrow
+                    throw e
+                }
+            }
+        } // Mutex.lock
+    }
 
 
     // -------------------- FILE IO --------------------
@@ -188,5 +262,23 @@ class DriveFileProviderCached(
             key,
             chunkStart ?: "full",
             chunkLength ?: "full"
+        ).joinToString(":")
+
+    private fun buildThumbCacheKey(
+        driveId: Uuid,
+        fileId: Uuid,
+        payloadKey: String,
+        width: Int,
+        height: Int,
+        lastModified: Long?
+    ): String =
+        listOf(
+            "thumb",
+            driveId,
+            fileId,
+            payloadKey,
+            width,
+            height,
+            lastModified ?: "null"
         ).joinToString(":")
 }
