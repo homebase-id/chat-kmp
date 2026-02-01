@@ -161,7 +161,6 @@ public class DriveFileProvider(
         chunkStart: Long? = null,
         chunkLength: Long? = null
     ): BytesResponse? {
-
         val raw =
             getPayloadBytesRaw(
                 driveId = driveId,
@@ -492,7 +491,7 @@ public class DriveFileProvider(
     /**
      * Decrypts bytes using the shared secret (full payload/thumbnail decryption).
      */
-    private suspend fun decryptBytes(
+    public suspend fun decryptBytes(
         headers: Headers,
         bytes: ByteArray
     ): ByteArray {

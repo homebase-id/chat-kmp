@@ -2,6 +2,8 @@ package id.homebase.api.client.drives.cache
 
 import com.mayakapps.kache.FileKache
 import id.homebase.api.client.ByteApiResponse
+import id.homebase.api.client.drives.files.BytesResponse
+import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadOperationOptions
 import io.ktor.http.Headers
@@ -40,30 +42,10 @@ class DriveFileProviderCached(
             )
         }
     }
-    // -------------------- PASSTHROUGH --------------------
 
-    suspend fun cachePayloadStreaming(
-        cache: FileKache,
-        key: String,
-        input: okio.Source
-    ): Boolean {
-
-        val fileSystem = FileSystem.SYSTEM
-
-        return cache.put(key) { filePath ->
-            val path = filePath.toPath()
-
-            fileSystem.sink(path).buffer().use { sink ->
-                input.use { source ->
-                    sink.writeAll(source)
-                }
-            }
-
-            true // tell FileKache creation succeeded
-        } != null
-    }
-
-    // -------------------- CACHED METHODS --------------------
+    // ================================================================
+    // -------------------- CACHED PAYLOAD METHODS --------------------
+    // ================================================================
 
     suspend fun getPayloadBytesRaw(
         driveId: Uuid,
@@ -135,6 +117,63 @@ class DriveFileProviderCached(
             }
         } // Mutex.lock
     }
+
+
+    suspend fun getPayloadBytesDecrypted(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        chunkStart: Long? = null,
+        chunkLength: Long? = null
+    ): BytesResponse? {
+        val raw =
+            getPayloadBytesRaw(
+                driveId = driveId,
+                fileId = fileId,
+                key = key,
+                options = PayloadOperationOptions(
+                    chunkStart = chunkStart,
+                    chunkLength = chunkLength
+                )
+            )
+
+        if (raw.status == 404) return null
+
+        val rangeResult =
+            DriveFileHelpers.getRangeHeader(chunkStart, chunkLength)
+
+        val decryptedBytes =
+            if (rangeResult.updatedChunkStart != null) {
+                val decrypted =
+                    delegate.decryptChunkedBytes(
+                        raw.headers,
+                        raw.bytes,
+                        startOffset = rangeResult.startOffset,
+                        chunkStart = (chunkStart ?: 0).toInt()
+                    )
+
+                val sliceEnd =
+                    if (chunkLength != null && chunkStart != null) {
+                        (chunkLength - chunkStart).toInt()
+                    } else {
+                        decrypted.size
+                    }
+
+                decrypted.sliceArray(0 until minOf(sliceEnd, decrypted.size))
+            } else {
+                delegate.decryptBytes(raw.headers, raw.bytes)
+            }
+
+        return BytesResponse(
+            bytes = decryptedBytes,
+            contentType = raw.contentType
+        )
+    }
+
+
+    // ==============================================================
+    // -------------------- CACHED THUMB METHODS --------------------
+    // ==============================================================
 
     suspend fun getThumbBytesRaw(
         driveId: Uuid,
@@ -213,7 +252,38 @@ class DriveFileProviderCached(
     }
 
 
+    suspend fun getThumbBytesDecrypted(
+        driveId: Uuid,
+        fileId: Uuid,
+        payloadKey: String,
+        width: Int,
+        height: Int,
+        lastModified: Long? = null
+    ): BytesResponse? {
+        val raw =
+            getThumbBytesRaw(
+                driveId = driveId,
+                fileId = fileId,
+                payloadKey = payloadKey,
+                width = width,
+                height = height,
+                lastModified = lastModified
+            )
+
+        if (raw.status == 404) return null
+
+        val decryptedBytes = delegate.decryptBytes(raw.headers, raw.bytes)
+
+        return BytesResponse(
+            bytes = decryptedBytes,
+            contentType = raw.contentType
+        )
+    }
+
+
+    // =================================================
     // -------------------- FILE IO --------------------
+    // =================================================
 
     private fun writeBytesResponse(
         filePath: String,
@@ -246,7 +316,9 @@ class DriveFileProviderCached(
         }
     }
 
+    // ====================================================
     // -------------------- CACHE KEYS --------------------
+    // ====================================================
 
     private fun buildPayloadCacheKey(
         driveId: Uuid,
