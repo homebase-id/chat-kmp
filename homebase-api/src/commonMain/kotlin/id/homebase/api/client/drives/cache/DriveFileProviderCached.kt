@@ -25,7 +25,7 @@ class DriveFileProviderCached(
 {
     private val fileSystem = FileSystem.SYSTEM
 
-    private val payloadSemaphore = Semaphore(3)
+    private val payloadSemaphore = Semaphore(1)
     private val thumbnailSemaphore = Semaphore(30)
     private val keyLocks = mutableMapOf<String, Mutex>()
     private val lock = Mutex()

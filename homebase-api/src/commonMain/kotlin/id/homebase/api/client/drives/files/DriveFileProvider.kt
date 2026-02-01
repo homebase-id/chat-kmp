@@ -102,6 +102,9 @@ public class DriveFileProvider(
     }
 
 
+    // This ought to be private / protected and only used by driveCache but probably rewire it all
+    // TODO: Shouldn't it (always) be streaming?! If it's a 500MB file we dont want it in memory
+    // TODO: Should we discern between HLS needing chunks and payloads not needing chunks? Two different calls?
     suspend fun getPayloadBytesRawNetwork(
         driveId: Uuid,
         fileId: Uuid,
@@ -169,7 +172,9 @@ public class DriveFileProvider(
         )
     }
 
-
+    // TODO: I suppose we can live with this NOT being streaming, but maybe we can insert a
+    // safeguard so that if it's larger than 1MB we return an error (I believe thumb max is
+    // roughly 1MB)
     suspend fun getThumbBytesRawNetwork(
         driveId: Uuid,
         fileId: Uuid,
@@ -233,7 +238,8 @@ public class DriveFileProvider(
     }
 
     /**
-     * Gets transfer history for a file.
+     * Gets transfer history for a file (not the same as the TransferHistorySummary
+     * which is sufficient for quick renders).
      *
      * @param driveId The target drive containing the file
      * @param fileId The ID of the file
