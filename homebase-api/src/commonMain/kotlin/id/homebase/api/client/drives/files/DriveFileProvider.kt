@@ -10,6 +10,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.ServerFile
+import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.upload.TransferUploadStatus
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
@@ -57,6 +58,8 @@ public class DriveFileProvider(
         private const val TAG = "DriveFileProvider"
     }
 
+    private val driveCache = DriveFileProviderCached(this)
+
     // ==================== GET METHODS ====================
 
     /**
@@ -99,7 +102,7 @@ public class DriveFileProvider(
     }
 
 
-    suspend fun getPayloadBytesRaw(
+    suspend fun getPayloadBytesRawNetwork(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -161,52 +164,13 @@ public class DriveFileProvider(
         chunkStart: Long? = null,
         chunkLength: Long? = null
     ): BytesResponse? {
-        val raw =
-            getPayloadBytesRaw(
-                driveId = driveId,
-                fileId = fileId,
-                key = key,
-                options = PayloadOperationOptions(
-                    chunkStart = chunkStart,
-                    chunkLength = chunkLength
-                )
-            )
-
-        if (raw.status == 404) return null
-
-        val rangeResult =
-            DriveFileHelpers.getRangeHeader(chunkStart, chunkLength)
-
-        val decryptedBytes =
-            if (rangeResult.updatedChunkStart != null) {
-                val decrypted =
-                    decryptChunkedBytes(
-                        raw.headers,
-                        raw.bytes,
-                        startOffset = rangeResult.startOffset,
-                        chunkStart = (chunkStart ?: 0).toInt()
-                    )
-
-                val sliceEnd =
-                    if (chunkLength != null && chunkStart != null) {
-                        (chunkLength - chunkStart).toInt()
-                    } else {
-                        decrypted.size
-                    }
-
-                decrypted.sliceArray(0 until minOf(sliceEnd, decrypted.size))
-            } else {
-                decryptBytes(raw.headers, raw.bytes)
-            }
-
-        return BytesResponse(
-            bytes = decryptedBytes,
-            contentType = raw.contentType
+        return driveCache.getPayloadBytesDecrypted(
+            driveId, fileId, key, chunkStart, chunkLength
         )
     }
 
 
-    suspend fun getThumbBytesRaw(
+    suspend fun getThumbBytesRawNetwork(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,
@@ -263,24 +227,8 @@ public class DriveFileProvider(
         height: Int,
         lastModified: Long? = null
     ): BytesResponse? {
-
-        val raw =
-            getThumbBytesRaw(
-                driveId = driveId,
-                fileId = fileId,
-                payloadKey = payloadKey,
-                width = width,
-                height = height,
-                lastModified = lastModified
-            )
-
-        if (raw.status == 404) return null
-
-        val decryptedBytes = decryptBytes(raw.headers, raw.bytes)
-
-        return BytesResponse(
-            bytes = decryptedBytes,
-            contentType = raw.contentType
+        return driveCache.getThumbBytesDecrypted(
+            driveId, fileId, payloadKey, width, height, lastModified
         )
     }
 

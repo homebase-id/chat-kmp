@@ -92,7 +92,7 @@ class DriveFileProviderCached(
             return payloadSemaphore.withPermit {
                 try {
                     val result =
-                        delegate.getPayloadBytesRaw(
+                        delegate.getPayloadBytesRawNetwork(
                             driveId,
                             fileId,
                             key,
@@ -223,7 +223,7 @@ class DriveFileProviderCached(
             return thumbnailSemaphore.withPermit {
                 try {
                     val result =
-                        delegate.getThumbBytesRaw(
+                        delegate.getThumbBytesRawNetwork(
                             driveId,
                             fileId,
                             payloadKey,
