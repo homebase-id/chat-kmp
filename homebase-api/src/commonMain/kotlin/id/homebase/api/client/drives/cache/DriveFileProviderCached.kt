@@ -16,8 +16,6 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.SYSTEM
 import kotlin.uuid.Uuid
-import okio.buffer
-import okio.use
 
 
 class DriveFileProviderCached(
@@ -34,11 +32,20 @@ class DriveFileProviderCached(
     // Later we should cache 401,403,404,410, but not yet
     private val notFoundCache = mutableSetOf<String>()
 
-    private val payloadCache by lazy {
+    private val payloadDiskKache by lazy {
         kotlinx.coroutines.runBlocking {
             FileKache(
-                directory = "homebase-drive-cache",
-                maxSize = 512L * 1024L * 1024L
+                directory = "homebase-payloads",
+                maxSize = 200L * 1024L * 1024L // 200MB
+            )
+        }
+    }
+
+    private val thumbDiskKache by lazy {
+        kotlinx.coroutines.runBlocking {
+            FileKache(
+                directory = "homebase-thumbs",
+                maxSize = 300L * 1024L * 1024L  // 300MB
             )
         }
     }
@@ -68,7 +75,7 @@ class DriveFileProviderCached(
         }
         
         // 2️⃣ Peek in disk cache and return result if it's there
-        payloadCache.get(cacheKey)?.let { filePath ->
+        payloadDiskKache.get(cacheKey)?.let { filePath ->
             return readBytesResponse(filePath)
         }
 
@@ -84,7 +91,7 @@ class DriveFileProviderCached(
             if (cacheKey in notFoundCache) {
                 return@withLock ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
             }
-            payloadCache.get(cacheKey)?.let { filePath ->
+            payloadDiskKache.get(cacheKey)?.let { filePath ->
                 return@withLock readBytesResponse(filePath)
             }
 
@@ -105,7 +112,7 @@ class DriveFileProviderCached(
                         ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
                     } else {
                         // 3️⃣ Store to disk
-                        payloadCache.put(cacheKey) { filePath ->
+                        payloadDiskKache.put(cacheKey) { filePath ->
                             writeBytesResponse(filePath, result)
                         }
                         result
@@ -199,7 +206,7 @@ class DriveFileProviderCached(
         }
         
         // 2️⃣ Peek in disk cache and return result if it's there
-        payloadCache.get(cacheKey)?.let { filePath ->
+        thumbDiskKache.get(cacheKey)?.let { filePath ->
             return readBytesResponse(filePath)
         }
 
@@ -215,7 +222,7 @@ class DriveFileProviderCached(
             if (cacheKey in notFoundCache) {
                 return@withLock ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
             }
-            payloadCache.get(cacheKey)?.let { filePath ->
+            thumbDiskKache.get(cacheKey)?.let { filePath ->
                 return@withLock readBytesResponse(filePath)
             }
 
@@ -238,7 +245,7 @@ class DriveFileProviderCached(
                         ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
                     } else {
                         // 3️⃣ Store to disk
-                        payloadCache.put(cacheKey) { filePath ->
+                        thumbDiskKache.put(cacheKey) { filePath ->
                             writeBytesResponse(filePath, result)
                         }
                         result
