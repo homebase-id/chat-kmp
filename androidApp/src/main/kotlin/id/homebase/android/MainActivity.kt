@@ -48,9 +48,7 @@ class MainActivity : AppCompatActivity() {
         val data = intent.data
         if (data != null && data.scheme == "youauth") {
             val callbackURL = data.toString()
-            lifecycleScope.launch {
-                YouAuthFlowManager.handleCallback(callbackURL)
-            }
+            lifecycleScope.launch { YouAuthFlowManager.handleCallback(callbackURL) }
         }
     }
 }

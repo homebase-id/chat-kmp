@@ -3,20 +3,24 @@ package id.homebase.core.auth
 import kotlinx.coroutines.CoroutineScope
 
 /**
- * Platform-specific browser launching for OAuth/authentication flows.
+ * Platform-specific auth flow orchestration for OAuth/authentication flows.
+ *
+ * This handles callback setup, NOT browser launching. Browser launching is delegated to the UI
+ * layer via [id.homebase.core.ui.auth.rememberAuthBrowserLauncher].
  *
  * Platform implementations:
- * - Android: Chrome Custom Tabs
- * - iOS: ASWebAuthenticationSession
- * - Desktop: System browser with local callback server
+ * - Android: No-op (deep link handles callback)
+ * - iOS: ASWebAuthenticationSession (still launches browser here due to API constraints)
+ * - Desktop: Local callback server setup
+ * - Web: No-op (redirect handles callback)
  */
 expect object BrowserLauncher {
     /**
-     * Launch browser for OAuth/authentication flow.
+     * Called when auth browser is about to be opened. Platform implementations may need to set up
+     * callback handlers.
      *
-     * @param url The authorization URL to open
-     * @param scope CoroutineScope for async callback handling (iOS/Desktop need this)
+     * @param url The authorization URL being opened
+     * @param scope CoroutineScope for async callback handling
      */
-    fun launchAuthBrowser(url: String, scope: CoroutineScope, onOpenUrl: (String) -> Unit)
+    fun onAuthBrowserOpened(url: String, scope: CoroutineScope)
 }
-

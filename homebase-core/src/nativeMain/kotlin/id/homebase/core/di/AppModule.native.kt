@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package id.homebase.core.di
 
 import coil3.ImageLoader
@@ -5,6 +7,7 @@ import coil3.PlatformContext
 import coil3.disk.DiskCache
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.settings.createSettings
+import kotlinx.cinterop.ExperimentalForeignApi
 import okio.Path.Companion.toPath
 import org.koin.core.module.Module
 import org.koin.dsl.module
