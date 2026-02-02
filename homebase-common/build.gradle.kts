@@ -30,11 +30,11 @@ kotlin {
 
     jvm()
 
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        browser()
-        binaries.executable()
-    }
+//    @OptIn(ExperimentalWasmDsl::class)
+//    wasmJs {
+//        browser()
+//        binaries.executable()
+//    }
 
     // For iOS targets, this is also where you should
     // configure native binary output. For more information, see:

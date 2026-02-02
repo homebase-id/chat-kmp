@@ -40,11 +40,12 @@ kotlin {
         }
     }
 
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        browser()
-        binaries.executable()
-    }
+    // REMOVED so we could support FileKache
+//    @OptIn(ExperimentalWasmDsl::class)
+//    wasmJs {
+//        browser()
+//        binaries.executable()
+//    }
 
     // For iOS targets, this is also where you should
     // configure native binary output. For more information, see:
@@ -88,6 +89,9 @@ kotlin {
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
             implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.5.1")
+            implementation("com.mayakapps.kache:kache:2.1.1")
+            implementation("com.mayakapps.kache:file-kache:2.1.1")
+            implementation("com.squareup.okio:okio:3.16.4")
         }
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
@@ -115,6 +119,7 @@ kotlin {
 
             implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.11.0")
             implementation("io.ktor:ktor-server-html-builder:2.3.7")
+
         }
     }
 

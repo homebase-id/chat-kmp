@@ -13,18 +13,18 @@ kotlin {
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
 
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
-        binaries.executable()
-        browser {
-            commonWebpackConfig {
-                outputFileName = "homebase-app.js"
-                devServer = (devServer ?: KotlinWebpackConfig.DevServer()).apply {
-                    static(project.projectDir.path)
-                }
-            }
-        }
-    }
+//    @OptIn(ExperimentalWasmDsl::class)
+//    wasmJs {
+//        binaries.executable()
+//        browser {
+//            commonWebpackConfig {
+//                outputFileName = "homebase-app.js"
+//                devServer = (devServer ?: KotlinWebpackConfig.DevServer()).apply {
+//                    static(project.projectDir.path)
+//                }
+//            }
+//        }
+//    }
 
     applyDefaultHierarchyTemplate()
 

@@ -2,6 +2,7 @@ package id.homebase.api.di
 
 import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.DriveFileReactionProvider
@@ -9,7 +10,6 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.DriveSyncManager
-import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage
@@ -45,6 +45,7 @@ val apiModule = module {
     factoryOf(::DriveUploadProvider)
 
     factoryOf(::DriveFileProvider)
+    factoryOf(::DriveFileProviderCached)
     factoryOf(::DriveFileReactionProvider)
     factoryOf(::DriveFileOperationsProvider)
 

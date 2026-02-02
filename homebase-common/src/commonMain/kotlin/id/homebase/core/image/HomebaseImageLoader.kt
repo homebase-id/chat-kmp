@@ -10,6 +10,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.CancellationException
 
 /** Image data container */
+// TODO: Rename to memoryImage?
 data class CachedImage(val bytes: ByteArray, val contentType: String, val size: ImageSize?) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -62,7 +63,7 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
     suspend fun loadThumbnail(data: HomebaseImageData, targetSize: ImageSize): CachedImage? {
         // Check pending file first
         if (data.isPending) {
-            return loadPendingFile(data)
+            return loadPendingFile(data) // TODO: <-- this seems unnecessary with driveCache
         }
 
         // Skip thumbnail fetch for SVG/GIF (load full payload instead)
@@ -101,7 +102,7 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
     suspend fun loadFullPayload(data: HomebaseImageData): CachedImage? {
         // Check pending file first
         if (data.isPending) {
-            return loadPendingFile(data)
+            return loadPendingFile(data) // TODO: <-- This seems unnecessary
         }
 
         return try {
@@ -127,6 +128,7 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
     }
 
     /** Load pending/local file from filesystem */
+    // TODO: This looks like a leftover? The driveFileProviderCache saves a cache on Disk
     private suspend fun loadPendingFile(data: HomebaseImageData): CachedImage? {
         val file = data.pendingFile ?: return null
 

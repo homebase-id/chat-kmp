@@ -3,6 +3,8 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
     repositories {
+        mavenCentral()
+
         google {
             mavenContent {
                 includeGroupAndSubgroups("androidx")
@@ -10,7 +12,7 @@ pluginManagement {
                 includeGroupAndSubgroups("com.google")
             }
         }
-        mavenCentral()
+
         gradlePluginPortal()
     }
 }
@@ -38,5 +40,5 @@ include(":homebase-api")
 // Apps
 include(":desktopApp")
 include(":androidApp")
-include(":webApp")
+//include(":webApp")
 
