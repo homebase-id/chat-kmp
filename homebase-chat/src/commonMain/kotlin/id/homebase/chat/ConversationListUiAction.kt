@@ -33,4 +33,17 @@ sealed interface ConversationListUiAction {
     data class MarkAsRead(val messageId: Uuid) : ConversationListUiAction
     data class AddReaction(val messageId: Uuid, val reaction: String) : ConversationListUiAction
     data class DeleteReaction(val messageId: Uuid, val reaction: String) : ConversationListUiAction
+
+    // Attachments (INTENTS)
+    data object PickImage : ConversationListUiAction
+    data object PickVideo : ConversationListUiAction
+    data object PickFile : ConversationListUiAction
+
+    // Attachments (RESULTS)
+    data class ImagePicked(val filePath: String, val name: String) : ConversationListUiAction
+    data class VideoPicked(val filePath: String, val name: String) : ConversationListUiAction
+    data class FilePicked(val filePath: String, val name: String) : ConversationListUiAction
+
+    data object AttachmentPickCancelled : ConversationListUiAction
+    data class AttachmentPickFailed(val reason: String) : ConversationListUiAction
 }

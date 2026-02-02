@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.core.util.ScrollPosition
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -19,5 +20,7 @@ data class ConversationListUiState(
     val currentConversationMessages: ImmutableList<MessageUiModel> = persistentListOf(),
     val conversationScrollPosition: ScrollPosition? = null,
     val uiEvent: ConversationListUiEvent? = null,
-    val currentOdinId: String = ""
+    val currentOdinId: String = "",
+
+    val pendingAttachments: List<AttachmentInput> = persistentListOf()
 )

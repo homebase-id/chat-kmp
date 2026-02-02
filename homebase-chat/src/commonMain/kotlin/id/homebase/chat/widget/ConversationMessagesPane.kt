@@ -314,11 +314,15 @@ fun ConversationMessagesPane(
                     AttachmentOptions(
                         onImageClick = {
                             showAttachmentSheet = false
-                            // Handle image selection
+                            onUiAction(ConversationListUiAction.PickImage)
+                        },
+                        onVideoClick = {
+                            showAttachmentSheet = false
+                            onUiAction(ConversationListUiAction.PickVideo)
                         },
                         onFileClick = {
                             showAttachmentSheet = false
-                            // Handle file selection
+                            onUiAction(ConversationListUiAction.PickFile)
                         },
                         onCameraClick = {
                             showAttachmentSheet = false

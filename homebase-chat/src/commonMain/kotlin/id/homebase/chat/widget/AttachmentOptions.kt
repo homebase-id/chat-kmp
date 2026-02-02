@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -47,6 +48,7 @@ fun AttachmentOptionsDisplay(
 @Composable
 fun AttachmentOptions(
     onImageClick: () -> Unit,
+    onVideoClick: () -> Unit,
     onFileClick: () -> Unit,
     onCameraClick: () -> Unit,
     onLocationClick: () -> Unit
@@ -59,8 +61,13 @@ fun AttachmentOptions(
     ) {
         AttachmentOption(
             icon = Icons.Default.Image,
-            label = "Photo & Video",
+            label = "Photos/Images",
             onClick = onImageClick
+        )
+        AttachmentOption(
+            icon = Icons.Default.VideoFile,
+            label = "Video",
+            onClick = onVideoClick
         )
         AttachmentOption(
             icon = Icons.Default.AttachFile,
