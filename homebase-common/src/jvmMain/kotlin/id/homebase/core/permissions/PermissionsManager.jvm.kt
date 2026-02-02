@@ -2,7 +2,7 @@ package id.homebase.core.permissions
 
 import androidx.compose.runtime.Composable
 
-class PermissionsManager : PermissionHandler {
+class PermissionsManager(val callback: PermissionCallback) : PermissionHandler {
     @Composable
     override fun askPermission(permission: PermissionType) {
 
