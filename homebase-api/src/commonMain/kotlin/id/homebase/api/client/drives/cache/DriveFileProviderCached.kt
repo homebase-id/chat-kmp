@@ -2,10 +2,12 @@ package id.homebase.api.client.drives.cache
 
 import com.mayakapps.kache.FileKache
 import id.homebase.api.client.ByteApiResponse
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
-import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.PayloadOperationOptions
+import io.ktor.client.HttpClient
 import io.ktor.http.Headers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -19,15 +21,19 @@ import kotlin.uuid.Uuid
 
 
 class DriveFileProviderCached(
-    private val delegate: DriveFileProvider)
-{
+    httpClient: HttpClient,
+    credentialsManager: CredentialsManager
+) {
+    private val delegate: DriveFileHttpProvider =
+        DriveFileHttpProvider(httpClient, credentialsManager)
+
     private val fileSystem = FileSystem.SYSTEM
 
     private val payloadSemaphore = Semaphore(1)
     private val thumbnailSemaphore = Semaphore(30)
     private val keyLocks = mutableMapOf<String, Mutex>()
     private val lock = Mutex()
-    
+
     // In-memory cache for 404 responses
     // Later we should cache 401,403,404,410, but not yet
     private val notFoundCache = mutableSetOf<String>()
@@ -73,7 +79,7 @@ class DriveFileProviderCached(
         if (cacheKey in notFoundCache) {
             return ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
         }
-        
+
         // 2️⃣ Peek in disk cache and return result if it's there
         payloadDiskKache.get(cacheKey)?.let { filePath ->
             return readBytesResponse(filePath)
@@ -89,7 +95,12 @@ class DriveFileProviderCached(
         return mutex.withLock {
             // Re-try caches JIC there's a thread race
             if (cacheKey in notFoundCache) {
-                return@withLock ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+                return@withLock ByteApiResponse(
+                    404,
+                    Headers.Empty,
+                    ByteArray(0),
+                    "application/octet-stream"
+                )
             }
             payloadDiskKache.get(cacheKey)?.let { filePath ->
                 return@withLock readBytesResponse(filePath)
@@ -109,7 +120,12 @@ class DriveFileProviderCached(
                     if (result.status == 404) {
                         // 404 case - cache that file doesn't exist in memory only
                         notFoundCache.add(cacheKey)
-                        ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+                        ByteApiResponse(
+                            404,
+                            Headers.Empty,
+                            ByteArray(0),
+                            "application/octet-stream"
+                        )
                     } else {
                         // 3️⃣ Store to disk
                         payloadDiskKache.put(cacheKey) { filePath ->
@@ -204,7 +220,7 @@ class DriveFileProviderCached(
         if (cacheKey in notFoundCache) {
             return ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
         }
-        
+
         // 2️⃣ Peek in disk cache and return result if it's there
         thumbDiskKache.get(cacheKey)?.let { filePath ->
             return readBytesResponse(filePath)
@@ -220,7 +236,12 @@ class DriveFileProviderCached(
         return mutex.withLock {
             // Re-try caches JIC there's a thread race
             if (cacheKey in notFoundCache) {
-                return@withLock ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+                return@withLock ByteApiResponse(
+                    404,
+                    Headers.Empty,
+                    ByteArray(0),
+                    "application/octet-stream"
+                )
             }
             thumbDiskKache.get(cacheKey)?.let { filePath ->
                 return@withLock readBytesResponse(filePath)
@@ -242,7 +263,12 @@ class DriveFileProviderCached(
                     if (result.status == 404) {
                         // 404 case - cache that file doesn't exist in memory only
                         notFoundCache.add(cacheKey)
-                        ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+                        ByteApiResponse(
+                            404,
+                            Headers.Empty,
+                            ByteArray(0),
+                            "application/octet-stream"
+                        )
                     } else {
                         // 3️⃣ Store to disk
                         thumbDiskKache.put(cacheKey) { filePath ->
