@@ -453,9 +453,6 @@ fun ConversationMessagesPane(
                                         onMediaClick = { payload ->
 
                                         },
-                                        onMediaLongPress = { payload, _ ->
-
-                                        }
                                     )
                                 } else {
                                     ReceivedMessageBubble(
@@ -506,9 +503,6 @@ fun ConversationMessagesPane(
                                         onMediaClick = { payload ->
 
                                         },
-                                        onMediaLongPress = { payload, _ ->
-
-                                        }
                                     )
                                 }
                             }

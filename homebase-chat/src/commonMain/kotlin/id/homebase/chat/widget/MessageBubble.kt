@@ -37,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -75,7 +74,6 @@ import kotlin.uuid.Uuid
  * @param onDeleteForMe Callback invoked when user wants to delete this message for themselves only.
  * @param onDeleteForEveryone Callback invoked when user wants to mark this message as read.
  * @param onMediaClick Callback invoked when user clicks on media attachment.
- * @param onMediaLongPress Callback invoked when user long-presses on media attachment.
  */
 @Composable
 fun SentMessageBubble(
@@ -87,7 +85,6 @@ fun SentMessageBubble(
     onDeleteForMe: (messageId: Uuid) -> Unit,
     onDeleteForEveryone: (messageId: Uuid) -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
-    onMediaLongPress: (PayloadDescriptor, Offset) -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -153,7 +150,6 @@ fun SentMessageBubble(
                     previewThumbnail = message.previewThumbnail,
                     onLongClick = { showMenu = true },
                     onMediaClick = onMediaClick,
-                    onMediaLongPress = onMediaLongPress,
                 )
             }
         }
@@ -175,8 +171,7 @@ fun SentMessageBubble(
  * @param onAddReaction Callback invoked when user wants to add a reaction to this message.
  * @param onDeleteReaction Callback invoked when user wants to remove a reaction from this message.
  * @param onMediaClick Callback invoked when user clicks on media attachment.
- * @param onMediaLongPress Callback invoked when user long-presses on media attachment.
- */
+  */
 @Composable
 fun ReceivedMessageBubble(
     message: MessageUiModel,
@@ -188,7 +183,6 @@ fun ReceivedMessageBubble(
     onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
     onDeleteReaction: (messageId: Uuid, reaction: String) -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
-    onMediaLongPress: (PayloadDescriptor, Offset) -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -212,7 +206,6 @@ fun ReceivedMessageBubble(
                     previewThumbnail = message.previewThumbnail,
                     onLongClick = { showMenu = true },
                     onMediaClick = onMediaClick,
-                    onMediaLongPress = onMediaLongPress,
                 )
                 Column {
                     IconButton(
@@ -287,7 +280,6 @@ fun ReceivedMessageBubble(
  * @param previewThumbnail Optional embedded thumbnail for media preview.
  * @param onLongClick Callback invoked when user performs a long-press on the bubble.
  * @param onMediaClick Callback invoked when user clicks on a media attachment.
- * @param onMediaLongPress Callback invoked when user long-presses on a media attachment.
  */
 @Composable
 fun MessageBubble(
@@ -300,7 +292,6 @@ fun MessageBubble(
     previewThumbnail: EmbeddedThumb? = null,
     onLongClick: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
-    onMediaLongPress: (PayloadDescriptor, Offset) -> Unit,
 ) {
     val filteredPayloads =
         payloads?.filter {
