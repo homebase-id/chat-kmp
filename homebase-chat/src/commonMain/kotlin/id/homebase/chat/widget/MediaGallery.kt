@@ -22,6 +22,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.ImageSize
@@ -53,6 +54,7 @@ fun MediaGallery(
         fileId: Uuid,
         driveId: Uuid,
         previewThumbnail: EmbeddedThumb? = null,
+        keyHeader: KeyHeader,
         modifier: Modifier = Modifier,
         onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
         onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
@@ -69,6 +71,7 @@ fun MediaGallery(
                                         payload = payloads[0],
                                         fileId = fileId,
                                         driveId = driveId,
+                                        keyHeader = keyHeader,
                                         previewThumbnail = previewThumbnail
                                                         ?: payloads[0].previewThumbnail
                                                                 ?.toEmbeddedThumb(),
@@ -87,6 +90,7 @@ fun MediaGallery(
                                         payloads = payloads,
                                         fileId = fileId,
                                         driveId = driveId,
+                                        keyHeader = keyHeader,
                                         onMediaClick = onMediaClick,
                                         onMediaLongPress = onMediaLongPress,
                                 )
@@ -95,6 +99,7 @@ fun MediaGallery(
                                         payloads = payloads,
                                         fileId = fileId,
                                         driveId = driveId,
+                                        keyHeader = keyHeader,
                                         onMediaClick = onMediaClick,
                                         onMediaLongPress = onMediaLongPress,
                                 )
@@ -103,6 +108,7 @@ fun MediaGallery(
                                         payloads = payloads,
                                         fileId = fileId,
                                         driveId = driveId,
+                                        keyHeader = keyHeader,
                                         onMediaClick = onMediaClick,
                                         onMediaLongPress = onMediaLongPress,
                                 )
@@ -116,6 +122,7 @@ private fun TwoImageLayout(
         payloads: List<PayloadDescriptor>,
         fileId: Uuid,
         driveId: Uuid,
+        keyHeader: KeyHeader,
         onMediaClick: ((PayloadDescriptor) -> Unit)?,
         onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
 ) {
@@ -128,6 +135,7 @@ private fun TwoImageLayout(
                                 payload = payload,
                                 fileId = fileId,
                                 driveId = driveId,
+                                keyHeader = keyHeader,
                                 previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                                 modifier = Modifier.weight(1f).fillMaxSize(),
                                 imageSize = ImageSize.THUMB_SMALL,
@@ -147,6 +155,7 @@ private fun ThreeImageLayout(
         payloads: List<PayloadDescriptor>,
         fileId: Uuid,
         driveId: Uuid,
+        keyHeader: KeyHeader,
         onMediaClick: ((PayloadDescriptor) -> Unit)?,
         onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
 ) {
@@ -166,6 +175,7 @@ private fun ThreeImageLayout(
                                         driveId = driveId,
                                         previewThumbnail =
                                                 payload.previewThumbnail?.toEmbeddedThumb(),
+                                        keyHeader = keyHeader,
                                         modifier = Modifier.weight(1f).fillMaxSize(),
                                         imageSize = ImageSize.THUMB_SMALL,
                                         shape = RectangleShape,
@@ -182,6 +192,7 @@ private fun ThreeImageLayout(
                         payload = payloads[2],
                         fileId = fileId,
                         driveId = driveId,
+                        keyHeader = keyHeader,
                         previewThumbnail = payloads[2].previewThumbnail?.toEmbeddedThumb(),
                         modifier = Modifier.fillMaxWidth().height(Dimens.Album.threeCellSizeSmall),
                         imageSize = ImageSize.THUMB_MEDIUM,
@@ -198,6 +209,7 @@ private fun FourPlusImageLayout(
         payloads: List<PayloadDescriptor>,
         fileId: Uuid,
         driveId: Uuid,
+        keyHeader: KeyHeader,
         onMediaClick: ((PayloadDescriptor) -> Unit)?,
         onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
 ) {
@@ -217,6 +229,7 @@ private fun FourPlusImageLayout(
                                         payload = payload,
                                         fileId = fileId,
                                         driveId = driveId,
+                                        keyHeader = keyHeader,
                                         previewThumbnail =
                                                 payload.previewThumbnail?.toEmbeddedThumb(),
                                         modifier = Modifier.weight(1f).fillMaxSize(),
@@ -240,6 +253,7 @@ private fun FourPlusImageLayout(
                                 payload = payloads[2],
                                 fileId = fileId,
                                 driveId = driveId,
+                                keyHeader = keyHeader,
                                 previewThumbnail = payloads[2].previewThumbnail?.toEmbeddedThumb(),
                                 modifier = Modifier.weight(1f).fillMaxSize(),
                                 imageSize = ImageSize.THUMB_SMALL,
@@ -261,6 +275,7 @@ private fun FourPlusImageLayout(
                                         payload = payloads[3],
                                         fileId = fileId,
                                         driveId = driveId,
+                                        keyHeader = keyHeader,
                                         previewThumbnail =
                                                 payloads[3].previewThumbnail?.toEmbeddedThumb(),
                                         modifier = Modifier.fillMaxSize(),

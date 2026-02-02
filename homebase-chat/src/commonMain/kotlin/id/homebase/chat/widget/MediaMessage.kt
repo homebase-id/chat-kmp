@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.ImageSize
@@ -31,6 +32,7 @@ fun MediaMessage(
         fileId: Uuid,
         driveId: Uuid,
         previewThumbnail: EmbeddedThumb? = null,
+        keyHeader: KeyHeader,
         modifier: Modifier = Modifier,
         onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
         onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
@@ -46,6 +48,7 @@ fun MediaMessage(
                                 payload = payloads[0],
                                 fileId = fileId,
                                 driveId = driveId,
+                                keyHeader = keyHeader,
                                 previewThumbnail = previewThumbnail
                                                 ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
                                 modifier =
@@ -65,6 +68,7 @@ fun MediaMessage(
                         // Multiple media items - show gallery with fixed dimensions
                         MediaGallery(
                                 payloads = payloads,
+                                keyHeader=keyHeader,
                                 fileId = fileId,
                                 driveId = driveId,
                                 previewThumbnail = previewThumbnail,

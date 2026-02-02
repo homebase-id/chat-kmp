@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.HomebaseImage
@@ -48,6 +49,7 @@ fun MediaItem(
         fileId: Uuid,
         driveId: Uuid,
         previewThumbnail: EmbeddedThumb? = null,
+        keyHeader: KeyHeader,
         modifier: Modifier = Modifier,
         imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
         preserveAspectRatio: Boolean = false,
@@ -97,6 +99,7 @@ fun MediaItem(
                                         requestedSize = imageSize,
                                         lastModified = payload.lastModified,
                                         isEncrypted = true,
+                                        keyHeader = keyHeader
                                 )
 
                         HomebaseImage(

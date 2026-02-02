@@ -35,6 +35,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.data.MessageUiModel
@@ -122,6 +123,7 @@ fun SentMessageBubble(
                     fileId = message.fileId,
                     previewThumbnail = message.previewThumbnail,
                     onLongClick = { showMenu = true },
+                    keyHeader = message.keyHeader,
                 )
             }
         }
@@ -158,6 +160,7 @@ fun ReceivedMessageBubble(
                     sentByYou = false,
                     payloads = message.payloads,
                     fileId = message.fileId,
+                    keyHeader = message.keyHeader,
                     previewThumbnail = message.previewThumbnail,
                     onLongClick = { showMenu = true },
                 )
@@ -223,6 +226,7 @@ fun MessageBubble(
     payloads: List<PayloadDescriptor>? = null,
     fileId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
+    keyHeader: KeyHeader,
     onLongClick: () -> Unit,
     onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
@@ -271,6 +275,7 @@ fun MessageBubble(
                 MediaMessage(
                     payloads = filteredPayloads,
                     fileId = fileId,
+                    keyHeader = keyHeader,
                     driveId = chatTargetDrive.alias,
                     previewThumbnail = previewThumbnail,
                     onMediaClick = onMediaClick,

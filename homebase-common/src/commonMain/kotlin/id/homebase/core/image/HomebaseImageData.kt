@@ -1,5 +1,6 @@
 package id.homebase.core.image
 
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
@@ -10,24 +11,26 @@ import kotlin.uuid.Uuid
  * Supports progressive loading: tinyThumb → thumbnail → full payload
  */
 data class HomebaseImageData(
-        /** Drive containing the file */
+    /** Drive containing the file */
         val driveId: Uuid,
-        /** File ID of the image */
+    /** File ID of the image */
         val fileId: Uuid,
-        /** Payload key for the image content */
+    /** Payload key for the image content */
         val payloadKey: String,
-        /** Embedded tiny preview thumbnail (base64) for instant display */
+    /** Embedded tiny preview thumbnail (base64) for instant display */
         val previewThumbnail: EmbeddedThumb? = null,
-        /** Desired resolution for thumbnail loading */
+    /** Desired resolution for thumbnail loading */
         val requestedSize: ImageSize? = null,
-        /** If true, load full resolution payload instead of thumbnail */
+    /** If true, load full resolution payload instead of thumbnail */
         val loadFullPayload: Boolean = false,
-        /** Whether the image is encrypted */
+    /** Whether the image is encrypted */
         val isEncrypted: Boolean = true,
-        /** Last modification timestamp for cache validation */
+    /** Last modification timestamp for cache validation */
         val lastModified: Long? = null,
-        /** Local pending file (for images being uploaded/sent) */
-        val pendingFile: PlatformFile? = null
+    /** Local pending file (for images being uploaded/sent) */
+        val pendingFile: PlatformFile? = null,
+    /** KeyHeader for decryption of the payload */
+        val keyHeader: KeyHeader,
 ) {
     companion object {
         /** Create data for a pending (not yet uploaded) image */
@@ -40,7 +43,8 @@ data class HomebaseImageData(
                         fileId = Uuid.NIL,
                         payloadKey = "",
                         previewThumbnail = previewThumbnail,
-                        pendingFile = file
+                        pendingFile = file,
+                        keyHeader = KeyHeader.newRandom16(),
                 )
     }
 
