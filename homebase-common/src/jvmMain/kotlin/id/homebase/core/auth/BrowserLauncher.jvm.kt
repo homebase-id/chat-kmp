@@ -4,12 +4,18 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.browser.LocalCallbackServer
 import kotlinx.coroutines.CoroutineScope
 
+/**
+ * Desktop (JVM) implementation of BrowserLauncher.
+ *
+ * Sets up local callback server to receive OAuth redirects. The actual system browser launching is
+ * handled by [id.homebase.core.ui.auth.rememberAuthBrowserLauncher].
+ */
 actual object BrowserLauncher {
     private const val TAG = "BrowserLauncher.desktop"
 
-    actual fun launchAuthBrowser(url: String, scope: CoroutineScope, onOpenUrl: (String) -> Unit) {
+    actual fun onAuthBrowserOpened(url: String, scope: CoroutineScope) {
         try {
-            // Start the local callback server before opening the browser
+            // Start the local callback server before browser opens
             if (!LocalCallbackServer.isRunning()) {
                 // Extract the port from the redirect URI in the URL to ensure consistency
                 val portMatch = Regex("localhost%3A(\\d+)").find(url)
@@ -29,11 +35,9 @@ actual object BrowserLauncher {
                     }
                 }
             }
-
-            // Open the authorization URL in the system browser
-            onOpenUrl(url)
+            // System browser is launched by UI layer via AuthBrowserLauncher
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Failed to launch browser: ${e.message}" }
+            Logger.e(TAG, e) { "Failed to set up callback server: ${e.message}" }
         }
     }
 }
