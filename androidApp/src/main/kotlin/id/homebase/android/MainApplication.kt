@@ -3,6 +3,8 @@ package id.homebase.android
 import android.app.Application
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.storage.SharedPreferences
+import id.homebase.api.sync.database.DatabaseDriverFactory
+import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.koin.androidContext
@@ -19,8 +21,9 @@ class MainApplication : Application(), KoinComponent {
         SharedPreferences.initialize(this) // TODO: Maybe we should use injectable UserPreferences
 
         runBlocking {
-            // DatabaseManager.wipe { DatabaseDriverFactory(applicationContext).createDriver() } // <-- Uncomment to wipe database
-            // DatabaseManager.initialize { DatabaseDriverFactory(this).createDriver() } // TODO: This is not working
+            // DatabaseManager.wipe { DatabaseDriverFactory(applicationContext).createDriver() } //
+            // <-- Uncomment to wipe database
+            DatabaseManager.initialize { DatabaseDriverFactory(applicationContext).createDriver() }
         }
 
         startKoin {
