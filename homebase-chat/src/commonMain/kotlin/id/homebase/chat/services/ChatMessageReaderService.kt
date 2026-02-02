@@ -31,10 +31,10 @@ const val CHAT_MESSAGE_PAYLOAD_KEY = "chat_mbl" // Is this for "more text" ? YES
 const val CHAT_LINKS_PAYLOAD_KEY = "chat_links"
 
 class ChatMessageReaderService(
-        private val credentialsManager: CredentialsManager,
-        private val dbm: DatabaseManager,
-        private val eventBus: EventBus,
-        private val scope: CoroutineScope
+    private val credentialsManager: CredentialsManager,
+    private val dbm: DatabaseManager,
+    private val eventBus: EventBus,
+    private val scope: CoroutineScope
 ) {
 
     private val conversationState = ActiveConversationState()
@@ -51,10 +51,12 @@ class ChatMessageReaderService(
                     is BackendEvent.DriveEvent.Started -> {
                         isSyncing = true
                     }
+
                     is BackendEvent.DriveEvent.Completed, is BackendEvent.DriveEvent.Failed -> {
                         isSyncing = false
                         refreshLoadedConversations()
                     }
+
                     is BackendEvent.DriveEvent.BatchReceived -> {
                         if (!isSyncing) {
                             processIncrementalBatch(event.batchData)
@@ -68,10 +70,10 @@ class ChatMessageReaderService(
     // ---------- PUBLIC API ----------
 
     fun observeMessages(conversationId: Uuid): StateFlow<List<MessageUiModel>> =
-            conversationState
-                    .messages
-                    .map { it[conversationId].orEmpty() }
-                    .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        conversationState
+            .messages
+            .map { it[conversationId].orEmpty() }
+            .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     suspend fun loadConversation(conversationId: Uuid) {
         loadedConversations += conversationId
@@ -83,9 +85,9 @@ class ChatMessageReaderService(
 
     private suspend fun processIncrementalBatch(files: List<HomebaseFile>) {
         val messages =
-                files
-                        .filter { it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType }
-                        .mapNotNull { mapToMessageData(it) }
+            files
+                .filter { it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType }
+                .mapNotNull { mapToMessageData(it) }
 
         messages.groupBy { it.conversationId }.forEach { (conversationId, msgs) ->
             conversationState.upsert(conversationId, msgs)
@@ -102,31 +104,31 @@ class ChatMessageReaderService(
     // ---------- EXISTING LOGIC (UNCHANGED) ----------
 
     suspend fun fetchMessages(
-            conversationId: Uuid,
-            limit: Int = 1000,
-            cursor: QueryBatchCursor? = null
+        conversationId: Uuid,
+        limit: Int = 1000,
+        cursor: QueryBatchCursor? = null
     ): BatchResult<MessageUiModel> {
 
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
 
         val result =
-                queryBatch.queryBatchAsync(
-                        dbm = dbm,
-                        driveId = chatDrive,
-                        noOfItems = limit,
-                        cursor = cursor,
-                        sortOrder = QueryBatchSortOrder.NewestFirst,
-                        sortField = QueryBatchSortField.CreatedDate,
-                        fileSystemType = 0,
-                        filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
-                        groupIdAnyOf = listOf(conversationId)
-                )
+            queryBatch.queryBatchAsync(
+                dbm = dbm,
+                driveId = chatDrive,
+                noOfItems = limit,
+                cursor = cursor,
+                sortOrder = QueryBatchSortOrder.NewestFirst,
+                sortField = QueryBatchSortField.CreatedDate,
+                fileSystemType = 0,
+                filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+                groupIdAnyOf = listOf(conversationId)
+            )
 
         return BatchResult(
-                records = result.records.mapNotNull { mapToMessageData(it) },
-                hasMoreRows = result.hasMoreRows,
-                cursor = result.cursor
+            records = result.records.mapNotNull { mapToMessageData(it) },
+            hasMoreRows = result.hasMoreRows,
+            cursor = result.cursor
         )
     }
 
@@ -146,21 +148,22 @@ class ChatMessageReaderService(
                 val messageAppData = OdinSystemSerializer.deserialize<MessageAppData>(content)
 
                 return MessageUiModel(
-                        id = appData.uniqueId!!,
-                        globalTransitId = metadata.globalTransitId,
-                        fileId = header.fileId,
-                        conversationId = appData.groupId!!,
-                        created = metadata.created.toInstant(),
-                        modified = metadata.updated.toInstant(),
-                        senderOdinId = metadata.originalAuthor ?: "",
-                        isRead = false,
-                        isEdited = (metadata.created != metadata.updated),
-                        senderId = metadata.senderOdinId ?: "Me",
-                        content = messageAppData.message,
-                        messageAppData = messageAppData,
-                        reactionPreview = metadata.reactionPreview,
-                        previewThumbnail = metadata.appData.previewThumbnail,
-                        payloads = metadata.payloads,
+                    id = appData.uniqueId!!,
+                    globalTransitId = metadata.globalTransitId,
+                    fileId = header.fileId,
+                    conversationId = appData.groupId!!,
+                    created = metadata.created.toInstant(),
+                    modified = metadata.updated.toInstant(),
+                    senderOdinId = metadata.originalAuthor ?: "",
+                    isRead = false,
+                    isEdited = (metadata.created != metadata.updated),
+                    senderId = metadata.senderOdinId ?: "Me",
+                    content = messageAppData.message,
+                    messageAppData = messageAppData,
+                    reactionPreview = metadata.reactionPreview,
+                    previewThumbnail = metadata.appData.previewThumbnail,
+                    payloads = metadata.payloads,
+                    keyHeader = header.keyHeader
                 )
             } catch (t: Throwable) {
 
@@ -170,22 +173,23 @@ class ChatMessageReaderService(
 
                 try {
                     return MessageUiModel(
-                            id = appData.uniqueId!!,
-                            globalTransitId = metadata.globalTransitId,
-                            fileId = header.fileId,
-                            conversationId = appData.groupId!!,
-                            created = metadata.created.toInstant(),
-                            modified = metadata.updated.toInstant(),
-                            senderOdinId = metadata.senderOdinId ?: "",
-                            isRead = false,
-                            isEdited = (metadata.created != metadata.updated),
-                            senderId = metadata.senderOdinId ?: "Me",
-                            content = "Failed to parse message from server",
-                            messageAppData = MessageAppData(),
-                            reactionPreview = metadata.reactionPreview,
-                            previewThumbnail = metadata.appData.previewThumbnail,
-                            payloads = metadata.payloads,
-                    )
+                        id = appData.uniqueId!!,
+                        globalTransitId = metadata.globalTransitId,
+                        fileId = header.fileId,
+                        conversationId = appData.groupId!!,
+                        created = metadata.created.toInstant(),
+                        modified = metadata.updated.toInstant(),
+                        senderOdinId = metadata.senderOdinId ?: "",
+                        isRead = false,
+                        isEdited = (metadata.created != metadata.updated),
+                        senderId = metadata.senderOdinId ?: "Me",
+                        content = "Failed to parse message from server",
+                        messageAppData = MessageAppData(),
+                        reactionPreview = metadata.reactionPreview,
+                        previewThumbnail = metadata.appData.previewThumbnail,
+                        payloads = metadata.payloads,
+                        keyHeader = header.keyHeader
+                        )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {
                         "Failed in fallback handling for parsing a message: fileId ${header.fileId}"

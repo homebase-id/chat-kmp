@@ -1,6 +1,7 @@
 package id.homebase.chat.data
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -28,8 +29,10 @@ data class MessageUiModel(
     /** Tiny blurry preview thumbnail of the file */
     val previewThumbnail: EmbeddedThumb?,
     /** List of payload descriptors with metadata */
-    val payloads: List<PayloadDescriptor>?
-) {
+    val payloads: List<PayloadDescriptor>?,
+
+    val keyHeader: KeyHeader
+    ) {
     fun isCurrentUser(domain: String): Boolean =
         senderOdinId.trim().equals(domain.trim(), ignoreCase = true)
 
