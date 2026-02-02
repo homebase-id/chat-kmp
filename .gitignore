@@ -1,5 +1,6 @@
 *.iml
 desktopApp/odin.db
+desktopApp/homebase-thumbs
 .kotlin
 .gradle
 **/build/
