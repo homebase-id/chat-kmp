@@ -1,9 +1,11 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
@@ -40,14 +44,15 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
-import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @Composable
 fun SentMessageBubble(
@@ -58,6 +63,8 @@ fun SentMessageBubble(
     onEdit: (messageId: Uuid) -> Unit,
     onDeleteForMe: (messageId: Uuid) -> Unit,
     onDeleteForEveryone: (messageId: Uuid) -> Unit,
+    onMediaClick: (PayloadDescriptor) -> Unit,
+    onMediaLongPress: (PayloadDescriptor, Offset) -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -122,6 +129,8 @@ fun SentMessageBubble(
                     fileId = message.fileId,
                     previewThumbnail = message.previewThumbnail,
                     onLongClick = { showMenu = true },
+                    onMediaClick = onMediaClick,
+                    onMediaLongPress = onMediaLongPress,
                 )
             }
         }
@@ -138,6 +147,8 @@ fun ReceivedMessageBubble(
     onMarkAsRead: (messageId: Uuid) -> Unit,
     onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
     onDeleteReaction: (messageId: Uuid, reaction: String) -> Unit,
+    onMediaClick: (PayloadDescriptor) -> Unit,
+    onMediaLongPress: (PayloadDescriptor, Offset) -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -160,6 +171,8 @@ fun ReceivedMessageBubble(
                     fileId = message.fileId,
                     previewThumbnail = message.previewThumbnail,
                     onLongClick = { showMenu = true },
+                    onMediaClick = onMediaClick,
+                    onMediaLongPress = onMediaLongPress,
                 )
                 Column {
                     IconButton(
@@ -224,8 +237,8 @@ fun MessageBubble(
     fileId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
     onLongClick: () -> Unit,
-    onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
-    onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+    onMediaClick: (PayloadDescriptor) -> Unit,
+    onMediaLongPress: (PayloadDescriptor, Offset) -> Unit,
 ) {
     val filteredPayloads =
         payloads?.filter {
@@ -246,16 +259,17 @@ fun MessageBubble(
         if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
         else MaterialTheme.colorScheme.onSurface
 
+    val mediaOnly = text.isEmpty() && hasMedia
     val textState = RichTextState()
     textState.config.listIndent = 0
     textState.setHtml(text)
 
     val shape =
         RoundedCornerShape(
-            topStart = 18.dp,
-            topEnd = 18.dp,
-            bottomStart = if (!sentByYou) 4.dp else 18.dp,
-            bottomEnd = if (sentByYou) 4.dp else 18.dp,
+            topStart = Dimens.Message.cornerRadius,
+            topEnd = Dimens.Message.cornerRadius,
+            bottomStart = if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+            bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
         )
     Surface(
         modifier =
@@ -265,9 +279,8 @@ fun MessageBubble(
         shape = shape,
         color = backgroundColor,
     ) {
-        Column {
-            // Render media attachments if present
-            if (hasMedia) {
+        if (text.isEmpty() && hasMedia) {
+            Box {
                 MediaMessage(
                     payloads = filteredPayloads,
                     fileId = fileId,
@@ -275,82 +288,120 @@ fun MessageBubble(
                     previewThumbnail = previewThumbnail,
                     onMediaClick = onMediaClick,
                     onMediaLongPress = onMediaLongPress,
+                    shape = RoundedCornerShape(Dimens.Message.cornerRadius)
                 )
-            }
-
-            // Render text content with timestamp
-            Layout(
-                modifier = Modifier.padding(12.dp),
-                content = {
-                    SelectionContainer {
-                        Row {
-                            RichText(
-                                state = textState,
-                                onTextLayout = { textLayoutResult = it },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = contentColor
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .align(Alignment.BottomEnd)
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f))
                             )
-                        }
-                    }
+                        ),
+                ) {
                     Text(
-                        modifier = Modifier.padding(top = 16.dp),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(12.dp),
                         text = timestamp,
                         style = MaterialTheme.typography.labelSmall,
                         color = contentColor.copy(alpha = 0.7f)
                     )
                 }
-            ) { measurables, constraints ->
-                val textPlaceable = measurables[0].measure(constraints)
-                val timePlaceable = measurables[1].measure(constraints)
+            }
+        } else
+            Column {
+                Layout(
+                    content = {
+                        Column {
+                            if (hasMedia) {
+                                MediaMessage(
+                                    payloads = filteredPayloads,
+                                    fileId = fileId,
+                                    driveId = chatTargetDrive.alias,
+                                    previewThumbnail = previewThumbnail,
+                                    onMediaClick = onMediaClick,
+                                    onMediaLongPress = onMediaLongPress,
+                                )
+                            }
+                            SelectionContainer {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                ) {
+                                    RichText(
+                                        state = textState,
+                                        onTextLayout = { textLayoutResult = it },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = contentColor
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            modifier = Modifier.padding(
+                                top = 12.dp,
+                                bottom = 12.dp,
+                                end = 12.dp,
+                                start = 12.dp
+                            ),
+                            text = timestamp,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f)
+                        )
+                    }
+                ) { measurables, constraints ->
+                    val textPlaceable = measurables[0].measure(constraints)
+                    val timePlaceable = measurables[1].measure(constraints)
 
-                val layoutResult = textLayoutResult
-                var totalWidth: Int
-                var totalHeight: Int
-                var timeX: Int
-                var timeY: Int
+                    val layoutResult = textLayoutResult
+                    var totalWidth: Int
+                    var totalHeight: Int
+                    var timeX: Int
+                    var timeY: Int
 
-                if (layoutResult == null) {
-                    // Fallback if layout isn't ready yet
-                    totalWidth = textPlaceable.width
-                    totalHeight = textPlaceable.height
-                    timeX = 0
-                    timeY = 0
-                } else {
-                    val lastLineIndex = layoutResult.lineCount - 1
-                    val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-
-                    // Determine if timestamp fits on the last line
-                    // We add a small gap (8dp converted to px) between text and time
-                    val horizontalGap = 8.dp.toPx()
-                    val fitsOnLastLine =
-                        (constraints.maxWidth - lastLineRight) >
-                                (timePlaceable.width + horizontalGap)
-
-                    if (fitsOnLastLine) {
-                        // Fits on the same line
-                        totalWidth =
-                            maxOf(
-                                textPlaceable.width,
-                                (lastLineRight + horizontalGap + timePlaceable.width)
-                                    .toInt()
-                            )
+                    if (layoutResult == null) {
+                        // Fallback if layout isn't ready yet
+                        totalWidth = textPlaceable.width
                         totalHeight = textPlaceable.height
-                        timeX = totalWidth - timePlaceable.width
-                        timeY = totalHeight - timePlaceable.height
+                        timeX = 0
+                        timeY = 0
                     } else {
-                        // Needs a new line
-                        totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
-                        totalHeight = textPlaceable.height + timePlaceable.height
-                        timeX = totalWidth - timePlaceable.width
-                        timeY = totalHeight - timePlaceable.height
+                        val lastLineIndex = layoutResult.lineCount - 1
+                        val lastLineRight = layoutResult.getLineRight(lastLineIndex)
+
+                        // Determine if timestamp fits on the last line
+                        // We add a small gap (8dp converted to px) between text and time
+                        val horizontalGap = 8.dp.toPx()
+                        val fitsOnLastLine =
+                            (constraints.maxWidth - lastLineRight) >
+                                    (timePlaceable.width + horizontalGap)
+
+                        if (fitsOnLastLine) {
+                            // Fits on the same line
+                            totalWidth =
+                                maxOf(
+                                    textPlaceable.width,
+                                    (lastLineRight + horizontalGap + timePlaceable.width)
+                                        .toInt()
+                                )
+                            totalHeight = textPlaceable.height
+                            timeX = totalWidth - timePlaceable.width
+                            timeY = totalHeight - timePlaceable.height
+                        } else {
+                            // Needs a new line
+                            totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
+                            totalHeight = textPlaceable.height + timePlaceable.height
+                            timeX = totalWidth - timePlaceable.width
+                            timeY = totalHeight - timePlaceable.height
+                        }
+                    }
+
+                    layout(totalWidth, totalHeight) {
+                        textPlaceable.placeRelative(0, 0)
+                        timePlaceable.placeRelative(timeX, timeY)
                     }
                 }
-
-                layout(totalWidth, totalHeight) {
-                    textPlaceable.placeRelative(0, 0)
-                    timePlaceable.placeRelative(timeX, timeY)
-                }
             }
-        }
     }
 }

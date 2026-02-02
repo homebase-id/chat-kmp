@@ -99,7 +99,8 @@ fun ConversationMessagesPane(
             onUiAction(
                 ConversationListUiAction.SendFile(
                     conversation.id,
-                    file,
+                    "",
+                    listOf(file),
                 )
             )
         }
@@ -109,7 +110,8 @@ fun ConversationMessagesPane(
             onUiAction(
                 ConversationListUiAction.SendFile(
                     conversation.id,
-                    file,
+                    "",
+                    listOf(file),
                 )
             )
         }
@@ -119,7 +121,8 @@ fun ConversationMessagesPane(
             onUiAction(
                 ConversationListUiAction.SendFile(
                     conversation.id,
-                    file,
+                    "",
+                    listOf(file),
                 )
             )
         }
@@ -407,6 +410,12 @@ fun ConversationMessagesPane(
                                                     message.id
                                                 )
                                             )
+                                        },
+                                        onMediaClick = { payload ->
+
+                                        },
+                                        onMediaLongPress = { payload, _ ->
+
                                         }
                                     )
                                 } else {
@@ -454,8 +463,13 @@ fun ConversationMessagesPane(
                                                     reaction = reaction
                                                 )
                                             )
-                                        }
+                                        },
+                                        onMediaClick = { payload ->
 
+                                        },
+                                        onMediaLongPress = { payload, _ ->
+
+                                        }
                                     )
                                 }
                             }

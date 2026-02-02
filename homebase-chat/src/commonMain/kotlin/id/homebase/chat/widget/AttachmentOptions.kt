@@ -114,19 +114,21 @@ fun AttachmentOptions(
                     onClick = onFileClick
                 )
             }
-            item {
-                AttachmentOption(
-                    icon = Icons.Default.AccountCircle,
-                    label = stringResource(MR.string.chat_message_attachment_contact),
-                    onClick = onContactClick
-                )
-            }
-            item {
-                AttachmentOption(
-                    icon = Icons.Default.LocationOn,
-                    label = stringResource(MR.string.chat_message_attachment_location),
-                    onClick = onLocationClick
-                )
+            if (isMobile()) {
+                item {
+                    AttachmentOption(
+                        icon = Icons.Default.AccountCircle,
+                        label = stringResource(MR.string.chat_message_attachment_contact),
+                        onClick = onContactClick
+                    )
+                }
+                item {
+                    AttachmentOption(
+                        icon = Icons.Default.LocationOn,
+                        label = stringResource(MR.string.chat_message_attachment_location),
+                        onClick = onLocationClick
+                    )
+                }
             }
         }
     }

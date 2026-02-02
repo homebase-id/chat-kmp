@@ -1,10 +1,14 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shape
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.ImageSize
@@ -27,13 +31,14 @@ import kotlin.uuid.Uuid
  */
 @Composable
 fun MediaMessage(
-        payloads: List<PayloadDescriptor>,
-        fileId: Uuid,
-        driveId: Uuid,
-        previewThumbnail: EmbeddedThumb? = null,
-        modifier: Modifier = Modifier,
-        onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
-        onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+    payloads: List<PayloadDescriptor>,
+    fileId: Uuid,
+    driveId: Uuid,
+    previewThumbnail: EmbeddedThumb? = null,
+    modifier: Modifier = Modifier,
+    onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
+    onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+    shape: Shape = RoundedCornerShape(topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius),
 ) {
         if (payloads.isEmpty()) return
 
@@ -41,7 +46,7 @@ fun MediaMessage(
                 1 -> {
                         // Single media item - constrain to max 50% width (~210dp), preserve aspect
                         // ratio
-                        val widthModifier = modifier.widthIn(max = Dimens.Album.totalWidth)
+                        val widthModifier = modifier.widthIn(max = Dimens.Album.totalWidth).background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         MediaItem(
                                 payload = payloads[0],
                                 fileId = fileId,
@@ -59,6 +64,7 @@ fun MediaMessage(
                                 onLongPress = { offset ->
                                         onMediaLongPress?.invoke(payloads[0], offset)
                                 },
+                            shape = shape,
                         )
                 }
                 else -> {
@@ -68,9 +74,10 @@ fun MediaMessage(
                                 fileId = fileId,
                                 driveId = driveId,
                                 previewThumbnail = previewThumbnail,
-                                modifier = modifier,
+                                modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
                                 onMediaClick = onMediaClick,
                                 onMediaLongPress = onMediaLongPress,
+                            shape = shape,
                         )
                 }
         }

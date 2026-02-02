@@ -12,7 +12,7 @@ sealed interface ConversationListUiAction {
     data class ContactClicked(val contact: ContactUiModel) : ConversationListUiAction
     data class SearchQueryChanged(val query: String) : ConversationListUiAction
     data class SendMessage(val conversationId: Uuid, val content: String) : ConversationListUiAction
-    data class SendFile(val conversationId: Uuid, val file: PlatformFile) : ConversationListUiAction
+    data class SendFile(val conversationId: Uuid, val message: String, val files: List<PlatformFile>) : ConversationListUiAction
 
     data class SaveScrollPosition(
         val conversationId: Uuid,
