@@ -1,24 +1,27 @@
 package id.homebase.chat.services.builder
 
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
 
 object MessageAttachmentBuilder {
     suspend fun build(
-        attachments: List<AttachmentInput>
+        attachments: List<AttachmentInput>,
+        fileOperationsProvider: FileOperationsProvider,
     ): PayloadBundle {
         val bundles =
             attachments.mapIndexed { index, input ->
                 val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                val descriptorKey = "${ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index";
+                val descriptorKey = "${ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index"
 
                 when {
                     input.contentType.startsWith("image/") -> {
                         val thumbs =
                             MessageThumbnailGenerator.generate(
                                 input.filePath,
-                                payloadKey
+                                payloadKey,
+                                fileOperationsProvider,
                             )
 
                         PayloadBundle(

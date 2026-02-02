@@ -43,6 +43,7 @@ espressoCore = "3.0.2"
 appcompatV7 = "28.0.0"
 uiToolingPreview = "1.10.2"
 kotlinStdlib = "2.3.0"
+googleAccompanist = "0.37.3"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -116,6 +117,7 @@ koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel", ver
 filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "filekit" }
 filekit-dialogs = { module = "io.github.vinceglb:filekit-dialogs", version.ref = "filekit" }
 filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose", version.ref = "filekit" }
+filekit-coil = { module = "io.github.vinceglb:filekit-coil", version.ref = "filekit" }
 smart-exception-java = { module = "com.arthenica:smart-exception-java", version = "0.2.1" }
 runner = { group = "com.android.support.test", name = "runner", version.ref = "runner" }
 espresso-core = { group = "com.android.support.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
@@ -129,6 +131,7 @@ coil3-network = { group = "io.coil-kt.coil3", name = "coil-network-ktor3", versi
 coil3-video = { group = "io.coil-kt.coil3", name = "coil-video", version.ref = "coil3" } # Android only
 coil3-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil3" }
 kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlinStdlib" }
+accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "googleAccompanist" }
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }

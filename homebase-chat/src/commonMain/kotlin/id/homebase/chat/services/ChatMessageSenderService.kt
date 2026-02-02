@@ -2,7 +2,6 @@ package id.homebase.chat.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.readFileBytes
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.PushNotificationOptions
 import id.homebase.api.client.drives.upload.TransitOptions
@@ -12,13 +11,15 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.drives.writeBytesToTempFile
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
     private val driveUploadProvider: DriveUploadProvider,
-    private val conversationService: ConversationService
+    private val conversationService: ConversationService,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -182,7 +183,7 @@ class ChatMessageSenderService(
     ): EncryptedFileResult {
 
         // Read full file from disk
-        val plainBytes = readFileBytes(inputFile)
+        val plainBytes = fileOperationsProvider.readFileBytes(inputFile)
 
         // Per-payload IV
         val payloadIv = ByteArrayUtil.getRndByteArray(16)
@@ -224,7 +225,7 @@ class ChatMessageSenderService(
 
 
         // for now
-        return encryptFile(inputFile, keyHeader);
+        return encryptFile(inputFile, keyHeader)
     }
 
 }

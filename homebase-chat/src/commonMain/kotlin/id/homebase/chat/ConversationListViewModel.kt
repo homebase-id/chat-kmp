@@ -2,8 +2,10 @@ package id.homebase.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.writeBytesToTempFile
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageReaderService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -13,6 +15,7 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.ScrollPosition
+import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +33,7 @@ class ChatListViewModel(
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel() {
 
     val ExampleImageData =
@@ -148,40 +152,85 @@ class ChatListViewModel(
             }
 
             is ConversationListUiAction.DeleteMessageForEveryone -> {
-
                 viewModelScope.launch {
-                    chatMessageActionService.deleteMessage(
-                        action.messageId,
-                        deleteForEveryone = true
-                    )
+                    try {
+                        chatMessageActionService.deleteMessage(
+                            action.messageId,
+                            deleteForEveryone = true
+                        )
+                    } catch (e: Exception) {
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to delete message for everyone: ${e.message}") )
+                    }
                 }
             }
 
             is ConversationListUiAction.DeleteMessageForMe -> {
-
                 viewModelScope.launch {
-                    chatMessageActionService.deleteMessage(
-                        action.messageId,
-                        deleteForEveryone = false
-                    )
+                    try {
+                        chatMessageActionService.deleteMessage(
+                            action.messageId,
+                            deleteForEveryone = false
+                        )
+                    } catch (e: Exception) {
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to delete message for me: ${e.message}") )
+                    }
                 }
             }
 
             is ConversationListUiAction.MarkAsRead -> {
                 viewModelScope.launch {
-                    chatMessageActionService.markAsRead(listOf(action.messageId))
+                    try {
+                        chatMessageActionService.markAsRead(listOf(action.messageId))
+                    } catch (e: Exception) {
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to mark message as read: ${e.message}"))
+                    }
                 }
             }
 
             is ConversationListUiAction.AddReaction -> {
                 viewModelScope.launch {
-                    chatMessageActionService.addReaction(action.messageId, action.reaction)
+                    try {
+                        chatMessageActionService.addReaction(action.messageId, action.reaction)
+                    } catch (e: Exception) {
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to add reaction: ${e.message}") )
+                    }
                 }
             }
 
             is ConversationListUiAction.DeleteReaction -> {
                 viewModelScope.launch {
-                    chatMessageActionService.deleteReaction(action.messageId, action.reaction)
+                    try {
+                        chatMessageActionService.deleteReaction(action.messageId, action.reaction)
+                    } catch (e: Exception) {
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to delete reaction: ${e.message}"))
+                    }
+                }
+            }
+
+            is ConversationListUiAction.SendFile -> {
+                viewModelScope.launch {
+                    try {
+                        val filePath = action.file.toString()
+                        val attachments =
+                            listOf(
+                                AttachmentInput(
+                                    filePath = filePath,
+                                    contentType = detectContentTypeFromExtensionOrHint(filePath),
+                                    displayName = "file"
+                                )
+                            )
+
+                        val bundle = MessageAttachmentBuilder.build(attachments, fileOperationsProvider)
+
+                        chatMessageSenderService.sendNewMessage(
+                            action.conversationId,
+                            "",
+                            bundle
+                        )
+                    } catch (e: Exception) {
+                        Logger.e( "Failed to send file", e)
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to send file: ${e.message}"))
+                    }
                 }
             }
 
@@ -202,17 +251,21 @@ class ChatListViewModel(
 
     private fun loadMessagesForConversation(conversationId: Uuid) {
         viewModelScope.launch {
-            chatMessageService.loadConversation(conversationId)
+            try {
+                chatMessageService.loadConversation(conversationId)
 
-            chatMessageService
-                .observeMessages(conversationId).collect { messages ->
-                    val sorted = messages.sortedBy { it.created }
-                    _uiState.value = _uiState.value.copy(
-                        selectedConversationId = conversationId,
-                        currentConversationMessages = sorted.toPersistentList(),
-                        conversationScrollPosition = getScrollPosition(conversationId),
-                    )
-                }
+                chatMessageService
+                    .observeMessages(conversationId).collect { messages ->
+                        val sorted = messages.sortedBy { it.created }
+                        _uiState.value = _uiState.value.copy(
+                            selectedConversationId = conversationId,
+                            currentConversationMessages = sorted.toPersistentList(),
+                            conversationScrollPosition = getScrollPosition(conversationId),
+                        )
+                    }
+            } catch (e: Exception) {
+                sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to load messages: ${e.message}"))
+            }
         }
     }
 
@@ -240,32 +293,35 @@ class ChatListViewModel(
         content: String
     ) {
         viewModelScope.launch {
-
-            // attachments selected from UI state, etc.
-            val attachments =
-                listOf(
-                    AttachmentInput(
-                        filePath = writeBytesToTempFile(
-                            Base64.decode(ExampleImageData),
-                            "some-image",
-                            ".jpg"
-                        ),
-                        contentType = "image/png",
-                        displayName = "diagram.png"
+            try {
+                // attachments selected from UI state, etc.
+                val attachments =
+                    listOf(
+                        AttachmentInput(
+                            filePath = writeBytesToTempFile(
+                                Base64.decode(ExampleImageData),
+                                "some-image",
+                                ".jpg"
+                            ),
+                            contentType = "image/png",
+                            displayName = "diagram.png"
+                        )
                     )
+
+                // Build them - creates thumbnails etc
+                val bundle = MessageAttachmentBuilder.build(attachments, fileOperationsProvider)
+
+                // this will encrypt all files FROM DISK, do video encoding etc.
+                chatMessageSenderService.sendNewMessage(
+                    conversationId,
+                    content,
+                    bundle
                 )
 
-            // Build them - creates thumbnails etc
-            val bundle = MessageAttachmentBuilder.build(attachments)
-
-            // this will encrypt all files FROM DISK, do video encoding etc.
-            chatMessageSenderService.sendNewMessage(
-                conversationId,
-                content,
-                bundle
-            )
-
-            // you can also use chatMessageSenderService.replyToMessage
+                // you can also use chatMessageSenderService.replyToMessage
+            } catch (e: Exception) {
+                sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to send message: ${e.message}"))
+            }
         }
     }
 }

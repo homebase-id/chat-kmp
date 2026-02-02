@@ -16,6 +16,7 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.*
@@ -84,7 +85,8 @@ data class UpdateFileByUniqueIdRequest(
 @OptIn(ExperimentalEncodingApi::class)
 class DriveUploadProvider(
     httpClient: HttpClient,
-    credentialsManager: CredentialsManager
+    credentialsManager: CredentialsManager,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
 
     companion object {
@@ -113,7 +115,7 @@ class DriveUploadProvider(
         val instructions =
             UploadInstructionSet(
                 transferIv = transferIv,
-                manifest = UploadManifest.Companion.build(
+                manifest = UploadManifest.build(
                     request.payloads,
                     request.thumbnails,
                     generatePayloadIv = request.metadata.isEncrypted
@@ -126,7 +128,8 @@ class DriveUploadProvider(
                 instructionSet = instructions,
                 sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
                 payloads = request.payloads,
-                thumbnails = request.thumbnails
+                thumbnails = request.thumbnails,
+                fileOperationsProvider = fileOperationsProvider
             )
 
         val result = pureUpload(request.driveId, data, request.fileSystemType, onVersionConflict)
@@ -155,7 +158,8 @@ class DriveUploadProvider(
                 instructionSet = request.instructions,
                 sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
                 payloads = request.payloads,
-                thumbnails = request.thumbnails
+                thumbnails = request.thumbnails,
+                fileOperationsProvider = fileOperationsProvider
             )
 
         val path = "/drives/${request.driveId}/files/${request.fileId}"
@@ -183,7 +187,8 @@ class DriveUploadProvider(
                 instructionSet = request.instructions,
                 sharedSecretEncryptedDescriptor = sharedSecretEncryptedDescriptor,
                 payloads = request.payloads,
-                thumbnails = request.thumbnails
+                thumbnails = request.thumbnails,
+                fileOperationsProvider = fileOperationsProvider,
             )
 
         val path = "/drives/${request.driveId}/files/by-uid/${request.uniqueId}"
@@ -242,13 +247,13 @@ class DriveUploadProvider(
         val creds = requireCreds()
 
         // Decrypt key header if needed
-        val decryptedKeyHeader: KeyHeader? =  file.keyHeader
+        val decryptedKeyHeader: KeyHeader = file.keyHeader
 
         // Build key header with new IV
         val keyHeader: KeyHeader? =
-            if (file.fileMetadata.isEncrypted && decryptedKeyHeader != null) {
+            if (file.fileMetadata.isEncrypted) {
                 KeyHeader(
-                    iv = localAppData.iv?.let { Base64.Default.decode(it) }
+                    iv = localAppData.iv?.let { Base64.decode(it) }
                         ?: ByteArrayUtil.getRndByteArray(16),
                     aesKey = decryptedKeyHeader.aesKey
                 )
@@ -322,7 +327,7 @@ class DriveUploadProvider(
                 }
             )
 
-        Logger.Companion.i(TAG) { "drive upload url: [${url}]" }
+        Logger.i(TAG) { "drive upload url: [${url}]" }
 
         val response =
             plainPostMultipart(
@@ -465,7 +470,7 @@ class DriveUploadProvider(
 
         // Optional warning if handler not provided
         if (errorResponse?.errorCode == OdinClientErrorCode.VersionTagMismatch) {
-            Logger.Companion.w(TAG) {
+            Logger.w(TAG) {
                 "VersionTagMismatch encountered with no onVersionConflict handler"
             }
         }
