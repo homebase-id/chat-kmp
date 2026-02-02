@@ -1,10 +1,14 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,9 +27,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
@@ -51,9 +58,25 @@ import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
+/**
+ * Displays a message bubble for messages sent to other users.
+ *
+ * Shows the message content aligned to the right with appropriate styling for sent messages.
+ * Includes a hover menu on desktop and long-press animation on mobile for message actions.
+ *
+ * @param message The message data to display.
+ * @param onMessageInfo Callback invoked when user requests message info/details.
+ * @param onReply Callback invoked when user wants to reply to this message.
+ * @param onStar Callback invoked when user wants to star/favorite this message.
+ * @param onDeleteForMe Callback invoked when user wants to delete this message for themselves only.
+ * @param onDeleteForEveryone Callback invoked when user wants to mark this message as read.
+ * @param onMediaClick Callback invoked when user clicks on media attachment.
+ * @param onMediaLongPress Callback invoked when user long-presses on media attachment.
+ */
 @Composable
 fun SentMessageBubble(
     message: MessageUiModel,
@@ -137,6 +160,23 @@ fun SentMessageBubble(
     }
 }
 
+/**
+ * Displays a message bubble for messages received from other users.
+ *
+ * Shows the message content aligned to the left with appropriate styling for received messages.
+ * Includes a hover menu on desktop and long-press animation on mobile for message actions.
+ *
+ * @param message The message data to display.
+ * @param onMessageInfo Callback invoked when user requests message info/details.
+ * @param onReply Callback invoked when user wants to reply to this message.
+ * @param onStar Callback invoked when user wants to star/favorite this message.
+ * @param onDeleteForMe Callback invoked when user wants to delete this message for themselves only.
+ * @param onMarkAsRead Callback invoked when user wants to mark this message as read.
+ * @param onAddReaction Callback invoked when user wants to add a reaction to this message.
+ * @param onDeleteReaction Callback invoked when user wants to remove a reaction from this message.
+ * @param onMediaClick Callback invoked when user clicks on media attachment.
+ * @param onMediaLongPress Callback invoked when user long-presses on media attachment.
+ */
 @Composable
 fun ReceivedMessageBubble(
     message: MessageUiModel,
@@ -227,6 +267,28 @@ fun ReceivedMessageBubble(
     }
 }
 
+/**
+ * Core message bubble composable that renders message content with smart layout.
+ *
+ * Features:
+ * - Renders rich HTML text content with proper formatting
+ * - Displays media attachments (images, videos, etc.)
+ * - Smart timestamp positioning: fits on last line of text when space permits, otherwise creates new line
+ * - Long-press animation with spring physics on mobile devices
+ * - Gradient overlay on media-only messages for timestamp readability
+ * - Different styling for sent vs received messages
+ *
+ * @param modifier Modifier to be applied to the message bubble surface.
+ * @param text The message text content (can be HTML formatted).
+ * @param timestamp The formatted timestamp string to display.
+ * @param sentByYou Whether this message was sent by the current user (affects styling).
+ * @param payloads Optional list of media/file attachments associated with the message.
+ * @param fileId The unique identifier for the message file.
+ * @param previewThumbnail Optional embedded thumbnail for media preview.
+ * @param onLongClick Callback invoked when user performs a long-press on the bubble.
+ * @param onMediaClick Callback invoked when user clicks on a media attachment.
+ * @param onMediaLongPress Callback invoked when user long-presses on a media attachment.
+ */
 @Composable
 fun MessageBubble(
     modifier: Modifier = Modifier,
@@ -259,6 +321,45 @@ fun MessageBubble(
         if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
         else MaterialTheme.colorScheme.onSurface
 
+    val pressInteractionSource = remember { MutableInteractionSource() }
+    val isPressed by pressInteractionSource.collectIsPressedAsState()
+
+    // Animatable controls the applied scale
+    val scaleAnim = remember { Animatable(1f) }
+    val isAnimatingLongPress = remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Use a spring for smoother, natural motion and avoid tiny abrupt tweens
+    val springSpec = spring<Float>(
+        dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
+        stiffness = Spring.StiffnessLow
+    )
+
+    // Keep quick press feedback when not running the long-press animation
+    LaunchedEffect(isPressed) {
+        if (isAnimatingLongPress.value) return@LaunchedEffect
+        if (isPressed) {
+            scaleAnim.animateTo(0.96f, animationSpec = springSpec)
+        } else {
+            scaleAnim.animateTo(1f, animationSpec = springSpec)
+        }
+    }
+
+    fun handleLongClick() {
+        if (isAnimatingLongPress.value) return
+        isAnimatingLongPress.value = true
+        coroutineScope.launch {
+            try {
+                scaleAnim.animateTo(0.94f, animationSpec = springSpec)
+                onLongClick()
+                scaleAnim.animateTo(1f, animationSpec = springSpec)
+            } finally {
+                isAnimatingLongPress.value = false
+
+            }
+        }
+    }
+
     val mediaOnly = text.isEmpty() && hasMedia
     val textState = RichTextState()
     textState.config.listIndent = 0
@@ -273,9 +374,20 @@ fun MessageBubble(
         )
     Surface(
         modifier =
-            modifier.clip(shape).ifTrue(isMobile()) {
-                Modifier.combinedClickable(onClick = {}, onLongClick = onLongClick)
-            },
+            modifier
+                .clip(shape)
+                .ifTrue(isMobile()) {
+                    Modifier.combinedClickable(
+                        onClick = {},
+                        onLongClick = { handleLongClick() },
+                        interactionSource = pressInteractionSource,
+                        indication = null
+                    )
+                }
+                .graphicsLayer {
+                    scaleX = scaleAnim.value
+                    scaleY = scaleAnim.value
+                },
         shape = shape,
         color = backgroundColor,
     ) {
@@ -287,7 +399,9 @@ fun MessageBubble(
                     driveId = chatTargetDrive.alias,
                     previewThumbnail = previewThumbnail,
                     onMediaClick = onMediaClick,
-                    onMediaLongPress = onMediaLongPress,
+                    onMediaLongPress = { _, _ ->
+                        handleLongClick()
+                    },
                     shape = RoundedCornerShape(Dimens.Message.cornerRadius)
                 )
                 Box(
@@ -296,7 +410,10 @@ fun MessageBubble(
                         .align(Alignment.BottomEnd)
                         .background(
                             brush = Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f))
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.6f)
+                                )
                             )
                         ),
                 ) {
@@ -322,7 +439,9 @@ fun MessageBubble(
                                     driveId = chatTargetDrive.alias,
                                     previewThumbnail = previewThumbnail,
                                     onMediaClick = onMediaClick,
-                                    onMediaLongPress = onMediaLongPress,
+                                    onMediaLongPress = { _, _ ->
+                                        handleLongClick()
+                                    },
                                 )
                             }
                             SelectionContainer {

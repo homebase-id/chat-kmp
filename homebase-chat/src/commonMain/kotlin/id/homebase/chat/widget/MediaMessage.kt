@@ -38,47 +38,52 @@ fun MediaMessage(
     modifier: Modifier = Modifier,
     onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius),
+    shape: Shape = RoundedCornerShape(
+        topStart = Dimens.Message.cornerRadius,
+        topEnd = Dimens.Message.cornerRadius
+    ),
 ) {
-        if (payloads.isEmpty()) return
+    if (payloads.isEmpty()) return
 
-        when (payloads.size) {
-                1 -> {
-                        // Single media item - constrain to max 50% width (~210dp), preserve aspect
-                        // ratio
-                        val widthModifier = modifier.widthIn(max = Dimens.Album.totalWidth).background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        MediaItem(
-                                payload = payloads[0],
-                                fileId = fileId,
-                                driveId = driveId,
-                                previewThumbnail = previewThumbnail
-                                                ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
-                                modifier =
-                                        widthModifier.heightIn(
-                                                min = Dimens.MediaBubble.minHeight,
-                                                max = Dimens.MediaBubble.maxHeight
-                                        ),
-                                imageSize = ImageSize.THUMB_MEDIUM,
-                                preserveAspectRatio = true,
-                                onClick = { onMediaClick?.invoke(payloads[0]) },
-                                onLongPress = { offset ->
-                                        onMediaLongPress?.invoke(payloads[0], offset)
-                                },
-                            shape = shape,
-                        )
-                }
-                else -> {
-                        // Multiple media items - show gallery with fixed dimensions
-                        MediaGallery(
-                                payloads = payloads,
-                                fileId = fileId,
-                                driveId = driveId,
-                                previewThumbnail = previewThumbnail,
-                                modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                                onMediaClick = onMediaClick,
-                                onMediaLongPress = onMediaLongPress,
-                            shape = shape,
-                        )
-                }
+    when (payloads.size) {
+        1 -> {
+            // Single media item - constrain to max 50% width (~210dp), preserve aspect
+            // ratio
+            val widthModifier = modifier.widthIn(max = Dimens.Album.totalWidth)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            MediaItem(
+                payload = payloads[0],
+                fileId = fileId,
+                driveId = driveId,
+                previewThumbnail = previewThumbnail
+                    ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
+                modifier =
+                    widthModifier.heightIn(
+                        min = Dimens.MediaBubble.minHeight,
+                        max = Dimens.MediaBubble.maxHeight
+                    ),
+                imageSize = ImageSize.THUMB_MEDIUM,
+                preserveAspectRatio = true,
+                onClick = { onMediaClick?.invoke(payloads[0]) },
+                onLongPress = { offset ->
+                    onMediaLongPress?.invoke(payloads[0], offset)
+                },
+                shape = shape,
+            )
         }
+
+        else -> {
+            // Multiple media items - show gallery with fixed dimensions
+            MediaGallery(
+                payloads = payloads,
+                fileId = fileId,
+                driveId = driveId,
+                previewThumbnail = previewThumbnail,
+                modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                onMediaClick = onMediaClick,
+                onMediaLongPress = onMediaLongPress,
+                shape = shape,
+            )
+        }
+    }
 }

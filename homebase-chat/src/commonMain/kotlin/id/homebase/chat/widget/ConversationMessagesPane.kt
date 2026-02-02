@@ -93,7 +93,6 @@ fun ConversationMessagesPane(
     val coroutineScope = rememberCoroutineScope()
     val isKeyboardVisible by keyboardAsState()
     val focusManager = LocalFocusManager.current
-
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
             onUiAction(
@@ -116,7 +115,7 @@ fun ConversationMessagesPane(
             )
         }
     }
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.Image,) { file ->
+    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
         file?.let {
             onUiAction(
                 ConversationListUiAction.SendFile(
@@ -240,6 +239,46 @@ fun ConversationMessagesPane(
             }
     }
 
+    // Track the previous viewport height and scroll position before height change
+    val previousViewportHeight = remember(conversation.id) { mutableStateOf(0) }
+    val scrollPositionBeforeDecrease =
+        remember(conversation.id) { mutableStateOf<Pair<Int, Int>?>(null) }
+
+    // Adjust scroll position when viewport height changes
+    LaunchedEffect(conversation.id) {
+        snapshotFlow { listState.layoutInfo.viewportSize.height }
+            .distinctUntilChanged()
+            .collect { currentHeight ->
+                val previousHeight = previousViewportHeight.value
+
+                if (previousHeight > 0 && !isRestoringScrollPosition && listState.layoutInfo.totalItemsCount > 0) {
+                    when {
+                        currentHeight < previousHeight -> {
+                            // Height decreased (e.g., keyboard opened)
+                            // Save current position before adjusting
+                            scrollPositionBeforeDecrease.value =
+                                listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+
+                            val heightDiff = previousHeight - currentHeight
+
+                            // Calculate new scroll position to maintain visual position
+                            val newOffset = listState.firstVisibleItemScrollOffset + heightDiff
+                            listState.scrollToItem(listState.firstVisibleItemIndex, newOffset)
+                        }
+
+                        currentHeight > previousHeight && scrollPositionBeforeDecrease.value != null -> {
+                            // Height increased (e.g., keyboard closed)
+                            val (savedIndex, savedOffset) = scrollPositionBeforeDecrease.value!!
+                            listState.scrollToItem(savedIndex, savedOffset)
+                            scrollPositionBeforeDecrease.value = null
+                        }
+                    }
+                }
+
+                previousViewportHeight.value = currentHeight
+            }
+    }
+
     Scaffold(
         modifier = Modifier,
         topBar = {
@@ -324,7 +363,7 @@ fun ConversationMessagesPane(
             if (isScrollPositionReady) {
                 Box(
                     modifier = Modifier.weight(1f),
-                ){
+                ) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
