@@ -8,6 +8,7 @@ import id.homebase.chat.services.ChatMessageReaderService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ContactService
 import id.homebase.chat.services.ConversationService
+import id.homebase.chat.services.ConversationWriterService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.settings.UserPreferences
@@ -25,6 +26,7 @@ val appModule = module {
 
     singleOf(::ContactService)
     singleOf(::ConversationService)
+    singleOf(::ConversationWriterService)
     singleOf(::ChatMessageReaderService)
     singleOf(::ChatMessageSenderService)
     singleOf(::HomebaseImageLoader)
