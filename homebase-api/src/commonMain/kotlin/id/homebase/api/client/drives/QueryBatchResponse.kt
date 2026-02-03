@@ -39,7 +39,8 @@ data class QueryBatchResponse(
             return QueryBatchResponse(
                 name = name,
                 invalidDrive = true,
-                searchResults = emptyList()
+                searchResults = emptyList(),
+                hasMoreRows = false
             )
         }
     }
