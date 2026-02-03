@@ -36,16 +36,15 @@ val apiModule = module {
 
     singleOf(::CredentialsManager)
     singleOf(::DriveSyncManager)
+    singleOf(::DriveFileProviderCached)
     singleOf(::YouAuthFlowManager)
 
     single { UsernameStorage() }
 
     factoryOf(::DriveQueryProvider)
-
     factoryOf(::DriveUploadProvider)
 
     factoryOf(::DriveFileProvider)
-    factoryOf(::DriveFileProviderCached)
     factoryOf(::DriveFileReactionProvider)
     factoryOf(::DriveFileOperationsProvider)
 

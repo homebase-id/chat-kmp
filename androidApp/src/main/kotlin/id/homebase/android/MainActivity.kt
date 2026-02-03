@@ -10,6 +10,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.lifecycleScope
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
+import io.github.vinceglb.filekit.FileKit
+import io.github.vinceglb.filekit.dialogs.init
+import io.github.vinceglb.filekit.manualFileKitCoreInitialization
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -18,6 +21,11 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         handleIntent(intent)
+
+        // Initialize FileKit
+        FileKit.manualFileKitCoreInitialization(this)
+        FileKit.init(this)
+
         setContent { App() }
     }
 

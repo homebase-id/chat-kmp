@@ -1,5 +1,6 @@
 package id.homebase.api.client
 
+import androidx.collection.ObjectList
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -26,7 +27,23 @@ data class ByteApiResponse(
     val headers: Headers,
     val bytes: ByteArray,
     val contentType: String
-)
+){
+    companion object {
+        val EMPTY_404 = ByteApiResponse(
+            status = 404,
+            headers = Headers.Empty,
+            bytes = ByteArray(0),
+            contentType = "application/octet-stream"
+        )
+
+        val EMPTY_200 = ByteApiResponse(
+            status = 200,
+            headers = Headers.Empty,
+            bytes = ByteArray(0),
+            contentType = "application/octet-stream"
+        )
+    }
+}
 
 abstract class OdinApiProviderBase(
     protected val httpClient: HttpClient,

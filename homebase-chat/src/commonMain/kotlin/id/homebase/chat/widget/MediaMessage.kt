@@ -1,11 +1,16 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+
 import id.homebase.api.client.KeyHeader
+import androidx.compose.ui.graphics.Shape
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.ImageSize
@@ -28,54 +33,63 @@ import kotlin.uuid.Uuid
  */
 @Composable
 fun MediaMessage(
-        payloads: List<PayloadDescriptor>,
-        fileId: Uuid,
-        driveId: Uuid,
-        previewThumbnail: EmbeddedThumb? = null,
-        keyHeader: KeyHeader,
-        modifier: Modifier = Modifier,
-        onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
-        onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+    payloads: List<PayloadDescriptor>,
+    fileId: Uuid,
+    driveId: Uuid,
+    previewThumbnail: EmbeddedThumb? = null,
+    keyHeader: KeyHeader,
+    modifier: Modifier = Modifier,
+    onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
+    onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+    shape: Shape = RoundedCornerShape(
+        topStart = Dimens.Message.cornerRadius,
+        topEnd = Dimens.Message.cornerRadius
+    ),
 ) {
-        if (payloads.isEmpty()) return
+    if (payloads.isEmpty()) return
 
-        when (payloads.size) {
-                1 -> {
-                        // Single media item - constrain to max 50% width (~210dp), preserve aspect
-                        // ratio
-                        val widthModifier = modifier.widthIn(max = Dimens.Album.totalWidth)
-                        MediaItem(
-                                payload = payloads[0],
-                                fileId = fileId,
-                                driveId = driveId,
-                                keyHeader = keyHeader,
-                                previewThumbnail = previewThumbnail
-                                                ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
-                                modifier =
-                                        widthModifier.heightIn(
-                                                min = Dimens.MediaBubble.minHeight,
-                                                max = Dimens.MediaBubble.maxHeight
-                                        ),
-                                imageSize = ImageSize.THUMB_MEDIUM,
-                                preserveAspectRatio = true,
-                                onClick = { onMediaClick?.invoke(payloads[0]) },
-                                onLongPress = { offset ->
-                                        onMediaLongPress?.invoke(payloads[0], offset)
-                                },
-                        )
-                }
-                else -> {
-                        // Multiple media items - show gallery with fixed dimensions
-                        MediaGallery(
-                                payloads = payloads,
-                                keyHeader=keyHeader,
-                                fileId = fileId,
-                                driveId = driveId,
-                                previewThumbnail = previewThumbnail,
-                                modifier = modifier,
-                                onMediaClick = onMediaClick,
-                                onMediaLongPress = onMediaLongPress,
-                        )
-                }
+    when (payloads.size) {
+        1 -> {
+            // Single media item - constrain to max 50% width (~210dp), preserve aspect
+            // ratio
+            val widthModifier = modifier.widthIn(max = Dimens.Album.totalWidth)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            MediaItem(
+                payload = payloads[0],
+                fileId = fileId,
+                driveId = driveId,
+                previewThumbnail = previewThumbnail
+                    ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
+                keyHeader = keyHeader,
+
+                modifier =
+                    widthModifier.heightIn(
+                        min = Dimens.MediaBubble.minHeight,
+                        max = Dimens.MediaBubble.maxHeight
+                    ),
+                imageSize = ImageSize.THUMB_MEDIUM,
+                preserveAspectRatio = true,
+                onClick = { onMediaClick?.invoke(payloads[0]) },
+                onLongPress = { offset ->
+                    onMediaLongPress?.invoke(payloads[0], offset)
+                },
+                shape = shape,
+            )
         }
+
+        else -> {
+            // Multiple media items - show gallery with fixed dimensions
+            MediaGallery(
+                payloads = payloads,
+                fileId = fileId,
+                driveId = driveId,
+                previewThumbnail = previewThumbnail,
+                keyHeader = keyHeader,
+                modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                onMediaClick = onMediaClick,
+                onMediaLongPress = onMediaLongPress,
+                shape = shape,
+            )
+        }
+    }
 }

@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Archive
@@ -14,6 +15,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
 import id.homebase.resources.chat_clear
@@ -37,6 +39,7 @@ fun ConversationMenu(
     onClear: () -> Unit,
 ) {
     DropdownMenu(
+        shape = RoundedCornerShape(Dimens.Message.cornerRadius),
         expanded = showMenu,
         onDismissRequest = dismissMenu
     ) {
@@ -100,6 +103,7 @@ fun ReceivedMessageMenu(
     onDeleteReaction: () -> Unit,
 ) {
     DropdownMenu(
+        shape = RoundedCornerShape(Dimens.Message.cornerRadius),
         expanded = showMenu,
         onDismissRequest = dismissMenu
     ) {
@@ -196,6 +200,7 @@ fun SentMessageMenu(
     onDeleteForEveryone: () -> Unit,
 ) {
     DropdownMenu(
+        shape = RoundedCornerShape(Dimens.Message.cornerRadius),
         expanded = showMenu,
         onDismissRequest = dismissMenu
     ) {

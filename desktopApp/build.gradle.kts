@@ -115,6 +115,7 @@ compose.desktop {
             }
             linux {
                 iconFile.set(project.rootProject.file("icons/icon.png"))  // Path to your .png file
+                modules("jdk.security.auth")
             }
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Homebase Chat"

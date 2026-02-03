@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.browser.RedirectConfig
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.http.UriBuilder
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.EccKeyPair
@@ -58,7 +59,8 @@ private data class AuthCodeFlowState(
 class YouAuthFlowManager(
     private val driveSyncManager: DriveSyncManager,
     private val credentialsManager: CredentialsManager,
-    private val httpClient: HttpClient
+    private val httpClient: HttpClient,
+    private val driveFileProviderCached: DriveFileProviderCached
 ) {
     private val _authState = MutableStateFlow<YouAuthState>(YouAuthState.Unauthenticated)
     val authState: StateFlow<YouAuthState> = _authState.asStateFlow()
@@ -306,6 +308,7 @@ class YouAuthFlowManager(
 
         credentialsManager.removeActiveCredentials()
         driveSyncManager.clearStorage()
+        driveFileProviderCached.clearCaches()
     }
 
     /** Check if authentication is in progress. */

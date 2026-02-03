@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -50,8 +51,8 @@ fun MediaItem(
     fileId: Uuid,
     driveId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
-    keyHeader: KeyHeader,
     modifier: Modifier = Modifier,
+    keyHeader: KeyHeader,
     imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
     onClick: (() -> Unit)? = null,

@@ -75,6 +75,8 @@ kotlin {
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.ktor.logging)
+            implementation(libs.filekit.core)
+            implementation(libs.filekit.dialogs.compose)
             api(libs.coil3)
             api(libs.coil3.compose)
             api(libs.coil3.network)
@@ -92,6 +94,7 @@ kotlin {
             implementation(libs.androidx.appcompat)
             implementation(libs.androidx.browser)
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.accompanist.permissions)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
