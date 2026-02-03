@@ -31,7 +31,7 @@ data class MessageUiModel(
     /** List of payload descriptors with metadata */
     val payloads: List<PayloadDescriptor>?,
 
-    val keyHeader: KeyHeader
+    val keyHeader: KeyHeader // TODO: Todd <-- make it simple and just store the key? (if we use the IV elsewhere that's kind of a bug)
     ) {
     fun isCurrentUser(domain: String): Boolean =
         senderOdinId.trim().equals(domain.trim(), ignoreCase = true)

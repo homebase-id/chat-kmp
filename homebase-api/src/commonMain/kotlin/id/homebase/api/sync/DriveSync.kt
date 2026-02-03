@@ -105,13 +105,12 @@ class DriveSync(
     private suspend fun performSync() {
         var totalCount = 0
         var queryBatchResponse: QueryBatchResponse? = null
-        var keepGoing = true
         val dbDeferreds = mutableListOf<Deferred<Unit>>()
 
         eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
 
-        while (keepGoing) {
-            Logger.i("Querying host for ${batchSize} rows")
+        while (true) {
+            Logger.i("Synchronizing drive $driveId")
             val request = QueryBatchRequest(
                 queryParams = FileQueryParams(
                     fileState = listOf(FileState.Active) // <-- TODO: We want them all, not just "active"?
@@ -163,9 +162,10 @@ class DriveSync(
                         )
                     }
 
-                    keepGoing = queryBatchResponse.hasMoreRows
-
-                } catch (e: Exception) {
+                    if (!queryBatchResponse.hasMoreRows)
+                        break
+                }
+                catch (e: Exception) {
                     Logger.e("Exception on drive $driveId message ${e.message}")
                     eventBus.emit(
                         BackendEvent.DriveEvent.Failed(
@@ -173,7 +173,7 @@ class DriveSync(
                             "Sync failed: ${e.message}"
                         )
                     )
-                    keepGoing = false
+                    break
                 }
             }
 
@@ -191,6 +191,7 @@ class DriveSync(
         try {
             dbDeferreds.awaitAll()  // Suspends until all complete; rethrows the first exception if any
             eventBus.emit(BackendEvent.DriveEvent.Completed(driveId, totalCount))
+            Logger.d("Drive $driveId synchronized with $totalCount records read.")
         } catch (e: Exception) {
             Logger.e("Sync failed due to DB error: ${e.message}")
             eventBus.emit(BackendEvent.DriveEvent.Failed(driveId, e.message ?: "DB upsert failed"))

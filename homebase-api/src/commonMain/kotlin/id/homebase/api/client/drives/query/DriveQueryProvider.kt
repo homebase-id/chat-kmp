@@ -58,7 +58,10 @@ class DriveQueryProvider(
             queryTime = internal.queryTime,
             includeMetadataHeader = internal.includeMetadataHeader,
             cursorState = internal.cursorState,
-            searchResults = files
+            searchResults = files,
+            // TODO: The SERVER response should include the server-side hasMoreRows boolean,
+            //  this is not right
+            hasMoreRows = files.count() >= request.resultOptionsRequest.maxRecords
         )
     }
 }

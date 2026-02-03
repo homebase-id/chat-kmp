@@ -369,7 +369,7 @@ class DriveFileProviderCached(
             chunkLength ?: "full"
         ).joinToString(":")
 
-    private fun buildThumbCacheKey(
+private fun buildThumbCacheKey(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,
@@ -386,4 +386,10 @@ class DriveFileProviderCached(
             height,
             lastModified ?: "null"
         ).joinToString(":")
+
+    suspend fun clearCaches() {
+        payloadDiskKache.clear()
+        thumbDiskKache.clear()
+        notFoundCache.clear()
+    }
 }
