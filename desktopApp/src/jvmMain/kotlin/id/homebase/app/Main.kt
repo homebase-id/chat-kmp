@@ -66,7 +66,7 @@ fun main() = application {
             }
             exitApplication()
         },
-        alwaysOnTop = false,
+        alwaysOnTop = true,
         title = stringResource(MR.string.app_name),
         undecorated = false,
         state = state,

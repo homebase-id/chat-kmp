@@ -151,7 +151,7 @@ private fun AttachmentOption(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor =  MaterialTheme.colorScheme.onPrimaryContainer,
             ),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(24.dp)
         ) {
             Icon(
                 imageVector = icon,

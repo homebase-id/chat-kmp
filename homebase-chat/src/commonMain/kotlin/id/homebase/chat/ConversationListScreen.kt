@@ -149,7 +149,11 @@ fun ChatListUi(
 
     BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {
-            scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
+            if (uiState.fullScreenMedia != null) {
+                onUiAction(ConversationListUiAction.CloseFullScreenMedia)
+            } else {
+                scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
+            }
         }
     }
 
@@ -205,6 +209,7 @@ fun ChatListUi(
                             ConversationMessagesPane(
                                 conversation = conversation,
                                 messages = uiState.currentConversationMessages,
+                                fullScreenMessageData = uiState.fullScreenMedia,
                                 savedScrollPosition = uiState.conversationScrollPosition,
                                 showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
                                 onBackClick = {

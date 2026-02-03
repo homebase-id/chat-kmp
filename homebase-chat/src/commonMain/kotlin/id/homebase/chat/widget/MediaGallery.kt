@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +64,12 @@ fun MediaGallery(
         topStart = Dimens.Message.cornerRadius,
         topEnd = Dimens.Message.cornerRadius
     ),
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
+    shape: Shape = RoundedCornerShape(
+        topStart = Dimens.Message.cornerRadius,
+        topEnd = Dimens.Message.cornerRadius
+    ),
 ) {
     if (payloads.isEmpty()) return
 
@@ -85,6 +93,8 @@ fun MediaGallery(
                     onLongPress = { offset ->
                         onMediaLongPress?.invoke(payloads[0], offset)
                     },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
 
@@ -130,6 +140,8 @@ private fun TwoImageLayout(
     keyHeader: KeyHeader,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(Dimens.Album.twoTotalHeight),
@@ -149,6 +161,8 @@ private fun TwoImageLayout(
                 onLongPress = { offset ->
                     onMediaLongPress?.invoke(payload, offset)
                 },
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
             )
         }
     }
@@ -163,6 +177,8 @@ private fun ThreeImageLayout(
     keyHeader: KeyHeader,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -188,6 +204,8 @@ private fun ThreeImageLayout(
                     onLongPress = { offset ->
                         onMediaLongPress?.invoke(payload, offset)
                     },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
         }
@@ -204,6 +222,8 @@ private fun ThreeImageLayout(
             shape = RectangleShape,
             onClick = { onMediaClick?.invoke(payloads[2]) },
             onLongPress = { offset -> onMediaLongPress?.invoke(payloads[2], offset) },
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
         )
     }
 }
@@ -217,6 +237,8 @@ private fun FourPlusImageLayout(
     keyHeader: KeyHeader,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val remainingCount = payloads.size - 4
 
@@ -244,6 +266,8 @@ private fun FourPlusImageLayout(
                     onLongPress = { offset ->
                         onMediaLongPress?.invoke(payload, offset)
                     },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
         }
@@ -267,6 +291,8 @@ private fun FourPlusImageLayout(
                 onLongPress = { offset ->
                     onMediaLongPress?.invoke(payloads[2], offset)
                 },
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
             )
 
             // Fourth image with optional overlay
@@ -290,6 +316,8 @@ private fun FourPlusImageLayout(
                     onLongPress = { offset ->
                         onMediaLongPress?.invoke(payloads[3], offset)
                     },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
 
                 // Overlay showing remaining count

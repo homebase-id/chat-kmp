@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -86,6 +88,8 @@ fun SentMessageBubble(
     onDeleteForMe: (messageId: Uuid) -> Unit,
     onDeleteForEveryone: (messageId: Uuid) -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -151,7 +155,9 @@ fun SentMessageBubble(
                     previewThumbnail = message.previewThumbnail,
                     onLongClick = { showMenu = true },
                     keyHeader = message.keyHeader,
-                    onMediaClick = onMediaClick
+                    onMediaClick = onMediaClick,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
         }
@@ -185,6 +191,8 @@ fun ReceivedMessageBubble(
     onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
     onDeleteReaction: (messageId: Uuid, reaction: String) -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -209,6 +217,8 @@ fun ReceivedMessageBubble(
                     previewThumbnail = message.previewThumbnail,
                     onLongClick = { showMenu = true },
                     onMediaClick = onMediaClick,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
                 Column {
                     IconButton(
@@ -296,6 +306,8 @@ fun MessageBubble(
     keyHeader: KeyHeader,
     onLongClick: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val filteredPayloads =
         payloads?.filter {
@@ -398,7 +410,9 @@ fun MessageBubble(
                     onMediaLongPress = { _, _ ->
                         handleLongClick()
                     },
-                    shape = RoundedCornerShape(Dimens.Message.cornerRadius)
+                    shape = RoundedCornerShape(Dimens.Message.cornerRadius),
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
                 Box(
                     modifier = Modifier
@@ -439,6 +453,8 @@ fun MessageBubble(
                                     onMediaLongPress = { _, _ ->
                                         handleLongClick()
                                     },
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope,
                                 )
                             }
                             SelectionContainer {

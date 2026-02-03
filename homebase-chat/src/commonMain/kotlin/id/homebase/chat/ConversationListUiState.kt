@@ -1,6 +1,7 @@
 package id.homebase.chat
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -19,5 +20,17 @@ data class ConversationListUiState(
     val currentConversationMessages: ImmutableList<MessageUiModel> = persistentListOf(),
     val conversationScrollPosition: ScrollPosition? = null,
     val uiEvent: ConversationListUiEvent? = null,
-    val currentOdinId: String = ""
+    val currentOdinId: String = "",
+    val fullScreenMedia: FullScreenMessageData? = null
+)
+
+@Immutable
+data class FullScreenMessageData(
+    val messageId: Uuid,
+    val title: String,
+    val content: String,
+    val fileId: Uuid,
+    val driveId: Uuid,
+    val payloads: List<PayloadDescriptor>,
+    val selectedPayloadKey: String,
 )

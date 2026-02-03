@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
@@ -45,6 +47,8 @@ fun MediaMessage(
         topStart = Dimens.Message.cornerRadius,
         topEnd = Dimens.Message.cornerRadius
     ),
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     if (payloads.isEmpty()) return
 
@@ -74,6 +78,8 @@ fun MediaMessage(
                     onMediaLongPress?.invoke(payloads[0], offset)
                 },
                 shape = shape,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
             )
         }
 
@@ -89,6 +95,8 @@ fun MediaMessage(
                 onMediaClick = onMediaClick,
                 onMediaLongPress = onMediaLongPress,
                 shape = shape,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
             )
         }
     }

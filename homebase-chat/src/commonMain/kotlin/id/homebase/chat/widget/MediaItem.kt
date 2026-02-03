@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -57,7 +59,9 @@ fun MediaItem(
     preserveAspectRatio: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
-    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(Dimens.Message.cornerRadius),
+    shape: Shape = RoundedCornerShape(topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius),
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
@@ -117,6 +121,8 @@ fun MediaItem(
                 contentDescription = "Image attachment",
                 onClick = onClick,
                 onLongPress = onLongPress,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
             )
         }
 
