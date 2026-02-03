@@ -1,4 +1,4 @@
-package id.homebase.chat.services
+package id.homebase.chat.services.convo
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
@@ -11,15 +11,15 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.ChatMessageReaderService
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.config.chatTargetDrive
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
+import kotlin.uuid.Uuid
 
 class ConversationService(
     private val credentialsManager: CredentialsManager,
@@ -93,7 +93,7 @@ class ConversationService(
 
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingMessages =
-            messageFiles.mapNotNull { file -> ChatMessageReaderService.mapToMessageData(file) }
+            messageFiles.mapNotNull { file -> ChatMessageReaderService.Companion.mapToMessageData(file) }
 
         if (messageFiles.size != incomingMessages.size)
             throw IllegalArgumentException("Size mismatch - conversion problem")
@@ -102,7 +102,7 @@ class ConversationService(
             val matchingConversation = _conversations.value.find { it.id == m.conversationId }
             if (matchingConversation != null) {
                 updateConversationFromNewMessage(matchingConversation, m)
-            } else Logger.e { "BOOM" }
+            } else Logger.Companion.e { "BOOM" }
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
@@ -245,7 +245,7 @@ class ConversationService(
                 )
 
             if (lastMsg != null) {
-                val message = ChatMessageReaderService.mapToMessageData(lastMsg)
+                val message = ChatMessageReaderService.Companion.mapToMessageData(lastMsg)
                 if (message != null) {
                     result.updateWithLatestMessage(message)
                 }
@@ -255,23 +255,3 @@ class ConversationService(
         }
     }
 }
-
-@Serializable
-data class ConversationAppDataJson(
-    val title: String? = "",
-    val recipient: String? = "",
-    val version: Int = 0,
-    val recipients: List<String> = listOf()
-)
-
-@Serializable
-data class ConversationLocalAppDataJson(
-    /**
-     * DEPRECATED: But we still needed for backwards compatibility. Remove it after April Launch
-     * 2026
-     */
-    @Transient
-    val conversationId: Uuid =
-        Uuid.NIL, // TODO: Obsolete, ignore. Same as uniqueId for conversation
-    val lastReadTime: UnixTimeUtc?
-)
