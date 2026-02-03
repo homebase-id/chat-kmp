@@ -34,7 +34,7 @@ val apiModule = module {
     // this creates the HttpClient
     single { HttpClientProvider.create() }
 
-singleOf(::CredentialsManager)
+    singleOf(::CredentialsManager)
     singleOf(::DriveSyncManager)
     singleOf(::DriveFileProviderCached)
     singleOf(::YouAuthFlowManager)
@@ -42,7 +42,6 @@ singleOf(::CredentialsManager)
     single { UsernameStorage() }
 
     factoryOf(::DriveQueryProvider)
-
     factoryOf(::DriveUploadProvider)
 
     factoryOf(::DriveFileProvider)

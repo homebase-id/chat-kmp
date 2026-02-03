@@ -369,7 +369,7 @@ class DriveFileProviderCached(
             chunkLength ?: "full"
         ).joinToString(":")
 
-private fun buildThumbCacheKey(
+    private fun buildThumbCacheKey(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,

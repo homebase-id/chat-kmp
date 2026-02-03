@@ -23,7 +23,7 @@ data class QueryBatchResponse(
      * Indicates when this result was generated
      */
 
-    val queryTime: UnixTimeUtc = UnixTimeUtc.Companion.ZeroTime,
+    val queryTime: UnixTimeUtc = UnixTimeUtc.ZeroTime,
 
     val includeMetadataHeader: Boolean = false,
 
@@ -31,7 +31,7 @@ data class QueryBatchResponse(
 
     val searchResults: List<HomebaseFile> = emptyList(),
 
-    val hasMoreRows: Boolean = false
+    val hasMoreRows: Boolean
 ) {
 
     companion object {
