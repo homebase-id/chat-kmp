@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -49,19 +49,18 @@ private val GALLERY_CELL_SPACING = 2.dp
  */
 @Composable
 fun MediaGallery(
-        payloads: List<PayloadDescriptor>,
-        fileId: Uuid,
-        driveId: Uuid,
-        previewThumbnail: EmbeddedThumb? = null,
-        modifier: Modifier = Modifier,
-        onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
-        onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+    payloads: List<PayloadDescriptor>,
+    fileId: Uuid,
+    driveId: Uuid,
+    previewThumbnail: EmbeddedThumb? = null,
+    modifier: Modifier = Modifier,
+    onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
+    onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+    shape: Shape = RoundedCornerShape(topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius),
 ) {
         if (payloads.isEmpty()) return
 
-        val cornerShape = RoundedCornerShape(Dimens.Message.cornerRadius)
-
-        Box(modifier = modifier.width(Dimens.Album.totalWidth).clip(cornerShape)) {
+        Box(modifier = modifier.width(Dimens.Album.totalWidth).clip(shape)) {
                 when (payloads.size) {
                         1 -> {
                                 // Single item - delegate to MediaItem directly

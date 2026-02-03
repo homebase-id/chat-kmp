@@ -43,21 +43,21 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(Unit) {
-        viewModel.uiEvent.collect { event ->
-            when (event) {
-                is SettingsUiEvent.NavigateToChatList -> {}
-                is SettingsUiEvent.SetLanguage -> {
-                    setPlatformSystemLocale(event.language)
-                }
-
-                SettingsUiEvent.LoggedOut -> {
-                    // navigation handled at AppNavHost / auth gate
-                }
+    LaunchedEffect(uiState.uiEvent) {
+        when (val event = uiState.uiEvent) {
+            is SettingsUiEvent.SetLanguage -> {
+                viewModel.eventConsumed()
+                setPlatformSystemLocale(event.language)
             }
+
+            SettingsUiEvent.LoggedOut -> {
+                viewModel.eventConsumed()
+                // navigation handled at AppNavHost / auth gate
+            }
+
+            null -> {}
         }
     }
-
 
     SettingsUi(
         uiState = uiState,
@@ -72,7 +72,8 @@ fun SettingsUi(
 ) {
     Scaffold { innerPadding ->
         Column(
-            modifier = Modifier.fillMaxSize().consumeWindowInsets(innerPadding).padding(innerPadding).padding(24.dp),
+            modifier = Modifier.fillMaxSize().consumeWindowInsets(innerPadding)
+                .padding(innerPadding).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -151,7 +152,7 @@ fun LanguageOption(
                 text = stringResource(getStringResourceForLanguage(language)),
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (isSelected) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface
             )
 
             if (isSelected) {
@@ -174,7 +175,6 @@ private fun getStringResourceForLanguage(language: Language): org.jetbrains.comp
         Language.DANISH -> MR.string.language_danish
     }
 }
-
 
 
 @Preview

@@ -2,6 +2,8 @@ package id.homebase.core.di
 
 import coil3.ImageLoader
 import coil3.disk.DiskCache
+import id.homebase.api.file.AndroidFileOperationsProvider
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.settings.createSettings
 import okio.Path.Companion.toOkioPath
@@ -24,4 +26,6 @@ actual fun platformModule(): Module = module {
                 }
                 .build()
     }
+
+    single<FileOperationsProvider> { AndroidFileOperationsProvider(get()) }
 }

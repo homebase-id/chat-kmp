@@ -61,6 +61,7 @@ dependencies {
     implementation(libs.sqldelight.android.driver)
     implementation(libs.smart.exception.java)
     implementation(libs.androidx.ui.tooling.preview)
+    implementation(libs.filekit.dialogs.compose)
 
 
     debugImplementation(libs.androidx.ui.tooling)

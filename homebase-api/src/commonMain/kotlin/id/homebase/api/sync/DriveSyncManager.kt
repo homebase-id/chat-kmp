@@ -37,7 +37,7 @@ class DriveSyncManager(
                 )
             }.onFailure { e ->
                 Logger.e(
-                    "Failed to create DriveSync for drive=${drive}",
+                    "Failed to create DriveSync for drive=${drive}: ${e.message}",
                     e
                 )
             }.getOrNull()

@@ -2,7 +2,7 @@ package id.homebase.api.client.drives.upload
 
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.api.client.drives.openFileInput
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.request.forms.InputProvider
 import io.ktor.client.request.forms.MultiPartFormDataContent
@@ -75,15 +75,16 @@ private data class ProcessedThumbnail(
  * @param thumbnails Optional list of thumbnail files to upload
  * @return MultiPartFormDataContent ready for HTTP upload
  */
-suspend fun buildUploadFormData(
+fun buildUploadFormData(
     instructionSet: UploadInstructionSet,
     sharedSecretEncryptedDescriptor: ByteArray? = null,
     payloads: List<PayloadFile>? = null,
-    thumbnails: List<ThumbnailFile>? = null
+    thumbnails: List<ThumbnailFile>? = null,
+    fileOperationsProvider: FileOperationsProvider,
 ): MultiPartFormDataContent {
 
     val runtimePayloads =
-        payloads?.map { it.toRuntime(::openFileInput) }
+        payloads?.map { it.toRuntime { path -> fileOperationsProvider.openFileInput(path) } }
 
     return buildFormDataInternal(
         instructionSet = instructionSet,
@@ -102,15 +103,16 @@ suspend fun buildUploadFormData(
  * @param thumbnails Optional list of thumbnail files to upload
  * @return MultiPartFormDataContent ready for HTTP update
  */
-suspend fun buildUpdateFormData(
+fun buildUpdateFormData(
     instructionSet: FileUpdateInstructionSet,
     sharedSecretEncryptedDescriptor: ByteArray? = null,
     payloads: List<PayloadFile>? = null,
-    thumbnails: List<ThumbnailFile>? = null
+    thumbnails: List<ThumbnailFile>? = null,
+    fileOperationsProvider: FileOperationsProvider,
 ): MultiPartFormDataContent
     {
         val runtimePayloads =
-            payloads?.map { it.toRuntime(::openFileInput) }
+            payloads?.map { it.toRuntime { path -> fileOperationsProvider.openFileInput(path) } }
 
         return buildFormDataInternal(
             instructionSet = instructionSet,

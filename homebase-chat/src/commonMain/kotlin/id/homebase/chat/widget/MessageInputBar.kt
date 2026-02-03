@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,19 +21,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.FormatStrikethrough
 import androidx.compose.material.icons.outlined.FormatUnderlined
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -91,6 +86,7 @@ fun MessageInputBar(
     focusRequester: FocusRequester,
     onSmileyClick: () -> Unit = {},
     onAddAttachmentClick: () -> Unit,
+    onCameraClick: () -> Unit,
     onSendMessage: (String) -> Unit,
 ) {
     val textFieldState = rememberRichTextState()
@@ -174,7 +170,7 @@ fun MessageInputBar(
                 state = textFieldState,
                 onSmileyClick = onSmileyClick,
                 onAddAttachmentClick = onAddAttachmentClick,
-                onCameraClick = onAddAttachmentClick,
+                onCameraClick = onCameraClick,
                 onSendMessage = { sendMessage() },
             )
         }
@@ -190,7 +186,6 @@ fun MessageTextFieldExpanded(
     onAddAttachmentClick: () -> Unit,
     sendMessage: () -> Unit
 ) {
-    var showDropdownMenu by remember { mutableStateOf(false) }
     Column(
         modifier = modifier
     ) {
@@ -237,34 +232,6 @@ fun MessageTextFieldExpanded(
                         contentDescription = stringResource(MR.string.chat_message_attachment_options)
                     )
                 }
-
-                if (showDropdownMenu) {
-                    DropdownMenu(
-                        expanded = showDropdownMenu,
-                        onDismissRequest = { showDropdownMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Photo") },
-                            onClick = {
-                                showDropdownMenu = false
-                                onAddAttachmentClick()
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Default.Photo, contentDescription = null)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("File") },
-                            onClick = {
-                                showDropdownMenu = false
-                                onAddAttachmentClick()
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Default.AttachFile, contentDescription = null)
-                            }
-                        )
-                    }
-                }
             }
             Spacer(modifier = Modifier.weight(1f))
             IconButton(
@@ -303,8 +270,7 @@ fun MessageTextFieldCompact(
         )
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .imePadding(),
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val showSendButton = state.annotatedString.isNotBlank()
@@ -506,58 +472,5 @@ fun RichTextEditorButtons(
 //                    icon = Icons.Outlined.Code,
 //                )
 //            }
-    }
-}
-
-@Composable
-fun AddAttachmentIcon(
-    onMediaClick: () -> Unit,
-    onFileClick: () -> Unit,
-    containerColor: Color = Color.Unspecified,
-) {
-    Box {
-        var showDropdownMenu by remember { mutableStateOf(false) }
-        IconButton(
-            onClick = {
-                // TODO - handle different on mobile
-                showDropdownMenu = true
-            },
-            colors = IconButtonDefaults.iconButtonColors(
-                containerColor = containerColor,
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = stringResource(MR.string.chat_message_attachment_options)
-            )
-        }
-
-        if (showDropdownMenu) {
-            DropdownMenu(
-                expanded = showDropdownMenu,
-                onDismissRequest = { showDropdownMenu = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Photo") },
-                    onClick = {
-                        showDropdownMenu = false
-                        onMediaClick()
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Photo, contentDescription = null)
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text("File") },
-                    onClick = {
-                        showDropdownMenu = false
-                        onFileClick()
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.AttachFile, contentDescription = null)
-                    }
-                )
-            }
-        }
     }
 }

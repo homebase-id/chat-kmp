@@ -63,4 +63,11 @@
     <string name="chat_message_attachment_options">Attachment options</string>
     <string name="chat_message_emoji_options">Emoji options</string>
 
+    <string name="chat_message_attachment_gallery">Gallery</string>
+    <string name="chat_message_attachment_file">File</string>
+    <string name="chat_message_attachment_contact">Contact</string>
+    <string name="chat_message_attachment_location">Location</string>
+    <string name="chat_message_needs_gallery_permission">Homebase Chat needs permission to show your photos and videos</string>
+    <string name="chat_message_needs_gallery_permission_button_text">Allow access</string>
+
 </resources>

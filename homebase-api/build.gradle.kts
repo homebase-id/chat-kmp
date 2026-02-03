@@ -88,7 +88,7 @@ kotlin {
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
-            implementation("org.jetbrains.kotlinx:kotlinx-io-core:0.5.1")
+            implementation(libs.kotlinx.io.core)
             implementation("com.mayakapps.kache:kache:2.1.1")
             implementation("com.mayakapps.kache:file-kache:2.1.1")
             implementation("com.squareup.okio:okio:3.16.4")
