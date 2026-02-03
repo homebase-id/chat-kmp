@@ -2,11 +2,13 @@ package id.homebase.api.client.drives.cache
 
 import com.mayakapps.kache.FileKache
 import id.homebase.api.client.ByteApiResponse
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.PayloadOperationOptions
+import id.homebase.api.common.SecureByteArray
 import io.ktor.client.HttpClient
 import io.ktor.http.Headers
 import kotlinx.coroutines.sync.Semaphore
@@ -146,6 +148,7 @@ class DriveFileProviderCached(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
+        keyHeader: KeyHeader,
         chunkStart: Long? = null,
         chunkLength: Long? = null
     ): BytesResponse? {
@@ -171,6 +174,7 @@ class DriveFileProviderCached(
                     delegate.decryptChunkedBytes(
                         raw.headers,
                         raw.bytes,
+                        keyHeader,
                         startOffset = rangeResult.startOffset,
                         chunkStart = (chunkStart ?: 0).toInt()
                     )
@@ -184,7 +188,7 @@ class DriveFileProviderCached(
 
                 decrypted.sliceArray(0 until minOf(sliceEnd, decrypted.size))
             } else {
-                delegate.decryptBytes(raw.headers, raw.bytes)
+                delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
             }
 
         return BytesResponse(
@@ -289,6 +293,7 @@ class DriveFileProviderCached(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,
+        keyHeader: KeyHeader,
         width: Int,
         height: Int,
         lastModified: Long? = null
@@ -305,7 +310,7 @@ class DriveFileProviderCached(
 
         if (raw.status == 404) return null
 
-        val decryptedBytes = delegate.decryptBytes(raw.headers, raw.bytes)
+        val decryptedBytes = delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
 
         return BytesResponse(
             bytes = decryptedBytes,

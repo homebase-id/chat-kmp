@@ -21,6 +21,7 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 /**
@@ -45,125 +46,135 @@ import kotlin.uuid.Uuid
  */
 @Composable
 fun MediaItem(
-        payload: PayloadDescriptor,
-        fileId: Uuid,
-        driveId: Uuid,
-        previewThumbnail: EmbeddedThumb? = null,
-        keyHeader: KeyHeader,
-        modifier: Modifier = Modifier,
-        imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
-        preserveAspectRatio: Boolean = false,
-        onClick: (() -> Unit)? = null,
-        onLongPress: ((Offset) -> Unit)? = null,
-        shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(Dimens.Message.cornerRadius),
+    payload: PayloadDescriptor,
+    fileId: Uuid,
+    driveId: Uuid,
+    previewThumbnail: EmbeddedThumb? = null,
+    keyHeader: KeyHeader,
+    modifier: Modifier = Modifier,
+    imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
+    preserveAspectRatio: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    onLongPress: ((Offset) -> Unit)? = null,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(Dimens.Message.cornerRadius),
 ) {
-        val contentType = payload.contentType ?: ""
-        val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
+    val contentType = payload.contentType ?: ""
+    val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
 
-        // Calculate aspect ratio if available
-        val aspectRatio =
-                remember(payload.previewThumbnail) {
-                        val width = payload.previewThumbnail?.pixelWidth
-                        val height = payload.previewThumbnail?.pixelHeight
-                        if (width != null && height != null && width > 0 && height > 0) {
-                                width.toFloat() / height.toFloat()
-                        } else {
-                                null
-                        }
-                }
-
-        // Base modifier with shape clip
-        val baseModifier = modifier.clip(shape)
-
-        // Apply aspect ratio only if needed and available.
-        // Note: For aspect ratio to work for "fitting inside", we typically want fillMaxWidth()
-        // with aspect ratio, but here we might have width constraints from parent.
-        val finalModifier =
-                if (preserveAspectRatio && aspectRatio != null) {
-                        baseModifier.aspectRatio(aspectRatio)
-                } else {
-                        baseModifier
-                }
-
-        when {
-                contentType.startsWith("image/") -> {
-                        // Render image via HomebaseImage
-                        val imageData =
-                                HomebaseImageData(
-                                        driveId = driveId,
-                                        fileId = fileId,
-                                        payloadKey = payload.key,
-                                        previewThumbnail =
-                                                payload.previewThumbnail?.toEmbeddedThumb()
-                                                        ?: previewThumbnail,
-                                        requestedSize = imageSize,
-                                        lastModified = payload.lastModified,
-                                        isEncrypted = true,
-                                        keyHeader = keyHeader
-                                )
-
-                        HomebaseImage(
-                                imageData = imageData,
-                                modifier = finalModifier,
-                                contentScale = imageContentScale,
-                                contentDescription = "Image attachment",
-                                onClick = onClick,
-                                onLongPress = onLongPress,
-                        )
-                }
-                contentType.startsWith("video/") ||
-                        contentType == "application/vnd.apple.mpegurl" -> {
-                        // TODO: Implement video player/thumbnail
-                        MediaPlaceholder(
-                                emoji = "📹",
-                                label = "Video",
-                                modifier = baseModifier,
-                        )
-                }
-                contentType.startsWith("audio/") -> {
-                        // TODO: Implement audio player
-                        MediaPlaceholder(
-                                emoji = "🎵",
-                                label = "Audio",
-                                modifier = baseModifier,
-                        )
-                }
-                contentType.startsWith("application/") -> {
-                        // TODO: Implement file viewer/downloader
-                        MediaPlaceholder(
-                                emoji = "📄",
-                                label = "File",
-                                modifier = baseModifier,
-                        )
-                }
-                else -> {
-                        // Unsupported media type
-                        println("Unsupported media type: $contentType")
-                        MediaPlaceholder(
-                                emoji = "❓",
-                                label = "Unknown",
-                                modifier = baseModifier,
-                        )
-                }
+    // Calculate aspect ratio if available
+    val aspectRatio =
+        remember(payload.previewThumbnail) {
+            val width = payload.previewThumbnail?.pixelWidth
+            val height = payload.previewThumbnail?.pixelHeight
+            if (width != null && height != null && width > 0 && height > 0) {
+                width.toFloat() / height.toFloat()
+            } else {
+                null
+            }
         }
+
+    // Base modifier with shape clip
+    val baseModifier = modifier.clip(shape)
+
+    // Apply aspect ratio only if needed and available.
+    // Note: For aspect ratio to work for "fitting inside", we typically want fillMaxWidth()
+    // with aspect ratio, but here we might have width constraints from parent.
+    val finalModifier =
+        if (preserveAspectRatio && aspectRatio != null) {
+            baseModifier.aspectRatio(aspectRatio)
+        } else {
+            baseModifier
+        }
+
+    when {
+        contentType.startsWith("image/") -> {
+            // Render image via HomebaseImage
+            val payloadIv = Base64.decode(
+                payload.iv ?: throw IllegalStateException("encrypted payload requires key header")
+            )
+            val imageData =
+                HomebaseImageData(
+                    driveId = driveId,
+                    fileId = fileId,
+                    payloadKey = payload.key,
+                    previewThumbnail =
+                        payload.previewThumbnail?.toEmbeddedThumb()
+                            ?: previewThumbnail,
+                    requestedSize = imageSize,
+                    lastModified = payload.lastModified,
+                    isEncrypted = true,
+                    keyHeader = KeyHeader(
+                        iv = payloadIv,
+                        aesKey = keyHeader.aesKey
+                    )
+                )
+
+            HomebaseImage(
+                imageData = imageData,
+                modifier = finalModifier,
+                contentScale = imageContentScale,
+                contentDescription = "Image attachment",
+                onClick = onClick,
+                onLongPress = onLongPress,
+            )
+        }
+
+        contentType.startsWith("video/") ||
+                contentType == "application/vnd.apple.mpegurl" -> {
+            // TODO: Implement video player/thumbnail
+            MediaPlaceholder(
+                emoji = "📹",
+                label = "Video",
+                modifier = baseModifier,
+            )
+        }
+
+        contentType.startsWith("audio/") -> {
+            // TODO: Implement audio player
+            MediaPlaceholder(
+                emoji = "🎵",
+                label = "Audio",
+                modifier = baseModifier,
+            )
+        }
+
+        contentType.startsWith("application/") -> {
+            // TODO: Implement file viewer/downloader
+            MediaPlaceholder(
+                emoji = "📄",
+                label = "File",
+                modifier = baseModifier,
+            )
+        }
+
+        else -> {
+            // Unsupported media type
+            println("Unsupported media type: $contentType")
+            MediaPlaceholder(
+                emoji = "❓",
+                label = "Unknown",
+                modifier = baseModifier,
+            )
+        }
+    }
 }
 
 /** Placeholder component for unsupported media types. Shows an emoji icon and label. */
 @Composable
 private fun MediaPlaceholder(
-        emoji: String,
-        label: String,
-        modifier: Modifier = Modifier,
+    emoji: String,
+    label: String,
+    modifier: Modifier = Modifier,
 ) {
-        Box(
-                modifier =
-                        modifier.size(Dimens.MediaBubble.minWidthSolo)
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                contentAlignment = Alignment.Center,
-        ) {
-                Text(
-                        text = emoji,
-                        style = MaterialTheme.typography.displayMedium,
-                )
-        }
+    Box(
+        modifier =
+            modifier.size(Dimens.MediaBubble.minWidthSolo)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = emoji,
+            style = MaterialTheme.typography.displayMedium,
+        )
+    }
 }
