@@ -77,7 +77,7 @@ class DriveFileProviderCached(
 
         // 1️⃣ Check in-memory 404 cache first
         if (cacheKey in notFoundCache) {
-            return ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+            return ByteApiResponse.EMPTY_404
         }
 
         // 2️⃣ Peek in disk cache and return result if it's there
@@ -95,12 +95,7 @@ class DriveFileProviderCached(
         return mutex.withLock {
             // Re-try caches JIC there's a thread race
             if (cacheKey in notFoundCache) {
-                return@withLock ByteApiResponse(
-                    404,
-                    Headers.Empty,
-                    ByteArray(0),
-                    "application/octet-stream"
-                )
+                return@withLock ByteApiResponse.EMPTY_404
             }
             payloadDiskKache.get(cacheKey)?.let { filePath ->
                 return@withLock readBytesResponse(filePath)
@@ -120,12 +115,7 @@ class DriveFileProviderCached(
                     if (result.status == 404) {
                         // 404 case - cache that file doesn't exist in memory only
                         notFoundCache.add(cacheKey)
-                        ByteApiResponse(
-                            404,
-                            Headers.Empty,
-                            ByteArray(0),
-                            "application/octet-stream"
-                        )
+                        ByteApiResponse.EMPTY_404
                     } else {
                         // 3️⃣ Store to disk
                         payloadDiskKache.put(cacheKey) { filePath ->
@@ -218,7 +208,7 @@ class DriveFileProviderCached(
 
         // 1️⃣ Check in-memory 404 cache first
         if (cacheKey in notFoundCache) {
-            return ByteApiResponse(404, Headers.Empty, ByteArray(0), "application/octet-stream")
+            return ByteApiResponse.EMPTY_404
         }
 
         // 2️⃣ Peek in disk cache and return result if it's there
@@ -236,12 +226,7 @@ class DriveFileProviderCached(
         return mutex.withLock {
             // Re-try caches JIC there's a thread race
             if (cacheKey in notFoundCache) {
-                return@withLock ByteApiResponse(
-                    404,
-                    Headers.Empty,
-                    ByteArray(0),
-                    "application/octet-stream"
-                )
+                return@withLock ByteApiResponse.EMPTY_404
             }
             thumbDiskKache.get(cacheKey)?.let { filePath ->
                 return@withLock readBytesResponse(filePath)
@@ -263,12 +248,7 @@ class DriveFileProviderCached(
                     if (result.status == 404) {
                         // 404 case - cache that file doesn't exist in memory only
                         notFoundCache.add(cacheKey)
-                        ByteApiResponse(
-                            404,
-                            Headers.Empty,
-                            ByteArray(0),
-                            "application/octet-stream"
-                        )
+                        ByteApiResponse.EMPTY_404
                     } else {
                         // 3️⃣ Store to disk
                         thumbDiskKache.put(cacheKey) { filePath ->
