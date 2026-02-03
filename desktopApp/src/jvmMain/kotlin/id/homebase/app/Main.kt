@@ -13,6 +13,7 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
+import io.github.vinceglb.filekit.FileKit
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.stringResource
 import org.koin.core.context.GlobalContext
@@ -23,6 +24,12 @@ fun main() = application {
     startKoin {
         modules(allModules)
     }
+
+    // OSX customizations
+    System.setProperty("apple.awt.application.appearance", "system")
+
+    // Initialize FileKit
+    FileKit.init(appId = "HomebaseChat")
 
     // Apply saved locale
     val koin = GlobalContext.get()

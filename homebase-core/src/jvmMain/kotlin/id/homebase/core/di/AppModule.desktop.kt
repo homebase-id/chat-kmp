@@ -3,6 +3,8 @@ package id.homebase.core.di
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.disk.DiskCache
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.settings.createSettings
 import java.io.File
@@ -25,4 +27,6 @@ actual fun platformModule(): Module = module {
                 }
                 .build()
     }
+
+    single<FileOperationsProvider> { JvmFileOperationsProvider() }
 }

@@ -13,5 +13,10 @@
             </array>
         </dict>
     </array>
+    <key>NSCameraUsageDescription</key>
+    <string>We need access to your camera to attach picture to chat message</string>
+
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>We need access to your photo library to attach image to chat message</string>
 </dict>
 </plist>

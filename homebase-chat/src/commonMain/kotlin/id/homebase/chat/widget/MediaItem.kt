@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -44,16 +45,16 @@ import kotlin.uuid.Uuid
  */
 @Composable
 fun MediaItem(
-        payload: PayloadDescriptor,
-        fileId: Uuid,
-        driveId: Uuid,
-        previewThumbnail: EmbeddedThumb? = null,
-        modifier: Modifier = Modifier,
-        imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
-        preserveAspectRatio: Boolean = false,
-        onClick: (() -> Unit)? = null,
-        onLongPress: ((Offset) -> Unit)? = null,
-        shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(Dimens.Message.cornerRadius),
+    payload: PayloadDescriptor,
+    fileId: Uuid,
+    driveId: Uuid,
+    previewThumbnail: EmbeddedThumb? = null,
+    modifier: Modifier = Modifier,
+    imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
+    preserveAspectRatio: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    onLongPress: ((Offset) -> Unit)? = null,
+    shape: Shape = RoundedCornerShape(topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius),
 ) {
         val contentType = payload.contentType ?: ""
         val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop

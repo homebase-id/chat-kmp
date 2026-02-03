@@ -3,6 +3,9 @@ package id.homebase.chat
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.VerticalDragHandle
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
@@ -48,12 +51,23 @@ fun ConversationListScreen(
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        when (uiState.uiEvent) {
-            ConversationListUiEvent.NavigateBack -> {
+    LaunchedEffect(uiState.uiEvent) {
+        when (val event = uiState.uiEvent) {
+            is ConversationListUiEvent.NavigateBack -> {
                 viewModel.eventConsumed()
                 onNavigateBack()
+            }
+
+            is ConversationListUiEvent.ShowErrorMessage -> {
+                viewModel.eventConsumed()
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        message = event.message
+                    )
+                }
             }
 
             null -> {}
@@ -61,6 +75,7 @@ fun ConversationListScreen(
     }
 
     ChatListUi(
+        snackbarHostState = snackbarHostState,
         uiState = uiState,
         onUiAction = viewModel::onAction,
         onNavigateToSettingsScreen = onNavigateToSettingsScreen,
@@ -71,6 +86,7 @@ fun ConversationListScreen(
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ChatListUi(
+    snackbarHostState: SnackbarHostState,
     uiState: ConversationListUiState,
     onUiAction: (ConversationListUiAction) -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
@@ -137,99 +153,112 @@ fun ChatListUi(
         }
     }
 
-    ListDetailPaneScaffold(
-        modifier = Modifier.fillMaxSize(),
-        directive = scaffoldNavigator.scaffoldDirective,
-        scaffoldState = scaffoldNavigator.scaffoldState,
-        listPane = {
-            AnimatedPane(
-                modifier = Modifier
-            ) {
-                if (uiState.showingNewChatPane) {
-                    NewConversationPane(
-                        contacts = uiState.contacts,
-                        searchQuery = uiState.searchQuery,
-                        onBackClick = { onUiAction(ConversationListUiAction.BackToListClicked) },
-                        onContactClick = { contact ->
-                            onUiAction(ConversationListUiAction.ContactClicked(contact))
-                        },
-                        onSearchQueryChanged = { query ->
-                            onUiAction(ConversationListUiAction.SearchQueryChanged(query))
-                        })
-                } else {
-                    ConversationListPane(
-                        conversations = uiState.conversations,
-                        selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                        onConversationClick = { conversationId ->
-                            onUiAction(ConversationListUiAction.ConversationClicked(conversationId))
-                            scope.launch {
-                                scaffoldNavigator.navigateTo(
-                                    ListDetailPaneScaffoldRole.Detail, conversationId
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) {
+        ListDetailPaneScaffold(
+            modifier = Modifier.fillMaxSize(),
+            directive = scaffoldNavigator.scaffoldDirective,
+            scaffoldState = scaffoldNavigator.scaffoldState,
+            listPane = {
+                AnimatedPane(
+                    modifier = Modifier
+                ) {
+                    if (uiState.showingNewChatPane) {
+                        NewConversationPane(
+                            contacts = uiState.contacts,
+                            searchQuery = uiState.searchQuery,
+                            onBackClick = { onUiAction(ConversationListUiAction.BackToListClicked) },
+                            onContactClick = { contact ->
+                                onUiAction(ConversationListUiAction.ContactClicked(contact))
+                            },
+                            onSearchQueryChanged = { query ->
+                                onUiAction(ConversationListUiAction.SearchQueryChanged(query))
+                            })
+                    } else {
+                        ConversationListPane(
+                            conversations = uiState.conversations,
+                            selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
+                            onConversationClick = { conversationId ->
+                                onUiAction(
+                                    ConversationListUiAction.ConversationClicked(
+                                        conversationId
+                                    )
                                 )
-                            }
-                        },
-                        onProfileClick = onNavigateToSettingsScreen,
-                        onUiAction = onUiAction,
-                    )
-                }
-            }
-        },
-        detailPane = {
-            AnimatedPane {
-                uiState.selectedConversationId?.let { conversationId ->
-                    val conversation = uiState.conversations.find { it.id == conversationId }
-                    if (conversation != null) {
-                        ConversationMessagesPane(
-                            conversation = conversation,
-                            messages = uiState.currentConversationMessages,
-                            savedScrollPosition = uiState.conversationScrollPosition,
-                            showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
-                            onBackClick = {
                                 scope.launch {
-                                    scaffoldNavigator.navigateBack(backNavigationBehavior)
+                                    scaffoldNavigator.navigateTo(
+                                        ListDetailPaneScaffoldRole.Detail, conversationId
+                                    )
                                 }
                             },
+                            onProfileClick = onNavigateToSettingsScreen,
                             onUiAction = onUiAction,
-                            currentOdinId = uiState.currentOdinId
-                        )
-                    } else {
-                        EmptyDetailPane(
-                            title = stringResource(MR.string.chat_select_a_conversation),
-                            subtitle = stringResource(MR.string.chat_select_a_conversation_subtitle)
                         )
                     }
-                } ?: EmptyDetailPane(
-                    title = stringResource(MR.string.chat_select_a_conversation),
-                    subtitle = stringResource(MR.string.chat_select_a_conversation_subtitle)
-                )
-            }
-        },
-        paneExpansionState = rememberPaneExpansionState(
-            keyProvider = scaffoldNavigator.scaffoldValue,
-            anchors = listOf(
-                PaneExpansionAnchor.Offset.fromStart(96.dp),
-                PaneExpansionAnchor.Offset.fromStart(280.dp),
-                PaneExpansionAnchor.Offset.fromStart(320.dp),
-                PaneExpansionAnchor.Offset.fromStart(360.dp),
-                PaneExpansionAnchor.Offset.fromStart(400.dp),
-                PaneExpansionAnchor.Offset.fromStart(440.dp),
-                PaneExpansionAnchor.Offset.fromStart(480.dp),
+                }
+            },
+            detailPane = {
+                AnimatedPane {
+                    uiState.selectedConversationId?.let { conversationId ->
+                        val conversation = uiState.conversations.find { it.id == conversationId }
+                        if (conversation != null) {
+                            ConversationMessagesPane(
+                                conversation = conversation,
+                                messages = uiState.currentConversationMessages,
+                                savedScrollPosition = uiState.conversationScrollPosition,
+                                showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
+                                onBackClick = {
+                                    scope.launch {
+                                        scaffoldNavigator.navigateBack(backNavigationBehavior)
+                                    }
+                                },
+                                onUiAction = onUiAction,
+                                currentOdinId = uiState.currentOdinId
+                            )
+                        } else {
+                            EmptyDetailPane(
+                                title = stringResource(MR.string.chat_select_a_conversation),
+                                subtitle = stringResource(MR.string.chat_select_a_conversation_subtitle)
+                            )
+                        }
+                    } ?: EmptyDetailPane(
+                        title = stringResource(MR.string.chat_select_a_conversation),
+                        subtitle = stringResource(MR.string.chat_select_a_conversation_subtitle)
+                    )
+                }
+            },
+            paneExpansionState = rememberPaneExpansionState(
+                keyProvider = scaffoldNavigator.scaffoldValue,
+                anchors = listOf(
+                    PaneExpansionAnchor.Offset.fromStart(96.dp),
+                    PaneExpansionAnchor.Offset.fromStart(280.dp),
+                    PaneExpansionAnchor.Offset.fromStart(320.dp),
+                    PaneExpansionAnchor.Offset.fromStart(360.dp),
+                    PaneExpansionAnchor.Offset.fromStart(400.dp),
+                    PaneExpansionAnchor.Offset.fromStart(440.dp),
+                    PaneExpansionAnchor.Offset.fromStart(480.dp),
+                ),
             ),
-        ),
-        paneExpansionDragHandle = { state ->
-            val interactionSource = remember { MutableInteractionSource() }
-            VerticalDragHandle(
-                modifier = Modifier.paneExpansionDraggable(
-                    state, LocalMinimumInteractiveComponentSize.current, interactionSource
-                ), interactionSource = interactionSource
-            )
-        })
+            paneExpansionDragHandle = { state ->
+                val interactionSource = remember { MutableInteractionSource() }
+                VerticalDragHandle(
+                    modifier = Modifier.paneExpansionDraggable(
+                        state, LocalMinimumInteractiveComponentSize.current, interactionSource
+                    ), interactionSource = interactionSource
+                )
+            })
+    }
 }
 
 @Preview
 @Composable
 fun ChatListUiPreview() {
     HomebaseTheme {
-        ChatListUi(uiState = ConversationListUiState(), onNavigateToSettingsScreen = {}, onUiAction = {})
+        ChatListUi(
+            snackbarHostState = SnackbarHostState(),
+            uiState = ConversationListUiState(),
+            onUiAction = {},
+            onNavigateToSettingsScreen = {},
+        )
     }
 }

@@ -1,10 +1,12 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(ExperimentalForeignApi::class)
 
 package id.homebase.core.di
 
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.disk.DiskCache
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.IOSFileOperationsProvider
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.settings.createSettings
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -38,4 +40,6 @@ actual fun platformModule(): Module = module {
                 }
                 .build()
     }
+
+    single<FileOperationsProvider> { IOSFileOperationsProvider() }
 }
