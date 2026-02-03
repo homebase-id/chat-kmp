@@ -59,9 +59,7 @@ class DriveQueryProvider(
             includeMetadataHeader = internal.includeMetadataHeader,
             cursorState = internal.cursorState,
             searchResults = files,
-            // TODO: The SERVER response should include the server-side hasMoreRows boolean,
-            //  this is not right
-            hasMoreRows = files.count() >= request.resultOptionsRequest.maxRecords
+            hasMoreRows = internal.hasMoreRows
         )
     }
 }
@@ -73,5 +71,6 @@ data class QueryBatchResponseInternal(
     val queryTime: UnixTimeUtc = UnixTimeUtc.ZeroTime,
     val includeMetadataHeader: Boolean = false,
     val cursorState: String? = null,
-    val searchResults: List<ServerFile> = emptyList()
+    val searchResults: List<ServerFile> = emptyList(),
+    val hasMoreRows: Boolean = false
 )
