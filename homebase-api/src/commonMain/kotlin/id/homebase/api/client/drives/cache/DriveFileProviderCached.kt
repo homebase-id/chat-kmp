@@ -8,7 +8,6 @@ import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.PayloadOperationOptions
-import id.homebase.api.common.SecureByteArray
 import io.ktor.client.HttpClient
 import io.ktor.http.Headers
 import kotlinx.coroutines.sync.Semaphore
