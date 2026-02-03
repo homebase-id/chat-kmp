@@ -234,16 +234,13 @@ class DriveUploadProvider(
 
     /** Updates local metadata content for a file. */
     suspend fun uploadLocalMetadataContent(
-        targetDrive: TargetDrive,
+        driveId: Uuid,
         file: HomebaseFile,
         localAppData: LocalAppData,
         onVersionConflict: (suspend () -> LocalMetadataUploadResult?)? = null
     ): LocalMetadataUploadResult? {
 
-
-        val driveId = targetDrive.alias
         val fileId = file.fileId
-
         val creds = requireCreds()
 
         // Decrypt key header if needed
