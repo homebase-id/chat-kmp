@@ -1,23 +1,33 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
@@ -36,40 +46,92 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.chat.FullScreenMessageData
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullScreenMediaViewer(
     modifier: Modifier = Modifier,
     data: FullScreenMessageData,
+    onShare: (messageId: Uuid, payloadKey: String) -> Unit,
+    onSave: (messageId: Uuid, payloadKey: String) -> Unit,
+    onDelete: (messageId: Uuid) -> Unit,
     onDismiss: () -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     var selectedKey by remember(data) { mutableStateOf(data.selectedPayloadKey) }
+    var showUI by remember { mutableStateOf(true) }
+    var showMenu by remember { mutableStateOf(false) }
+
+    // Store zoom state per payload
+    val zoomStates = remember(data) {
+        mutableMapOf<String, Pair<Float, Offset>>().apply {
+            data.payloads.forEach { payload ->
+                put(payload.key, 1f to Offset.Zero)
+            }
+        }
+    }
+
+    var scale by remember(selectedKey) {
+        mutableStateOf(zoomStates[selectedKey]?.first ?: 1f)
+    }
+    var offset by remember(selectedKey) {
+        mutableStateOf(zoomStates[selectedKey]?.second ?: Offset.Zero)
+    }
+
     val textState = RichTextState()
     textState.config.listIndent = 0
     textState.setHtml(data.content)
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
     ) {
+        val viewportWidth = constraints.maxWidth.toFloat()
+        val viewportHeight = constraints.maxHeight.toFloat()
+
+        val state = rememberTransformableState { zoomChange, offsetChange, _ ->
+            scale = (scale * zoomChange).coerceIn(1f, 5f)
+
+            if (scale > 1f) {
+                // Increase drag speed - multiply offset change by velocity factor
+                val velocityFactor = 2f
+                val newOffset = offset + (offsetChange * velocityFactor)
+
+                // Calculate max offset based on zoom level
+                val maxOffsetX = (viewportWidth * scale - viewportWidth) / 2f
+                val maxOffsetY = (viewportHeight * scale - viewportHeight) / 2f
+
+                offset = Offset(
+                    x = newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
+                    y = newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
+                )
+            } else {
+                offset = Offset.Zero
+            }
+
+            zoomStates[selectedKey] = scale to offset
+        }
+
         // Main large image
         val selectedPayload = data.payloads.firstOrNull { it.key == selectedKey }
 
@@ -84,7 +146,26 @@ fun FullScreenMediaViewer(
                     isEncrypted = true,
                 ),
                 modifier = Modifier
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    )
+                    .transformable(state = state)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                scale = if (scale > 1f) 1f else 2f
+                                if (scale == 1f) offset = Offset.Zero
+                                zoomStates[selectedKey] = scale to offset
+                            },
+                            onTap = {
+                                showUI = !showUI
+                            }
+                        )
+                    },
                 contentScale = ContentScale.Fit,
                 contentDescription = selectedPayload.descriptorContent,
                 animatedVisibilityScope = animatedVisibilityScope,
@@ -92,97 +173,127 @@ fun FullScreenMediaViewer(
             )
         }
 
-        TopAppBar(
+        AnimatedVisibility(
+            visible = showUI,
             modifier = Modifier.align(Alignment.TopCenter),
-            title = {
-                Text(
-                    text = data.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-
-            }, navigationIcon = {
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.Default.ChevronLeft,
-                        contentDescription = stringResource(MR.string.menu_back)
-                    )
-                }
-
-            }, actions = {
-                IconButton(onClick = {
-
-                }) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = stringResource(MR.string.chat_options)
-                    )
-                }
-            }, colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            )
-        )
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(16.dp)
+            enter = fadeIn() + slideInVertically(),
+            exit = fadeOut() + slideOutVertically()
         ) {
-            if (data.content.isNotBlank()) {
-                RichText(
-                    state = textState,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            // Gallery row at bottom
-            if (data.payloads.size > 1) {
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(data.payloads) { payload ->
-
-                        HomebaseImage(
-                            imageData = HomebaseImageData(
-                                driveId = data.driveId,
-                                fileId = data.fileId,
-                                payloadKey = payload.key,
-                                previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
-                                lastModified = payload.lastModified,
-                                isEncrypted = true,
-                            ),
-                            modifier = Modifier
-                                .size(60.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(
-                                    width = if (payload.key == selectedKey) 2.dp else 0.dp,
-                                    color = Color.White,
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                                .clickable { selectedKey = payload.key },
-                            contentScale = ContentScale.Crop,
-                            contentDescription = payload.descriptorContent,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            sharedTransitionScope = null,
+            TopAppBar(
+                modifier = Modifier.align(Alignment.TopCenter),
+                title = {
+                    Column {
+                        Text(
+                            text = data.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = formatTimestamp(data.created),
+                            style = MaterialTheme.typography.labelMedium,
                         )
                     }
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+
+                }, navigationIcon = {
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.ChevronLeft,
+                            contentDescription = stringResource(MR.string.menu_back)
+                        )
+                    }
+
+                }, actions = {
+                    Box {
+                        IconButton(onClick = {
+                            showMenu = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(MR.string.chat_options)
+                            )
+                        }
+                        FullScreenMediaMenu(
+                            showMenu = showMenu,
+                            dismissMenu = { showMenu = false },
+                            onSave = {
+                                showMenu = false
+                                onSave(data.messageId, data.selectedPayloadKey)
+                            },
+                            onDelete = {
+                                showMenu = false
+                                onDelete(data.messageId)
+                            }
+                        )
+                    }
+                }, colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                )
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showUI,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
+            enter = fadeIn() + slideInVertically { it },
+            exit = fadeOut() + slideOutVertically { it }
+        ) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+                    .padding(16.dp)
             ) {
-                IconButton(onClick = {}) {
-                    Icon(Icons.Default.Share, contentDescription = null)
+                if (data.content.isNotBlank()) {
+                    RichText(
+                        state = textState,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp)
+                    )
                 }
-                IconButton(onClick = {}) {
-                    Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null)
+                // Gallery row at bottom
+                if (data.payloads.size > 1) {
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+                    ) {
+                        items(data.payloads) { payload ->
+                            HomebaseImage(
+                                imageData = HomebaseImageData(
+                                    driveId = data.driveId,
+                                    fileId = data.fileId,
+                                    payloadKey = payload.key,
+                                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+                                    lastModified = payload.lastModified,
+                                    isEncrypted = true,
+                                ),
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(
+                                        width = if (payload.key == selectedKey) 2.dp else 0.dp,
+                                        color = if (payload.key == selectedKey) Color.White else Color.Unspecified,
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable { selectedKey = payload.key },
+                                contentScale = ContentScale.Crop,
+                                contentDescription = payload.descriptorContent,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                                sharedTransitionScope = null,
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    IconButton(onClick = { onShare(data.messageId, data.selectedPayloadKey)}) {
+                        Icon(Icons.Default.Share, contentDescription = null)
+                    }
                 }
             }
         }

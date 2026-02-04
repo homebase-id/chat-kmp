@@ -8,6 +8,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.util.ScrollPosition
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 @Immutable
@@ -19,15 +20,18 @@ data class ConversationListUiState(
     val searchQuery: String = "",
     val currentConversationMessages: ImmutableList<MessageUiModel> = persistentListOf(),
     val conversationScrollPosition: ScrollPosition? = null,
-    val uiEvent: ConversationListUiEvent? = null,
     val currentOdinId: String = "",
-    val fullScreenMedia: FullScreenMessageData? = null
+    val fullScreenMedia: FullScreenMessageData? = null,
+
+    val uiDialog: ConversationListUiDialog? = null,
+    val uiEvent: ConversationListUiEvent? = null,
 )
 
 @Immutable
 data class FullScreenMessageData(
     val messageId: Uuid,
     val title: String,
+    val created: Instant,
     val content: String,
     val fileId: Uuid,
     val driveId: Uuid,

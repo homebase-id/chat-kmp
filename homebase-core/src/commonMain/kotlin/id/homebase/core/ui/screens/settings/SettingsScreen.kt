@@ -12,11 +12,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -34,6 +38,7 @@ import id.homebase.resources.language_danish
 import id.homebase.resources.language_english_gb
 import id.homebase.resources.language_english_us
 import id.homebase.resources.language_system
+import id.homebase.resources.menu_back
 import id.homebase.resources.settings
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.log
@@ -41,6 +46,7 @@ import kotlin.math.log
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
+    onBackClick: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -62,30 +68,39 @@ fun SettingsScreen(
 
     SettingsUi(
         uiState = uiState,
-        onAction = viewModel::onAction
+        onAction = viewModel::onAction,
+        onBackClick = onBackClick
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsUi(
     uiState: SettingsUiState,
-    onAction: (SettingsUiAction) -> Unit
+    onAction: (SettingsUiAction) -> Unit,
+    onBackClick: () -> Unit,
 ) {
-    Scaffold { innerPadding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(MR.string.settings)) },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            imageVector = Icons.Default.ChevronLeft,
+                            contentDescription = stringResource(MR.string.menu_back)
+                        )
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
         Column(
             modifier = Modifier.fillMaxSize().consumeWindowInsets(innerPadding)
                 .padding(innerPadding).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = stringResource(MR.string.settings),
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
             // Language Section
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -184,7 +199,8 @@ fun SettingsUiPreview() {
     HomebaseTheme {
         SettingsUi(
             uiState = SettingsUiState(loggedInDomain = "your.identity.id"),
-            onAction = {}
+            onAction = {},
+            onBackClick = {}
         )
     }
 }

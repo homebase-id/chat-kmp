@@ -14,6 +14,8 @@ sealed interface ConversationListUiAction {
     data class SearchQueryChanged(val query: String) : ConversationListUiAction
     data class SendMessage(val conversationId: Uuid, val content: String) : ConversationListUiAction
     data class SendFile(val conversationId: Uuid, val message: String, val files: List<PlatformFile>) : ConversationListUiAction
+    data class ShareMedia(val messageId: Uuid, val payloadKey: String): ConversationListUiAction
+    data class DownloadMedia(val messageId: Uuid, val payloadKey: String): ConversationListUiAction
 
     data class MediaClicked(val message: MessageUiModel, val payloadKey: String) : ConversationListUiAction
     data object CloseFullScreenMedia : ConversationListUiAction
@@ -33,6 +35,7 @@ sealed interface ConversationListUiAction {
     data class ReplyToMessage(val messageId: Uuid) : ConversationListUiAction
     data class StarMessage(val messageId: Uuid) : ConversationListUiAction
     data class EditMessage(val messageId: Uuid) : ConversationListUiAction
+    data class DeleteMessage(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForMe(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForEveryone(val messageId: Uuid) : ConversationListUiAction
 

@@ -30,6 +30,7 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
+import id.homebase.core.HomebaseConstants
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.Warning
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -109,7 +110,7 @@ fun HomebaseImage(
                 rememberSharedContentState(key = transitionKey),
                 animatedVisibilityScope = animatedVisibilityScope,
                 boundsTransform = { _, _ ->
-                    tween(durationMillis = 500, easing = FastOutSlowInEasing)
+                    tween(durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION, easing = FastOutSlowInEasing)
                 },
                 resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
             )

@@ -20,6 +20,7 @@ import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.FullScreenMessageData
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.ScrollPosition
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
@@ -199,10 +200,10 @@ fun ConversationMessagesPane(
             transitionSpec = {
                 if (targetState != null) {
                     // Entering full-screen: fade in viewer over fading out conversation
-                    fadeIn(tween(500)) togetherWith fadeOut(tween(500))
+                    fadeIn(tween(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)) togetherWith fadeOut(tween(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION))
                 } else {
                     // Exiting full-screen: instant transition back
-                    fadeIn(tween(500)) togetherWith fadeOut(tween(500))
+                    fadeIn(tween(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)) togetherWith fadeOut(tween(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION))
                 }
             }
         ) { data ->
@@ -222,6 +223,9 @@ fun ConversationMessagesPane(
             } else {
                 FullScreenMediaViewer(
                     data = data,
+                    onShare = { id, key -> onUiAction(ConversationListUiAction.ShareMedia(id, key)) },
+                    onSave = { id, key -> onUiAction(ConversationListUiAction.DownloadMedia(id, key)) },
+                    onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(it)) },
                     onDismiss = { onUiAction(ConversationListUiAction.CloseFullScreenMedia) },
                     animatedVisibilityScope = this@AnimatedContent,
                     sharedTransitionScope = this@SharedTransitionLayout,

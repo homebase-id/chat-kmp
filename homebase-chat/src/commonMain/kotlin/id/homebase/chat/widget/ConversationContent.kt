@@ -296,16 +296,9 @@ fun ConversationContent(
                                                 )
                                             )
                                         },
-                                        onDeleteForMe = {
+                                        onDelete = {
                                             onUiAction(
-                                                ConversationListUiAction.DeleteMessageForMe(
-                                                    message.id
-                                                )
-                                            )
-                                        },
-                                        onDeleteForEveryone = {
-                                            onUiAction(
-                                                ConversationListUiAction.DeleteMessageForEveryone(
+                                                ConversationListUiAction.DeleteMessage(
                                                     message.id
                                                 )
                                             )
@@ -345,9 +338,9 @@ fun ConversationContent(
                                                 )
                                             )
                                         },
-                                        onDeleteForMe = {
+                                        onDelete = {
                                             onUiAction(
-                                                ConversationListUiAction.DeleteMessageForMe(
+                                                ConversationListUiAction.DeleteMessage(
                                                     message.id
                                                 )
                                             )

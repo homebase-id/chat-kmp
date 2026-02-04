@@ -79,6 +79,11 @@ class ChatListViewModel(
         _uiState.update { it.copy(uiEvent = null) }
     }
 
+    fun dialogClosed() {
+        _uiState.update { it.copy(uiDialog = null) }
+    }
+
+
     fun onAction(action: ConversationListUiAction) {
         when (action) {
             is ConversationListUiAction.ConversationClicked -> {
@@ -156,6 +161,23 @@ class ChatListViewModel(
                         action.firstVisibleItemScrollOffset
                     )
                 }
+            }
+
+            is ConversationListUiAction.DeleteMessage -> {
+                val message = _uiState.value.currentConversationMessages.firstOrNull { it.id == action.messageId } ?: return
+                val isCurrentUserMessage = message.senderId == _uiState.value.currentOdinId
+                _uiState.update { it.copy(uiDialog = ConversationListUiDialog.DeleteMessage(
+                    messageId = action.messageId,
+                    allowDeleteForEveryone = isCurrentUserMessage
+                ) ) }
+            }
+
+            is ConversationListUiAction.ShareMedia -> {
+                sendEvent(ConversationListUiEvent.ShowErrorMessage("Not implemented yet"))
+            }
+
+            is ConversationListUiAction.DownloadMedia -> {
+                sendEvent(ConversationListUiEvent.ShowErrorMessage("Not implemented yet"))
             }
 
             is ConversationListUiAction.DeleteMessageForEveryone -> {
@@ -260,6 +282,7 @@ class ChatListViewModel(
                                         fullScreenMedia = FullScreenMessageData(
                                             messageId = action.message.id,
                                             title = action.message.senderId,
+                                            created = action.message.created,
                                             content = action.message.content,
                                             fileId = action.message.fileId,
                                             driveId = chatTargetDrive.alias,
