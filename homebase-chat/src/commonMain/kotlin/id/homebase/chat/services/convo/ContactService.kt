@@ -13,6 +13,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.config.contactTargetDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +22,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
-const val CONTACT_FILE_TYPE = 100
 
 class ContactService(
     private val credentialsManager: CredentialsManager,
@@ -32,6 +32,9 @@ class ContactService(
 
     private val contactDrive = contactTargetDrive.alias
     private val _contacts = MutableStateFlow<List<ContactUiModel>>(emptyList())
+
+    private val contactByOdinId =
+        MutableStateFlow<Map<String, ContactUiModel>>(emptyMap())
 
     val contacts: StateFlow<List<ContactUiModel>> = _contacts.asStateFlow()
 
@@ -53,10 +56,17 @@ class ContactService(
         }
     }
 
+    fun resolveByOdinId(odinId: String): ContactUiModel? {
+        return contactByOdinId.value[odinId]
+    }
+
     private suspend fun refresh() {
         val result = fetchContacts()
         _contacts.value = result.records
+        contactByOdinId.value =
+            result.records.associateBy { it.odinId }
     }
+
 
     suspend fun fetchContacts(
         limit: Int = 1000,
@@ -75,7 +85,7 @@ class ContactService(
                 sortOrder = QueryBatchSortOrder.NewestFirst,
                 sortField = QueryBatchSortField.CreatedDate,
                 fileSystemType = 0,
-                filetypesAnyOf = listOf(CONTACT_FILE_TYPE)
+                filetypesAnyOf = listOf(ChatProtocol.ContactFileType)
             )
 
         return BatchResult(
@@ -103,7 +113,7 @@ class ContactService(
             odinId = parsedContact.odinId
                 ?: throw IllegalStateException("why is the odin id missing?"),
             name = parsedContact.name.displayName,
-            avatarInitials = "TD",
+            avatarInitials = parsedContact.name.initials()
         )
     }
 }
@@ -127,7 +137,45 @@ data class ContactName(
     val givenName: String?,
     val additionalName: String?,
     val surname: String?
-)
+) {
+
+    fun initials(): String {
+        val first =
+            givenName
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.firstOrNull()
+
+        val last =
+            surname
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.firstOrNull()
+
+        if (first != null && last != null) {
+            return "${first}${last}".uppercase()
+        }
+
+        // Fallback: try display name tokens
+        val tokens =
+            displayName
+                .trim()
+                .split("\\s+".toRegex())
+                .filter { it.isNotEmpty() }
+
+        return when {
+            tokens.size >= 2 ->
+                "${tokens.first().first()}${tokens.last().first()}".uppercase()
+
+            tokens.size == 1 ->
+                tokens.first().first().uppercaseChar().toString()
+
+            else ->
+                "?"
+        }
+    }
+}
+
 
 @Serializable
 data class ContactLocation(
