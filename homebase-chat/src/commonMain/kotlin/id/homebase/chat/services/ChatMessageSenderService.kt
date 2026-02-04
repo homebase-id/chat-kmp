@@ -11,12 +11,13 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.convo.ConversationStreamService
 import id.homebase.chat.services.convo.ConversationService
 import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
     private val driveUploadProvider: DriveUploadProvider,
-    private val conversationService: ConversationService,
+    private val conversationService: ConversationStreamService,
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService
 ) {
     private val chatDrive = chatTargetDrive.alias
@@ -26,7 +27,7 @@ class ChatMessageSenderService(
         messageText: String,
         payloadBundle: PayloadBundle?
     ): SendMessageResult =
-        sendMessageInternal(
+        deliverMessage(
             conversationId = conversationId,
             content =
                 MessageAppData(
@@ -45,7 +46,7 @@ class ChatMessageSenderService(
         messageText: String,
         payloadBundle: PayloadBundle?
     ): SendMessageResult =
-        sendMessageInternal(
+        deliverMessage(
             conversationId = conversationId,
             content =
                 MessageAppData(
@@ -56,6 +57,20 @@ class ChatMessageSenderService(
             notificationText = "You have a new reply",
             payloadBundle = payloadBundle
         )
+
+    private suspend fun deliverMessage(
+        conversationId: Uuid,
+        content: MessageAppData,
+        notificationText: String,
+        payloadBundle: PayloadBundle?
+    ): SendMessageResult {
+
+        // distribute the conversation file if needed
+//        conversationWriterService.updateConversationRecipients(conversationId, )
+
+        val result = sendMessageInternal(conversationId, content, notificationText, payloadBundle)
+        return result;
+    }
 
     private suspend fun sendMessageInternal(
         conversationId: Uuid,
@@ -68,7 +83,8 @@ class ChatMessageSenderService(
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationService.getRecipients(conversationId)
 
-        val encryptedBundle = payloadBundleEncryptionService.encryptBundle(payloadBundle, keyHeader)
+        val encryptedBundle =
+            payloadBundleEncryptionService.encryptBundle(payloadBundle, keyHeader)
         val encryptedPayloads = encryptedBundle.payloads
         val encryptedThumbnails = encryptedBundle.thumbnails
 
@@ -85,8 +101,8 @@ class ChatMessageSenderService(
                         content = OdinSystemSerializer.serialize(content),
                         previewThumbnail =
                             encryptedBundle
-                                ?.previewThumbs
-                                ?.minByOrNull { it.pixelWidth }
+                                .previewThumbs
+                                .minByOrNull { it.pixelWidth }
                     )
             )
 
@@ -113,7 +129,8 @@ class ChatMessageSenderService(
             )
         try {
             val result =
-                driveUploadProvider.uploadFile(request) ?: error("Failed to upload chat message")
+                driveUploadProvider.uploadFile(request)
+                    ?: error("Failed to upload chat message")
             return SendMessageResult(
                 fileId = result.fileId,
                 uniqueId = uniqueId,

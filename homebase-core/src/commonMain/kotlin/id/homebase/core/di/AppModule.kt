@@ -8,8 +8,8 @@ import id.homebase.chat.services.ChatMessageReaderService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.ConversationStreamService
 import id.homebase.chat.services.convo.ConversationService
-import id.homebase.chat.services.convo.ConversationWriterService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.settings.UserPreferences
@@ -28,8 +28,8 @@ val appModule = module {
 
     factoryOf(::PayloadBundleEncryptionService)
     singleOf(::ContactService)
+    singleOf(::ConversationStreamService)
     singleOf(::ConversationService)
-    singleOf(::ConversationWriterService)
     singleOf(::ChatMessageReaderService)
     singleOf(::ChatMessageSenderService)
     singleOf(::HomebaseImageLoader)

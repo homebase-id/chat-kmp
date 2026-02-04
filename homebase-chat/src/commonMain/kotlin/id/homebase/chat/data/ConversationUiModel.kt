@@ -20,13 +20,18 @@ data class ConversationUiModel(  // TODO: Move the data objects / classes into C
     val isPinned: Boolean = false,
     val lastRead: Instant
 ) {
-    fun updateWithLatestMessage(msg : MessageUiModel)
-    {
+    fun updateWithLatestMessage(msg: MessageUiModel) {
         // TODO: Should we also increase unread count here if it's a new message?
-        if (msg.created >= timestamp)
-        {
+        if (msg.created >= timestamp) {
             lastMessage = msg.messageAppData.message.truncateToCodePoints(40)
             timestamp = msg.created
         }
+    }
+
+    fun getDisplay(): String {
+        if (name.isEmpty() || name.isBlank()) {
+            return participants.first()
+        }
+        return name
     }
 }

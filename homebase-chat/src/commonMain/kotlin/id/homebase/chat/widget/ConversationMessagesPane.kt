@@ -295,7 +295,7 @@ fun ConversationMessagesPane(
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = conversation.name,
+                            text = conversation.getDisplay(),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -388,7 +388,7 @@ fun ConversationMessagesPane(
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Text(
-                                        text = conversation.name,
+                                        text = conversation.getDisplay(),
                                         style = MaterialTheme.typography.headlineSmall,
                                     )
                                 }

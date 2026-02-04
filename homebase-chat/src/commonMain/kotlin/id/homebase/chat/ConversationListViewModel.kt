@@ -9,10 +9,10 @@ import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageReaderService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.convo.ContactService
-import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.ConversationStreamService
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
-import id.homebase.chat.services.convo.ConversationWriterService
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
@@ -28,13 +28,13 @@ import kotlin.uuid.Uuid
 class ChatListViewModel(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
-    private val conversationService: ConversationService,
+    private val conversationService: ConversationStreamService,
     private val chatMessageService: ChatMessageReaderService,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val conversationWriterService: ConversationWriterService
+    private val conversationWriterService: ConversationService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConversationListUiState())
