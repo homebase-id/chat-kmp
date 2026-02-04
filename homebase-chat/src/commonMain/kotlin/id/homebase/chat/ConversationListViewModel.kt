@@ -8,11 +8,12 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageReaderService
 import id.homebase.chat.services.ChatMessageSenderService
-import id.homebase.chat.services.convo.ContactService
-import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationWriterService
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
@@ -77,6 +78,11 @@ class ChatListViewModel(
     fun eventConsumed() {
         _uiState.update { it.copy(uiEvent = null) }
     }
+
+    fun dialogClosed() {
+        _uiState.update { it.copy(uiDialog = null) }
+    }
+
 
     fun onAction(action: ConversationListUiAction) {
         when (action) {
@@ -155,6 +161,23 @@ class ChatListViewModel(
                         action.firstVisibleItemScrollOffset
                     )
                 }
+            }
+
+            is ConversationListUiAction.DeleteMessage -> {
+                val message = _uiState.value.currentConversationMessages.firstOrNull { it.id == action.messageId } ?: return
+                val isCurrentUserMessage = message.senderId == _uiState.value.currentOdinId
+                _uiState.update { it.copy(uiDialog = ConversationListUiDialog.DeleteMessage(
+                    messageId = action.messageId,
+                    allowDeleteForEveryone = isCurrentUserMessage
+                ) ) }
+            }
+
+            is ConversationListUiAction.ShareMedia -> {
+                sendEvent(ConversationListUiEvent.ShowErrorMessage("Not implemented yet"))
+            }
+
+            is ConversationListUiAction.DownloadMedia -> {
+                sendEvent(ConversationListUiEvent.ShowErrorMessage("Not implemented yet"))
             }
 
             is ConversationListUiAction.DeleteMessageForEveryone -> {
@@ -242,6 +265,64 @@ class ChatListViewModel(
                     }
                 }
             }
+
+            is ConversationListUiAction.MediaClicked -> {
+                viewModelScope.launch {
+                    try {
+                        val selectedPayload =
+                            action.message.payloads?.firstOrNull { it.key == action.payloadKey }
+                                ?: return@launch
+                        val contentType = selectedPayload.contentType ?: ""
+                        when {
+                            contentType.startsWith("image/") -> {
+                                Logger.d("Image clicked: ${action.message.id}:${action.payloadKey}")
+
+                                _uiState.update {
+                                    it.copy(
+                                        fullScreenMedia = FullScreenMessageData(
+                                            messageId = action.message.id,
+                                            title = action.message.senderId,
+                                            created = action.message.created,
+                                            content = action.message.content,
+                                            fileId = action.message.fileId,
+                                            driveId = chatTargetDrive.alias,
+                                            payloads = action.message.payloads,
+                                            selectedPayloadKey = action.payloadKey,
+                                            keyHeader = action.message.keyHeader,
+                                        )
+                                    )
+                                }
+                            }
+
+                            contentType.startsWith("video/") ||
+                                    contentType == "application/vnd.apple.mpegurl" -> {
+
+                            }
+
+                            contentType.startsWith("audio/") -> {
+
+                            }
+
+                            contentType.startsWith("application/") -> {
+
+                            }
+
+                            else -> {
+
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("Failed to handle media click", e)
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to handle media click: ${e.message}"))
+                    }
+                }
+            }
+
+            ConversationListUiAction.CloseFullScreenMedia -> {
+                _uiState.update { it.copy(fullScreenMedia = null) }
+            }
+
+
 
 //            is ConversationListUiAction.ArchiveConversation -> TODO()
 //            is ConversationListUiAction.ClearConversation -> TODO()

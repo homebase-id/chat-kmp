@@ -62,6 +62,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.multiplatform.settings)
             implementation(libs.koin.core)
+            implementation(libs.filekit.core)
+
         }
 
         jvmMain.dependencies {

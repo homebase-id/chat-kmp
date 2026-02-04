@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.data.MessageUiModel
@@ -31,6 +32,7 @@ fun MessagesSection(text: String) {
     }
 }
 
+@Immutable
 data class MessageSectionItem(
     val firstMessageTime: Instant,
     val messages: List<MessageUiModel>,

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -30,7 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.window.core.layout.WindowSizeClass
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.core.ui.assets.FeatherEdit
@@ -72,6 +74,9 @@ fun ConversationListPane(
     onConversationClick: (Uuid) -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit
 ) {
+    val adaptiveInfo = currentWindowAdaptiveInfo()
+    val twoPaneWindow =
+        adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
     val searchState = rememberTextFieldState()
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -120,18 +125,7 @@ fun ConversationListPane(
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
-                            }, actions = {
-                                IconButton(onClick = {
-                                    onUiAction(ConversationListUiAction.NewChatClicked)
-                                }) {
-                                    Icon(
-                                        imageVector = FeatherEdit,
-                                        contentDescription = stringResource(MR.string.chat_new_conversation)
-                                    )
-                                }
-                            }, colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                            )
+                            }
                         )
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -178,7 +172,19 @@ fun ConversationListPane(
                     }
                 }
             },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            floatingActionButton = {
+                if (!iconOnlyMode) {
+                    FloatingActionButton(onClick = {
+                        onUiAction(ConversationListUiAction.NewChatClicked)
+                    }) {
+                        Icon(
+                            imageVector = FeatherEdit,
+                            contentDescription = stringResource(MR.string.chat_new_conversation)
+                        )
+                    }
+                }
+            },
+            containerColor = if (twoPaneWindow) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface,
         ) { innerPadding ->
             Box {
                 LazyColumn(
@@ -245,7 +251,7 @@ fun ConversationListPane(
                         }
                     }
                     item {
-                        Spacer(modifier = Modifier.height(48.dp))
+                        Spacer(modifier = Modifier.height(72.dp))
                     }
                 }
                 HomebaseVerticalScrollbar(

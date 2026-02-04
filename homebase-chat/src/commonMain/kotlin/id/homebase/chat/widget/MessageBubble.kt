@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -72,8 +74,7 @@ import kotlin.uuid.Uuid
  * @param onMessageInfo Callback invoked when user requests message info/details.
  * @param onReply Callback invoked when user wants to reply to this message.
  * @param onStar Callback invoked when user wants to star/favorite this message.
- * @param onDeleteForMe Callback invoked when user wants to delete this message for themselves only.
- * @param onDeleteForEveryone Callback invoked when user wants to mark this message as read.
+ * @param onDelete Callback invoked when user wants to delete this message
  * @param onMediaClick Callback invoked when user clicks on media attachment.
  */
 @Composable
@@ -83,9 +84,10 @@ fun SentMessageBubble(
     onReply: (messageId: Uuid) -> Unit,
     onStar: (messageId: Uuid) -> Unit,
     onEdit: (messageId: Uuid) -> Unit,
-    onDeleteForMe: (messageId: Uuid) -> Unit,
-    onDeleteForEveryone: (messageId: Uuid) -> Unit,
+    onDelete: (messageId: Uuid) -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -131,13 +133,9 @@ fun SentMessageBubble(
                             showMenu = false
                             onEdit(message.id)
                         },
-                        onDeleteForMe = {
+                        onDelete = {
                             showMenu = false
-                            onDeleteForMe(message.id)
-                        },
-                        onDeleteForEveryone = {
-                            showMenu = false
-                            onDeleteForEveryone(message.id)
+                            onDelete(message.id)
                         },
                     )
                 }
@@ -151,7 +149,9 @@ fun SentMessageBubble(
                     previewThumbnail = message.previewThumbnail,
                     onLongClick = { showMenu = true },
                     keyHeader = message.keyHeader,
-                    onMediaClick = onMediaClick
+                    onMediaClick = onMediaClick,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
         }
@@ -168,7 +168,7 @@ fun SentMessageBubble(
  * @param onMessageInfo Callback invoked when user requests message info/details.
  * @param onReply Callback invoked when user wants to reply to this message.
  * @param onStar Callback invoked when user wants to star/favorite this message.
- * @param onDeleteForMe Callback invoked when user wants to delete this message for themselves only.
+ * @param onDelete Callback invoked when user wants to delete this message.
  * @param onMarkAsRead Callback invoked when user wants to mark this message as read.
  * @param onAddReaction Callback invoked when user wants to add a reaction to this message.
  * @param onDeleteReaction Callback invoked when user wants to remove a reaction from this message.
@@ -180,11 +180,13 @@ fun ReceivedMessageBubble(
     onMessageInfo: (messageId: Uuid) -> Unit,
     onReply: (messageId: Uuid) -> Unit,
     onStar: (messageId: Uuid) -> Unit,
-    onDeleteForMe: (messageId: Uuid) -> Unit,
+    onDelete: (messageId: Uuid) -> Unit,
     onMarkAsRead: (messageId: Uuid) -> Unit,
     onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
     onDeleteReaction: (messageId: Uuid, reaction: String) -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -209,6 +211,8 @@ fun ReceivedMessageBubble(
                     previewThumbnail = message.previewThumbnail,
                     onLongClick = { showMenu = true },
                     onMediaClick = onMediaClick,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
                 Column {
                     IconButton(
@@ -239,9 +243,9 @@ fun ReceivedMessageBubble(
                             showMenu = false
                             onStar(message.id)
                         },
-                        onDeleteForMe = {
+                        onDelete = {
                             showMenu = false
-                            onDeleteForMe(message.id)
+                            onDelete(message.id)
                         },
                         onMarkAsRead = {
                             showMenu = false
@@ -296,6 +300,8 @@ fun MessageBubble(
     keyHeader: KeyHeader,
     onLongClick: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val filteredPayloads =
         payloads?.filter {
@@ -398,7 +404,9 @@ fun MessageBubble(
                     onMediaLongPress = { _, _ ->
                         handleLongClick()
                     },
-                    shape = RoundedCornerShape(Dimens.Message.cornerRadius)
+                    shape = RoundedCornerShape(Dimens.Message.cornerRadius),
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
                 Box(
                     modifier = Modifier
@@ -439,6 +447,8 @@ fun MessageBubble(
                                     onMediaLongPress = { _, _ ->
                                         handleLongClick()
                                     },
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope,
                                 )
                             }
                             SelectionContainer {

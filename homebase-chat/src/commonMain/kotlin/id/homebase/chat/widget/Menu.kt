@@ -6,6 +6,7 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Star
@@ -21,12 +22,12 @@ import id.homebase.resources.chat_archive
 import id.homebase.resources.chat_clear
 import id.homebase.resources.chat_delete
 import id.homebase.resources.chat_info
-import id.homebase.resources.chat_message_delete_for_everyone
-import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_message_edit
 import id.homebase.resources.chat_message_info
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_message_star
+import id.homebase.resources.delete
+import id.homebase.resources.save
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -97,7 +98,7 @@ fun ReceivedMessageMenu(
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
     onStar: () -> Unit,
-    onDeleteForMe: () -> Unit,
+    onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
     onAddReaction: () -> Unit,
     onDeleteReaction: () -> Unit,
@@ -143,8 +144,8 @@ fun ReceivedMessageMenu(
         )
 
         DropdownMenuItem(
-            onClick = onDeleteForMe,
-            text = { Text(text = stringResource(MR.string.chat_message_delete_for_me)) },
+            onClick = onDelete,
+            text = { Text(text = stringResource(MR.string.delete)) },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Filled.Delete,
@@ -196,8 +197,7 @@ fun SentMessageMenu(
     onReply: () -> Unit,
     onStar: () -> Unit,
     onEdit: () -> Unit,
-    onDeleteForMe: () -> Unit,
-    onDeleteForEveryone: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     DropdownMenu(
         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
@@ -249,8 +249,8 @@ fun SentMessageMenu(
             }
         )
         DropdownMenuItem(
-            onClick = onDeleteForEveryone,
-            text = { Text(text = stringResource(MR.string.chat_message_delete_for_everyone)) },
+            onClick = onDelete,
+            text = { Text(text = stringResource(MR.string.delete)) },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Filled.Delete,
@@ -258,9 +258,34 @@ fun SentMessageMenu(
                 )
             }
         )
+    }
+}
+
+@Composable
+fun FullScreenMediaMenu(
+    showMenu: Boolean,
+    dismissMenu: () -> Unit,
+    onDelete: () -> Unit,
+    onSave: () -> Unit,
+) {
+    DropdownMenu(
+        shape = RoundedCornerShape(Dimens.Message.cornerRadius),
+        expanded = showMenu,
+        onDismissRequest = dismissMenu
+    ) {
         DropdownMenuItem(
-            onClick = onDeleteForMe,
-            text = { Text(text = stringResource(MR.string.chat_message_delete_for_me)) },
+            onClick = onSave,
+            text = { Text(text = stringResource(MR.string.save)) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Download,
+                    contentDescription = null
+                )
+            }
+        )
+        DropdownMenuItem(
+            onClick = onDelete,
+            text = { Text(text = stringResource(MR.string.delete)) },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Filled.Delete,

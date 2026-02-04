@@ -3,9 +3,11 @@ package id.homebase.chat
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDragHandle
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
@@ -31,12 +33,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.NewConversationPane
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.widget.DialogButtons
+import id.homebase.core.widget.DialogCard
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
+import id.homebase.resources.chat_message_delete_dialog_title
+import id.homebase.resources.chat_message_delete_for_everyone
+import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
 import kotlinx.coroutines.launch
@@ -73,6 +82,49 @@ fun ConversationListScreen(
             null -> {}
         }
     }
+
+    when (val dialog = uiState.uiDialog) {
+        null -> {}
+
+        is ConversationListUiDialog.DeleteMessage -> {
+            Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
+                DialogCard(
+                    buttons = {
+                        DialogButtons(
+                            primaryText = stringResource(MR.string.chat_message_delete_for_me),
+                            onPrimaryClick = {
+                                viewModel.onAction(
+                                    ConversationListUiAction.DeleteMessageForMe(
+                                        dialog.messageId
+                                    )
+                                )
+                                viewModel.dialogClosed()
+                            },
+                            secondaryText = if (dialog.allowDeleteForEveryone) stringResource(MR.string.chat_message_delete_for_everyone) else null,
+                            onSecondaryClick = {
+                                if (dialog.allowDeleteForEveryone) {
+                                    viewModel.onAction(
+                                        ConversationListUiAction.DeleteMessageForEveryone(
+                                            dialog.messageId
+                                        )
+                                    )
+                                    viewModel.dialogClosed()
+                                }
+                            },
+                            tertiaryText = stringResource(MR.string.cancel),
+                            onTertiaryClick = { viewModel.dialogClosed() }
+                        )
+                    }
+                ) {
+                    Text(
+                        text = stringResource(MR.string.chat_message_delete_dialog_title),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                 }
+            }
+        }
+    }
+
 
     ChatListUi(
         snackbarHostState = snackbarHostState,
@@ -149,7 +201,11 @@ fun ChatListUi(
 
     BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {
-            scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
+            if (uiState.fullScreenMedia != null) {
+                onUiAction(ConversationListUiAction.CloseFullScreenMedia)
+            } else {
+                scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
+            }
         }
     }
 
@@ -205,6 +261,7 @@ fun ChatListUi(
                             ConversationMessagesPane(
                                 conversation = conversation,
                                 messages = uiState.currentConversationMessages,
+                                fullScreenMessageData = uiState.fullScreenMedia,
                                 savedScrollPosition = uiState.conversationScrollPosition,
                                 showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
                                 onBackClick = {

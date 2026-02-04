@@ -1,5 +1,6 @@
 package id.homebase.api.youauth
 
+import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.browser.RedirectConfig
 import id.homebase.api.client.auth.ApiCredentials
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlin.io.encoding.Base64
 
 /** Authentication state for the YouAuth flow. */
+@Immutable
 sealed class YouAuthState {
     /** User is not authenticated */
     data object Unauthenticated : YouAuthState()

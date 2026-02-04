@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -39,6 +39,7 @@ import id.homebase.chat.ConversationListScreen
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
+import kotlinx.coroutines.flow.StateFlow
 import org.koin.compose.viewmodel.koinViewModel
 
 sealed class TopLevelRoute(
@@ -47,7 +48,7 @@ sealed class TopLevelRoute(
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
-    data object Settings : TopLevelRoute(Route.Settings, "Settings", Icons.Default.Settings)
+    data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
 }
 
 @Composable
@@ -61,11 +62,11 @@ fun AppNavHost(
 
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val useNavigationRail =
-        adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+        adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val topLevelRoutes = remember {
-        listOf(TopLevelRoute.Chat, TopLevelRoute.Settings)
+        listOf(TopLevelRoute.Chat, TopLevelRoute.Home)
     }
 
     // Track if we are in a screen where bottom menu should be hidden
@@ -136,11 +137,11 @@ fun AppNavHost(
                 modifier = Modifier.weight(1f)
             ) {
                 composable<Route.Login> {
-                    val vm = koinViewModel<LoginViewModel>();
+                    val vm = koinViewModel<LoginViewModel>()
                     LoginScreen(
                         viewModel = vm,
                         onNavigateHome = {
-                            navController.navigate(Route.Home) {
+                            navController.navigate(Route.ChatList) {
                                 popUpTo(Route.Login) { inclusive = true }
                             }
                         }
@@ -195,7 +196,10 @@ fun AppNavHost(
                             }
                         }
                     ) {
-                        SettingsScreen(viewModel = koinViewModel())
+                        SettingsScreen(
+                            viewModel = koinViewModel(),
+                            onBackClick = { navController.popBackStack() }
+                        )
                     }
                 }
 
@@ -252,7 +256,7 @@ fun AppNavHost(
 /** Wrapper for routes that require authentication using YouAuthFlowManager. */
 @Composable
 private fun AuthenticatedRouteWithFlowManager(
-    authState: kotlinx.coroutines.flow.StateFlow<YouAuthState>,
+    authState: StateFlow<YouAuthState>,
     onUnauthenticated: () -> Unit,
     content: @Composable () -> Unit
 ) {
