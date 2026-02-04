@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
+import id.homebase.api.client.KeyHeader
 import id.homebase.chat.FullScreenMessageData
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -63,6 +64,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
+import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,6 +92,15 @@ fun FullScreenMediaViewer(
         }
     }
 
+    // Derive selected payload without causing recomposition
+    val selectedPayload = remember(data, selectedKey) {
+        data.payloads.firstOrNull { it.key == selectedKey }
+    }
+
+    val selectedPayloadIv = remember(selectedPayload) {
+        selectedPayload?.iv?.let { Base64.decode(it) }
+    }
+
     var scale by remember(selectedKey) {
         mutableStateOf(zoomStates[selectedKey]?.first ?: 1f)
     }
@@ -97,7 +108,7 @@ fun FullScreenMediaViewer(
         mutableStateOf(zoomStates[selectedKey]?.second ?: Offset.Zero)
     }
 
-    val textState = RichTextState()
+    val textState = remember { RichTextState() }
     textState.config.listIndent = 0
     textState.setHtml(data.content)
 
@@ -110,48 +121,54 @@ fun FullScreenMediaViewer(
         val viewportHeight = constraints.maxHeight.toFloat()
 
         val state = rememberTransformableState { zoomChange, offsetChange, _ ->
-            scale = (scale * zoomChange).coerceIn(1f, 5f)
+            val currentState = zoomStates[selectedKey] ?: (1f to Offset.Zero)
+            var currentScale = currentState.first
+            var currentOffset = currentState.second
 
-            if (scale > 1f) {
-                // Increase drag speed - multiply offset change by velocity factor
+            currentScale = (currentScale * zoomChange).coerceIn(1f, 5f)
+
+            if (currentScale > 1f) {
                 val velocityFactor = 2f
-                val newOffset = offset + (offsetChange * velocityFactor)
+                val newOffset = currentOffset + (offsetChange * velocityFactor)
 
-                // Calculate max offset based on zoom level
-                val maxOffsetX = (viewportWidth * scale - viewportWidth) / 2f
-                val maxOffsetY = (viewportHeight * scale - viewportHeight) / 2f
+                val maxOffsetX = (viewportWidth * currentScale - viewportWidth) / 2f
+                val maxOffsetY = (viewportHeight * currentScale - viewportHeight) / 2f
 
-                offset = Offset(
+                currentOffset = Offset(
                     x = newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
                     y = newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
                 )
             } else {
-                offset = Offset.Zero
+                currentOffset = Offset.Zero
             }
 
-            zoomStates[selectedKey] = scale to offset
+            zoomStates[selectedKey] = currentScale to currentOffset
         }
 
-        // Main large image
-        val selectedPayload = data.payloads.firstOrNull { it.key == selectedKey }
-
-        if (selectedPayload != null) {
-            HomebaseImage(
-                imageData = HomebaseImageData(
+        selectedPayload?.let { payload ->
+            val currentZoomState = zoomStates[selectedKey] ?: (1f to Offset.Zero)
+            val imageData = remember(data.driveId, data.fileId, selectedKey, selectedPayloadIv) {
+                HomebaseImageData(
                     driveId = data.driveId,
                     fileId = data.fileId,
                     payloadKey = selectedKey,
-                    previewThumbnail = selectedPayload.previewThumbnail?.toEmbeddedThumb(),
-                    lastModified = selectedPayload.lastModified,
-                    isEncrypted = true,
-                ),
+                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+                    lastModified = payload.lastModified,
+                    keyHeader = KeyHeader(
+                        iv = selectedPayloadIv!!,
+                        aesKey = data.keyHeader.aesKey
+                    )
+                )
+            }
+            HomebaseImage(
+                imageData = imageData,
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer(
-                        scaleX = scale,
-                        scaleY = scale,
-                        translationX = offset.x,
-                        translationY = offset.y
+                        scaleX = currentZoomState.first,
+                        scaleY = currentZoomState.first,
+                        translationX = currentZoomState.second.x,
+                        translationY = currentZoomState.second.y
                     )
                     .transformable(state = state)
                     .pointerInput(Unit) {
@@ -167,7 +184,7 @@ fun FullScreenMediaViewer(
                         )
                     },
                 contentScale = ContentScale.Fit,
-                contentDescription = selectedPayload.descriptorContent,
+                contentDescription = payload.descriptorContent,
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedTransitionScope = sharedTransitionScope,
             )
@@ -226,7 +243,7 @@ fun FullScreenMediaViewer(
                         )
                     }
                 }, colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
                 )
             )
         }
@@ -243,7 +260,7 @@ fun FullScreenMediaViewer(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
                     .padding(16.dp)
             ) {
                 if (data.content.isNotBlank()) {
@@ -258,32 +275,43 @@ fun FullScreenMediaViewer(
                     LazyRow(
                         modifier = Modifier
                             .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+                        horizontalArrangement = Arrangement.spacedBy(
+                            16.dp,
+                            Alignment.CenterHorizontally
+                        )
                     ) {
                         items(data.payloads) { payload ->
-                            HomebaseImage(
-                                imageData = HomebaseImageData(
-                                    driveId = data.driveId,
-                                    fileId = data.fileId,
-                                    payloadKey = payload.key,
-                                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
-                                    lastModified = payload.lastModified,
-                                    isEncrypted = true,
-                                ),
-                                modifier = Modifier
-                                    .size(60.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .border(
-                                        width = if (payload.key == selectedKey) 2.dp else 0.dp,
-                                        color = if (payload.key == selectedKey) Color.White else Color.Unspecified,
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .clickable { selectedKey = payload.key },
-                                contentScale = ContentScale.Crop,
-                                contentDescription = payload.descriptorContent,
-                                animatedVisibilityScope = animatedVisibilityScope,
-                                sharedTransitionScope = null,
-                            )
+                            payload.iv?.let { iv ->
+                                val payloadIv = Base64.decode(iv)
+                                HomebaseImage(
+                                    imageData = HomebaseImageData(
+                                        driveId = data.driveId,
+                                        fileId = data.fileId,
+                                        payloadKey = payload.key,
+                                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+                                        lastModified = payload.lastModified,
+                                        keyHeader = KeyHeader(
+                                            iv = payloadIv,
+                                            aesKey = data.keyHeader.aesKey
+                                        )
+                                    ),
+                                    modifier = Modifier
+                                        .size(60.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(
+                                            width = if (payload.key == selectedKey) 2.dp else 0.dp,
+                                            color = if (payload.key == selectedKey) Color.White else Color.Unspecified,
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable {
+                                            selectedKey = payload.key
+                                        },
+                                    contentScale = ContentScale.Crop,
+                                    contentDescription = payload.descriptorContent,
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                    sharedTransitionScope = null,
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
@@ -291,7 +319,7 @@ fun FullScreenMediaViewer(
                 Row(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    IconButton(onClick = { onShare(data.messageId, data.selectedPayloadKey)}) {
+                    IconButton(onClick = { onShare(data.messageId, data.selectedPayloadKey) }) {
                         Icon(Icons.Default.Share, contentDescription = null)
                     }
                 }

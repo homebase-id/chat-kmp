@@ -1,6 +1,7 @@
 package id.homebase.chat
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
@@ -36,5 +37,6 @@ data class FullScreenMessageData(
     val fileId: Uuid,
     val driveId: Uuid,
     val payloads: List<PayloadDescriptor>,
+    val keyHeader: KeyHeader,
     val selectedPayloadKey: String,
 )

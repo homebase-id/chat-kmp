@@ -8,10 +8,10 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageReaderService
 import id.homebase.chat.services.ChatMessageSenderService
-import id.homebase.chat.services.convo.ContactService
-import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationWriterService
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
@@ -288,6 +288,7 @@ class ChatListViewModel(
                                             driveId = chatTargetDrive.alias,
                                             payloads = action.message.payloads,
                                             selectedPayloadKey = action.payloadKey,
+                                            keyHeader = action.message.keyHeader,
                                         )
                                     )
                                 }

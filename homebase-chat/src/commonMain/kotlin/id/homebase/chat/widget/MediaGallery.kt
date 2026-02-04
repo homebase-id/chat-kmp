@@ -66,10 +66,6 @@ fun MediaGallery(
     ),
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
-    shape: Shape = RoundedCornerShape(
-        topStart = Dimens.Message.cornerRadius,
-        topEnd = Dimens.Message.cornerRadius
-    ),
 ) {
     if (payloads.isEmpty()) return
 
@@ -106,6 +102,8 @@ fun MediaGallery(
                     keyHeader = keyHeader,
                     onMediaClick = onMediaClick,
                     onMediaLongPress = onMediaLongPress,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
 
             3 ->
@@ -116,6 +114,8 @@ fun MediaGallery(
                     keyHeader = keyHeader,
                     onMediaClick = onMediaClick,
                     onMediaLongPress = onMediaLongPress,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
 
             else ->
@@ -126,6 +126,8 @@ fun MediaGallery(
                     keyHeader = keyHeader,
                     onMediaClick = onMediaClick,
                     onMediaLongPress = onMediaLongPress,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
         }
     }
