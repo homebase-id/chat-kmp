@@ -8,18 +8,16 @@ import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
-import id.homebase.api.client.drives.writeBytesToTempFile
 import id.homebase.api.common.time.UnixTimeUtc
-import id.homebase.api.crypto.ByteArrayUtil
-import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.convo.ConversationService
 import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
     private val driveUploadProvider: DriveUploadProvider,
     private val conversationService: ConversationService,
-    private val fileOperationsProvider: FileOperationsProvider,
+    private val payloadBundleEncryptionService: PayloadBundleEncryptionService
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -51,7 +49,6 @@ class ChatMessageSenderService(
             conversationId = conversationId,
             content =
                 MessageAppData(
-                    replyId = replyTo.replyUniqueId,
                     replyPreview = replyTo,
                     message = messageText,
                     deliveryStatus = ChatDeliveryStatus.Sent.value
@@ -71,57 +68,9 @@ class ChatMessageSenderService(
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationService.getRecipients(conversationId)
 
-        val encryptedPayloads =
-            payloadBundle?.payloads?.map { payload ->
-
-                val encryptedFile =
-                    if (payload.contentType.startsWith("video/")) {
-                        encodeAndEncryptVideo(
-                            inputFile = payload.filePath,
-                            keyHeader = keyHeader
-                        )
-                    } else {
-                        encryptFile(
-                            inputFile = payload.filePath,
-                            keyHeader = keyHeader
-                        )
-                    }
-
-                payload.copy(
-                    filePath = encryptedFile.filePath,
-                    iv = encryptedFile.iv,
-                    isPreEncrypted = true
-                )
-            } ?: emptyList()
-
-        val payloadIvByKey: Map<String, ByteArray> =
-            encryptedPayloads.associate { payload ->
-                payload.key to (payload.iv ?: error("Missing IV for payload ${payload.key}"))
-            }
-
-        val encryptedThumbnails =
-            payloadBundle?.thumbnails?.map { thumb ->
-
-                if (thumb.skipEncryption) {
-                    thumb
-                } else {
-                    val payloadIv =
-                        payloadIvByKey[thumb.key]
-                            ?: error("No payload IV found for thumbnail key=${thumb.key}")
-
-                    val encryptedBytes =
-                        keyHeader.encryptDataAes(
-                            data = thumb.thumbnailBytes,
-                            customIv = payloadIv
-                        )
-
-                    thumb.copy(
-                        thumbnailBytes = encryptedBytes,
-                        skipEncryption = true
-                    )
-                }
-            } ?: emptyList()
-
+        val encryptedBundle = payloadBundleEncryptionService.encryptBundle(payloadBundle, keyHeader)
+        val encryptedPayloads = encryptedBundle.payloads
+        val encryptedThumbnails = encryptedBundle.thumbnails
 
         val metadata =
             UploadFileMetadata(
@@ -135,7 +84,7 @@ class ChatMessageSenderService(
                         userDate = UnixTimeUtc.now().milliseconds,
                         content = OdinSystemSerializer.serialize(content),
                         previewThumbnail =
-                            payloadBundle
+                            encryptedBundle
                                 ?.previewThumbs
                                 ?.minByOrNull { it.pixelWidth }
                     )
@@ -176,58 +125,6 @@ class ChatMessageSenderService(
 
         error("Failed to send chat message")
     }
-
-    private suspend fun encryptFile(
-        inputFile: String,
-        keyHeader: KeyHeader
-    ): EncryptedFileResult {
-
-        // Read full file from disk
-        val plainBytes = fileOperationsProvider.readFileBytes(inputFile)
-
-        // Per-payload IV
-        val payloadIv = ByteArrayUtil.getRndByteArray(16)
-
-        // Encrypt with shared AES key + payload IV
-        val encryptedBytes =
-            keyHeader.encryptDataAes(
-                data = plainBytes,
-                customIv = payloadIv
-            )
-
-        // Write encrypted payload to temp file
-        val encryptedPath =
-            writeBytesToTempFile(
-                bytes = encryptedBytes,
-                prefix = "enc",
-                suffix = ".jpg.encrypted"
-            )
-
-        return EncryptedFileResult(
-            filePath = encryptedPath,
-            iv = payloadIv
-        )
-    }
-
-
-    private suspend fun encodeAndEncryptVideo(
-        inputFile: String,
-        keyHeader: KeyHeader
-    ): EncryptedFileResult {
-
-        //TODO: BIshwa, we call encoding and encryption here
-//        val encodedVideoPath = videoEncoder.encodeToFile(inputFile) // your existing encoder
-//
-//        return encryptFile(
-//            inputFile = encodedVideoPath,
-//            keyHeader = keyHeader
-//        )
-
-
-        // for now
-        return encryptFile(inputFile, keyHeader)
-    }
-
 }
 
 data class EncryptedFileResult(

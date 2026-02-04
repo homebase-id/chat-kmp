@@ -42,19 +42,10 @@ class DriveSync(
     private var batchSize = 500 // Balanced starting point
     private var fileHeaderProcessor = MainIndexMetaHelpers.HomebaseFileProcessor(databaseManager)
     private var job: Job? = null
-    // Create companion object that prevents the creation of duplicate drives
-    companion object {
-        val drives = mutableListOf<Uuid>()
-    }
 
     //TODO: Consider having a (readable) "last modified" which holds the largest timestamp of last-modified
 
     init {
-        if (drives.contains(driveId)) {
-            throw IllegalStateException("Another instance with the same driveId is already connected.")
-        }
-        drives.add(driveId);
-
         // Load cursor from database
         val cursorStorage = CursorStorage(databaseManager, driveId)
         cursor = cursorStorage.loadCursor()
@@ -164,8 +155,7 @@ class DriveSync(
 
                     if (!queryBatchResponse.hasMoreRows)
                         break
-                }
-                catch (e: Exception) {
+                } catch (e: Exception) {
                     Logger.e("Exception on drive $driveId message ${e.message}")
                     eventBus.emit(
                         BackendEvent.DriveEvent.Failed(
@@ -182,7 +172,7 @@ class DriveSync(
                 if (durationMs.duration.inWholeMilliseconds > 2000)
                     batchSize = ((batchSize * 3) / 4).coerceIn(50, 1000)
                 else
-                    batchSize = (batchSize * 2).coerceIn(50,1000)
+                    batchSize = (batchSize * 2).coerceIn(50, 1000)
 
                 Logger.d("Batch size: $batchWas, took ${durationMs.duration.inWholeMilliseconds}ms, now adjusted to: $batchSize")
             }

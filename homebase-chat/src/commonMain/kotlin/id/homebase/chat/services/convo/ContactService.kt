@@ -1,4 +1,4 @@
-package id.homebase.chat.services
+package id.homebase.chat.services.convo
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
@@ -100,9 +100,10 @@ class ContactService(
 
         return ContactUiModel(
             id = uid,
+            odinId = parsedContact.odinId
+                ?: throw IllegalStateException("why is the odin id missing?"),
             name = parsedContact.name.displayName,
             avatarInitials = "TD",
-            avatarUrl = ""
         )
     }
 }

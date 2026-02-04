@@ -36,6 +36,7 @@ import id.homebase.resources.language_english_us
 import id.homebase.resources.language_system
 import id.homebase.resources.settings
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.log
 
 @Composable
 fun SettingsScreen(
@@ -117,7 +118,7 @@ fun SettingsUi(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Log out",
+                        text = "Log out ${uiState.loggedInDomain}",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -182,7 +183,7 @@ private fun getStringResourceForLanguage(language: Language): org.jetbrains.comp
 fun SettingsUiPreview() {
     HomebaseTheme {
         SettingsUi(
-            uiState = SettingsUiState(),
+            uiState = SettingsUiState(loggedInDomain = "your.identity.id"),
             onAction = {}
         )
     }

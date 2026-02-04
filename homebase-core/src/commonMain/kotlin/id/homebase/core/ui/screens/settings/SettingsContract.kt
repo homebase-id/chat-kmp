@@ -8,6 +8,7 @@ data class SettingsUiState(
     val selectedLanguage: Language = Language.SYSTEM,
     val availableLanguages: List<Language> = Language.entries,
     val uiEvent: SettingsUiEvent? = null,
+    val loggedInDomain: String
 )
 
 /** All possible user actions on Settings screen. */

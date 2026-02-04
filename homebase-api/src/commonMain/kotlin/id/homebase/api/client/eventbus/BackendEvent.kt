@@ -4,7 +4,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.drives.HomebaseFile
 import kotlin.uuid.Uuid
 
-sealed interface  BackendEvent {
+sealed interface BackendEvent {
     enum class SyncSource {
         DriveSync,
         WebSocket
@@ -16,7 +16,7 @@ sealed interface  BackendEvent {
         val driveId: Uuid  // Common property for all sync events (implement in each data class)
 
         data class Started(
-            override val driveId : Uuid,
+            override val driveId: Uuid,
         ) : DriveEvent // Only raised by Drive.sync()
 
         data class Completed(
@@ -31,7 +31,7 @@ sealed interface  BackendEvent {
         ) : DriveEvent
 
         data class BatchReceived(
-            override val driveId : Uuid,
+            override val driveId: Uuid,
             val totalCount: Int,
             val batchCount: Int,
             val latestModified: UnixTimeUtc?,
@@ -54,8 +54,8 @@ sealed interface  BackendEvent {
 
         // When beginning to send an item we guarantee itemStarted event (0%)
         data class ItemStarted(
-            val driveId : Uuid,
-            val fileId : Uuid,
+            val driveId: Uuid,
+            val fileId: Uuid,
             val totalBytes: Long? = null
         ) : OutboxEvent  // Only raised by Drive.sync()
 
@@ -69,8 +69,8 @@ sealed interface  BackendEvent {
 
         // When the item has been delivered we guarantee itemCompleted event (100%)
         data class ItemCompleted(
-            val driveId : Uuid,
-            val fileId : Uuid
+            val driveId: Uuid,
+            val fileId: Uuid
         ) : OutboxEvent  // Only raised by Drive.sync()
 
     }

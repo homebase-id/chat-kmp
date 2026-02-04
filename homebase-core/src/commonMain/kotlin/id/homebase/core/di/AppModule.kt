@@ -6,14 +6,17 @@ import id.homebase.chat.ChatListViewModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageReaderService
 import id.homebase.chat.services.ChatMessageSenderService
-import id.homebase.chat.services.ContactService
-import id.homebase.chat.services.ConversationService
+import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.ConversationWriterService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
 import org.koin.core.module.Module
+import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
@@ -23,8 +26,10 @@ val appModule = module {
 
     singleOf(::AuthConnectionCoordinator)
 
+    factoryOf(::PayloadBundleEncryptionService)
     singleOf(::ContactService)
     singleOf(::ConversationService)
+    singleOf(::ConversationWriterService)
     singleOf(::ChatMessageReaderService)
     singleOf(::ChatMessageSenderService)
     singleOf(::HomebaseImageLoader)

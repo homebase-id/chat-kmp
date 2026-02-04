@@ -1,4 +1,4 @@
-package id.homebase.chat.services
+package id.homebase.chat.services.convo
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
@@ -11,48 +11,21 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.ChatMessageReaderService
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.config.chatTargetDrive
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
-
-/**
- * File type constant used to identify conversation files in the chat drive.
- *
- * Used to filter and recognize HomebaseFile entries that represent chat conversations (for example
- * when processing drive batches or querying storage).
- */
-const val CHAT_CONVERSATION_FILE_TYPE: Int = 8888
-
-/**
- * Constant UUID used for the "conversation with yourself" special-case.
- *
- * This id is treated as a static conversation identifier when the user chats with their own
- * account.
- */
-const val ConversationWithYourselfId = "e4ef2382-ab3c-405d-a8b5-ad3e09e980dd"
-
-/**
- * Key stored in the file header to indicate that the conversation's JSON content is incomplete and
- * additional data should be loaded from payloads.
- *
- * If this key is absent, the header's jsonContent is assumed to be complete.
- */
-const val CONVERSATION_PAYLOAD_KEY = "convo_pk"
-
-/** PayloadKey for conversation image. Used for group Chats */
-const val CONVERSATION_IMAGE_KEY = "convo_img"
+import kotlin.uuid.Uuid
 
 class ConversationService(
-        private val credentialsManager: CredentialsManager,
-        private val dbm: DatabaseManager,
-        private val eventBus: EventBus,
-        private val scope: CoroutineScope
+    private val credentialsManager: CredentialsManager,
+    private val dbm: DatabaseManager,
+    private val eventBus: EventBus,
+    private val scope: CoroutineScope
 ) {
 
     private val chatDrive = chatTargetDrive.alias
@@ -70,6 +43,7 @@ class ConversationService(
                     is BackendEvent.DriveEvent.Started -> {
                         isSyncing = true
                     }
+
                     is BackendEvent.DriveEvent.Completed -> {
                         isSyncing = false
                         // After the drive has been synchronized we fetch all conversations once
@@ -79,31 +53,34 @@ class ConversationService(
                         // conversations
                         // so that everything in the client is up to date.
                     }
+
                     is BackendEvent.DriveEvent.Failed -> {
                         if (event.source == BackendEvent.SyncSource.DriveSync) {
                             isSyncing = false
+                            Logger.e { "Failed during drive sync" }
                             refresh()
                             // Optionally handle failure, e.g., log or partial refresh
                         }
                     }
+
                     is BackendEvent.DriveEvent.BatchReceived -> {
                         if (!isSyncing) {
                             val conversationFiles =
-                                    event.batchData.filter {
-                                        it.fileMetadata.appData.fileType ==
-                                                ChatProtocol.ConversationFileType
-                                    }
+                                event.batchData.filter {
+                                    it.fileMetadata.appData.fileType ==
+                                            ChatProtocol.ConversationFileType
+                                }
                             val messageFiles =
-                                    event.batchData.filter {
-                                        it.fileMetadata.appData.fileType ==
-                                                ChatProtocol.MessageFileType
-                                    }
+                                event.batchData.filter {
+                                    it.fileMetadata.appData.fileType ==
+                                            ChatProtocol.MessageFileType
+                                }
 
                             if (!conversationFiles.isEmpty())
-                                    processConversationBatchIncrementally(conversationFiles)
+                                processConversationBatchIncrementally(conversationFiles)
 
                             if (!messageFiles.isEmpty())
-                                    processMessageBatchIncrementally(messageFiles)
+                                processMessageBatchIncrementally(messageFiles)
                         }
                         // Ignore during sync; refresh() will cover it post-Completed
                     }
@@ -112,21 +89,41 @@ class ConversationService(
         }
     }
 
-    suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
+    private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
         if (messageFiles.isEmpty()) throw IllegalArgumentException("It can't be empty")
 
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingMessages =
-                messageFiles.mapNotNull { file -> ChatMessageReaderService.mapToMessageData(file) }
+            messageFiles.mapNotNull { file ->
+                ChatMessageReaderService.Companion.mapToMessageData(
+                    file
+                )
+            }
 
         if (messageFiles.size != incomingMessages.size)
-                throw IllegalArgumentException("Size mismatch - conversion problem")
+            throw IllegalArgumentException("Size mismatch - conversion problem")
 
         for (m in incomingMessages) {
             val matchingConversation = _conversations.value.find { it.id == m.conversationId }
-            if (matchingConversation != null) {
+            if (matchingConversation == null) {
+                val emptyConversation = ConversationUiModel(
+                    id = m.conversationId,
+                    name = "Pending...",
+                    lastMessage = m.content,
+                    timestamp = m.created,
+                    unreadCount = 0,
+                    avatarTiny = null,
+                    // Conversation has an image
+                    avatarInitials = "AB",
+                    avatarUrl = "",
+                    participants = emptyList(),
+                    lastRead = UnixTimeUtc(0).toInstant()
+                )
+
+                insertNewConversation(emptyConversation)
+            } else {
                 updateConversationFromNewMessage(matchingConversation, m)
-            } else Logger.e { "BOOM" }
+            }
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
@@ -134,7 +131,10 @@ class ConversationService(
         _conversations.value = sortedList
     }
 
-    suspend fun updateConversationFromNewMessage(c: ConversationUiModel, m: MessageUiModel) {
+    private suspend fun updateConversationFromNewMessage(
+        c: ConversationUiModel,
+        m: MessageUiModel
+    ) {
         if (m.created > c.timestamp) {
             if (!m.isEdited) c.unreadCount++
             c.timestamp = m.created
@@ -145,14 +145,17 @@ class ConversationService(
         // ${c.id}")
     }
 
-    suspend fun processConversationBatchIncrementally(conversationFiles: List<HomebaseFile>) {
+    private suspend fun processConversationBatchIncrementally(conversationFiles: List<HomebaseFile>) {
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingConversations = conversationFiles.map { file -> mapToConversation(file, null) }
 
         for (c in incomingConversations) {
             val matchingConversation = _conversations.value.find { it.id == c.id }
-            if (matchingConversation == null) insertNewConversation(c)
-            else updateConversation(matchingConversation, c)
+            if (matchingConversation == null) {
+                insertNewConversation(c)
+            } else {
+                updateConversation(matchingConversation, c)
+            }
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
@@ -160,7 +163,7 @@ class ConversationService(
         _conversations.value = sortedList
     }
 
-    fun insertNewConversation(conversation: ConversationUiModel) {
+    private fun insertNewConversation(conversation: ConversationUiModel) {
         // We should optimize later to not copy the full list
         val currentList = _conversations.value.toMutableList()
         currentList.add(conversation)
@@ -168,22 +171,22 @@ class ConversationService(
         _conversations.value = currentList
     }
 
-    fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
+    private fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
         // Update the existing conversation
         if (incoming.timestamp >= existing.timestamp) {
             val updatedConvo =
-                    existing.copy(
-                            name = incoming.name,
-                            avatarTiny = incoming.avatarTiny,
-                            avatarUrl = incoming.avatarUrl,
-                            avatarInitials = incoming.avatarInitials,
-                            participants = incoming.participants,
-                            timestamp = incoming.timestamp,
-                            lastMessage = incoming.lastMessage
-                    )
+                existing.copy(
+                    name = incoming.name,
+                    avatarTiny = incoming.avatarTiny,
+                    avatarUrl = incoming.avatarUrl,
+                    avatarInitials = incoming.avatarInitials,
+                    participants = incoming.participants,
+                    timestamp = incoming.timestamp,
+                    lastMessage = incoming.lastMessage
+                )
             // We should optimize later to not  map the full list
             _conversations.value =
-                    _conversations.value.map { if (it.id == existing.id) existing else it }
+                _conversations.value.map { if (it.id == existing.id) existing else it }
         }
     }
 
@@ -228,16 +231,16 @@ class ConversationService(
         // You must pass in the last message of the conversation to generate a properly
         // populated Conversation object (we fetch data like last 40 chars, message time, etc)
         public suspend fun mapToConversation(
-                conversation: HomebaseFile,
-                lastMsg: HomebaseFile?
+            conversation: HomebaseFile,
+            lastMsg: HomebaseFile?
         ): ConversationUiModel {
             val metadata = conversation.fileMetadata
             val appData = metadata.appData
             val appDataObj =
-                    OdinSystemSerializer.deserialize<ConversationAppDataJson>(appData.content ?: "")
+                OdinSystemSerializer.deserialize<ConversationAppDataJson>(appData.content ?: "")
 
             if (appData.fileType != ChatProtocol.ConversationFileType)
-                    throw IllegalArgumentException("HomebaseFile must be of type Chat_conversation")
+                throw IllegalArgumentException("HomebaseFile must be of type Chat_conversation")
 
             if (appData.content == null) throw IllegalArgumentException("AppData is empty")
 
@@ -245,28 +248,28 @@ class ConversationService(
             val localAppData = metadata.localAppData?.content
             if (localAppData != null) {
                 localAppDataObj =
-                        OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(localAppData)
+                    OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(localAppData)
             }
 
             val result =
-                    ConversationUiModel(
-                            id = appData.uniqueId
-                                            ?: throw Exception("missing unique id, data error"),
-                            name = appDataObj.title ?: "",
-                            lastMessage = " ", // use the ConversationLastMessageContent
-                            timestamp = UnixTimeUtc(0).toInstant(),
-                            unreadCount = 0,
-                            avatarTiny = appData.previewThumbnail, // Populated only if the group
-                            // Conversation has an image
-                            avatarInitials = "AB",
-                            avatarUrl = "",
-                            participants = appDataObj.recipients,
-                            lastRead = localAppDataObj?.lastReadTime?.toInstant()
-                                            ?: UnixTimeUtc(0).toInstant()
-                    )
+                ConversationUiModel(
+                    id = appData.uniqueId
+                        ?: throw Exception("missing unique id, data error"),
+                    name = appDataObj.title ?: "",
+                    lastMessage = " ", // use the ConversationLastMessageContent
+                    timestamp = UnixTimeUtc(0).toInstant(),
+                    unreadCount = 0,
+                    avatarTiny = appData.previewThumbnail, // Populated only if the group
+                    // Conversation has an image
+                    avatarInitials = "AB",
+                    avatarUrl = "",
+                    participants = appDataObj.recipients,
+                    lastRead = localAppDataObj?.lastReadTime?.toInstant()
+                        ?: UnixTimeUtc(0).toInstant()
+                )
 
             if (lastMsg != null) {
-                val message = ChatMessageReaderService.mapToMessageData(lastMsg)
+                val message = ChatMessageReaderService.Companion.mapToMessageData(lastMsg)
                 if (message != null) {
                     result.updateWithLatestMessage(message)
                 }
@@ -276,23 +279,3 @@ class ConversationService(
         }
     }
 }
-
-@Serializable
-data class ConversationAppDataJson(
-        val title: String? = "",
-        val recipient: String? = "",
-        val version: Int = 0,
-        val recipients: List<String> = listOf()
-)
-
-@Serializable
-data class ConversationLocalAppDataJson(
-        /**
-         * DEPRECATED: But we still needed for backwards compatibility. Remove it after April Launch
-         * 2026
-         */
-        @Transient
-        val conversationId: Uuid =
-                Uuid.NIL, // TODO: Obsolete, ignore. Same as uniqueId for conversation
-        val lastReadTime: UnixTimeUtc?
-)
