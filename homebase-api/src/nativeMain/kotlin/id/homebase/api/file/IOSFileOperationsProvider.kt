@@ -5,36 +5,44 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.io.Buffer
+import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSData
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSTemporaryDirectory
+import platform.Foundation.NSUserDomainMask
 import platform.Foundation.dataWithContentsOfFile
 import platform.posix.memcpy
 
 class IOSFileOperationsProvider : FileOperationsProvider {
     @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
-    override fun openFileInput(path: String): InputProvider =
-        InputProvider {
-            val data = NSData.dataWithContentsOfFile(path)
-                ?: error("Unable to read file at $path")
+    override fun openFileInput(path: String): InputProvider = InputProvider {
+        val data = NSData.dataWithContentsOfFile(path) ?: error("Unable to read file at $path")
 
-            val bytes = ByteArray(data.length.toInt())
-            bytes.usePinned { pinned ->
-                memcpy(pinned.addressOf(0), data.bytes, data.length)
-            }
+        val bytes = ByteArray(data.length.toInt())
+        bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
 
-            Buffer().apply {
-                write(bytes)
-            }
-        }
+        Buffer().apply { write(bytes) }
+    }
 
     @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
     override suspend fun readFileBytes(path: String): ByteArray {
-        val data = NSData.dataWithContentsOfFile(path)
-            ?: error("Unable to read file at $path")
+        val data = NSData.dataWithContentsOfFile(path) ?: error("Unable to read file at $path")
 
         val bytes = ByteArray(data.length.toInt())
-        bytes.usePinned { pinned ->
-            memcpy(pinned.addressOf(0), data.bytes, data.length)
-        }
+        bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
         return bytes
+    }
+
+    override fun getCacheDirectory(): String {
+        val fileManager = NSFileManager.defaultManager
+        val cacheUrl =
+                fileManager.URLForDirectory(
+                        directory = NSCachesDirectory,
+                        inDomain = NSUserDomainMask,
+                        appropriateForURL = null,
+                        create = true,
+                        error = null
+                )
+        return cacheUrl?.path ?: NSTemporaryDirectory()
     }
 }

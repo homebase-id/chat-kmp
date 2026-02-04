@@ -64,7 +64,7 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
     suspend fun loadThumbnail(data: HomebaseImageData, targetSize: ImageSize): CachedImage? {
         // Check pending file first
         if (data.isPending) {
-            return loadPendingFile(data) // TODO: <-- this seems unnecessary with driveCache
+            return loadPendingFile(data)
         }
 
         // Skip thumbnail fetch for SVG/GIF (load full payload instead)
@@ -131,7 +131,6 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
     }
 
     /** Load pending/local file from filesystem */
-    // TODO: This looks like a leftover? The driveFileProviderCache saves a cache on Disk
     private suspend fun loadPendingFile(data: HomebaseImageData): CachedImage? {
         val file = data.pendingFile ?: return null
 

@@ -8,27 +8,29 @@ import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.PayloadOperationOptions
+import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.http.Headers
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlin.collections.mutableMapOf
+import kotlin.uuid.Uuid
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.SYSTEM
-import kotlin.uuid.Uuid
-
 
 class DriveFileProviderCached(
-    httpClient: HttpClient,
-    credentialsManager: CredentialsManager
+        httpClient: HttpClient,
+        credentialsManager: CredentialsManager,
+        fileOperationsProvider: FileOperationsProvider
 ) {
     private val delegate: DriveFileHttpProvider =
-        DriveFileHttpProvider(httpClient, credentialsManager)
+            DriveFileHttpProvider(httpClient, credentialsManager)
 
     private val fileSystem = FileSystem.SYSTEM
+    private val directory = fileOperationsProvider.getCacheDirectory()
 
     private val payloadSemaphore = Semaphore(1)
     private val thumbnailSemaphore = Semaphore(30)
@@ -42,8 +44,8 @@ class DriveFileProviderCached(
     private val payloadDiskKache by lazy {
         kotlinx.coroutines.runBlocking {
             FileKache(
-                directory = "homebase-payloads",
-                maxSize = 200L * 1024L * 1024L // 200MB
+                    directory = "$directory/homebase-payloads",
+                    maxSize = 200L * 1024L * 1024L // 200MB
             )
         }
     }
@@ -51,8 +53,8 @@ class DriveFileProviderCached(
     private val thumbDiskKache by lazy {
         kotlinx.coroutines.runBlocking {
             FileKache(
-                directory = "homebase-thumbs",
-                maxSize = 300L * 1024L * 1024L  // 300MB
+                    directory = "$directory/homebase-thumbs",
+                    maxSize = 300L * 1024L * 1024L // 300MB
             )
         }
     }
@@ -62,19 +64,13 @@ class DriveFileProviderCached(
     // ================================================================
 
     suspend fun getPayloadBytesRaw(
-        driveId: Uuid,
-        fileId: Uuid,
-        key: String,
-        options: PayloadOperationOptions = PayloadOperationOptions()
+            driveId: Uuid,
+            fileId: Uuid,
+            key: String,
+            options: PayloadOperationOptions = PayloadOperationOptions()
     ): ByteApiResponse {
         val cacheKey =
-            buildPayloadCacheKey(
-                driveId,
-                fileId,
-                key,
-                options.chunkStart,
-                options.chunkLength
-            )
+                buildPayloadCacheKey(driveId, fileId, key, options.chunkStart, options.chunkLength)
 
         // 1️⃣ Check in-memory 404 cache first
         if (cacheKey in notFoundCache) {
@@ -89,9 +85,7 @@ class DriveFileProviderCached(
         // 2️⃣ Fetch from network but lock to make sure that we don't load the same
         // resource twice over the network
         val mutex: Mutex
-        lock.withLock {
-            mutex = keyLocks.getOrPut(cacheKey) { Mutex() }
-        }
+        lock.withLock { mutex = keyLocks.getOrPut(cacheKey) { Mutex() } }
 
         return mutex.withLock {
             // Re-try caches JIC there's a thread race
@@ -105,13 +99,7 @@ class DriveFileProviderCached(
             // we allow up to 3 concurrent semaphore payloads over the network
             return payloadSemaphore.withPermit {
                 try {
-                    val result =
-                        delegate.getPayloadBytesRawNetwork(
-                            driveId,
-                            fileId,
-                            key,
-                            options
-                        )
+                    val result = delegate.getPayloadBytesRawNetwork(driveId, fileId, key, options)
 
                     if (result.status == 404) {
                         // 404 case - cache that file doesn't exist in memory only
@@ -132,82 +120,69 @@ class DriveFileProviderCached(
         } // Mutex.lock
     }
 
-
     suspend fun getPayloadBytesDecrypted(
-        driveId: Uuid,
-        fileId: Uuid,
-        key: String,
-        keyHeader: KeyHeader,
-        chunkStart: Long? = null,
-        chunkLength: Long? = null
+            driveId: Uuid,
+            fileId: Uuid,
+            key: String,
+            keyHeader: KeyHeader,
+            chunkStart: Long? = null,
+            chunkLength: Long? = null
     ): BytesResponse? {
         val raw =
-            getPayloadBytesRaw(
-                driveId = driveId,
-                fileId = fileId,
-                key = key,
-                options = PayloadOperationOptions(
-                    chunkStart = chunkStart,
-                    chunkLength = chunkLength
+                getPayloadBytesRaw(
+                        driveId = driveId,
+                        fileId = fileId,
+                        key = key,
+                        options =
+                                PayloadOperationOptions(
+                                        chunkStart = chunkStart,
+                                        chunkLength = chunkLength
+                                )
                 )
-            )
 
         if (raw.status == 404) return null
 
-        val rangeResult =
-            DriveFileHelpers.getRangeHeader(chunkStart, chunkLength)
+        val rangeResult = DriveFileHelpers.getRangeHeader(chunkStart, chunkLength)
 
         val decryptedBytes =
-            if (rangeResult.updatedChunkStart != null) {
-                val decrypted =
-                    delegate.decryptChunkedBytes(
-                        raw.headers,
-                        raw.bytes,
-                        keyHeader,
-                        startOffset = rangeResult.startOffset,
-                        chunkStart = (chunkStart ?: 0).toInt()
-                    )
+                if (rangeResult.updatedChunkStart != null) {
+                    val decrypted =
+                            delegate.decryptChunkedBytes(
+                                    raw.headers,
+                                    raw.bytes,
+                                    keyHeader,
+                                    startOffset = rangeResult.startOffset,
+                                    chunkStart = (chunkStart ?: 0).toInt()
+                            )
 
-                val sliceEnd =
-                    if (chunkLength != null && chunkStart != null) {
-                        (chunkLength - chunkStart).toInt()
-                    } else {
-                        decrypted.size
-                    }
+                    val sliceEnd =
+                            if (chunkLength != null && chunkStart != null) {
+                                (chunkLength - chunkStart).toInt()
+                            } else {
+                                decrypted.size
+                            }
 
-                decrypted.sliceArray(0 until minOf(sliceEnd, decrypted.size))
-            } else {
-                delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
-            }
+                    decrypted.sliceArray(0 until minOf(sliceEnd, decrypted.size))
+                } else {
+                    delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
+                }
 
-        return BytesResponse(
-            bytes = decryptedBytes,
-            contentType = raw.contentType
-        )
+        return BytesResponse(bytes = decryptedBytes, contentType = raw.contentType)
     }
-
 
     // ==============================================================
     // -------------------- CACHED THUMB METHODS --------------------
     // ==============================================================
 
     suspend fun getThumbBytesRaw(
-        driveId: Uuid,
-        fileId: Uuid,
-        payloadKey: String,
-        width: Int,
-        height: Int,
-        lastModified: Long? = null
+            driveId: Uuid,
+            fileId: Uuid,
+            payloadKey: String,
+            width: Int,
+            height: Int,
+            lastModified: Long? = null
     ): ByteApiResponse {
-        val cacheKey =
-            buildThumbCacheKey(
-                driveId,
-                fileId,
-                payloadKey,
-                width,
-                height,
-                lastModified
-            )
+        val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
 
         // 1️⃣ Check in-memory 404 cache first
         if (cacheKey in notFoundCache) {
@@ -222,9 +197,7 @@ class DriveFileProviderCached(
         // 2️⃣ Fetch from network but lock to make sure that we don't load the same
         // resource twice over the network
         val mutex: Mutex
-        lock.withLock {
-            mutex = keyLocks.getOrPut(cacheKey) { Mutex() }
-        }
+        lock.withLock { mutex = keyLocks.getOrPut(cacheKey) { Mutex() } }
 
         return mutex.withLock {
             // Re-try caches JIC there's a thread race
@@ -239,14 +212,14 @@ class DriveFileProviderCached(
             return thumbnailSemaphore.withPermit {
                 try {
                     val result =
-                        delegate.getThumbBytesRawNetwork(
-                            driveId,
-                            fileId,
-                            payloadKey,
-                            width,
-                            height,
-                            lastModified
-                        )
+                            delegate.getThumbBytesRawNetwork(
+                                    driveId,
+                                    fileId,
+                                    payloadKey,
+                                    width,
+                                    height,
+                                    lastModified
+                            )
 
                     if (result.status == 404) {
                         // 404 case - cache that file doesn't exist in memory only
@@ -267,45 +240,37 @@ class DriveFileProviderCached(
         } // Mutex.lock
     }
 
-
     suspend fun getThumbBytesDecrypted(
-        driveId: Uuid,
-        fileId: Uuid,
-        payloadKey: String,
-        keyHeader: KeyHeader,
-        width: Int,
-        height: Int,
-        lastModified: Long? = null
+            driveId: Uuid,
+            fileId: Uuid,
+            payloadKey: String,
+            keyHeader: KeyHeader,
+            width: Int,
+            height: Int,
+            lastModified: Long? = null
     ): BytesResponse? {
         val raw =
-            getThumbBytesRaw(
-                driveId = driveId,
-                fileId = fileId,
-                payloadKey = payloadKey,
-                width = width,
-                height = height,
-                lastModified = lastModified
-            )
+                getThumbBytesRaw(
+                        driveId = driveId,
+                        fileId = fileId,
+                        payloadKey = payloadKey,
+                        width = width,
+                        height = height,
+                        lastModified = lastModified
+                )
 
         if (raw.status == 404) return null
 
         val decryptedBytes = delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
 
-        return BytesResponse(
-            bytes = decryptedBytes,
-            contentType = raw.contentType
-        )
+        return BytesResponse(bytes = decryptedBytes, contentType = raw.contentType)
     }
-
 
     // =================================================
     // -------------------- FILE IO --------------------
     // =================================================
 
-    private fun writeBytesResponse(
-        filePath: String,
-        value: ByteApiResponse
-    ): Boolean {
+    private fun writeBytesResponse(filePath: String, value: ByteApiResponse): Boolean {
         val path = filePath.toPath()
 
         fileSystem.write(path) {
@@ -319,9 +284,7 @@ class DriveFileProviderCached(
         return true
     }
 
-    private fun readBytesResponse(
-        filePath: String
-    ): ByteApiResponse {
+    private fun readBytesResponse(filePath: String): ByteApiResponse {
         val path = filePath.toPath()
 
         return fileSystem.read(path) {
@@ -338,38 +301,25 @@ class DriveFileProviderCached(
     // ====================================================
 
     private fun buildPayloadCacheKey(
-        driveId: Uuid,
-        fileId: Uuid,
-        key: String,
-        chunkStart: Long?,
-        chunkLength: Long?
+            driveId: Uuid,
+            fileId: Uuid,
+            key: String,
+            chunkStart: Long?,
+            chunkLength: Long?
     ): String =
-        listOf(
-            "payload",
-            driveId,
-            fileId,
-            key,
-            chunkStart ?: "full",
-            chunkLength ?: "full"
-        ).joinToString(":")
+            listOf("payload", driveId, fileId, key, chunkStart ?: "full", chunkLength ?: "full")
+                    .joinToString(":")
 
     private fun buildThumbCacheKey(
-        driveId: Uuid,
-        fileId: Uuid,
-        payloadKey: String,
-        width: Int,
-        height: Int,
-        lastModified: Long?
+            driveId: Uuid,
+            fileId: Uuid,
+            payloadKey: String,
+            width: Int,
+            height: Int,
+            lastModified: Long?
     ): String =
-        listOf(
-            "thumb",
-            driveId,
-            fileId,
-            payloadKey,
-            width,
-            height,
-            lastModified ?: "null"
-        ).joinToString(":")
+            listOf("thumb", driveId, fileId, payloadKey, width, height, lastModified ?: "null")
+                    .joinToString(":")
 
     suspend fun clearCaches() {
         payloadDiskKache.clear()

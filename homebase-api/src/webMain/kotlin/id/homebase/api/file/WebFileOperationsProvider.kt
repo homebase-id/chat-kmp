@@ -7,6 +7,7 @@ class WebFileOperationsProvider : FileOperationsProvider {
         TODO("Not yet implemented")
     }
 
-    override suspend fun readFileBytes(path: String): ByteArray =
-        TODO("Not yet implemented")
+    override suspend fun readFileBytes(path: String): ByteArray = TODO("Not yet implemented")
+
+    override fun getCacheDirectory(): String = "/tmp/homebase"
 }
