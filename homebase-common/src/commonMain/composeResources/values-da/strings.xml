@@ -7,6 +7,11 @@
     <string name="menu_back">Tilbage</string>
     <string name="expand">Udvid</string>
     <string name="collapse">Gør mindre</string>
+    <string name="delete">Slet</string>
+    <string name="save">Gem</string>
+    <string name="share">Del</string>
+    <string name="ok">Ok</string>
+    <string name="cancel">Annullér</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -60,5 +65,6 @@
     <string name="chat_message_options">Besked menu</string>
     <string name="chat_message_attachment_options">Vedhæftelses menu</string>
     <string name="chat_message_emoji_options">Emoji menu</string>
+    <string name="chat_message_delete_dialog_title">Slet den valgte besked?</string>
 
 </resources>
