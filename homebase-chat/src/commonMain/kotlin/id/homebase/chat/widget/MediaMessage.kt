@@ -8,6 +8,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+
+import id.homebase.api.client.KeyHeader
 import androidx.compose.ui.graphics.Shape
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -35,6 +37,7 @@ fun MediaMessage(
     fileId: Uuid,
     driveId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
+    keyHeader: KeyHeader,
     modifier: Modifier = Modifier,
     onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
@@ -57,6 +60,8 @@ fun MediaMessage(
                 driveId = driveId,
                 previewThumbnail = previewThumbnail
                     ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
+                keyHeader = keyHeader,
+
                 modifier =
                     widthModifier.heightIn(
                         min = Dimens.MediaBubble.minHeight,
@@ -79,6 +84,7 @@ fun MediaMessage(
                 fileId = fileId,
                 driveId = driveId,
                 previewThumbnail = previewThumbnail,
+                keyHeader = keyHeader,
                 modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 onMediaClick = onMediaClick,
                 onMediaLongPress = onMediaLongPress,

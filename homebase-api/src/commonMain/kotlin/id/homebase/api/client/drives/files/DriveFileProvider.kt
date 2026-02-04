@@ -12,6 +12,7 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.ServerFile
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.upload.TransferUploadStatus
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.*
@@ -104,11 +105,12 @@ public class DriveFileProvider(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
+        keyHeader: KeyHeader,
         chunkStart: Long? = null,
         chunkLength: Long? = null
     ): BytesResponse? {
         return driveCache.getPayloadBytesDecrypted(
-            driveId, fileId, key, chunkStart, chunkLength
+            driveId, fileId, key, keyHeader, chunkStart, chunkLength
         )
     }
 
@@ -116,12 +118,13 @@ public class DriveFileProvider(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,
+        keyHeader: KeyHeader,
         width: Int,
         height: Int,
         lastModified: Long? = null
     ): BytesResponse? {
         return driveCache.getThumbBytesDecrypted(
-            driveId, fileId, payloadKey, width, height, lastModified
+            driveId, fileId, payloadKey, keyHeader, width, height, lastModified
         )
     }
 

@@ -1,5 +1,6 @@
 package id.homebase.core.image
 
+import androidx.compose.runtime.key
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider
 import io.github.vinceglb.filekit.extension
@@ -49,9 +50,9 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
         return try {
             val bytes = Base64.Default.decode(preview.content)
             CachedImage(
-                    bytes = bytes,
-                    contentType = preview.contentType,
-                    size = ImageSize(preview.pixelWidth, preview.pixelHeight)
+                bytes = bytes,
+                contentType = preview.contentType,
+                size = ImageSize(preview.pixelWidth, preview.pixelHeight)
             )
         } catch (e: Exception) {
             Logger.e(TAG) { "Failed to decode preview thumbnail: ${e.message}" }
@@ -63,7 +64,7 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
     suspend fun loadThumbnail(data: HomebaseImageData, targetSize: ImageSize): CachedImage? {
         // Check pending file first
         if (data.isPending) {
-            return loadPendingFile(data) // TODO: <-- this seems unnecessary with driveCache
+            return loadPendingFile(data)
         }
 
         // Skip thumbnail fetch for SVG/GIF (load full payload instead)
@@ -74,20 +75,21 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
         // Fetch from server
         return try {
             val response =
-                    driveFileProvider.getThumbBytesDecrypted(
-                            driveId = data.driveId,
-                            fileId = data.fileId,
-                            payloadKey = data.payloadKey,
-                            width = targetSize.pixelWidth,
-                            height = targetSize.pixelHeight,
-                            lastModified = data.lastModified
-                    )
-                            ?: return null
+                driveFileProvider.getThumbBytesDecrypted(
+                    driveId = data.driveId,
+                    fileId = data.fileId,
+                    payloadKey = data.payloadKey,
+                    keyHeader = data.keyHeader,
+                    width = targetSize.pixelWidth,
+                    height = targetSize.pixelHeight,
+                    lastModified = data.lastModified,
+                )
+                    ?: return null
 
             CachedImage(
-                    bytes = response.bytes,
-                    contentType = response.contentType,
-                    size = targetSize
+                bytes = response.bytes,
+                contentType = response.contentType,
+                size = targetSize
             )
         } catch (e: CancellationException) {
             // Expected when composable leaves composition - rethrow to let Coil handle it
@@ -107,17 +109,18 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
 
         return try {
             val response =
-                    driveFileProvider.getPayloadBytesDecrypted(
-                            driveId = data.driveId,
-                            fileId = data.fileId,
-                            key = data.payloadKey
-                    )
-                            ?: return null
+                driveFileProvider.getPayloadBytesDecrypted(
+                    driveId = data.driveId,
+                    fileId = data.fileId,
+                    key = data.payloadKey,
+                    keyHeader = data.keyHeader
+                )
+                    ?: return null
 
             CachedImage(
-                    bytes = response.bytes,
-                    contentType = response.contentType,
-                    size = null // null indicates full resolution
+                bytes = response.bytes,
+                contentType = response.contentType,
+                size = null // null indicates full resolution
             )
         } catch (e: CancellationException) {
             throw e
@@ -128,7 +131,6 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
     }
 
     /** Load pending/local file from filesystem */
-    // TODO: This looks like a leftover? The driveFileProviderCache saves a cache on Disk
     private suspend fun loadPendingFile(data: HomebaseImageData): CachedImage? {
         val file = data.pendingFile ?: return null
 

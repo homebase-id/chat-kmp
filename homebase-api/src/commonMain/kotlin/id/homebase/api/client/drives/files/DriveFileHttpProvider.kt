@@ -310,6 +310,7 @@ public class DriveFileHttpProvider(
      * Decrypts bytes using the shared secret (full payload/thumbnail decryption).
      */
     public suspend fun decryptBytes(
+        keyHeader: KeyHeader,
         headers: Headers,
         bytes: ByteArray
     ): ByteArray {
@@ -317,26 +318,15 @@ public class DriveFileHttpProvider(
         val payloadEncrypted =
             headers["payloadencrypted"]?.equals("true", ignoreCase = true) == true
 
-        val encryptedHeader64 =
-            headers["sharedsecretencryptedheader64"]
+//        val encryptedHeader64 =
+//            headers["sharedsecretencryptedheader64"]
 
         return when {
-            payloadEncrypted && encryptedHeader64 != null -> {
-                val encryptedKeyHeader =
-                    EncryptedKeyHeader.fromBase64(encryptedHeader64)
-
-                val keyHeader =
-                    decryptKeyHeader(encryptedKeyHeader)
-                        ?: error("Missing shared secret")
-
+            payloadEncrypted -> {
                 decryptUsingKeyHeader(bytes, keyHeader)
             }
 
-            payloadEncrypted ->
-                error("Can't decrypt; missing keyheader")
-
-            else ->
-                bytes
+            else -> bytes
         }
     }
 
@@ -345,6 +335,7 @@ public class DriveFileHttpProvider(
     suspend fun decryptChunkedBytes(
         headers: Headers,
         responseBytes: ByteArray,
+        keyHeader: KeyHeader,
         startOffset: Int,
         chunkStart: Int
     ): ByteArray {
@@ -352,14 +343,7 @@ public class DriveFileHttpProvider(
         val payloadEncrypted =
             headers["payloadencrypted"]?.equals("True", ignoreCase = false) == true
 
-        val encryptedHeader64 =
-            headers["sharedsecretencryptedheader64"]
-
-        if (payloadEncrypted && encryptedHeader64 != null) {
-
-            val encryptedKeyHeader = EncryptedKeyHeader.fromBase64(encryptedHeader64)
-            val keyHeader = decryptKeyHeader(encryptedKeyHeader)
-                ?: throw IllegalStateException("Can't decrypt; missing key header")
+        if (payloadEncrypted) {
 
             val key = keyHeader.aesKey
 
