@@ -20,8 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
 
 class ConversationService(
     private val credentialsManager: CredentialsManager,
@@ -95,7 +93,7 @@ class ConversationService(
 
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingMessages =
-            messageFiles.mapNotNull { file -> ChatMessageReaderService.mapToMessageData(file) }
+            messageFiles.mapNotNull { file -> ChatMessageReaderService.Companion.mapToMessageData(file) }
 
         if (messageFiles.size != incomingMessages.size)
             throw IllegalArgumentException("Size mismatch - conversion problem")
