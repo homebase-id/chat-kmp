@@ -1,6 +1,7 @@
 package id.homebase.core.di
 
 import coil3.ImageLoader
+import coil3.memory.MemoryCache
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.image.HomebaseImageFetcher
@@ -15,6 +16,11 @@ actual fun platformModule(): Module = module {
     single {
         ImageLoader.Builder(androidContext())
                 .components { add(HomebaseImageFetcher.Factory(get())) }
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizePercent(androidContext(), 0.25)
+                    .build()
+            }
                 .build()
     }
 }

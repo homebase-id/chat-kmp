@@ -273,12 +273,17 @@ class DriveFileProviderCached(
     private fun writeBytesResponse(filePath: String, value: ByteApiResponse): Boolean {
         val path = filePath.toPath()
 
+        // Extract the payloadencrypted header - this is critical for decryption on cache reads
+        val payloadEncrypted =
+                value.headers["payloadencrypted"]?.equals("true", ignoreCase = true) == true
+
         fileSystem.write(path) {
             writeInt(value.status)
             writeInt(value.contentType.length)
             writeUtf8(value.contentType)
+            // Store whether the payload is encrypted (1 = true, 0 = false)
+            writeByte(if (payloadEncrypted) 1 else 0)
             write(value.bytes)
-            // Note: Headers are not cached to save space and simplify serialization
         }
 
         return true
@@ -291,8 +296,18 @@ class DriveFileProviderCached(
             val status = readInt()
             val contentTypeLength = readInt()
             val contentType = readUtf8(contentTypeLength.toLong())
+            val payloadEncrypted = readByte() == 1.toByte()
             val bytes = readByteArray()
-            ByteApiResponse(status, Headers.Empty, bytes, contentType)
+
+            // Reconstruct the payloadencrypted header for decryption logic
+            val headers =
+                    if (payloadEncrypted) {
+                        Headers.build { append("payloadencrypted", "true") }
+                    } else {
+                        Headers.Empty
+                    }
+
+            ByteApiResponse(status, headers, bytes, contentType)
         }
     }
 

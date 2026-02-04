@@ -56,7 +56,7 @@ class HomebaseImageFetcher(
         return SourceFetchResult(
                 source = imageSource,
                 mimeType = contentType,
-                dataSource = DataSource.NETWORK
+                dataSource = DataSource.DISK
         )
     }
 
