@@ -11,7 +11,6 @@ object ChatProtocol {
     const val CONVERSATION_IMAGE_KEY =
             "convo_img" // TODO: Explain what this represents (and where's the tiny)
 
-    const val CHAT_CONVERSATION_FILE_TYPE = 8888;
     const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889;
 
     const val ConversationFileType = 8888

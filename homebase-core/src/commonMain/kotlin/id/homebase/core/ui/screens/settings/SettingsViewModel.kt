@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.settings.Language
 import id.homebase.core.settings.UserPreferences
@@ -13,20 +14,27 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(
     private val userPreferences: UserPreferences,
-    private val youAuthFlowManager: YouAuthFlowManager
+    private val youAuthFlowManager: YouAuthFlowManager,
+    private val credentialsManager: CredentialsManager
 ): ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    private val _uiState = MutableStateFlow(SettingsUiState(loggedInDomain = ""))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
-        loadSettings()
+        viewModelScope.launch {
+            loadSettings()
+        }
     }
 
-    private fun loadSettings() {
+    private suspend fun loadSettings() {
         val savedLanguageCode = userPreferences.language
         val selectedLanguage = Language.fromCode(savedLanguageCode)
-        _uiState.value = _uiState.value.copy(selectedLanguage = selectedLanguage)
+        val credentials = credentialsManager.requireActiveCredentials()
+
+        _uiState.value = _uiState.value.copy(
+            selectedLanguage = selectedLanguage,
+            loggedInDomain = credentials.domain)
     }
 
     /** Single entry point for all UI actions. */

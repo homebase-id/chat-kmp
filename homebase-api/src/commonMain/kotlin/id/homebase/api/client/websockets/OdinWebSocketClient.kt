@@ -12,6 +12,7 @@ import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.SharedSecretEncryptedPayload
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -27,6 +28,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.io.encoding.Base64
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 
 /**
@@ -205,6 +209,8 @@ class OdinWebSocketClient(
             }
 
             ClientNotificationType.fileAdded -> {
+                Logger.i { "fileAdded received at ${Clock.System.now()}" }
+
                 handleFileEvent(notification)
             }
 
@@ -212,6 +218,7 @@ class OdinWebSocketClient(
             }
 
             ClientNotificationType.fileModified -> {
+                Logger.i { "fileModified received at ${Clock.System.now()}" }
                 handleFileEvent(notification)
             }
 
@@ -228,6 +235,7 @@ class OdinWebSocketClient(
             }
 
             ClientNotificationType.inboxItemReceived -> {
+//                Logger.i { "Inbox signal received at ${Clock.System.now()}" }
                 handleProcessInbox(notification)
             }
 
@@ -284,40 +292,67 @@ class OdinWebSocketClient(
         )
     }
 
+    private val fileEventBuffer =
+        mutableMapOf<Uuid, MutableList<HomebaseFile>>()
+
+    private val fileEventFlushJobs =
+        mutableMapOf<Uuid, Job>()
+
+    private val FILE_EVENT_BURST_MS = 200L
 
     private suspend fun handleFileEvent(notification: ClientNotificationPayload) {
-
-        var theFileNotification =
+        val fileNotification =
             OdinSystemSerializer.deserialize<ClientDriveNotification>(notification.data)
-        val theFile = theFileNotification.header!!
-        val lastModified = theFile.fileMetadata.updated
 
-        val files = listOf(theFile.asHomebaseFile(SecureByteArray(sharedSecret)))
-
+        val header = fileNotification.header!!
+        val driveId = fileNotification.targetDrive!!.alias
         val identityId = credentialsManager.getActiveCredentials()!!.getIdentityId()
 
-        try {
-            // Can be done in a F&F thread to save 50ms
-            fileHeaderProcessor.baseUpsertEntryZapZap(
-                identityId = identityId,
-                driveId = theFileNotification.targetDrive!!.alias,
-                fileHeaders = files,
-                cursor = null
-            )
-        } catch (e: Exception) {
-            Logger.e("DB upsert failed for batch: ${e.message}")
-        }
+        val file = header.asHomebaseFile(SecureByteArray(sharedSecret))
+        val lastModified = file.fileMetadata.updated
 
-        eventBus.emit(
-            BackendEvent.DriveEvent.BatchReceived(
-                theFile.driveId,
-                1,
-                1,
-                lastModified,
-                files
+        val buffer = fileEventBuffer.getOrPut(driveId) { mutableListOf() }
+        buffer.add(file)
+
+        // TODO: remove this collet and flush - when Anders can help fix the event bus
+
+        // Cancel any pending flush and reschedule
+        fileEventFlushJobs[driveId]?.cancel()
+
+        fileEventFlushJobs[driveId] = scope.launch {
+            delay(FILE_EVENT_BURST_MS)
+
+            val batch = fileEventBuffer.remove(driveId) ?: return@launch
+            if (batch.isEmpty()) return@launch
+
+            try {
+                fileHeaderProcessor.baseUpsertEntryZapZap(
+                    identityId = identityId,
+                    driveId = driveId,
+                    fileHeaders = batch,
+                    cursor = null
+                )
+            } catch (e: Exception) {
+                Logger.e("DB upsert failed for burst: ${e.message}")
+            }
+
+            eventBus.emit(
+                BackendEvent.DriveEvent.BatchReceived(
+                    driveId = driveId,
+                    totalCount = batch.size,
+                    batchCount = batch.size,
+                    latestModified = lastModified,
+                    batchData = batch,
+                    source = BackendEvent.SyncSource.WebSocket
+                )
             )
-        )
+
+            Logger.i {
+                "Flushed ${batch.size} file events for drive $driveId"
+            }
+        }
     }
+
 
     private suspend fun handleAuthError(notification: ClientNotificationPayload) {
         var message = notification.data

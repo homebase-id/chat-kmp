@@ -14,48 +14,52 @@ class DriveSyncManager(
     private val eventBus: EventBus,
     private val scope: CoroutineScope
 ) {
-    private var driveSyncs: List<DriveSync> = emptyList()
+    private val driveSyncs = mutableMapOf<Uuid, DriveSync>()
 
-    suspend fun start(
-        drives: List<Uuid>
-    ) {
-        if (driveSyncs.isNotEmpty()) return
+    suspend fun start(drives: List<Uuid>) {
         val credentials = credentialsManager.getActiveCredentials()
             ?: return
 
         val identityId = credentials.getIdentityId()
 
-        driveSyncs = drives.mapNotNull { drive ->
+        drives.forEach { driveId ->
+            if (driveSyncs.containsKey(driveId)) {
+                Logger.w { "DriveSync for drive=$driveId already exists, skipping" }
+                return@forEach
+            }
+
             runCatching {
                 DriveSync(
                     identityId = identityId,
-                    driveId = drive,
+                    driveId = driveId,
                     driveQueryProvider = driveQueryProvider,
                     databaseManager = DatabaseManager.appDb,
                     eventBus = eventBus,
                     scope = scope
                 )
+            }.onSuccess { sync ->
+                driveSyncs[driveId] = sync
             }.onFailure { e ->
                 Logger.e(
-                    "Failed to create DriveSync for drive=${drive}: ${e.message}",
+                    "Failed to create DriveSync for drive=$driveId: ${e.message}",
                     e
                 )
-            }.getOrNull()
+            }
         }
     }
 
     fun syncAll() {
-        driveSyncs.forEach { it.sync() }
+        driveSyncs.values.forEach { it.sync() }
     }
 
     fun stop() {
-        driveSyncs.forEach { it.cancel() }
-        driveSyncs = emptyList()
+        driveSyncs.values.forEach { it.cancel() }
+        driveSyncs.clear()
     }
 
-    suspend fun clearStorage(){
-        driveSyncs.forEach { it.clearStorage() }
+    suspend fun clearStorage() {
+        driveSyncs.values.forEach { it.clearStorage() }
     }
 
-    fun getActiveDriveSyncs(): List<DriveSync> = driveSyncs
+    fun getActiveDriveSyncs(): List<DriveSync> = driveSyncs.values.toList()
 }

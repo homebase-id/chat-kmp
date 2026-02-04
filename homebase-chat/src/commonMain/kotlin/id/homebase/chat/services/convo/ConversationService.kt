@@ -57,6 +57,7 @@ class ConversationService(
                     is BackendEvent.DriveEvent.Failed -> {
                         if (event.source == BackendEvent.SyncSource.DriveSync) {
                             isSyncing = false
+                            Logger.e { "Failed during drive sync" }
                             refresh()
                             // Optionally handle failure, e.g., log or partial refresh
                         }
@@ -93,16 +94,36 @@ class ConversationService(
 
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingMessages =
-            messageFiles.mapNotNull { file -> ChatMessageReaderService.Companion.mapToMessageData(file) }
+            messageFiles.mapNotNull { file ->
+                ChatMessageReaderService.Companion.mapToMessageData(
+                    file
+                )
+            }
 
         if (messageFiles.size != incomingMessages.size)
             throw IllegalArgumentException("Size mismatch - conversion problem")
 
         for (m in incomingMessages) {
             val matchingConversation = _conversations.value.find { it.id == m.conversationId }
-            if (matchingConversation != null) {
+            if (matchingConversation == null) {
+                val emptyConversation = ConversationUiModel(
+                    id = m.conversationId,
+                    name = "Pending...",
+                    lastMessage = m.content,
+                    timestamp = m.created,
+                    unreadCount = 0,
+                    avatarTiny = null,
+                    // Conversation has an image
+                    avatarInitials = "AB",
+                    avatarUrl = "",
+                    participants = emptyList(),
+                    lastRead = UnixTimeUtc(0).toInstant()
+                )
+
+                insertNewConversation(emptyConversation)
+            } else {
                 updateConversationFromNewMessage(matchingConversation, m)
-            } else Logger.Companion.e { "BOOM" }
+            }
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
@@ -130,8 +151,11 @@ class ConversationService(
 
         for (c in incomingConversations) {
             val matchingConversation = _conversations.value.find { it.id == c.id }
-            if (matchingConversation == null) insertNewConversation(c)
-            else updateConversation(matchingConversation, c)
+            if (matchingConversation == null) {
+                insertNewConversation(c)
+            } else {
+                updateConversation(matchingConversation, c)
+            }
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
