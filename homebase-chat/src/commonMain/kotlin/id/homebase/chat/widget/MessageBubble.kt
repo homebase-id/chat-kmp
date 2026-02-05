@@ -80,80 +80,80 @@ import org.jetbrains.compose.resources.stringResource
  */
 @Composable
 fun SentMessageBubble(
-        message: MessageUiModel,
-        onMessageInfo: (messageId: Uuid) -> Unit,
-        onReply: (messageId: Uuid) -> Unit,
-        onStar: (messageId: Uuid) -> Unit,
-        onEdit: (messageId: Uuid) -> Unit,
-        onDelete: (messageId: Uuid) -> Unit,
-        onMediaClick: (PayloadDescriptor) -> Unit,
-        sharedTransitionScope: SharedTransitionScope,
-        animatedVisibilityScope: AnimatedVisibilityScope,
+    message: MessageUiModel,
+    onMessageInfo: (messageId: Uuid) -> Unit,
+    onReply: (messageId: Uuid) -> Unit,
+    onStar: (messageId: Uuid) -> Unit,
+    onEdit: (messageId: Uuid) -> Unit,
+    onDelete: (messageId: Uuid) -> Unit,
+    onMediaClick: (PayloadDescriptor) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
     Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         Spacer(modifier = Modifier.width(16.dp))
         Column(
-                modifier = Modifier.weight(1f).hoverable(interactionSource),
-                horizontalAlignment = Alignment.End
+            modifier = Modifier.weight(1f).hoverable(interactionSource),
+            horizontalAlignment = Alignment.End
         ) {
             Row {
                 Column {
                     IconButton(
-                            modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                            onClick = { showMenu = true },
-                            enabled = isHovered
+                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                        onClick = { showMenu = true },
+                        enabled = isHovered
                     ) {
                         Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = stringResource(MR.string.chat_message_options),
-                                tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = stringResource(MR.string.chat_message_options),
+                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                         )
                     }
                     SentMessageMenu(
-                            showMenu = showMenu,
-                            dismissMenu = { showMenu = false },
-                            onMessageInfo = {
-                                showMenu = false
-                                onMessageInfo(message.id)
-                            },
-                            onReply = {
-                                showMenu = false
-                                onReply(message.id)
-                            },
-                            onStar = {
-                                showMenu = false
-                                onStar(message.id)
-                            },
-                            onEdit = {
-                                showMenu = false
-                                onEdit(message.id)
-                            },
-                            onDelete = {
-                                showMenu = false
-                                onDelete(message.id)
-                            },
+                        showMenu = showMenu,
+                        dismissMenu = { showMenu = false },
+                        onMessageInfo = {
+                            showMenu = false
+                            onMessageInfo(message.id)
+                        },
+                        onReply = {
+                            showMenu = false
+                            onReply(message.id)
+                        },
+                        onStar = {
+                            showMenu = false
+                            onStar(message.id)
+                        },
+                        onEdit = {
+                            showMenu = false
+                            onEdit(message.id)
+                        },
+                        onDelete = {
+                            showMenu = false
+                            onDelete(message.id)
+                        },
                     )
                 }
                 MessageBubble(
-                        modifier = Modifier.heightIn(min = 48.dp),
-                        text = message.content,
-                        timestamp = formatMessageTimestamp(message.created),
-                        sentByYou = true,
-                        payloads = message.payloads,
-                        fileId = message.fileId,
-                        previewThumbnail = message.previewThumbnail,
-                        replyPreview = message.messageAppData.replyPreview,
-                        onLongClick = { showMenu = true },
-                        keyHeader = message.keyHeader,
-                        onMediaClick = onMediaClick,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    text = message.content,
+                    timestamp = formatMessageTimestamp(message.created),
+                    sentByYou = true,
+                    payloads = message.payloads,
+                    fileId = message.fileId,
+                    previewThumbnail = message.previewThumbnail,
+                    replyPreview = message.messageAppData.replyPreview,
+                    onLongClick = { showMenu = true },
+                    keyHeader = message.keyHeader,
+                    onMediaClick = onMediaClick,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
             }
         }
@@ -178,88 +178,88 @@ fun SentMessageBubble(
  */
 @Composable
 fun ReceivedMessageBubble(
-        message: MessageUiModel,
-        onMessageInfo: (messageId: Uuid) -> Unit,
-        onReply: (messageId: Uuid) -> Unit,
-        onStar: (messageId: Uuid) -> Unit,
-        onDelete: (messageId: Uuid) -> Unit,
-        onMarkAsRead: (messageId: Uuid) -> Unit,
-        onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
-        onDeleteReaction: (messageId: Uuid, reaction: String) -> Unit,
-        onMediaClick: (PayloadDescriptor) -> Unit,
-        sharedTransitionScope: SharedTransitionScope,
-        animatedVisibilityScope: AnimatedVisibilityScope,
+    message: MessageUiModel,
+    onMessageInfo: (messageId: Uuid) -> Unit,
+    onReply: (messageId: Uuid) -> Unit,
+    onStar: (messageId: Uuid) -> Unit,
+    onDelete: (messageId: Uuid) -> Unit,
+    onMarkAsRead: (messageId: Uuid) -> Unit,
+    onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
+    onDeleteReaction: (messageId: Uuid, reaction: String) -> Unit,
+    onMediaClick: (PayloadDescriptor) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
     Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         Column(
-                modifier = Modifier.weight(1f).hoverable(interactionSource),
-                horizontalAlignment = Alignment.Start,
+            modifier = Modifier.weight(1f).hoverable(interactionSource),
+            horizontalAlignment = Alignment.Start,
         ) {
             Row {
                 MessageBubble(
-                        modifier = Modifier.heightIn(min = 48.dp),
-                        text = message.content + "isread: ${message.isRead}",
-                        timestamp = formatMessageTimestamp(message.created),
-                        sentByYou = false,
-                        payloads = message.payloads,
-                        fileId = message.fileId,
-                        keyHeader = message.keyHeader,
-                        previewThumbnail = message.previewThumbnail,
-                        replyPreview = message.messageAppData.replyPreview,
-                        onLongClick = { showMenu = true },
-                        onMediaClick = onMediaClick,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    text = message.content + "isread: ${message.isRead}",
+                    timestamp = formatMessageTimestamp(message.created),
+                    sentByYou = false,
+                    payloads = message.payloads,
+                    fileId = message.fileId,
+                    keyHeader = message.keyHeader,
+                    previewThumbnail = message.previewThumbnail,
+                    replyPreview = message.messageAppData.replyPreview,
+                    onLongClick = { showMenu = true },
+                    onMediaClick = onMediaClick,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
                 Column {
                     IconButton(
-                            modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                            onClick = { showMenu = true },
-                            enabled = isHovered
+                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                        onClick = { showMenu = true },
+                        enabled = isHovered
                     ) {
                         Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = stringResource(MR.string.chat_message_options),
-                                tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = stringResource(MR.string.chat_message_options),
+                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                         )
                     }
                     ReceivedMessageMenu(
-                            showMenu = showMenu,
-                            dismissMenu = { showMenu = false },
-                            onMessageInfo = {
-                                showMenu = false
-                                onMessageInfo(message.id)
-                            },
-                            onReply = {
-                                showMenu = false
-                                onReply(message.id)
-                            },
-                            onStar = {
-                                showMenu = false
-                                onStar(message.id)
-                            },
-                            onDelete = {
-                                showMenu = false
-                                onDelete(message.id)
-                            },
-                            onMarkAsRead = {
-                                showMenu = false
-                                onMarkAsRead(message.id)
-                            },
-                            onAddReaction = {
-                                showMenu = false
-                                onAddReaction(message.id, ":heart:")
-                            },
-                            onDeleteReaction = {
-                                showMenu = false
-                                onDeleteReaction(message.id, ":heart:")
-                            },
+                        showMenu = showMenu,
+                        dismissMenu = { showMenu = false },
+                        onMessageInfo = {
+                            showMenu = false
+                            onMessageInfo(message.id)
+                        },
+                        onReply = {
+                            showMenu = false
+                            onReply(message.id)
+                        },
+                        onStar = {
+                            showMenu = false
+                            onStar(message.id)
+                        },
+                        onDelete = {
+                            showMenu = false
+                            onDelete(message.id)
+                        },
+                        onMarkAsRead = {
+                            showMenu = false
+                            onMarkAsRead(message.id)
+                        },
+                        onAddReaction = {
+                            showMenu = false
+                            onAddReaction(message.id, ":heart:")
+                        },
+                        onDeleteReaction = {
+                            showMenu = false
+                            onDeleteReaction(message.id, ":heart:")
+                        },
                     )
                 }
             }
@@ -292,38 +292,38 @@ fun ReceivedMessageBubble(
  */
 @Composable
 fun MessageBubble(
-        modifier: Modifier = Modifier,
-        text: String,
-        timestamp: String,
-        sentByYou: Boolean,
-        payloads: List<PayloadDescriptor>? = null,
-        fileId: Uuid,
-        previewThumbnail: EmbeddedThumb? = null,
-        replyPreview: ReplyPreview? = null,
-        keyHeader: KeyHeader,
-        onLongClick: () -> Unit,
-        onMediaClick: (PayloadDescriptor) -> Unit,
-        sharedTransitionScope: SharedTransitionScope,
-        animatedVisibilityScope: AnimatedVisibilityScope,
+    modifier: Modifier = Modifier,
+    text: String,
+    timestamp: String,
+    sentByYou: Boolean,
+    payloads: List<PayloadDescriptor>? = null,
+    fileId: Uuid,
+    previewThumbnail: EmbeddedThumb? = null,
+    replyPreview: ReplyPreview? = null,
+    keyHeader: KeyHeader,
+    onLongClick: () -> Unit,
+    onMediaClick: (PayloadDescriptor) -> Unit,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val filteredPayloads =
-            payloads?.filter {
-                !listOf(
-                                ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                                ChatProtocol.DEFAULT_PAYLOAD_KEY,
-                                ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-                        )
-                        .contains(it.key)
-            }
+        payloads?.filter {
+            !listOf(
+                ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
+                ChatProtocol.DEFAULT_PAYLOAD_KEY,
+                ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
+            )
+                .contains(it.key)
+        }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val backgroundColor =
-            if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
-            else MaterialTheme.colorScheme.surfaceContainerHigh
+        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+        else MaterialTheme.colorScheme.surfaceContainerHigh
     val contentColor =
-            if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
-            else MaterialTheme.colorScheme.onSurface
+        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+        else MaterialTheme.colorScheme.onSurface
 
     val pressInteractionSource = remember { MutableInteractionSource() }
     val isPressed by pressInteractionSource.collectIsPressedAsState()
@@ -335,10 +335,10 @@ fun MessageBubble(
 
     // Use a spring for smoother, natural motion and avoid tiny abrupt tweens
     val springSpec =
-            spring<Float>(
-                    dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
-                    stiffness = Spring.StiffnessLow
-            )
+        spring<Float>(
+            dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
+            stiffness = Spring.StiffnessLow
+        )
 
     // Keep quick press feedback when not running the long-press animation
     LaunchedEffect(isPressed) {
@@ -370,173 +370,173 @@ fun MessageBubble(
     textState.setHtml(text)
 
     val shape =
-            RoundedCornerShape(
-                    topStart = Dimens.Message.cornerRadius,
-                    topEnd = Dimens.Message.cornerRadius,
-                    bottomStart =
-                            if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-                    bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-            )
+        RoundedCornerShape(
+            topStart = Dimens.Message.cornerRadius,
+            topEnd = Dimens.Message.cornerRadius,
+            bottomStart =
+                if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+            bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+        )
     Surface(
-            modifier =
-                    modifier.clip(shape)
-                            .ifTrue(isMobile()) {
-                                Modifier.combinedClickable(
-                                        onClick = {},
-                                        onLongClick = { handleLongClick() },
-                                        interactionSource = pressInteractionSource,
-                                        indication = null
-                                )
-                            }
-                            .graphicsLayer {
-                                scaleX = scaleAnim.value
-                                scaleY = scaleAnim.value
-                            },
-            shape = shape,
-            color = backgroundColor,
+        modifier =
+            modifier.clip(shape)
+                .ifTrue(isMobile()) {
+                    Modifier.combinedClickable(
+                        onClick = {},
+                        onLongClick = { handleLongClick() },
+                        interactionSource = pressInteractionSource,
+                        indication = null
+                    )
+                }
+                .graphicsLayer {
+                    scaleX = scaleAnim.value
+                    scaleY = scaleAnim.value
+                },
+        shape = shape,
+        color = backgroundColor,
     ) {
         if (text.isEmpty() && hasMedia) {
             Box {
                 MediaMessage(
-                        payloads = filteredPayloads,
-                        fileId = fileId,
-                        keyHeader = keyHeader,
-                        driveId = chatTargetDrive.alias,
-                        previewThumbnail = previewThumbnail,
-                        onMediaClick = onMediaClick,
-                        onMediaLongPress = { _, _ -> handleLongClick() },
-                        shape = RoundedCornerShape(Dimens.Message.cornerRadius),
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
+                    payloads = filteredPayloads,
+                    fileId = fileId,
+                    keyHeader = keyHeader,
+                    driveId = chatTargetDrive.alias,
+                    previewThumbnail = previewThumbnail,
+                    onMediaClick = onMediaClick,
+                    onMediaLongPress = { _, _ -> handleLongClick() },
+                    shape = RoundedCornerShape(Dimens.Message.cornerRadius),
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                 )
                 Box(
-                        modifier =
-                                Modifier.matchParentSize()
-                                        .align(Alignment.BottomEnd)
-                                        .background(
-                                                brush =
-                                                        Brush.verticalGradient(
-                                                                colors =
-                                                                        listOf(
-                                                                                Color.Transparent,
-                                                                                Color.Black.copy(
-                                                                                        alpha = 0.6f
-                                                                                )
-                                                                        )
-                                                        )
-                                        ),
+                    modifier =
+                        Modifier.matchParentSize()
+                            .align(Alignment.BottomEnd)
+                            .background(
+                                brush =
+                                    Brush.verticalGradient(
+                                        colors =
+                                            listOf(
+                                                Color.Transparent,
+                                                Color.Black.copy(
+                                                    alpha = 0.6f
+                                                )
+                                            )
+                                    )
+                            ),
                 ) {
                     Text(
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                            text = timestamp,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.7f)
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                        text = timestamp,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.7f)
                     )
                 }
             }
         } else
-                Column {
-                    // Inline reply preview if this message is a reply
-                    replyPreview?.let { reply ->
-                        InlineReplyPreview(replyPreview = reply, sentByYou = sentByYou)
-                    }
-                    Layout(
-                            content = {
-                                Column {
-                                    if (hasMedia) {
-                                        MediaMessage(
-                                                payloads = filteredPayloads,
-                                                fileId = fileId,
-                                                driveId = chatTargetDrive.alias,
-                                                previewThumbnail = previewThumbnail,
-                                                onMediaClick = onMediaClick,
-                                                keyHeader = keyHeader,
-                                                onMediaLongPress = { _, _ -> handleLongClick() },
-                                                sharedTransitionScope = sharedTransitionScope,
-                                                animatedVisibilityScope = animatedVisibilityScope,
-                                        )
-                                    }
-                                    SelectionContainer {
-                                        Row(
-                                                modifier = Modifier.padding(12.dp),
-                                        ) {
-                                            RichText(
-                                                    state = textState,
-                                                    onTextLayout = { textLayoutResult = it },
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = contentColor
-                                            )
-                                        }
-                                    }
-                                }
-                                Text(
-                                        modifier =
-                                                Modifier.padding(
-                                                        top = 12.dp,
-                                                        bottom = 12.dp,
-                                                        end = 12.dp,
-                                                        start = 12.dp
-                                                ),
-                                        text = timestamp,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = contentColor.copy(alpha = 0.7f)
+            Column {
+                // Inline reply preview if this message is a reply
+                replyPreview?.let { reply ->
+                    InlineReplyPreview(replyPreview = reply, sentByYou = sentByYou)
+                }
+                Layout(
+                    content = {
+                        Column {
+                            if (hasMedia) {
+                                MediaMessage(
+                                    payloads = filteredPayloads,
+                                    fileId = fileId,
+                                    driveId = chatTargetDrive.alias,
+                                    previewThumbnail = previewThumbnail,
+                                    onMediaClick = onMediaClick,
+                                    keyHeader = keyHeader,
+                                    onMediaLongPress = { _, _ -> handleLongClick() },
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope,
                                 )
                             }
-                    ) { measurables, constraints ->
-                        val textPlaceable = measurables[0].measure(constraints)
-                        val timePlaceable = measurables[1].measure(constraints)
-
-                        val layoutResult = textLayoutResult
-                        var totalWidth: Int
-                        var totalHeight: Int
-                        var timeX: Int
-                        var timeY: Int
-
-                        if (layoutResult == null) {
-                            // Fallback if layout isn't ready yet
-                            totalWidth = textPlaceable.width
-                            totalHeight = textPlaceable.height
-                            timeX = 0
-                            timeY = 0
-                        } else {
-                            val lastLineIndex = layoutResult.lineCount - 1
-                            val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-
-                            // Determine if timestamp fits on the last line
-                            // We add a small gap (8dp converted to px) between text and time
-                            val horizontalGap = 8.dp.toPx()
-                            val fitsOnLastLine =
-                                    (constraints.maxWidth - lastLineRight) >
-                                            (timePlaceable.width + horizontalGap)
-
-                            if (fitsOnLastLine) {
-                                // Fits on the same line
-                                totalWidth =
-                                        maxOf(
-                                                textPlaceable.width,
-                                                (lastLineRight +
-                                                                horizontalGap +
-                                                                timePlaceable.width)
-                                                        .toInt()
-                                        )
-                                totalHeight = textPlaceable.height
-                                timeX = totalWidth - timePlaceable.width
-                                timeY = totalHeight - timePlaceable.height
-                            } else {
-                                // Needs a new line
-                                totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
-                                totalHeight = textPlaceable.height + timePlaceable.height
-                                timeX = totalWidth - timePlaceable.width
-                                timeY = totalHeight - timePlaceable.height
+                            SelectionContainer {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                ) {
+                                    RichText(
+                                        state = textState,
+                                        onTextLayout = { textLayoutResult = it },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = contentColor
+                                    )
+                                }
                             }
                         }
+                        Text(
+                            modifier =
+                                Modifier.padding(
+                                    top = 12.dp,
+                                    bottom = 12.dp,
+                                    end = 12.dp,
+                                    start = 12.dp
+                                ),
+                            text = timestamp,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f)
+                        )
+                    }
+                ) { measurables, constraints ->
+                    val textPlaceable = measurables[0].measure(constraints)
+                    val timePlaceable = measurables[1].measure(constraints)
 
-                        layout(totalWidth, totalHeight) {
-                            textPlaceable.placeRelative(0, 0)
-                            timePlaceable.placeRelative(timeX, timeY)
+                    val layoutResult = textLayoutResult
+                    var totalWidth: Int
+                    var totalHeight: Int
+                    var timeX: Int
+                    var timeY: Int
+
+                    if (layoutResult == null) {
+                        // Fallback if layout isn't ready yet
+                        totalWidth = textPlaceable.width
+                        totalHeight = textPlaceable.height
+                        timeX = 0
+                        timeY = 0
+                    } else {
+                        val lastLineIndex = layoutResult.lineCount - 1
+                        val lastLineRight = layoutResult.getLineRight(lastLineIndex)
+
+                        // Determine if timestamp fits on the last line
+                        // We add a small gap (8dp converted to px) between text and time
+                        val horizontalGap = 8.dp.toPx()
+                        val fitsOnLastLine =
+                            (constraints.maxWidth - lastLineRight) >
+                                    (timePlaceable.width + horizontalGap)
+
+                        if (fitsOnLastLine) {
+                            // Fits on the same line
+                            totalWidth =
+                                maxOf(
+                                    textPlaceable.width,
+                                    (lastLineRight +
+                                            horizontalGap +
+                                            timePlaceable.width)
+                                        .toInt()
+                                )
+                            totalHeight = textPlaceable.height
+                            timeX = totalWidth - timePlaceable.width
+                            timeY = totalHeight - timePlaceable.height
+                        } else {
+                            // Needs a new line
+                            totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
+                            totalHeight = textPlaceable.height + timePlaceable.height
+                            timeX = totalWidth - timePlaceable.width
+                            timeY = totalHeight - timePlaceable.height
                         }
                     }
+
+                    layout(totalWidth, totalHeight) {
+                        textPlaceable.placeRelative(0, 0)
+                        timePlaceable.placeRelative(timeX, timeY)
+                    }
                 }
+            }
     }
 }
 
@@ -554,42 +554,42 @@ fun MessageBubble(
 @Composable
 private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
     val accentColor =
-            if (sentByYou) {
-                HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
-            } else {
-                MaterialTheme.colorScheme.primary
-            }
+        if (sentByYou) {
+            HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
+        } else {
+            MaterialTheme.colorScheme.primary
+        }
     val contentColor =
-            if (sentByYou) {
-                HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
-            } else {
-                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-            }
+        if (sentByYou) {
+            HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
+        } else {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        }
 
     Row(
-            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         // Vertical accent bar
         Box(
-                modifier =
-                        Modifier.width(3.dp)
-                                .heightIn(min = 24.dp)
-                                .background(color = accentColor, shape = RoundedCornerShape(2.dp))
+            modifier =
+                Modifier.width(3.dp)
+                    .heightIn(min = 24.dp)
+                    .background(color = accentColor, shape = RoundedCornerShape(2.dp))
         )
         Spacer(modifier = Modifier.width(8.dp))
         Column {
             Text(
-                    text = replyPreview.authorOdinId,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = accentColor,
-                    maxLines = 1
+                text = replyPreview.authorOdinId,
+                style = MaterialTheme.typography.labelSmall,
+                color = accentColor,
+                maxLines = 1
             )
             Text(
-                    text = replyPreview.message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = contentColor,
-                    maxLines = 2
+                text = replyPreview.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = contentColor,
+                maxLines = 2
             )
         }
     }

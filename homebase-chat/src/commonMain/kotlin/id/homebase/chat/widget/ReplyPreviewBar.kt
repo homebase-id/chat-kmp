@@ -40,35 +40,35 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
-            modifier = modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             // Vertical accent bar
             Box(
-                    modifier =
-                            Modifier.width(4.dp)
-                                    .height(40.dp)
-                                    .background(MaterialTheme.colorScheme.primary)
+                modifier =
+                    Modifier.width(4.dp)
+                        .height(40.dp)
+                        .background(MaterialTheme.colorScheme.primary)
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                        text = stringResource(MR.string.replying_to, message.senderOdinId),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
+                    text = stringResource(MR.string.replying_to, message.senderOdinId),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                        text = message.content.take(80),
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    text = message.content.take(80),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             IconButton(onClick = onDismiss) {
                 Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(MR.string.cancel_reply)
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.cancel_reply)
                 )
             }
         }

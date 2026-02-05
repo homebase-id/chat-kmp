@@ -12,25 +12,26 @@ sealed interface ConversationListUiAction {
     data object BackToListClicked : ConversationListUiAction
     data class ContactClicked(val contact: ContactUiModel) : ConversationListUiAction
     data class SearchQueryChanged(val query: String) : ConversationListUiAction
-    data class SendMessage(val conversationId: Uuid, val content: String) :
-            ConversationListUiAction
+    data class SendMessage(val conversationId: Uuid, val content: String) : ConversationListUiAction
     data class SendFile(
-            val conversationId: Uuid,
-            val message: String,
-            val files: List<PlatformFile>
+        val conversationId: Uuid,
+        val message: String,
+        val files: List<PlatformFile>
     ) : ConversationListUiAction
+
     data class ShareMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class DownloadMedia(val messageId: Uuid, val payloadKey: String) :
-            ConversationListUiAction
+        ConversationListUiAction
 
     data class MediaClicked(val message: MessageUiModel, val payloadKey: String) :
-            ConversationListUiAction
+        ConversationListUiAction
+
     data object CloseFullScreenMedia : ConversationListUiAction
 
     data class SaveScrollPosition(
-            val conversationId: Uuid,
-            val firstVisibleItemIndex: Int,
-            val firstVisibleItemScrollOffset: Int
+        val conversationId: Uuid,
+        val firstVisibleItemIndex: Int,
+        val firstVisibleItemScrollOffset: Int
     ) : ConversationListUiAction
 
     data class ShowConversationInfo(val conversationId: Uuid) : ConversationListUiAction
