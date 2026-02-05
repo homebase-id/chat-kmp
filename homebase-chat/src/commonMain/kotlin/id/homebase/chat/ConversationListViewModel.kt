@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageReaderService
@@ -418,7 +419,7 @@ class ChatListViewModel(
                 val replyPreview = ReplyPreview(
                     replyUniqueId = replyTo.id,
                     authorOdinId = replyTo.senderOdinId,
-                    message = replyTo.content.take(80),
+                    message = replyTo.content.truncateToCodePoints(80),
                     previewThumbnail = replyTo.previewThumbnail
                 )
                 chatMessageSenderService.replyToMessage(
