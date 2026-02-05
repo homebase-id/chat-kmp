@@ -5,6 +5,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -42,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
@@ -61,8 +64,11 @@ import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
+import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -519,11 +525,12 @@ fun MessageBubble(
  *
  * This appears at the top of a message bubble when the message is a reply to another message. Shows
  * a vertical accent bar followed by the author's odinId and a truncated preview of the original
- * message content.
+ * message content. If a preview thumbnail exists, it displays a small image on the right.
  *
  * @param replyPreview The reply preview data containing author and message details
  * @param sentByYou Whether this reply was sent by the current user (affects theming)
  */
+@OptIn(ExperimentalResourceApi::class)
 @Composable
 private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
     val accentColor = if (sentByYou) {
@@ -537,6 +544,18 @@ private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
     }
 
+    // Decode preview thumbnail if available
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail) {
+        replyPreview.previewThumbnail?.content?.let { base64Content ->
+            try {
+                val bytes = Base64.decode(base64Content)
+                bytes.decodeToImageBitmap()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     Row(
         modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -547,7 +566,7 @@ private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
                 .background(color = accentColor, shape = RoundedCornerShape(2.dp))
         )
         Spacer(modifier = Modifier.width(8.dp))
-        Column {
+        Column(modifier = Modifier.weight(1f, fill = false)) {
             Text(
                 text = replyPreview.authorOdinId,
                 style = MaterialTheme.typography.labelSmall,
@@ -559,6 +578,16 @@ private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
                 style = MaterialTheme.typography.bodySmall,
                 color = contentColor,
                 maxLines = 2
+            )
+        }
+        // Thumbnail image if available
+        thumbnailBitmap?.let { bitmap ->
+            Spacer(modifier = Modifier.width(8.dp))
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)),
+                contentScale = ContentScale.Crop
             )
         }
     }
