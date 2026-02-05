@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -219,7 +221,7 @@ fun ConversationContent(
                     .imePadding()
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
-            if (isScrollPositionReady) {
+            if (isScrollPositionReady && groupedMessages.isNotEmpty()) {
                 Box(
                     modifier = Modifier.weight(1f),
                 ) {
@@ -227,11 +229,16 @@ fun ConversationContent(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         state = listState,
+                        contentPadding = PaddingValues(
+                            top = 24.dp,
+                            bottom = 24.dp,
+                        )
                     ) {
-                        item { Spacer(modifier = Modifier.height(24.dp)) }
                         item {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 24.dp),
                                 horizontalArrangement = Arrangement.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -249,7 +256,6 @@ fun ConversationContent(
                                 }
                             }
                         }
-                        item { Spacer(modifier = Modifier.height(24.dp)) }
 
                         groupedMessages.forEach { section ->
                             item(key = "date_${section.date}") {
@@ -388,13 +394,18 @@ fun ConversationContent(
                                 }
                             }
                         }
-
-                        item { Spacer(modifier = Modifier.height(16.dp)) }
                     }
                     HomebaseVerticalScrollbar(
                         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                         state = listState
                     )
+                }
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
                 }
             }
             Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {

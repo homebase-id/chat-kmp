@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -258,23 +259,23 @@ fun ChatListUi(
                     uiState.selectedConversationId?.let { conversationId ->
                         val conversation = uiState.conversations.find { it.id == conversationId }
                         if (conversation != null) {
-                            ConversationMessagesPane(
-                                conversation = conversation,
-                                messages = uiState.currentConversationMessages,
-                                fullScreenMessageData = uiState.fullScreenMedia,
-                                savedScrollPosition = uiState.conversationScrollPosition,
-                                showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
-                                onBackClick = {
-                                    scope.launch {
-                                        scaffoldNavigator.navigateBack(
-                                            backNavigationBehavior
-                                        )
-                                    }
-                                },
-                                onUiAction = onUiAction,
-                                currentOdinId = uiState.currentOdinId,
-                                replyToMessage = uiState.replyToMessage
-                            )
+                            key(conversation.id) {
+                                ConversationMessagesPane(
+                                    conversation = conversation,
+                                    messages = uiState.currentConversationMessages,
+                                    fullScreenMessageData = uiState.fullScreenMedia,
+                                    savedScrollPosition = uiState.conversationScrollPosition,
+                                    showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
+                                    onBackClick = {
+                                        scope.launch {
+                                            scaffoldNavigator.navigateBack(backNavigationBehavior)
+                                        }
+                                    },
+                                    onUiAction = onUiAction,
+                                    currentOdinId = uiState.currentOdinId,
+                                    replyToMessage = uiState.replyToMessage
+                                )
+                            }
                         } else {
                             EmptyDetailPane(
                                 title = stringResource(
