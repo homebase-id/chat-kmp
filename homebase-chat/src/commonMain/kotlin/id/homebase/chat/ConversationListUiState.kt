@@ -24,6 +24,8 @@ data class ConversationListUiState(
     val currentOdinId: String = "",
     val fullScreenMedia: FullScreenMessageData? = null,
     val replyToMessage: MessageUiModel? = null,
+    val loadingNewMessage: Boolean = false,
+
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
 )

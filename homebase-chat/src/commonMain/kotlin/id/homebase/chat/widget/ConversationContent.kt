@@ -2,6 +2,7 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
@@ -40,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -48,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberCameraManager
@@ -79,6 +83,7 @@ import id.homebase.api.common.OdinId
 fun ConversationContent(
     conversation: ConversationUiModel,
     listState: LazyListState,
+    isLoadingNewMessage: Boolean,
     isScrollPositionReady: Boolean,
     groupedMessages: ImmutableList<MessageSectionItem>,
     showBackButton: Boolean,
@@ -394,6 +399,27 @@ fun ConversationContent(
                                 }
                             }
                         }
+
+                        if (isLoadingNewMessage) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    horizontalArrangement = Arrangement.End,
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(140.dp)
+                                            .clip(RoundedCornerShape(Dimens.Message.cornerRadius))
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                            .padding(16.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.align(Alignment.Center)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                     HomebaseVerticalScrollbar(
                         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
@@ -408,8 +434,12 @@ fun ConversationContent(
                     CircularProgressIndicator()
                 }
             }
-            Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
-                Column {
+            Surface(
+                shadowElevation = 8.dp, tonalElevation = 0.dp
+            ) {
+                Column(
+                    modifier = Modifier.animateContentSize()
+                ) {
                     replyToMessage?.let { msg ->
                         ReplyPreviewBar(
                             message = msg,
@@ -459,12 +489,15 @@ fun ConversationContent(
                         AttachmentGallery(
                             onImageSelected = {
                                 showAttachmentSheet = false
+                                onUiAction(
+                                    ConversationListUiAction.SendFile(
+                                        conversationId = conversation.id,
+                                        message = "",
+                                        files = listOf(it)
+                                    )
+                                )
                                 // Handle image selection
                             },
-                            onPermissionRequested = {
-                                showAttachmentSheet = false
-                                // Handle permission request
-                            }
                         )
                         AttachmentOptions(
                             onGalleryClick = {

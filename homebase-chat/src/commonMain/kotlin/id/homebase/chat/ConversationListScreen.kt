@@ -263,6 +263,7 @@ fun ChatListUi(
                                 ConversationMessagesPane(
                                     conversation = conversation,
                                     messages = uiState.currentConversationMessages,
+                                    isLoadingNewMessage = uiState.loadingNewMessage,
                                     fullScreenMessageData = uiState.fullScreenMedia,
                                     savedScrollPosition = uiState.conversationScrollPosition,
                                     showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,

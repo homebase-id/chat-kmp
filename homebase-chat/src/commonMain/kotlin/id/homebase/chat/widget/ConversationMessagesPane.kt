@@ -32,6 +32,7 @@ import kotlinx.datetime.toLocalDateTime
 fun ConversationMessagesPane(
     conversation: ConversationUiModel,
     messages: ImmutableList<MessageUiModel>,
+    isLoadingNewMessage: Boolean,
     savedScrollPosition: ScrollPosition?,
     fullScreenMessageData: FullScreenMessageData?,
     showBackButton: Boolean,
@@ -204,6 +205,7 @@ fun ConversationMessagesPane(
                 ConversationContent(
                     conversation = conversation,
                     listState = listState,
+                    isLoadingNewMessage = isLoadingNewMessage,
                     isScrollPositionReady = true,
                     groupedMessages = groupedMessages,
                     showBackButton = showBackButton,

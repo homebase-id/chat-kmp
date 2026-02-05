@@ -249,13 +249,14 @@ class ChatListViewModel(
             is ConversationListUiAction.SendFile -> {
                 viewModelScope.launch {
                     try {
+                        _uiState.update { it.copy(loadingNewMessage = true, conversationScrollPosition = null) }
                         val attachments = mutableListOf<AttachmentInput>()
                         action.files.forEach { file ->
                             val filePath = file.toString()
                             attachments.add(
                                 AttachmentInput(
                                     filePath = filePath,
-                                    contentType = detectContentTypeFromExtensionOrHint(filePath),
+                                    contentType = detectContentTypeFromExtensionOrHint(file.name),
                                     displayName = file.name,
                                 )
                             )
@@ -271,13 +272,10 @@ class ChatListViewModel(
                             previousMessageUniqueId = null,
                             payloadBundle = bundle
                         )
+                        _uiState.update { it.copy(loadingNewMessage = false) }
                     } catch (e: Exception) {
                         Logger.e("Failed to send file(s)", e)
-                        sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
-                                "Failed to send file(s): ${e.message}"
-                            )
-                        )
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to send file(s): ${e.message}"))
                     }
                 }
             }
