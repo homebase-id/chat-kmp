@@ -74,7 +74,7 @@ class ConversationService(
                         content = OdinSystemSerializer.serialize(content),
                         previewThumbnail = encryptedBundle
                             .previewThumbs
-                            .minByOrNull { it.pixelWidth }
+                            .minByOrNull { it.pixelWidth ?: 0 }
                     ),
             )
 
@@ -223,7 +223,7 @@ class ConversationService(
                         fileType = ChatProtocol.ConversationFileType,
                         content = OdinSystemSerializer.serialize(content),
                         previewThumbnail =
-                            encryptedBundle.previewThumbs.minByOrNull { it.pixelWidth }
+                            encryptedBundle.previewThumbs.minByOrNull { it.pixelWidth ?: 0 }
                     )
             )
 

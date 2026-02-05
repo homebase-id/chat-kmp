@@ -44,6 +44,7 @@ class ContactService(
                 if (event is BackendEvent.DriveEvent.Completed &&
                     event.driveId == contactDrive
                 ) {
+                    Logger.i("refreshing contacts due to Completed event from drive sync ${event.driveId}")
                     refresh()
                 }
             }

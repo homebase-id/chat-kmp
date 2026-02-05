@@ -43,22 +43,23 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
         val THUMBLESS_CONTENT_TYPES = setOf("image/svg+xml", "image/gif")
     }
 
+    // unused code
     /** Decode embedded preview thumbnail from base64 */
-    @OptIn(ExperimentalEncodingApi::class)
-    fun decodePreviewThumbnail(data: HomebaseImageData): CachedImage? {
-        val preview = data.previewThumbnail ?: return null
-        return try {
-            val bytes = Base64.Default.decode(preview.content)
-            CachedImage(
-                bytes = bytes,
-                contentType = preview.contentType,
-                size = ImageSize(preview.pixelWidth, preview.pixelHeight)
-            )
-        } catch (e: Exception) {
-            Logger.e(TAG) { "Failed to decode preview thumbnail: ${e.message}" }
-            null
-        }
-    }
+//    @OptIn(ExperimentalEncodingApi::class)
+//    fun decodePreviewThumbnail(data: HomebaseImageData): CachedImage? {
+//        val preview = data.previewThumbnail ?: return null
+//        return try {
+//            val bytes = Base64.Default.decode(preview.content)
+//            CachedImage(
+//                bytes = bytes,
+//                contentType = preview.contentType,
+//                size = ImageSize(preview.pixelWidth, preview.pixelHeight)
+//            )
+//        } catch (e: Exception) {
+//            Logger.e(TAG) { "Failed to decode preview thumbnail: ${e.message}" }
+//            null
+//        }
+//    }
 
     /** Load thumbnail at the requested size. */
     suspend fun loadThumbnail(data: HomebaseImageData, targetSize: ImageSize): CachedImage? {

@@ -179,8 +179,8 @@ class DriveSync(
 
         try {
             dbDeferreds.awaitAll()  // Suspends until all complete; rethrows the first exception if any
+            Logger.d("Drive $driveId synchronized with $totalCount records read.  Sending Completed Event")
             eventBus.emit(BackendEvent.DriveEvent.Completed(driveId, totalCount))
-            Logger.d("Drive $driveId synchronized with $totalCount records read.")
         } catch (e: Exception) {
             Logger.e("Sync failed due to DB error: ${e.message}")
             eventBus.emit(BackendEvent.DriveEvent.Failed(driveId, e.message ?: "DB upsert failed"))

@@ -19,10 +19,10 @@ import kotlin.uuid.Uuid
  */
 @Serializable
 data class EmbeddedThumb(
-        val pixelWidth: Int,
-        val pixelHeight: Int,
-        val contentType: String,
-        val content: String
+        val pixelWidth: Int?,
+        val pixelHeight: Int?,
+        val contentType: String?,
+        val content: String?
 )
 
 /** Application file metadata for uploads. */
