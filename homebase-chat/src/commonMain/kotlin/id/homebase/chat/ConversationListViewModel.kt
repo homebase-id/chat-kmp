@@ -43,6 +43,15 @@ class ChatListViewModel(
 
     init {
         viewModelScope.launch {
+            contactService.start()
+            contactService.contacts.collect { contacts ->
+                _uiState.value = _uiState.value.copy(
+                    contacts = contacts.toPersistentList()
+                )
+            }
+        }
+
+        viewModelScope.launch {
             val domain =
                 credentialsManager
                     .requireActiveCredentials()
@@ -65,14 +74,6 @@ class ChatListViewModel(
             }
         }
 
-        contactService.start()
-        viewModelScope.launch {
-            contactService.contacts.collect { contacts ->
-                _uiState.value = _uiState.value.copy(
-                    contacts = contacts.toPersistentList()
-                )
-            }
-        }
     }
 
     fun eventConsumed() {
@@ -164,12 +165,18 @@ class ChatListViewModel(
             }
 
             is ConversationListUiAction.DeleteMessage -> {
-                val message = _uiState.value.currentConversationMessages.firstOrNull { it.id == action.messageId } ?: return
+                val message =
+                    _uiState.value.currentConversationMessages.firstOrNull { it.id == action.messageId }
+                        ?: return
                 val isCurrentUserMessage = message.senderId == _uiState.value.currentOdinId
-                _uiState.update { it.copy(uiDialog = ConversationListUiDialog.DeleteMessage(
-                    messageId = action.messageId,
-                    allowDeleteForEveryone = isCurrentUserMessage
-                ) ) }
+                _uiState.update {
+                    it.copy(
+                        uiDialog = ConversationListUiDialog.DeleteMessage(
+                            messageId = action.messageId,
+                            allowDeleteForEveryone = isCurrentUserMessage
+                        )
+                    )
+                }
             }
 
             is ConversationListUiAction.ShareMedia -> {
@@ -321,7 +328,6 @@ class ChatListViewModel(
             ConversationListUiAction.CloseFullScreenMedia -> {
                 _uiState.update { it.copy(fullScreenMedia = null) }
             }
-
 
 
 //            is ConversationListUiAction.ArchiveConversation -> TODO()
