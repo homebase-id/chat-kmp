@@ -1,14 +1,14 @@
 package id.homebase.core.image
 
-import androidx.compose.runtime.key
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.withRetry
 import io.github.vinceglb.filekit.extension
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.readBytes
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlinx.coroutines.CancellationException
 
 /** Image data container */
 // TODO: Rename to memoryImage?
@@ -41,6 +41,15 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
 
         // Content types that don't need thumbnails (render as-is)
         val THUMBLESS_CONTENT_TYPES = setOf("image/svg+xml", "image/gif")
+
+        // Default retry configuration for image loading
+        val DEFAULT_RETRY_CONFIG =
+                RetryConfig(
+                        maxRetries = 3,
+                        initialDelayMs = 500L,
+                        maxDelayMs = 5000L,
+                        backoffMultiplier = 2.0
+                )
     }
 
     /** Decode embedded preview thumbnail from base64 */
@@ -50,9 +59,9 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
         return try {
             val bytes = Base64.Default.decode(preview.content)
             CachedImage(
-                bytes = bytes,
-                contentType = preview.contentType,
-                size = ImageSize(preview.pixelWidth, preview.pixelHeight)
+                    bytes = bytes,
+                    contentType = preview.contentType,
+                    size = ImageSize(preview.pixelWidth, preview.pixelHeight)
             )
         } catch (e: Exception) {
             Logger.e(TAG) { "Failed to decode preview thumbnail: ${e.message}" }
@@ -60,73 +69,81 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
         }
     }
 
-    /** Load thumbnail at the requested size. */
-    suspend fun loadThumbnail(data: HomebaseImageData, targetSize: ImageSize): CachedImage? {
-        // Check pending file first
+    /**
+     * Load thumbnail at the requested size with automatic retry on failure.
+     *
+     * @param data Image data containing drive/file identifiers
+     * @param targetSize Target thumbnail size
+     * @param retryConfig Optional custom retry configuration
+     */
+    suspend fun loadThumbnail(
+            data: HomebaseImageData,
+            targetSize: ImageSize,
+            retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
+    ): CachedImage? {
+        // Check pending file first - no retry needed for local files
         if (data.isPending) {
             return loadPendingFile(data)
         }
 
         // Skip thumbnail fetch for SVG/GIF (load full payload instead)
         if (data.contentTypeHint in THUMBLESS_CONTENT_TYPES) {
-            return loadFullPayload(data)
+            return loadFullPayload(data, retryConfig)
         }
 
-        // Fetch from server
-        return try {
+        // Fetch from server with retry
+        return withRetry(retryConfig, TAG) {
             val response =
-                driveFileProvider.getThumbBytesDecrypted(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    payloadKey = data.payloadKey,
-                    keyHeader = data.keyHeader,
-                    width = targetSize.pixelWidth,
-                    height = targetSize.pixelHeight,
-                    lastModified = data.lastModified,
-                )
-                    ?: return null
+                    driveFileProvider.getThumbBytesDecrypted(
+                            driveId = data.driveId,
+                            fileId = data.fileId,
+                            payloadKey = data.payloadKey,
+                            keyHeader = data.keyHeader,
+                            width = targetSize.pixelWidth,
+                            height = targetSize.pixelHeight,
+                            lastModified = data.lastModified,
+                    )
+                            ?: return@withRetry null
 
             CachedImage(
-                bytes = response.bytes,
-                contentType = response.contentType,
-                size = targetSize
+                    bytes = response.bytes,
+                    contentType = response.contentType,
+                    size = targetSize
             )
-        } catch (e: CancellationException) {
-            // Expected when composable leaves composition - rethrow to let Coil handle it
-            throw e
-        } catch (e: Exception) {
-            Logger.e(TAG) { "Failed to load thumbnail: ${e.message}" }
-            null
         }
     }
 
-    /** Load full resolution payload */
-    suspend fun loadFullPayload(data: HomebaseImageData): CachedImage? {
-        // Check pending file first
+    /**
+     * Load full resolution payload with automatic retry on failure.
+     *
+     * @param data Image data containing drive/file identifiers
+     * @param retryConfig Optional custom retry configuration
+     */
+    suspend fun loadFullPayload(
+            data: HomebaseImageData,
+            retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
+    ): CachedImage? {
+        // Check pending file first - no retry needed for local files
         if (data.isPending) {
-            return loadPendingFile(data) // TODO: <-- This seems unnecessary
+            return loadPendingFile(data)
         }
 
-        return try {
+        // Fetch from server with retry
+        return withRetry(retryConfig, TAG) {
             val response =
-                driveFileProvider.getPayloadBytesDecrypted(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    key = data.payloadKey,
-                    keyHeader = data.keyHeader
-                )
-                    ?: return null
+                    driveFileProvider.getPayloadBytesDecrypted(
+                            driveId = data.driveId,
+                            fileId = data.fileId,
+                            key = data.payloadKey,
+                            keyHeader = data.keyHeader
+                    )
+                            ?: return@withRetry null
 
             CachedImage(
-                bytes = response.bytes,
-                contentType = response.contentType,
-                size = null // null indicates full resolution
+                    bytes = response.bytes,
+                    contentType = response.contentType,
+                    size = null // null indicates full resolution
             )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.e(TAG) { "Failed to load full payload: ${e.message}" }
-            null
         }
     }
 
