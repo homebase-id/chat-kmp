@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.AvatarImage
@@ -57,6 +58,8 @@ import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -67,22 +70,21 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Clock
-import kotlin.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationContent(
-    conversation: ConversationUiModel,
-    listState: LazyListState,
-    isScrollPositionReady: Boolean,
-    groupedMessages: ImmutableList<MessageSectionItem>,
-    showBackButton: Boolean,
-    onBackClick: () -> Unit,
-    onUiAction: (ConversationListUiAction) -> Unit,
-    currentOdinId: String,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+        conversation: ConversationUiModel,
+        listState: LazyListState,
+        isScrollPositionReady: Boolean,
+        groupedMessages: ImmutableList<MessageSectionItem>,
+        showBackButton: Boolean,
+        onBackClick: () -> Unit,
+        onUiAction: (ConversationListUiAction) -> Unit,
+        currentOdinId: String,
+        replyToMessage: MessageUiModel?,
+        sharedTransitionScope: SharedTransitionScope,
+        animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -95,373 +97,374 @@ fun ConversationContent(
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
             onUiAction(
-                ConversationListUiAction.SendFile(
-                    conversation.id,
-                    "",
-                    listOf(file),
-                )
+                    ConversationListUiAction.SendFile(
+                            conversation.id,
+                            "",
+                            listOf(file),
+                    )
             )
         }
     }
     val fileLauncher = rememberFilePickerLauncher { file ->
         file?.let {
             onUiAction(
-                ConversationListUiAction.SendFile(
-                    conversation.id,
-                    "",
-                    listOf(file),
-                )
+                    ConversationListUiAction.SendFile(
+                            conversation.id,
+                            "",
+                            listOf(file),
+                    )
             )
         }
     }
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.SendFile(
-                    conversation.id,
-                    "",
-                    listOf(file),
-                )
-            )
-        }
-    }
+    val galleryLauncher =
+            rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+                file?.let {
+                    onUiAction(
+                            ConversationListUiAction.SendFile(
+                                    conversation.id,
+                                    "",
+                                    listOf(file),
+                            )
+                    )
+                }
+            }
 
     Scaffold(
-        modifier = Modifier,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AvatarImage(
-                            avatarUrl = conversation.avatarUrl,
-                            avatarInitials = conversation.avatarInitials,
-                            size = 32.dp,
-                            fontSize = 12.sp,
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            text = conversation.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }, navigationIcon = {
-                    if (showBackButton) {
-                        IconButton(onClick = onBackClick) {
-                            Icon(
-                                imageVector = Icons.Default.ChevronLeft,
-                                contentDescription = stringResource(MR.string.menu_back)
-                            )
-                        }
-                    }
-                }, actions = {
-                    IconButton(onClick = {
-                        showConversationMenu = true
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = stringResource(MR.string.chat_options)
-                        )
-                    }
-                    ConversationMenu(
-                        showMenu = showConversationMenu,
-                        dismissMenu = { showConversationMenu = false },
-                        onConversationInfo = {
-                            showConversationMenu = false
-                            onUiAction(
-                                ConversationListUiAction.ShowConversationInfo(
-                                    conversation.id
+            modifier = Modifier,
+            topBar = {
+                TopAppBar(
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                AvatarImage(
+                                        avatarUrl = conversation.avatarUrl,
+                                        avatarInitials = conversation.avatarInitials,
+                                        size = 32.dp,
+                                        fontSize = 12.sp,
                                 )
-                            )
-                        },
-                        onDelete = {
-                            showConversationMenu = false
-                            onUiAction(
-                                ConversationListUiAction.DeleteConversation(conversation.id)
-                            )
-                        },
-                        onArchive = {
-                            showConversationMenu = false
-                            onUiAction(
-                                ConversationListUiAction.ArchiveConversation(
-                                    conversation.id
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text(
+                                        text = conversation.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
                                 )
+                            }
+                        },
+                        navigationIcon = {
+                            if (showBackButton) {
+                                IconButton(onClick = onBackClick) {
+                                    Icon(
+                                            imageVector = Icons.Default.ChevronLeft,
+                                            contentDescription = stringResource(MR.string.menu_back)
+                                    )
+                                }
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { showConversationMenu = true }) {
+                                Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = stringResource(MR.string.chat_options)
+                                )
+                            }
+                            ConversationMenu(
+                                    showMenu = showConversationMenu,
+                                    dismissMenu = { showConversationMenu = false },
+                                    onConversationInfo = {
+                                        showConversationMenu = false
+                                        onUiAction(
+                                                ConversationListUiAction.ShowConversationInfo(
+                                                        conversation.id
+                                                )
+                                        )
+                                    },
+                                    onDelete = {
+                                        showConversationMenu = false
+                                        onUiAction(
+                                                ConversationListUiAction.DeleteConversation(
+                                                        conversation.id
+                                                )
+                                        )
+                                    },
+                                    onArchive = {
+                                        showConversationMenu = false
+                                        onUiAction(
+                                                ConversationListUiAction.ArchiveConversation(
+                                                        conversation.id
+                                                )
+                                        )
+                                    },
+                                    onClear = {
+                                        showConversationMenu = false
+                                        onUiAction(
+                                                ConversationListUiAction.ClearConversation(
+                                                        conversation.id
+                                                )
+                                        )
+                                    },
                             )
                         },
-                        onClear = {
-                            showConversationMenu = false
-                            onUiAction(
-                                ConversationListUiAction.ClearConversation(conversation.id)
-                            )
-                        },
-                    )
-                }, colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
+                        colors =
+                                TopAppBarDefaults.topAppBarColors(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                )
                 )
-            )
-        },
+            },
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
-                .imePadding()
-                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                modifier =
+                        Modifier.fillMaxSize()
+                                .padding(innerPadding)
+                                .consumeWindowInsets(innerPadding)
+                                .imePadding()
+                                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
             if (isScrollPositionReady) {
                 Box(
-                    modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f),
                 ) {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            state = listState,
                     ) {
-                        item {
-                            Spacer(modifier = Modifier.height(24.dp))
-                        }
+                        item { Spacer(modifier = Modifier.height(24.dp)) }
                         item {
                             Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.Center
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.Center
                             ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     AvatarImage(
-                                        avatarUrl = conversation.avatarUrl,
-                                        avatarInitials = conversation.avatarInitials,
-                                        size = 72.dp,
-                                        fontSize = 24.sp,
+                                            avatarUrl = conversation.avatarUrl,
+                                            avatarInitials = conversation.avatarInitials,
+                                            size = 72.dp,
+                                            fontSize = 24.sp,
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Text(
-                                        text = conversation.name,
-                                        style = MaterialTheme.typography.headlineSmall,
+                                            text = conversation.name,
+                                            style = MaterialTheme.typography.headlineSmall,
                                     )
                                 }
                             }
                         }
-                        item {
-                            Spacer(modifier = Modifier.height(24.dp))
-                        }
+                        item { Spacer(modifier = Modifier.height(24.dp)) }
 
                         groupedMessages.forEach { section ->
                             item(key = "date_${section.date}") {
                                 Box(
-                                    modifier = Modifier.fillMaxWidth()
-                                        .padding(vertical = 16.dp),
-                                    contentAlignment = Alignment.Center
+                                        modifier =
+                                                Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                                        contentAlignment = Alignment.Center
                                 ) {
                                     MessagesSection(
-                                        text = getDateSectionLabel(section.firstMessageTime)
+                                            text = getDateSectionLabel(section.firstMessageTime)
                                     )
                                 }
                             }
-                            items(
-                                items = section.messages,
-                                key = { message -> message.id }) { message ->
+                            items(items = section.messages, key = { message -> message.id }) {
+                                    message ->
                                 if (message.isCurrentUser(currentOdinId)) {
                                     SentMessageBubble(
-                                        message = message,
-                                        onMessageInfo = {
-                                            onUiAction(
-                                                ConversationListUiAction.ShowMessageInfo(
-                                                    message.id
+                                            message = message,
+                                            onMessageInfo = {
+                                                onUiAction(
+                                                        ConversationListUiAction.ShowMessageInfo(
+                                                                message.id
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onReply = {
-                                            onUiAction(
-                                                ConversationListUiAction.ReplyToMessage(
-                                                    message.id
+                                            },
+                                            onReply = {
+                                                onUiAction(
+                                                        ConversationListUiAction.ReplyToMessage(
+                                                                message
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onStar = {
-                                            onUiAction(
-                                                ConversationListUiAction.StarMessage(
-                                                    message.id
+                                            },
+                                            onStar = {
+                                                onUiAction(
+                                                        ConversationListUiAction.StarMessage(
+                                                                message.id
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onEdit = {
-                                            onUiAction(
-                                                ConversationListUiAction.EditMessage(
-                                                    message.id
+                                            },
+                                            onEdit = {
+                                                onUiAction(
+                                                        ConversationListUiAction.EditMessage(
+                                                                message.id
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onDelete = {
-                                            onUiAction(
-                                                ConversationListUiAction.DeleteMessage(
-                                                    message.id
+                                            },
+                                            onDelete = {
+                                                onUiAction(
+                                                        ConversationListUiAction.DeleteMessage(
+                                                                message.id
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onMediaClick = { payload ->
-                                            onUiAction(
-                                                ConversationListUiAction.MediaClicked(
-                                                    message,
-                                                    payload.key,
+                                            },
+                                            onMediaClick = { payload ->
+                                                onUiAction(
+                                                        ConversationListUiAction.MediaClicked(
+                                                                message,
+                                                                payload.key,
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        animatedVisibilityScope = animatedVisibilityScope,
-                                        sharedTransitionScope = sharedTransitionScope,
+                                            },
+                                            animatedVisibilityScope = animatedVisibilityScope,
+                                            sharedTransitionScope = sharedTransitionScope,
                                     )
                                 } else {
                                     ReceivedMessageBubble(
-                                        message = message,
-                                        onMessageInfo = {
-                                            onUiAction(
-                                                ConversationListUiAction.ShowMessageInfo(
-                                                    message.id
+                                            message = message,
+                                            onMessageInfo = {
+                                                onUiAction(
+                                                        ConversationListUiAction.ShowMessageInfo(
+                                                                message.id
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onReply = {
-                                            onUiAction(
-                                                ConversationListUiAction.ReplyToMessage(
-                                                    message.id
+                                            },
+                                            onReply = {
+                                                onUiAction(
+                                                        ConversationListUiAction.ReplyToMessage(
+                                                                message
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onStar = {
-                                            onUiAction(
-                                                ConversationListUiAction.StarMessage(
-                                                    message.id
+                                            },
+                                            onStar = {
+                                                onUiAction(
+                                                        ConversationListUiAction.StarMessage(
+                                                                message.id
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onDelete = {
-                                            onUiAction(
-                                                ConversationListUiAction.DeleteMessage(
-                                                    message.id
+                                            },
+                                            onDelete = {
+                                                onUiAction(
+                                                        ConversationListUiAction.DeleteMessage(
+                                                                message.id
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onMarkAsRead = {
-                                            onUiAction(
-                                                ConversationListUiAction.MarkAsRead(
-                                                    message.id
+                                            },
+                                            onMarkAsRead = {
+                                                onUiAction(
+                                                        ConversationListUiAction.MarkAsRead(
+                                                                message.id
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onAddReaction = { _, reaction ->
-                                            onUiAction(
-                                                ConversationListUiAction.AddReaction(
-                                                    message.id,
-                                                    reaction = reaction
+                                            },
+                                            onAddReaction = { _, reaction ->
+                                                onUiAction(
+                                                        ConversationListUiAction.AddReaction(
+                                                                message.id,
+                                                                reaction = reaction
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onDeleteReaction = { _, reaction ->
-                                            onUiAction(
-                                                ConversationListUiAction.DeleteReaction(
-                                                    message.id,
-                                                    reaction = reaction
+                                            },
+                                            onDeleteReaction = { _, reaction ->
+                                                onUiAction(
+                                                        ConversationListUiAction.DeleteReaction(
+                                                                message.id,
+                                                                reaction = reaction
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        onMediaClick = { payload ->
-                                            onUiAction(
-                                                ConversationListUiAction.MediaClicked(
-                                                    message,
-                                                    payload.key,
+                                            },
+                                            onMediaClick = { payload ->
+                                                onUiAction(
+                                                        ConversationListUiAction.MediaClicked(
+                                                                message,
+                                                                payload.key,
+                                                        )
                                                 )
-                                            )
-                                        },
-                                        animatedVisibilityScope = animatedVisibilityScope,
-                                        sharedTransitionScope = sharedTransitionScope,
+                                            },
+                                            animatedVisibilityScope = animatedVisibilityScope,
+                                            sharedTransitionScope = sharedTransitionScope,
                                     )
                                 }
                             }
                         }
 
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
+                        item { Spacer(modifier = Modifier.height(16.dp)) }
                     }
                     HomebaseVerticalScrollbar(
-                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-                        state = listState
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                            state = listState
                     )
                 }
             }
-            Surface(
-                shadowElevation = 8.dp, tonalElevation = 0.dp
-            ) {
+            Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
                 Column {
+                    replyToMessage?.let { msg ->
+                        ReplyPreviewBar(
+                                message = msg,
+                                onDismiss = {
+                                    onUiAction(ConversationListUiAction.CancelReplyToMessage)
+                                }
+                        )
+                    }
                     MessageInputBar(
-                        focusRequester = focusRequester,
-                        onSendMessage = {
-                            if (it.isNotBlank()) {
-                                onUiAction(
-                                    ConversationListUiAction.SendMessage(
-                                        conversation.id, it
+                            focusRequester = focusRequester,
+                            onSendMessage = {
+                                if (it.isNotBlank()) {
+                                    onUiAction(
+                                            ConversationListUiAction.SendMessage(
+                                                    conversation.id,
+                                                    it
+                                            )
                                     )
-                                )
-                                // Scroll to bottom will happen automatically when the message is added to UI state
-                            }
-                        },
-                        onAddAttachmentClick = {
-                            if (showAttachmentSheet && !isKeyboardVisible) {
-                                showAttachmentSheet = false
-                                if (wasKeyboardVisible) {
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
+                                    // Scroll to bottom will happen automatically when the message
+                                    // is added to UI state
                                 }
-                            } else {
-                                if (isKeyboardVisible) {
-                                    wasKeyboardVisible = true
-                                    focusManager.clearFocus()
-                                    keyboardController?.hide()
+                            },
+                            onAddAttachmentClick = {
+                                if (showAttachmentSheet && !isKeyboardVisible) {
+                                    showAttachmentSheet = false
+                                    if (wasKeyboardVisible) {
+                                        focusRequester.requestFocus()
+                                        keyboardController?.show()
+                                    }
                                 } else {
-                                    wasKeyboardVisible = false
+                                    if (isKeyboardVisible) {
+                                        wasKeyboardVisible = true
+                                        focusManager.clearFocus()
+                                        keyboardController?.hide()
+                                    } else {
+                                        wasKeyboardVisible = false
+                                    }
+                                    showAttachmentSheet = true
                                 }
-                                showAttachmentSheet = true
-                            }
-                        },
-                        onCameraClick = {
-                            cameraLauncher.launch()
-                        }
+                            },
+                            onCameraClick = { cameraLauncher.launch() }
                     )
 
                     AttachmentOptionsDisplay(
-                        visible = showAttachmentSheet && !isKeyboardVisible,
+                            visible = showAttachmentSheet && !isKeyboardVisible,
                     ) {
                         AttachmentGallery(
-                            onImageSelected = {
-                                showAttachmentSheet = false
-                                // Handle image selection
-                            },
-                            onPermissionRequested = {
-                                showAttachmentSheet = false
-                                // Handle permission request
-                            }
+                                onImageSelected = {
+                                    showAttachmentSheet = false
+                                    // Handle image selection
+                                },
+                                onPermissionRequested = {
+                                    showAttachmentSheet = false
+                                    // Handle permission request
+                                }
                         )
                         AttachmentOptions(
-                            onGalleryClick = {
-                                showAttachmentSheet = false
-                                galleryLauncher.launch()
-                            },
-                            onFileClick = {
-                                showAttachmentSheet = false
-                                fileLauncher.launch()
-                            },
-                            onContactClick = {
-                                showAttachmentSheet = false
-                                // Handle camera
-                            },
-                            onLocationClick = {
-                                showAttachmentSheet = false
-                                // Handle location
-                            }
+                                onGalleryClick = {
+                                    showAttachmentSheet = false
+                                    galleryLauncher.launch()
+                                },
+                                onFileClick = {
+                                    showAttachmentSheet = false
+                                    fileLauncher.launch()
+                                },
+                                onContactClick = {
+                                    showAttachmentSheet = false
+                                    // Handle camera
+                                },
+                                onLocationClick = {
+                                    showAttachmentSheet = false
+                                    // Handle location
+                                }
                         )
                     }
                 }
@@ -481,11 +484,12 @@ private fun getDateSectionLabel(timestamp: Instant): String {
         today -> stringResource(MR.string.time_today)
         yesterday -> stringResource(MR.string.time_yesterday)
         else -> {
-            val format = LocalDate.Format {
-                monthName(MonthNames.ENGLISH_ABBREVIATED)
-                char(' ')
-                day()
-            }
+            val format =
+                    LocalDate.Format {
+                        monthName(MonthNames.ENGLISH_ABBREVIATED)
+                        char(' ')
+                        day()
+                    }
             messageDate.format(format)
         }
     }

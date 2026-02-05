@@ -76,5 +76,7 @@
     <string name="chat_message_needs_gallery_permission">Homebase Chat needs permission to show your photos and videos</string>
     <string name="chat_message_needs_gallery_permission_button_text">Allow access</string>
     <string name="chat_message_delete_dialog_title">Delete selected message?</string>
+    <string name="replying_to">Replying to %1$s</string>
+    <string name="cancel_reply">Cancel reply</string>
 
 </resources>
