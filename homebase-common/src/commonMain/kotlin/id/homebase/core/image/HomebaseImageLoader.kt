@@ -17,9 +17,7 @@ data class CachedImage(val bytes: ByteArray, val contentType: String, val size: 
         if (this === other) return true
         if (other == null || this::class != other::class) return false
         other as CachedImage
-        return bytes.contentEquals(other.bytes) &&
-                contentType == other.contentType &&
-                size == other.size
+        return bytes.contentEquals(other.bytes) && contentType == other.contentType && size == other.size
     }
 
     override fun hashCode(): Int {
@@ -43,13 +41,9 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
         val THUMBLESS_CONTENT_TYPES = setOf("image/svg+xml", "image/gif")
 
         // Default retry configuration for image loading
-        val DEFAULT_RETRY_CONFIG =
-                RetryConfig(
-                        maxRetries = 3,
-                        initialDelayMs = 500L,
-                        maxDelayMs = 5000L,
-                        backoffMultiplier = 2.0
-                )
+        val DEFAULT_RETRY_CONFIG = RetryConfig(
+            maxRetries = 3, initialDelayMs = 500L, maxDelayMs = 5000L, backoffMultiplier = 2.0
+        )
     }
 
     /** Decode embedded preview thumbnail from base64 */
@@ -59,9 +53,9 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
         return try {
             val bytes = Base64.Default.decode(preview.content)
             CachedImage(
-                    bytes = bytes,
-                    contentType = preview.contentType,
-                    size = ImageSize(preview.pixelWidth, preview.pixelHeight)
+                bytes = bytes,
+                contentType = preview.contentType,
+                size = ImageSize(preview.pixelWidth, preview.pixelHeight)
             )
         } catch (e: Exception) {
             Logger.e(TAG) { "Failed to decode preview thumbnail: ${e.message}" }
@@ -77,9 +71,9 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
      * @param retryConfig Optional custom retry configuration
      */
     suspend fun loadThumbnail(
-            data: HomebaseImageData,
-            targetSize: ImageSize,
-            retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
+        data: HomebaseImageData,
+        targetSize: ImageSize,
+        retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
     ): CachedImage? {
         // Check pending file first - no retry needed for local files
         if (data.isPending) {
@@ -93,22 +87,18 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
 
         // Fetch from server with retry
         return withRetry(retryConfig, TAG) {
-            val response =
-                    driveFileProvider.getThumbBytesDecrypted(
-                            driveId = data.driveId,
-                            fileId = data.fileId,
-                            payloadKey = data.payloadKey,
-                            keyHeader = data.keyHeader,
-                            width = targetSize.pixelWidth,
-                            height = targetSize.pixelHeight,
-                            lastModified = data.lastModified,
-                    )
-                            ?: return@withRetry null
+            val response = driveFileProvider.getThumbBytesDecrypted(
+                driveId = data.driveId,
+                fileId = data.fileId,
+                payloadKey = data.payloadKey,
+                keyHeader = data.keyHeader,
+                width = targetSize.pixelWidth,
+                height = targetSize.pixelHeight,
+                lastModified = data.lastModified,
+            ) ?: return@withRetry null
 
             CachedImage(
-                    bytes = response.bytes,
-                    contentType = response.contentType,
-                    size = targetSize
+                bytes = response.bytes, contentType = response.contentType, size = targetSize
             )
         }
     }
@@ -120,8 +110,7 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
      * @param retryConfig Optional custom retry configuration
      */
     suspend fun loadFullPayload(
-            data: HomebaseImageData,
-            retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
+        data: HomebaseImageData, retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
     ): CachedImage? {
         // Check pending file first - no retry needed for local files
         if (data.isPending) {
@@ -130,19 +119,17 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
 
         // Fetch from server with retry
         return withRetry(retryConfig, TAG) {
-            val response =
-                    driveFileProvider.getPayloadBytesDecrypted(
-                            driveId = data.driveId,
-                            fileId = data.fileId,
-                            key = data.payloadKey,
-                            keyHeader = data.keyHeader
-                    )
-                            ?: return@withRetry null
+            val response = driveFileProvider.getPayloadBytesDecrypted(
+                driveId = data.driveId,
+                fileId = data.fileId,
+                key = data.payloadKey,
+                keyHeader = data.keyHeader
+            ) ?: return@withRetry null
 
             CachedImage(
-                    bytes = response.bytes,
-                    contentType = response.contentType,
-                    size = null // null indicates full resolution
+                bytes = response.bytes,
+                contentType = response.contentType,
+                size = null // null indicates full resolution
             )
         }
     }

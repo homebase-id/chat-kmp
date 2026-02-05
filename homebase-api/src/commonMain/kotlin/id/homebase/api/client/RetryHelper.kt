@@ -14,11 +14,11 @@ import kotlinx.coroutines.delay
  * @param retryOn Optional predicate to determine if a specific exception should trigger a retry
  */
 data class RetryConfig(
-        val maxRetries: Int = 3,
-        val initialDelayMs: Long = 1000L,
-        val maxDelayMs: Long = 10000L,
-        val backoffMultiplier: Double = 2.0,
-        val retryOn: ((Exception) -> Boolean)? = null
+    val maxRetries: Int = 3,
+    val initialDelayMs: Long = 1000L,
+    val maxDelayMs: Long = 10000L,
+    val backoffMultiplier: Double = 2.0,
+    val retryOn: ((Exception) -> Boolean)? = null
 )
 
 /** Result wrapper for retry operations that provides detailed outcome information. */
@@ -26,23 +26,20 @@ sealed class RetryResult<out T> {
     data class Success<T>(val value: T) : RetryResult<T>()
     data class Failure(val exception: Exception, val attempts: Int) : RetryResult<Nothing>()
 
-    fun getOrNull(): T? =
-            when (this) {
-                is Success -> value
-                is Failure -> null
-            }
+    fun getOrNull(): T? = when (this) {
+        is Success -> value
+        is Failure -> null
+    }
 
-    fun getOrThrow(): T =
-            when (this) {
-                is Success -> value
-                is Failure -> throw exception
-            }
+    fun getOrThrow(): T = when (this) {
+        is Success -> value
+        is Failure -> throw exception
+    }
 
-    inline fun <R> fold(onSuccess: (T) -> R, onFailure: (Exception, Int) -> R): R =
-            when (this) {
-                is Success -> onSuccess(value)
-                is Failure -> onFailure(exception, attempts)
-            }
+    inline fun <R> fold(onSuccess: (T) -> R, onFailure: (Exception, Int) -> R): R = when (this) {
+        is Success -> onSuccess(value)
+        is Failure -> onFailure(exception, attempts)
+    }
 }
 
 /**
@@ -58,9 +55,7 @@ sealed class RetryResult<out T> {
  * @return The result of the block, or null if all retries failed
  */
 suspend fun <T> withRetry(
-        config: RetryConfig = RetryConfig(),
-        tag: String? = null,
-        block: suspend (attempt: Int) -> T?
+    config: RetryConfig = RetryConfig(), tag: String? = null, block: suspend (attempt: Int) -> T?
 ): T? {
     return withRetryResult(config, tag, block).getOrNull()
 }
@@ -77,9 +72,7 @@ suspend fun <T> withRetry(
  * @return [RetryResult] containing either the success value or failure details
  */
 suspend fun <T> withRetryResult(
-        config: RetryConfig = RetryConfig(),
-        tag: String? = null,
-        block: suspend (attempt: Int) -> T?
+    config: RetryConfig = RetryConfig(), tag: String? = null, block: suspend (attempt: Int) -> T?
 ): RetryResult<T?> {
     val logTag = tag ?: "RetryHelper"
     var lastException: Exception? = null
@@ -100,10 +93,8 @@ suspend fun <T> withRetryResult(
                     "Attempt ${attempt + 1}/${config.maxRetries + 1} returned null, retrying in ${currentDelay}ms"
                 }
                 delay(currentDelay)
-                currentDelay =
-                        (currentDelay * config.backoffMultiplier)
-                                .toLong()
-                                .coerceAtMost(config.maxDelayMs)
+                currentDelay = (currentDelay * config.backoffMultiplier).toLong()
+                    .coerceAtMost(config.maxDelayMs)
             }
         } catch (e: CancellationException) {
             // Never retry on cancellation - rethrow immediately
@@ -123,10 +114,8 @@ suspend fun <T> withRetryResult(
                     "Attempt ${attempt + 1}/${config.maxRetries + 1} failed: ${e.message}, retrying in ${currentDelay}ms"
                 }
                 delay(currentDelay)
-                currentDelay =
-                        (currentDelay * config.backoffMultiplier)
-                                .toLong()
-                                .coerceAtMost(config.maxDelayMs)
+                currentDelay = (currentDelay * config.backoffMultiplier).toLong()
+                    .coerceAtMost(config.maxDelayMs)
             } else {
                 Logger.e(logTag) { "All ${config.maxRetries + 1} attempts failed: ${e.message}" }
             }
@@ -143,4 +132,4 @@ suspend fun <T> withRetryResult(
 
 /** Convenience extension for simple retry with default config. */
 suspend fun <T> (suspend () -> T?).withRetry(maxRetries: Int = 3, tag: String? = null): T? =
-        withRetry(RetryConfig(maxRetries = maxRetries), tag) { this() }
+    withRetry(RetryConfig(maxRetries = maxRetries), tag) { this() }
