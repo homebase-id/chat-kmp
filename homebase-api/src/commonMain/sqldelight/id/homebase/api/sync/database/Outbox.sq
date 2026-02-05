@@ -38,7 +38,7 @@ WHERE checkOutStamp IS NULL AND
             OR (NOT EXISTS (
                   SELECT 1
                   FROM Outbox AS ib
-                  WHERE ib.fileId = o.dependencyFileId)
+                  WHERE ib.fileId = o.dependencyFileId) --- uniqueId here --- see other lines
         )
     )
     ORDER BY o.priority ASC, o.nextRunTime ASC

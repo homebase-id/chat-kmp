@@ -1,8 +1,6 @@
 package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.database.Outbox
-import id.homebase.api.database.DatabaseManager
 import id.homebase.api.database.createInMemoryDatabase
 import id.homebase.api.eventbus.BackendEvent
 import id.homebase.api.eventbus.EventBus
@@ -88,7 +86,7 @@ class OutboxSyncTest {
                 priority = 0,
                 uploadType = 0,
                 json = byteArrayOf(),
-                files = null
+                filePaths = null
             )
 
             // Trigger send
@@ -146,7 +144,7 @@ class OutboxSyncTest {
                 priority = 0,
                 uploadType = 0,
                 json = byteArrayOf(),
-                files = null
+                filePaths = null
             )
 
             try
@@ -205,7 +203,7 @@ class OutboxSyncTest {
                     priority = 0,
                     uploadType = 0,
                     json = byteArrayOf(),
-                    files = null
+                    filePaths = null
                 )
                 Pair(driveId, fileId)
             }
