@@ -94,12 +94,11 @@ class ChatListViewModel(
 
             is ConversationListUiAction.ContactClicked -> {
                 viewModelScope.launch {
-                    val conversationId =
-                        conversationWriterService.createConversation(
-                            recipients = listOf(action.contact.odinId),
-                            title = "",
-                            payloadBundle = null,
-                        )
+                    val conversationId = conversationWriterService.createConversation(
+                        recipients = listOf(action.contact.odinId),
+                        title = "",
+                        payloadBundle = null,
+                    )
 
                     _uiState.value =
                         _uiState.value.copy(showingNewChatPane = false, searchQuery = "")
@@ -131,41 +130,34 @@ class ChatListViewModel(
             is ConversationListUiAction.SaveScrollPosition -> {
                 _uiState.update {
                     it.copy(
-                        conversationScrollPosition =
-                            ScrollPosition(
-                                action.firstVisibleItemIndex,
-                                action.firstVisibleItemScrollOffset
-                            )
+                        conversationScrollPosition = ScrollPosition(
+                            action.firstVisibleItemIndex, action.firstVisibleItemScrollOffset
+                        )
                     )
                 }
 
                 // Persist to user settings
                 viewModelScope.launch {
                     userPreferences.setConversationScrollIndex(
-                        action.conversationId.toString(),
-                        action.firstVisibleItemIndex
+                        action.conversationId.toString(), action.firstVisibleItemIndex
                     )
                     userPreferences.setConversationScrollOffset(
-                        action.conversationId.toString(),
-                        action.firstVisibleItemScrollOffset
+                        action.conversationId.toString(), action.firstVisibleItemScrollOffset
                     )
                 }
             }
 
             is ConversationListUiAction.DeleteMessage -> {
-                val message =
-                    _uiState.value.currentConversationMessages.firstOrNull {
-                        it.id == action.messageId
-                    }
-                        ?: return
+                val message = _uiState.value.currentConversationMessages.firstOrNull {
+                    it.id == action.messageId
+                } ?: return
                 val isCurrentUserMessage = message.senderId == _uiState.value.currentOdinId
                 _uiState.update {
                     it.copy(
-                        uiDialog =
-                            ConversationListUiDialog.DeleteMessage(
-                                messageId = action.messageId,
-                                allowDeleteForEveryone = isCurrentUserMessage
-                            )
+                        uiDialog = ConversationListUiDialog.DeleteMessage(
+                            messageId = action.messageId,
+                            allowDeleteForEveryone = isCurrentUserMessage
+                        )
                     )
                 }
             }
@@ -182,8 +174,7 @@ class ChatListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId,
-                            deleteForEveryone = true
+                            action.messageId, deleteForEveryone = true
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -199,8 +190,7 @@ class ChatListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId,
-                            deleteForEveryone = false
+                            action.messageId, deleteForEveryone = false
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -263,8 +253,7 @@ class ChatListViewModel(
                             attachments.add(
                                 AttachmentInput(
                                     filePath = filePath,
-                                    contentType =
-                                        detectContentTypeFromExtensionOrHint(filePath),
+                                    contentType = detectContentTypeFromExtensionOrHint(filePath),
                                     displayName = file.name,
                                 )
                             )
@@ -302,24 +291,22 @@ class ChatListViewModel(
 
                                 _uiState.update {
                                     it.copy(
-                                        fullScreenMedia =
-                                            FullScreenMessageData(
-                                                messageId = action.message.id,
-                                                title = action.message.senderId,
-                                                created = action.message.created,
-                                                content = action.message.content,
-                                                fileId = action.message.fileId,
-                                                driveId = chatTargetDrive.alias,
-                                                payloads = action.message.payloads,
-                                                selectedPayloadKey = action.payloadKey,
-                                                keyHeader = action.message.keyHeader,
-                                            )
+                                        fullScreenMedia = FullScreenMessageData(
+                                            messageId = action.message.id,
+                                            title = action.message.senderId,
+                                            created = action.message.created,
+                                            content = action.message.content,
+                                            fileId = action.message.fileId,
+                                            driveId = chatTargetDrive.alias,
+                                            payloads = action.message.payloads,
+                                            selectedPayloadKey = action.payloadKey,
+                                            keyHeader = action.message.keyHeader,
+                                        )
                                     )
                                 }
                             }
 
-                            contentType.startsWith("video/") ||
-                                    contentType == "application/vnd.apple.mpegurl" -> {
+                            contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
                             }
 
                             contentType.startsWith("audio/") -> {}
@@ -370,12 +357,11 @@ class ChatListViewModel(
 
                 chatMessageService.observeMessages(conversationId).collect { messages ->
                     val sorted = messages.sortedBy { it.created }
-                    _uiState.value =
-                        _uiState.value.copy(
-                            selectedConversationId = conversationId,
-                            currentConversationMessages = sorted.toPersistentList(),
-                            conversationScrollPosition = getScrollPosition(conversationId),
-                        )
+                    _uiState.value = _uiState.value.copy(
+                        selectedConversationId = conversationId,
+                        currentConversationMessages = sorted.toPersistentList(),
+                        conversationScrollPosition = getScrollPosition(conversationId),
+                    )
                 }
             } catch (e: Exception) {
                 sendEvent(
@@ -429,13 +415,12 @@ class ChatListViewModel(
     private fun replyToMessage(conversationId: Uuid, replyTo: MessageUiModel, content: String) {
         viewModelScope.launch {
             try {
-                val replyPreview =
-                    ReplyPreview(
-                        replyUniqueId = replyTo.id,
-                        authorOdinId = replyTo.senderOdinId,
-                        message = replyTo.content.take(80),
-                        previewThumbnail = replyTo.previewThumbnail
-                    )
+                val replyPreview = ReplyPreview(
+                    replyUniqueId = replyTo.id,
+                    authorOdinId = replyTo.senderOdinId,
+                    message = replyTo.content.take(80),
+                    previewThumbnail = replyTo.previewThumbnail
+                )
                 chatMessageSenderService.replyToMessage(
                     conversationId = conversationId,
                     replyTo = replyPreview,

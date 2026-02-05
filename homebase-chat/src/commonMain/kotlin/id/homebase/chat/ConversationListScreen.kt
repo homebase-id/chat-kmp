@@ -86,8 +86,7 @@ fun ConversationListScreen(
                 DialogCard(
                     buttons = {
                         DialogButtons(
-                            primaryText =
-                                stringResource(MR.string.chat_message_delete_for_me),
+                            primaryText = stringResource(MR.string.chat_message_delete_for_me),
                             onPrimaryClick = {
                                 viewModel.onAction(
                                     ConversationListUiAction.DeleteMessageForMe(
@@ -96,29 +95,23 @@ fun ConversationListScreen(
                                 )
                                 viewModel.dialogClosed()
                             },
-                            secondaryText =
-                                if (dialog.allowDeleteForEveryone)
-                                    stringResource(
-                                        MR.string
-                                            .chat_message_delete_for_everyone
-                                    )
-                                else null,
+                            secondaryText = if (dialog.allowDeleteForEveryone) stringResource(
+                                MR.string.chat_message_delete_for_everyone
+                            )
+                            else null,
                             onSecondaryClick = {
                                 if (dialog.allowDeleteForEveryone) {
                                     viewModel.onAction(
-                                        ConversationListUiAction
-                                            .DeleteMessageForEveryone(
-                                                dialog.messageId
-                                            )
+                                        ConversationListUiAction.DeleteMessageForEveryone(
+                                            dialog.messageId
+                                        )
                                     )
                                     viewModel.dialogClosed()
                                 }
                             },
                             tertiaryText = stringResource(MR.string.cancel),
-                            onTertiaryClick = { viewModel.dialogClosed() }
-                        )
-                    }
-                ) {
+                            onTertiaryClick = { viewModel.dialogClosed() })
+                    }) {
                     Text(
                         text = stringResource(MR.string.chat_message_delete_dialog_title),
                         style = MaterialTheme.typography.titleLarge,
@@ -149,53 +142,44 @@ fun ChatListUi(
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
     val isExpanded = windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(800)
-    val scaffoldDirective =
-        PaneScaffoldDirective(
-            maxHorizontalPartitions = if (isExpanded) 2 else 1,
-            horizontalPartitionSpacerSize = 0.dp, // Remove the white border
-            maxVerticalPartitions = defaultDirective.maxVerticalPartitions,
-            verticalPartitionSpacerSize = defaultDirective.verticalPartitionSpacerSize,
-            defaultPanePreferredWidth = 360.dp, // Slightly wider default for chat list
-            excludedBounds = defaultDirective.excludedBounds
-        )
-    val scaffoldNavigator =
-        rememberListDetailPaneScaffoldNavigator<Uuid>(
-            scaffoldDirective = scaffoldDirective,
-            initialDestinationHistory =
-                if (scaffoldDirective.maxHorizontalPartitions > 1) {
-                    listOf(
-                        ThreePaneScaffoldDestinationItem(
-                            ListDetailPaneScaffoldRole.List
-                        ),
-                        ThreePaneScaffoldDestinationItem(
-                            ListDetailPaneScaffoldRole.Detail
-                        )
-                    )
-                } else {
-                    listOf(
-                        ThreePaneScaffoldDestinationItem(
-                            ListDetailPaneScaffoldRole.List
-                        )
-                    )
-                }
-        )
+    val scaffoldDirective = PaneScaffoldDirective(
+        maxHorizontalPartitions = if (isExpanded) 2 else 1,
+        horizontalPartitionSpacerSize = 0.dp, // Remove the white border
+        maxVerticalPartitions = defaultDirective.maxVerticalPartitions,
+        verticalPartitionSpacerSize = defaultDirective.verticalPartitionSpacerSize,
+        defaultPanePreferredWidth = 360.dp, // Slightly wider default for chat list
+        excludedBounds = defaultDirective.excludedBounds
+    )
+    val scaffoldNavigator = rememberListDetailPaneScaffoldNavigator<Uuid>(
+        scaffoldDirective = scaffoldDirective,
+        initialDestinationHistory = if (scaffoldDirective.maxHorizontalPartitions > 1) {
+            listOf(
+                ThreePaneScaffoldDestinationItem(
+                    ListDetailPaneScaffoldRole.List
+                ), ThreePaneScaffoldDestinationItem(
+                    ListDetailPaneScaffoldRole.Detail
+                )
+            )
+        } else {
+            listOf(
+                ThreePaneScaffoldDestinationItem(
+                    ListDetailPaneScaffoldRole.List
+                )
+            )
+        }
+    )
     val scope = rememberCoroutineScope()
     val backNavigationBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
 
     // Detect if detail pane is visible and list pane is hidden (compact view showing only detail)
     val isListPaneHidden =
-        scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] ==
-                PaneAdaptedValue.Hidden
+        scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden
     val isDetailPaneVisible =
-        scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] !=
-                PaneAdaptedValue.Hidden
+        scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
     val showingOnlyDetail = isListPaneHidden && isDetailPaneVisible
 
     LaunchedEffect(isExpanded) {
-        if (!isExpanded &&
-            scaffoldNavigator.currentDestination?.pane ==
-            ListDetailPaneScaffoldRole.Detail
-        ) {
+        if (!isExpanded && scaffoldNavigator.currentDestination?.pane == ListDetailPaneScaffoldRole.Detail) {
             // Optional: If you want to force it back to list view when shrinking
             scaffoldNavigator.navigateBack()
         }
@@ -246,13 +230,11 @@ fun ChatListUi(
                                 onUiAction(
                                     ConversationListUiAction.SearchQueryChanged(query)
                                 )
-                            }
-                        )
+                            })
                     } else {
                         ConversationListPane(
                             conversations = uiState.conversations,
-                            selectedConversationId =
-                                scaffoldNavigator.currentDestination?.contentKey,
+                            selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
                             onConversationClick = { conversationId ->
                                 onUiAction(
                                     ConversationListUiAction.ConversationClicked(
@@ -261,8 +243,7 @@ fun ChatListUi(
                                 )
                                 scope.launch {
                                     scaffoldNavigator.navigateTo(
-                                        ListDetailPaneScaffoldRole.Detail,
-                                        conversationId
+                                        ListDetailPaneScaffoldRole.Detail, conversationId
                                     )
                                 }
                             },
@@ -275,18 +256,14 @@ fun ChatListUi(
             detailPane = {
                 AnimatedPane {
                     uiState.selectedConversationId?.let { conversationId ->
-                        val conversation =
-                            uiState.conversations.find { it.id == conversationId }
+                        val conversation = uiState.conversations.find { it.id == conversationId }
                         if (conversation != null) {
                             ConversationMessagesPane(
                                 conversation = conversation,
                                 messages = uiState.currentConversationMessages,
                                 fullScreenMessageData = uiState.fullScreenMedia,
                                 savedScrollPosition = uiState.conversationScrollPosition,
-                                showBackButton =
-                                    scaffoldNavigator.scaffoldValue[
-                                        ListDetailPaneScaffoldRole.List] ==
-                                            PaneAdaptedValue.Hidden,
+                                showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
                                 onBackClick = {
                                     scope.launch {
                                         scaffoldNavigator.navigateBack(
@@ -300,58 +277,42 @@ fun ChatListUi(
                             )
                         } else {
                             EmptyDetailPane(
-                                title =
-                                    stringResource(
-                                        MR.string.chat_select_a_conversation
-                                    ),
-                                subtitle =
-                                    stringResource(
-                                        MR.string
-                                            .chat_select_a_conversation_subtitle
-                                    )
+                                title = stringResource(
+                                    MR.string.chat_select_a_conversation
+                                ), subtitle = stringResource(
+                                    MR.string.chat_select_a_conversation_subtitle
+                                )
                             )
                         }
-                    }
-                        ?: EmptyDetailPane(
-                            title =
-                                stringResource(
-                                    MR.string.chat_select_a_conversation
-                                ),
-                            subtitle =
-                                stringResource(
-                                    MR.string
-                                        .chat_select_a_conversation_subtitle
-                                )
+                    } ?: EmptyDetailPane(
+                        title = stringResource(
+                            MR.string.chat_select_a_conversation
+                        ), subtitle = stringResource(
+                            MR.string.chat_select_a_conversation_subtitle
                         )
+                    )
                 }
             },
-            paneExpansionState =
-                rememberPaneExpansionState(
-                    keyProvider = scaffoldNavigator.scaffoldValue,
-                    anchors =
-                        listOf(
-                            PaneExpansionAnchor.Offset.fromStart(96.dp),
-                            PaneExpansionAnchor.Offset.fromStart(280.dp),
-                            PaneExpansionAnchor.Offset.fromStart(320.dp),
-                            PaneExpansionAnchor.Offset.fromStart(360.dp),
-                            PaneExpansionAnchor.Offset.fromStart(400.dp),
-                            PaneExpansionAnchor.Offset.fromStart(440.dp),
-                            PaneExpansionAnchor.Offset.fromStart(480.dp),
-                        ),
+            paneExpansionState = rememberPaneExpansionState(
+                keyProvider = scaffoldNavigator.scaffoldValue,
+                anchors = listOf(
+                    PaneExpansionAnchor.Offset.fromStart(96.dp),
+                    PaneExpansionAnchor.Offset.fromStart(280.dp),
+                    PaneExpansionAnchor.Offset.fromStart(320.dp),
+                    PaneExpansionAnchor.Offset.fromStart(360.dp),
+                    PaneExpansionAnchor.Offset.fromStart(400.dp),
+                    PaneExpansionAnchor.Offset.fromStart(440.dp),
+                    PaneExpansionAnchor.Offset.fromStart(480.dp),
                 ),
+            ),
             paneExpansionDragHandle = { state ->
                 val interactionSource = remember { MutableInteractionSource() }
                 VerticalDragHandle(
-                    modifier =
-                        Modifier.paneExpansionDraggable(
-                            state,
-                            LocalMinimumInteractiveComponentSize.current,
-                            interactionSource
-                        ),
-                    interactionSource = interactionSource
+                    modifier = Modifier.paneExpansionDraggable(
+                        state, LocalMinimumInteractiveComponentSize.current, interactionSource
+                    ), interactionSource = interactionSource
                 )
-            }
-        )
+            })
     }
 }
 

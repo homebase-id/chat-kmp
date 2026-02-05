@@ -14,14 +14,11 @@ sealed interface ConversationListUiAction {
     data class SearchQueryChanged(val query: String) : ConversationListUiAction
     data class SendMessage(val conversationId: Uuid, val content: String) : ConversationListUiAction
     data class SendFile(
-        val conversationId: Uuid,
-        val message: String,
-        val files: List<PlatformFile>
+        val conversationId: Uuid, val message: String, val files: List<PlatformFile>
     ) : ConversationListUiAction
 
     data class ShareMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
-    data class DownloadMedia(val messageId: Uuid, val payloadKey: String) :
-        ConversationListUiAction
+    data class DownloadMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
 
     data class MediaClicked(val message: MessageUiModel, val payloadKey: String) :
         ConversationListUiAction

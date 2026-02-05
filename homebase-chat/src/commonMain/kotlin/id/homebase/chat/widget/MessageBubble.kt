@@ -306,24 +306,20 @@ fun MessageBubble(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
-    val filteredPayloads =
-        payloads?.filter {
-            !listOf(
-                ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                ChatProtocol.DEFAULT_PAYLOAD_KEY,
-                ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-            )
-                .contains(it.key)
-        }
+    val filteredPayloads = payloads?.filter {
+        !listOf(
+            ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
+            ChatProtocol.DEFAULT_PAYLOAD_KEY,
+            ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
+        ).contains(it.key)
+    }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val backgroundColor =
-        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
-        else MaterialTheme.colorScheme.surfaceContainerHigh
-    val contentColor =
-        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
-        else MaterialTheme.colorScheme.onSurface
+    val backgroundColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+    else MaterialTheme.colorScheme.surfaceContainerHigh
+    val contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+    else MaterialTheme.colorScheme.onSurface
 
     val pressInteractionSource = remember { MutableInteractionSource() }
     val isPressed by pressInteractionSource.collectIsPressedAsState()
@@ -334,11 +330,10 @@ fun MessageBubble(
     val coroutineScope = rememberCoroutineScope()
 
     // Use a spring for smoother, natural motion and avoid tiny abrupt tweens
-    val springSpec =
-        spring<Float>(
-            dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
-            stiffness = Spring.StiffnessLow
-        )
+    val springSpec = spring<Float>(
+        dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
+        stiffness = Spring.StiffnessLow
+    )
 
     // Keep quick press feedback when not running the long-press animation
     LaunchedEffect(isPressed) {
@@ -369,29 +364,24 @@ fun MessageBubble(
     textState.config.listIndent = 0
     textState.setHtml(text)
 
-    val shape =
-        RoundedCornerShape(
-            topStart = Dimens.Message.cornerRadius,
-            topEnd = Dimens.Message.cornerRadius,
-            bottomStart =
-                if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-            bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-        )
+    val shape = RoundedCornerShape(
+        topStart = Dimens.Message.cornerRadius,
+        topEnd = Dimens.Message.cornerRadius,
+        bottomStart = if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+        bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+    )
     Surface(
-        modifier =
-            modifier.clip(shape)
-                .ifTrue(isMobile()) {
-                    Modifier.combinedClickable(
-                        onClick = {},
-                        onLongClick = { handleLongClick() },
-                        interactionSource = pressInteractionSource,
-                        indication = null
-                    )
-                }
-                .graphicsLayer {
-                    scaleX = scaleAnim.value
-                    scaleY = scaleAnim.value
-                },
+        modifier = modifier.clip(shape).ifTrue(isMobile()) {
+            Modifier.combinedClickable(
+                onClick = {},
+                onLongClick = { handleLongClick() },
+                interactionSource = pressInteractionSource,
+                indication = null
+            )
+        }.graphicsLayer {
+            scaleX = scaleAnim.value
+            scaleY = scaleAnim.value
+        },
         shape = shape,
         color = backgroundColor,
     ) {
@@ -410,21 +400,15 @@ fun MessageBubble(
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
                 Box(
-                    modifier =
-                        Modifier.matchParentSize()
-                            .align(Alignment.BottomEnd)
-                            .background(
-                                brush =
-                                    Brush.verticalGradient(
-                                        colors =
-                                            listOf(
-                                                Color.Transparent,
-                                                Color.Black.copy(
-                                                    alpha = 0.6f
-                                                )
-                                            )
-                                    )
-                            ),
+                    modifier = Modifier.matchParentSize().align(Alignment.BottomEnd).background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent, Color.Black.copy(
+                                    alpha = 0.6f
+                                )
+                            )
+                        )
+                    ),
                 ) {
                     Text(
                         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
@@ -434,109 +418,98 @@ fun MessageBubble(
                     )
                 }
             }
-        } else
-            Column {
-                // Inline reply preview if this message is a reply
-                replyPreview?.let { reply ->
-                    InlineReplyPreview(replyPreview = reply, sentByYou = sentByYou)
-                }
-                Layout(
-                    content = {
-                        Column {
-                            if (hasMedia) {
-                                MediaMessage(
-                                    payloads = filteredPayloads,
-                                    fileId = fileId,
-                                    driveId = chatTargetDrive.alias,
-                                    previewThumbnail = previewThumbnail,
-                                    onMediaClick = onMediaClick,
-                                    keyHeader = keyHeader,
-                                    onMediaLongPress = { _, _ -> handleLongClick() },
-                                    sharedTransitionScope = sharedTransitionScope,
-                                    animatedVisibilityScope = animatedVisibilityScope,
+        } else Column {
+            // Inline reply preview if this message is a reply
+            replyPreview?.let { reply ->
+                InlineReplyPreview(replyPreview = reply, sentByYou = sentByYou)
+            }
+            Layout(
+                content = {
+                    Column {
+                        if (hasMedia) {
+                            MediaMessage(
+                                payloads = filteredPayloads,
+                                fileId = fileId,
+                                driveId = chatTargetDrive.alias,
+                                previewThumbnail = previewThumbnail,
+                                onMediaClick = onMediaClick,
+                                keyHeader = keyHeader,
+                                onMediaLongPress = { _, _ -> handleLongClick() },
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                            )
+                        }
+                        SelectionContainer {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                            ) {
+                                RichText(
+                                    state = textState,
+                                    onTextLayout = { textLayoutResult = it },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = contentColor
                                 )
                             }
-                            SelectionContainer {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                ) {
-                                    RichText(
-                                        state = textState,
-                                        onTextLayout = { textLayoutResult = it },
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = contentColor
-                                    )
-                                }
-                            }
                         }
-                        Text(
-                            modifier =
-                                Modifier.padding(
-                                    top = 12.dp,
-                                    bottom = 12.dp,
-                                    end = 12.dp,
-                                    start = 12.dp
-                                ),
-                            text = timestamp,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.7f)
+                    }
+                    Text(
+                        modifier = Modifier.padding(
+                            top = 12.dp, bottom = 12.dp, end = 12.dp, start = 12.dp
+                        ),
+                        text = timestamp,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.7f)
+                    )
+                }) { measurables, constraints ->
+                val textPlaceable = measurables[0].measure(constraints)
+                val timePlaceable = measurables[1].measure(constraints)
+
+                val layoutResult = textLayoutResult
+                var totalWidth: Int
+                var totalHeight: Int
+                var timeX: Int
+                var timeY: Int
+
+                if (layoutResult == null) {
+                    // Fallback if layout isn't ready yet
+                    totalWidth = textPlaceable.width
+                    totalHeight = textPlaceable.height
+                    timeX = 0
+                    timeY = 0
+                } else {
+                    val lastLineIndex = layoutResult.lineCount - 1
+                    val lastLineRight = layoutResult.getLineRight(lastLineIndex)
+
+                    // Determine if timestamp fits on the last line
+                    // We add a small gap (8dp converted to px) between text and time
+                    val horizontalGap = 8.dp.toPx()
+                    val fitsOnLastLine =
+                        (constraints.maxWidth - lastLineRight) > (timePlaceable.width + horizontalGap)
+
+                    if (fitsOnLastLine) {
+                        // Fits on the same line
+                        totalWidth = maxOf(
+                            textPlaceable.width,
+                            (lastLineRight + horizontalGap + timePlaceable.width).toInt()
                         )
-                    }
-                ) { measurables, constraints ->
-                    val textPlaceable = measurables[0].measure(constraints)
-                    val timePlaceable = measurables[1].measure(constraints)
-
-                    val layoutResult = textLayoutResult
-                    var totalWidth: Int
-                    var totalHeight: Int
-                    var timeX: Int
-                    var timeY: Int
-
-                    if (layoutResult == null) {
-                        // Fallback if layout isn't ready yet
-                        totalWidth = textPlaceable.width
                         totalHeight = textPlaceable.height
-                        timeX = 0
-                        timeY = 0
+                        timeX = totalWidth - timePlaceable.width
+                        timeY = totalHeight - timePlaceable.height
                     } else {
-                        val lastLineIndex = layoutResult.lineCount - 1
-                        val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-
-                        // Determine if timestamp fits on the last line
-                        // We add a small gap (8dp converted to px) between text and time
-                        val horizontalGap = 8.dp.toPx()
-                        val fitsOnLastLine =
-                            (constraints.maxWidth - lastLineRight) >
-                                    (timePlaceable.width + horizontalGap)
-
-                        if (fitsOnLastLine) {
-                            // Fits on the same line
-                            totalWidth =
-                                maxOf(
-                                    textPlaceable.width,
-                                    (lastLineRight +
-                                            horizontalGap +
-                                            timePlaceable.width)
-                                        .toInt()
-                                )
-                            totalHeight = textPlaceable.height
-                            timeX = totalWidth - timePlaceable.width
-                            timeY = totalHeight - timePlaceable.height
-                        } else {
-                            // Needs a new line
-                            totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
-                            totalHeight = textPlaceable.height + timePlaceable.height
-                            timeX = totalWidth - timePlaceable.width
-                            timeY = totalHeight - timePlaceable.height
-                        }
+                        // Needs a new line
+                        totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
+                        totalHeight = textPlaceable.height + timePlaceable.height
+                        timeX = totalWidth - timePlaceable.width
+                        timeY = totalHeight - timePlaceable.height
                     }
+                }
 
-                    layout(totalWidth, totalHeight) {
-                        textPlaceable.placeRelative(0, 0)
-                        timePlaceable.placeRelative(timeX, timeY)
-                    }
+                layout(totalWidth, totalHeight) {
+                    textPlaceable.placeRelative(0, 0)
+                    timePlaceable.placeRelative(timeX, timeY)
                 }
             }
+        }
     }
 }
 
@@ -553,18 +526,16 @@ fun MessageBubble(
  */
 @Composable
 private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
-    val accentColor =
-        if (sentByYou) {
-            HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
-        } else {
-            MaterialTheme.colorScheme.primary
-        }
-    val contentColor =
-        if (sentByYou) {
-            HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
-        } else {
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-        }
+    val accentColor = if (sentByYou) {
+        HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+    val contentColor = if (sentByYou) {
+        HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+    }
 
     Row(
         modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
@@ -572,10 +543,8 @@ private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
     ) {
         // Vertical accent bar
         Box(
-            modifier =
-                Modifier.width(3.dp)
-                    .heightIn(min = 24.dp)
-                    .background(color = accentColor, shape = RoundedCornerShape(2.dp))
+            modifier = Modifier.width(3.dp).heightIn(min = 24.dp)
+                .background(color = accentColor, shape = RoundedCornerShape(2.dp))
         )
         Spacer(modifier = Modifier.width(8.dp))
         Column {
