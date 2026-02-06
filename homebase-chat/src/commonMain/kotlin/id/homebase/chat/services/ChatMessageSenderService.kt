@@ -17,7 +17,6 @@ import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
-    private val databaseManager: DatabaseManager,
     private val outboxSync: OutboxSync,
     private val conversationService: ConversationStream,
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService

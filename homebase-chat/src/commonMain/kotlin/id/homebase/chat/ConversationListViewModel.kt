@@ -261,8 +261,8 @@ class ChatListViewModel(
                             )
                         }
 
-                        val bundle =
-                            MessageAttachmentBuilder.build(attachments, fileOperationsProvider)
+                        val bundle = MessageAttachmentBuilder
+                            .build(attachments, fileOperationsProvider)
 
                         chatMessageSenderService.sendNewMessage(
                             conversationId = action.conversationId,
