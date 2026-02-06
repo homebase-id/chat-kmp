@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -13,6 +14,7 @@ class PayloadBundleEncryptionService(
     private val videoProcessor: VideoPayloadProcessor
 ) {
 
+    val TAG: String = "PayloadBundleEncryptionService"
     suspend fun encryptBundle(
         bundle: PayloadBundle?,
         keyHeader: KeyHeader,
@@ -32,6 +34,11 @@ class PayloadBundleEncryptionService(
 
         for (payload in bundle.payloads) {
 
+            Logger.i(TAG) {
+                "IN payload key=${payload.key} " +
+                        "type=${payload.contentType} " +
+                        "path=${payload.filePath}"
+            }
             if (payload.contentType.startsWith("video/")) {
 
                 val result =
@@ -40,14 +47,28 @@ class PayloadBundleEncryptionService(
                         keyHeader = keyHeader,
                         onProgress = onProgress,
                         auxiliaryPayloadKey = ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-                        )
+                    )
 
                 newPayloads += result.payloads
                 newThumbnails += result.thumbnails
 
+                result.payloads.forEach {
+                    Logger.i(TAG) {
+                        "OUT video payload key=${it.key} " +
+                                "type=${it.contentType} " +
+                                "path=${it.filePath}"
+                    }
+                }
+
+
             } else {
-                // ✅ EXACTLY your existing logic — nothing invented
                 val encrypted = encryptFile(payload.filePath, keyHeader)
+
+                Logger.i(TAG) {
+                    "OUT file payload key=${payload.key} " +
+                            "path=${encrypted.filePath}"
+                }
+
                 newPayloads += payload.copy(
                     filePath = encrypted.filePath,
                     iv = encrypted.iv,

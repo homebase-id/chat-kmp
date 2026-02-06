@@ -73,13 +73,12 @@ class VideoPayloadProcessor(
                 mimeType = "application/vnd.apple.mpegurl",
                 isSegmented = true,
                 fileSize = segmentSize,
-                durationMs = durationMs
+                durationMs = durationMs,
+                key = payload.key
             )
 
         val metadataJson = OdinSystemSerializer.serialize(metadata)
-
-        val shouldEmbed =
-            metadataJson.length < HomebaseProtocol.MaxPayloadDescriptorBytes
+        val shouldEmbed = metadataJson.length < HomebaseProtocol.MaxPayloadDescriptorBytes
 
         /* ---------- PHASE 4: BUILD PAYLOADS ---------- */
 
@@ -89,10 +88,11 @@ class VideoPayloadProcessor(
                 filePath = segmentPath,
                 contentType = "video/mp2t",
                 descriptorContent =
-                    if (shouldEmbed) metadataJson
-                    else OdinSystemSerializer.serialize(
-                        metadata.copy(isDescriptorContentComplete = false)
-                    ),
+                    if (shouldEmbed) {
+                        metadataJson
+                    } else {
+                        OdinSystemSerializer.serialize(metadata.copy(isDescriptorContentComplete = false))
+                    },
                 isPreEncrypted = true,
                 iv = keyHeader.iv
             )
@@ -105,7 +105,11 @@ class VideoPayloadProcessor(
                     videoPayload,
                     PayloadFile(
                         key = auxiliaryPayloadKey,
-                        filePath = fileOperationsProvider.writeBytesToTempFile(metadataJson.toByteArray(), "payload", ".metadata"),
+                        filePath = fileOperationsProvider.writeBytesToTempFile(
+                            metadataJson.toByteArray(),
+                            "payload",
+                            ".metadata"
+                        ),
                         contentType = "application/json",
                         isPreEncrypted = false
                     )

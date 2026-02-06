@@ -2,6 +2,7 @@ package id.homebase.api.client
 
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 
@@ -10,6 +11,12 @@ object HttpClientProvider {
         return HttpClient {
             install(ContentNegotiation) {
                 json(OdinSystemSerializer.json)
+            }
+
+            install(HttpTimeout) {
+                requestTimeoutMillis = 5 * 60_000   // 5 minutes
+                connectTimeoutMillis = 30_000        // 30 seconds
+                socketTimeoutMillis = 5 * 60_000     // 5 minutes
             }
         }
     }

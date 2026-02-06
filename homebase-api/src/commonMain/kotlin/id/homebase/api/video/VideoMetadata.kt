@@ -9,5 +9,5 @@ data class VideoMetadata(
     val fileSize: Long,
     val durationMs: Long,
     val isDescriptorContentComplete: Boolean = true,
-    val key: String? = null
+    val key: String
 )
