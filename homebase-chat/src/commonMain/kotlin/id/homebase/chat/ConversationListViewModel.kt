@@ -15,9 +15,7 @@ import id.homebase.chat.services.convo.ContactService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
-import id.homebase.chat.services.convo.ContactService
 import id.homebase.chat.services.convo.ConversationService
-import id.homebase.chat.services.convo.ConversationStreamService
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.ScrollPosition
