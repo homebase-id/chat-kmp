@@ -48,9 +48,9 @@ import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import kotlin.uuid.Uuid
 
 @Composable
 fun ConversationListScreen(
@@ -72,11 +72,7 @@ fun ConversationListScreen(
 
             is ConversationListUiEvent.ShowErrorMessage -> {
                 viewModel.eventConsumed()
-                scope.launch {
-                    snackbarHostState.showSnackbar(
-                        message = event.message
-                    )
-                }
+                scope.launch { snackbarHostState.showSnackbar(message = event.message) }
             }
 
             null -> {}
@@ -85,7 +81,6 @@ fun ConversationListScreen(
 
     when (val dialog = uiState.uiDialog) {
         null -> {}
-
         is ConversationListUiDialog.DeleteMessage -> {
             Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
                 DialogCard(
@@ -100,7 +95,10 @@ fun ConversationListScreen(
                                 )
                                 viewModel.dialogClosed()
                             },
-                            secondaryText = if (dialog.allowDeleteForEveryone) stringResource(MR.string.chat_message_delete_for_everyone) else null,
+                            secondaryText = if (dialog.allowDeleteForEveryone) stringResource(
+                                MR.string.chat_message_delete_for_everyone
+                            )
+                            else null,
                             onSecondaryClick = {
                                 if (dialog.allowDeleteForEveryone) {
                                     viewModel.onAction(
@@ -112,19 +110,16 @@ fun ConversationListScreen(
                                 }
                             },
                             tertiaryText = stringResource(MR.string.cancel),
-                            onTertiaryClick = { viewModel.dialogClosed() }
-                        )
-                    }
-                ) {
+                            onTertiaryClick = { viewModel.dialogClosed() })
+                    }) {
                     Text(
                         text = stringResource(MR.string.chat_message_delete_dialog_title),
                         style = MaterialTheme.typography.titleLarge,
                     )
-                 }
+                }
             }
         }
     }
-
 
     ChatListUi(
         snackbarHostState = snackbarHostState,
@@ -159,11 +154,18 @@ fun ChatListUi(
         scaffoldDirective = scaffoldDirective,
         initialDestinationHistory = if (scaffoldDirective.maxHorizontalPartitions > 1) {
             listOf(
-                ThreePaneScaffoldDestinationItem(ListDetailPaneScaffoldRole.List),
-                ThreePaneScaffoldDestinationItem(ListDetailPaneScaffoldRole.Detail)
+                ThreePaneScaffoldDestinationItem(
+                    ListDetailPaneScaffoldRole.List
+                ), ThreePaneScaffoldDestinationItem(
+                    ListDetailPaneScaffoldRole.Detail
+                )
             )
         } else {
-            listOf(ThreePaneScaffoldDestinationItem(ListDetailPaneScaffoldRole.List))
+            listOf(
+                ThreePaneScaffoldDestinationItem(
+                    ListDetailPaneScaffoldRole.List
+                )
+            )
         }
     )
     val scope = rememberCoroutineScope()
@@ -195,9 +197,7 @@ fun ChatListUi(
     }
 
     // Notify parent about detail pane visibility in compact view
-    LaunchedEffect(showingOnlyDetail) {
-        onDetailPaneVisibilityChanged(showingOnlyDetail)
-    }
+    LaunchedEffect(showingOnlyDetail) { onDetailPaneVisibilityChanged(showingOnlyDetail) }
 
     BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {
@@ -209,27 +209,27 @@ fun ChatListUi(
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) {
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) {
         ListDetailPaneScaffold(
             modifier = Modifier.fillMaxSize(),
             directive = scaffoldNavigator.scaffoldDirective,
             scaffoldState = scaffoldNavigator.scaffoldState,
             listPane = {
-                AnimatedPane(
-                    modifier = Modifier
-                ) {
+                AnimatedPane(modifier = Modifier) {
                     if (uiState.showingNewChatPane) {
                         NewConversationPane(
                             contacts = uiState.contacts,
                             searchQuery = uiState.searchQuery,
-                            onBackClick = { onUiAction(ConversationListUiAction.BackToListClicked) },
+                            onBackClick = {
+                                onUiAction(ConversationListUiAction.BackToListClicked)
+                            },
                             onContactClick = { contact ->
                                 onUiAction(ConversationListUiAction.ContactClicked(contact))
                             },
                             onSearchQueryChanged = { query ->
-                                onUiAction(ConversationListUiAction.SearchQueryChanged(query))
+                                onUiAction(
+                                    ConversationListUiAction.SearchQueryChanged(query)
+                                )
                             })
                     } else {
                         ConversationListPane(
@@ -266,21 +266,30 @@ fun ChatListUi(
                                 showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
                                 onBackClick = {
                                     scope.launch {
-                                        scaffoldNavigator.navigateBack(backNavigationBehavior)
+                                        scaffoldNavigator.navigateBack(
+                                            backNavigationBehavior
+                                        )
                                     }
                                 },
                                 onUiAction = onUiAction,
-                                currentOdinId = uiState.currentOdinId
+                                currentOdinId = uiState.currentOdinId,
+                                replyToMessage = uiState.replyToMessage
                             )
                         } else {
                             EmptyDetailPane(
-                                title = stringResource(MR.string.chat_select_a_conversation),
-                                subtitle = stringResource(MR.string.chat_select_a_conversation_subtitle)
+                                title = stringResource(
+                                    MR.string.chat_select_a_conversation
+                                ), subtitle = stringResource(
+                                    MR.string.chat_select_a_conversation_subtitle
+                                )
                             )
                         }
                     } ?: EmptyDetailPane(
-                        title = stringResource(MR.string.chat_select_a_conversation),
-                        subtitle = stringResource(MR.string.chat_select_a_conversation_subtitle)
+                        title = stringResource(
+                            MR.string.chat_select_a_conversation
+                        ), subtitle = stringResource(
+                            MR.string.chat_select_a_conversation_subtitle
+                        )
                     )
                 }
             },

@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.AvatarImage
@@ -57,6 +58,8 @@ import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -67,8 +70,6 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Clock
-import kotlin.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,6 +82,7 @@ fun ConversationContent(
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
     currentOdinId: String,
+    replyToMessage: MessageUiModel?,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
@@ -114,26 +116,25 @@ fun ConversationContent(
             )
         }
     }
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.SendFile(
-                    conversation.id,
-                    "",
-                    listOf(file),
+    val galleryLauncher =
+        rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+            file?.let {
+                onUiAction(
+                    ConversationListUiAction.SendFile(
+                        conversation.id,
+                        "",
+                        listOf(file),
+                    )
                 )
-            )
+            }
         }
-    }
 
     Scaffold(
         modifier = Modifier,
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         AvatarImage(
                             avatarUrl = conversation.avatarUrl,
                             avatarInitials = conversation.avatarInitials,
@@ -147,7 +148,8 @@ fun ConversationContent(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                }, navigationIcon = {
+                },
+                navigationIcon = {
                     if (showBackButton) {
                         IconButton(onClick = onBackClick) {
                             Icon(
@@ -156,10 +158,9 @@ fun ConversationContent(
                             )
                         }
                     }
-                }, actions = {
-                    IconButton(onClick = {
-                        showConversationMenu = true
-                    }) {
+                },
+                actions = {
+                    IconButton(onClick = { showConversationMenu = true }) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = stringResource(MR.string.chat_options)
@@ -179,7 +180,9 @@ fun ConversationContent(
                         onDelete = {
                             showConversationMenu = false
                             onUiAction(
-                                ConversationListUiAction.DeleteConversation(conversation.id)
+                                ConversationListUiAction.DeleteConversation(
+                                    conversation.id
+                                )
                             )
                         },
                         onArchive = {
@@ -193,23 +196,27 @@ fun ConversationContent(
                         onClear = {
                             showConversationMenu = false
                             onUiAction(
-                                ConversationListUiAction.ClearConversation(conversation.id)
+                                ConversationListUiAction.ClearConversation(
+                                    conversation.id
+                                )
                             )
                         },
                     )
-                }, colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                )
+                },
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    )
             )
         },
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
-                .imePadding()
-                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            modifier =
+                Modifier.fillMaxSize()
+                    .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding)
+                    .imePadding()
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
             if (isScrollPositionReady) {
                 Box(
@@ -220,18 +227,13 @@ fun ConversationContent(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         state = listState,
                     ) {
-                        item {
-                            Spacer(modifier = Modifier.height(24.dp))
-                        }
+                        item { Spacer(modifier = Modifier.height(24.dp)) }
                         item {
                             Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.Center
                             ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     AvatarImage(
                                         avatarUrl = conversation.avatarUrl,
                                         avatarInitials = conversation.avatarInitials,
@@ -246,15 +248,13 @@ fun ConversationContent(
                                 }
                             }
                         }
-                        item {
-                            Spacer(modifier = Modifier.height(24.dp))
-                        }
+                        item { Spacer(modifier = Modifier.height(24.dp)) }
 
                         groupedMessages.forEach { section ->
                             item(key = "date_${section.date}") {
                                 Box(
-                                    modifier = Modifier.fillMaxWidth()
-                                        .padding(vertical = 16.dp),
+                                    modifier =
+                                        Modifier.fillMaxWidth().padding(vertical = 16.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     MessagesSection(
@@ -278,7 +278,7 @@ fun ConversationContent(
                                         onReply = {
                                             onUiAction(
                                                 ConversationListUiAction.ReplyToMessage(
-                                                    message.id
+                                                    message
                                                 )
                                             )
                                         },
@@ -327,7 +327,7 @@ fun ConversationContent(
                                         onReply = {
                                             onUiAction(
                                                 ConversationListUiAction.ReplyToMessage(
-                                                    message.id
+                                                    message
                                                 )
                                             )
                                         },
@@ -383,9 +383,7 @@ fun ConversationContent(
                             }
                         }
 
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
+                        item { Spacer(modifier = Modifier.height(16.dp)) }
                     }
                     HomebaseVerticalScrollbar(
                         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
@@ -393,20 +391,28 @@ fun ConversationContent(
                     )
                 }
             }
-            Surface(
-                shadowElevation = 8.dp, tonalElevation = 0.dp
-            ) {
+            Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
                 Column {
+                    replyToMessage?.let { msg ->
+                        ReplyPreviewBar(
+                            message = msg,
+                            onDismiss = {
+                                onUiAction(ConversationListUiAction.CancelReplyToMessage)
+                            }
+                        )
+                    }
                     MessageInputBar(
                         focusRequester = focusRequester,
                         onSendMessage = {
                             if (it.isNotBlank()) {
                                 onUiAction(
                                     ConversationListUiAction.SendMessage(
-                                        conversation.id, it
+                                        conversation.id,
+                                        it
                                     )
                                 )
-                                // Scroll to bottom will happen automatically when the message is added to UI state
+                                // Scroll to bottom will happen automatically when the message
+                                // is added to UI state
                             }
                         },
                         onAddAttachmentClick = {
@@ -427,9 +433,7 @@ fun ConversationContent(
                                 showAttachmentSheet = true
                             }
                         },
-                        onCameraClick = {
-                            cameraLauncher.launch()
-                        }
+                        onCameraClick = { cameraLauncher.launch() }
                     )
 
                     AttachmentOptionsDisplay(
@@ -481,11 +485,12 @@ private fun getDateSectionLabel(timestamp: Instant): String {
         today -> stringResource(MR.string.time_today)
         yesterday -> stringResource(MR.string.time_yesterday)
         else -> {
-            val format = LocalDate.Format {
-                monthName(MonthNames.ENGLISH_ABBREVIATED)
-                char(' ')
-                day()
-            }
+            val format =
+                LocalDate.Format {
+                    monthName(MonthNames.ENGLISH_ABBREVIATED)
+                    char(' ')
+                    day()
+                }
             messageDate.format(format)
         }
     }

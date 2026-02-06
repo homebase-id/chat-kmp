@@ -20,7 +20,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.ConversationUiModel
-import id.homebase.chat.services.ChatMessageReaderService
+import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
@@ -355,7 +355,7 @@ class ConversationService(
             )
 
         if (lastMsg != null) {
-            ChatMessageReaderService
+            ChatMessageStream
                 .mapToMessageData(lastMsg)
                 ?.let { ui.updateWithLatestMessage(it) }
         }

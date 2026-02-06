@@ -22,15 +22,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-const val CHAT_MESSAGE_FILE_TYPE = 7878
-
-/** Archival status indicating a deleted chat */
-const val ChatDeletedArchivalStatus = 2
-
-const val CHAT_MESSAGE_PAYLOAD_KEY = "chat_mbl" // Is this for "more text" ? YESS
-const val CHAT_LINKS_PAYLOAD_KEY = "chat_links"
-
-class ChatMessageReaderService(
+class ChatMessageStream(
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,

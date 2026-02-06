@@ -6,6 +6,9 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
 class DriveSyncManager(
@@ -17,9 +20,7 @@ class DriveSyncManager(
     private val driveSyncs = mutableMapOf<Uuid, DriveSync>()
 
     suspend fun start(drives: List<Uuid>) {
-        val credentials = credentialsManager.getActiveCredentials()
-            ?: return
-
+        val credentials = credentialsManager.requireActiveCredentials()
         val identityId = credentials.getIdentityId()
 
         drives.forEach { driveId ->
@@ -49,17 +50,27 @@ class DriveSyncManager(
     }
 
     fun syncAll() {
-        driveSyncs.values.forEach { it.sync() }
+        val snapshot = driveSyncs.values.toList()
+        snapshot.forEach { it.sync() }
     }
 
     fun stop() {
-        driveSyncs.values.forEach { it.cancel() }
+        val snapshot = driveSyncs.values.toList()
+        snapshot.forEach { it.cancel() }
         driveSyncs.clear()
     }
 
-    suspend fun clearStorage() {
-        driveSyncs.values.forEach { it.clearStorage() }
-    }
+    fun clearStorage(): Job {
+        val snapshot = driveSyncs.values.toList()
 
-    fun getActiveDriveSyncs(): List<DriveSync> = driveSyncs.values.toList()
+        return scope.launch {
+            snapshot
+                .map { sync ->
+                    launch {
+                        sync.clearStorage()
+                    }
+                }
+                .joinAll()
+        }
+    }
 }
