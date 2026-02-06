@@ -9,16 +9,20 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.crypto.toUtf8ByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.convo.ConversationStreamService
-import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.config.chatTargetDrive
+import io.ktor.utils.io.core.toByteArray
 import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
-    private val driveUploadProvider: DriveUploadProvider,
+    private val databaseManager: DatabaseManager,
     private val conversationService: ConversationStreamService,
-    private val payloadBundleEncryptionService: PayloadBundleEncryptionService
+    private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
+    private val outboxSync: OutboxSync
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -128,14 +132,24 @@ class ChatMessageSenderService(
                 thumbnails = encryptedThumbnails
             )
         try {
-            val result =
-                driveUploadProvider.uploadFile(request)
-                    ?: error("Failed to upload chat message")
-            return SendMessageResult(
-                fileId = result.fileId,
-                uniqueId = uniqueId,
-                versionTag = result.newVersionTag
+
+//            val result =&
+//                driveUploadProvider.uploadFile(request)
+//                    ?: error("Failed to upload chat message")
+
+            databaseManager.outbox.insert(
+                request.driveId, uniqueId,
+                dependencyUniqueId = null,
+                priority = 1,
+                uploadType = 0,
+                json = OdinSystemSerializer.serialize(request).toUtf8ByteArray(),
+                filePaths = null
             )
+
+            outboxSync.send()
+
+            return SendMessageResult(uniqueId = uniqueId)
+
         } catch (t: Throwable) {
             Logger.e("ChatMessageSenderService", t)
         }

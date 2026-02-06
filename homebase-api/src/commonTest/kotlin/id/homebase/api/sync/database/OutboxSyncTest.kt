@@ -81,8 +81,8 @@ class OutboxSyncTest {
             val fileId = Uuid.random()
             db.outbox.insert(
                 driveId = driveId,
-                fileId = fileId,
-                dependencyFileId = null,
+                uniqueId = fileId,
+                dependencyUniqueId = null,
                 priority = 0,
                 uploadType = 0,
                 json = byteArrayOf(),
@@ -139,8 +139,8 @@ class OutboxSyncTest {
             val fileId = Uuid.random()
             db.outbox.insert(
                 driveId = driveId,
-                fileId = fileId,
-                dependencyFileId = null,
+                uniqueId = fileId,
+                dependencyUniqueId = null,
                 priority = 0,
                 uploadType = 0,
                 json = byteArrayOf(),
@@ -198,8 +198,8 @@ class OutboxSyncTest {
                 val fileId = Uuid.random()
                 db.outbox.insert(
                     driveId = driveId,
-                    fileId = fileId,
-                    dependencyFileId = null,
+                    uniqueId = fileId,
+                    dependencyUniqueId = null,
                     priority = 0,
                     uploadType = 0,
                     json = byteArrayOf(),

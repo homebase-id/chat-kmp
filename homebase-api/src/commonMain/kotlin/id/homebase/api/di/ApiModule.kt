@@ -6,12 +6,14 @@ import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.DriveFileReactionProvider
+import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -38,7 +40,9 @@ val apiModule = module {
     singleOf(::CredentialsManager)
     singleOf(::DriveSyncManager)
     singleOf(::DriveFileProviderCached)
+    single<OutboxUploader> { DriveOutboxUploader(get()) }
     singleOf(::OutboxSync)
+
     singleOf(::YouAuthFlowManager)
 
     single { UsernameStorage() }

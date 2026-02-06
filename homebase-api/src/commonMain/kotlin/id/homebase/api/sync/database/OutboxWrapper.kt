@@ -47,8 +47,8 @@ class OutboxWrapper(
 
     suspend fun insert(
         driveId: Uuid,
-        fileId: Uuid, //rename to uniqueId; be sure to update the c (and select by uniqueid)
-        dependencyFileId: Uuid?,  // if i type 3 messages, ensure each one is depending on the previous message; same for reactions and conversations; use the uniqueId
+        uniqueId: Uuid, //rename to uniqueId; be sure to update the c (and select by uniqueid)
+        dependencyUniqueId: Uuid?,  // if i type 3 messages, ensure each one is depending on the previous message; same for reactions and conversations; use the uniqueId
         priority: Long,
         uploadType: Long,
         json: ByteArray,
@@ -57,8 +57,8 @@ class OutboxWrapper(
         return databaseManager.withWriteValue {
             delegate.insert(
                 driveId,
-                fileId,
-                dependencyFileId,
+                uniqueId,
+                dependencyUniqueId,
                 priority,
                 0,
                 0,
