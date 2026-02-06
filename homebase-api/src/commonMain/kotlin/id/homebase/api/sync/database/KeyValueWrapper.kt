@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.lib.database
+package id.homebase.api.lib.database
 
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.sync.database.DatabaseManager

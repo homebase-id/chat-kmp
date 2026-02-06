@@ -3,7 +3,7 @@ package id.homebase.api.crypto
 import id.homebase.api.toBase64
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.KeyHeader
-import id.homebase.homebasekmppoc.prototype.lib.serialization.Base64ByteArraySerializer
+import id.homebase.api.prototype.lib.serialization.Base64ByteArraySerializer
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 

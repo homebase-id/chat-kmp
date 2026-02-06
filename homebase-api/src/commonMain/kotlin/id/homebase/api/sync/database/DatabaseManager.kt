@@ -5,7 +5,7 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
-import id.homebase.homebasekmppoc.lib.database.KeyValueWrapper
+import id.homebase.api.lib.database.KeyValueWrapper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.lib.youauth
+package id.homebase.api.lib.youauth
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.youauth.AppAuthorizationExtendParams
