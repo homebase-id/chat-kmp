@@ -15,6 +15,22 @@ class JvmFileOperationsProvider : FileOperationsProvider {
     override suspend fun readFileBytes(path: String): ByteArray =
             withContext(Dispatchers.IO) { File(path).readBytes() }
 
+    override fun deleteTempFile(path: String): Boolean {
+        val file = File(path)
+
+        if (!file.exists() || file.isDirectory) return true
+
+        return runCatching {
+            if (file.delete()) {
+                true
+            } else {
+                file.deleteOnExit()
+                false
+            }
+        }.getOrDefault(false)
+    }
+
+
     override fun getCacheDirectory(): String {
         val osName = System.getProperty("os.name").lowercase()
         val userHome = System.getProperty("user.home")

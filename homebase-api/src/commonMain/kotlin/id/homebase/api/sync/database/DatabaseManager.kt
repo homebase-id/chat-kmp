@@ -41,8 +41,8 @@ private val keyValueAdapter = KeyValue.Adapter(
 )
 private val outboxAdapter = Outbox.Adapter(
     driveIdAdapter = UuidAdapter,
-    fileIdAdapter = UuidAdapter,
-    dependencyFileIdAdapter = UuidAdapter
+    uniqueIdAdapter = UuidAdapter,
+    dependencyUniqueIdAdapter = UuidAdapter
 )
 
 class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {

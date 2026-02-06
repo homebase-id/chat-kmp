@@ -34,16 +34,30 @@ class IOSFileOperationsProvider : FileOperationsProvider {
     }
 
     @OptIn(ExperimentalForeignApi::class)
+    override fun deleteTempFile(path: String): Boolean {
+        return runCatching {
+            val fileManager = NSFileManager.defaultManager
+
+            if (!fileManager.fileExistsAtPath(path)) {
+                true
+            } else {
+                fileManager.removeItemAtPath(path, error = null)
+            }
+        }.getOrDefault(false)
+    }
+
+
+    @OptIn(ExperimentalForeignApi::class)
     override fun getCacheDirectory(): String {
         val fileManager = NSFileManager.defaultManager
         val cacheUrl =
-                fileManager.URLForDirectory(
-                        directory = NSCachesDirectory,
-                        inDomain = NSUserDomainMask,
-                        appropriateForURL = null,
-                        create = true,
-                        error = null
-                )
+            fileManager.URLForDirectory(
+                directory = NSCachesDirectory,
+                inDomain = NSUserDomainMask,
+                appropriateForURL = null,
+                create = true,
+                error = null
+            )
         return cacheUrl?.path ?: NSTemporaryDirectory()
     }
 }

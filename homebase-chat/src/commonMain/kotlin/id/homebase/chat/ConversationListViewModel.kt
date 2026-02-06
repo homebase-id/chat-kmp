@@ -267,6 +267,7 @@ class ChatListViewModel(
                         chatMessageSenderService.sendNewMessage(
                             conversationId = action.conversationId,
                             messageText = action.message,
+                            previousMessageUniqueId = null,
                             payloadBundle = bundle
                         )
                     } catch (e: Exception) {
@@ -400,6 +401,7 @@ class ChatListViewModel(
                 chatMessageSenderService.sendNewMessage(
                     conversationId = conversationId,
                     messageText = content,
+                    previousMessageUniqueId = null,
                     payloadBundle = null,
                 )
 
@@ -427,6 +429,7 @@ class ChatListViewModel(
                     conversationId = conversationId,
                     replyTo = replyPreview,
                     messageText = content,
+                    previousMessageUniqueId = null,
                     payloadBundle = null
                 )
             } catch (e: Exception) {
