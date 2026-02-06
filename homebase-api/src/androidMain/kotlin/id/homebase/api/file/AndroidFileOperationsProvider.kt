@@ -56,4 +56,8 @@ class AndroidFileOperationsProvider(
 
 
     override fun getCacheDirectory(): String = context.cacheDir.absolutePath
+
+    override fun getFileSize(path: String): Long =
+        File(path).length()
+
 }

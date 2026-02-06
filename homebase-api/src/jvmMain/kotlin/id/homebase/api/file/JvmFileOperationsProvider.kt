@@ -54,4 +54,10 @@ class JvmFileOperationsProvider : FileOperationsProvider {
 
         return cacheDir.absolutePath
     }
+
+    override fun getFileSize(path: String): Long {
+        val file = File(path)
+        return if (file.exists() && file.isFile) file.length() else 0L
+    }
+
 }

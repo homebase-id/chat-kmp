@@ -6,6 +6,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import platform.Foundation.*
+import platform.AVFoundation.*
+import kotlin.math.roundToLong
 
 @OptIn(ExperimentalForeignApi::class)
 actual object FFmpegUtils {
@@ -141,7 +143,7 @@ actual object FFmpegUtils {
             }
         }
 
-    actual suspend fun segmentVideo(inputPath: String): Pair<String, String>? =
+    actual suspend fun segmentVideo(inputPath: String,onProgress: ((Float) -> Unit)?): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             val cacheDir = getCacheDirectory()
             val outputDir = "$cacheDir/hls_${getUniqueId(inputPath)}"
@@ -201,7 +203,8 @@ actual object FFmpegUtils {
 
     actual suspend fun segmentAndEncryptVideo(
         inputPath: String,
-        keyHeader: KeyHeader
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)?
     ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             val fileManager = NSFileManager.defaultManager
@@ -306,5 +309,16 @@ actual object FFmpegUtils {
         )
 
         return keyInfoFilePath
+    }
+
+
+    actual suspend fun getDurationMs(inputPath: String): Long {
+        val url = NSURL.fileURLWithPath(inputPath)
+        val asset = AVURLAsset.URLAssetWithURL(url, options = null)
+
+        val durationSeconds = CMTimeGetSeconds(asset.duration)
+        if (durationSeconds.isNaN() || durationSeconds <= 0) return 0L
+
+        return (durationSeconds * 1000.0).roundToLong()
     }
 }

@@ -8,6 +8,7 @@ import kotlinx.io.Buffer
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSNumber
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.dataWithContentsOfFile
@@ -60,4 +61,17 @@ class IOSFileOperationsProvider : FileOperationsProvider {
             )
         return cacheUrl?.path ?: NSTemporaryDirectory()
     }
+
+    @OptIn(ExperimentalForeignApi::class)
+    override fun getFileSize(path: String): Long {
+        val attrs =
+            NSFileManager.defaultManager.attributesOfItemAtPath(
+                path = path,
+                error = null
+            )
+
+        val size = attrs?.get("NSFileSize") as? NSNumber
+        return size?.longLongValue ?: 0L
+    }
+
 }

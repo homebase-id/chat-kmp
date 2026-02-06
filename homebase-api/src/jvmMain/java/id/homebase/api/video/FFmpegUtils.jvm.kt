@@ -10,6 +10,19 @@ import kotlinx.coroutines.withContext
 
 actual object FFmpegUtils {
 
+    actual suspend fun getDurationMs(inputPath: String): Long {
+        val command = listOf(
+            FFmpegBinaryManager.ffprobePath(),
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            inputPath
+        )
+
+        val output = runProcessWithOutput(command)
+        return (output.trim().toDoubleOrNull() ?: 0.0).times(1000).toLong()
+    }
+
     actual fun getUniqueId(filePath: String): String {
         val file = File(filePath)
         return UUID.nameUUIDFromBytes("${file.name}_${file.length()}".toByteArray()).toString()
@@ -107,7 +120,10 @@ actual object FFmpegUtils {
         }
 
 
-    actual suspend fun segmentVideo(inputPath: String): Pair<String, String>? =
+    actual suspend fun segmentVideo(
+        inputPath: String,
+        onProgress: ((Float) -> Unit)?
+    ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
                 println("FFmpeg binaries not available for this platform")
@@ -121,13 +137,15 @@ actual object FFmpegUtils {
 
             segmentInternal(
                 inputPath = inputPath,
-                outputDir = outputDir
+                outputDir = outputDir,
+                onProgress = onProgress
             )
         }
 
     actual suspend fun segmentAndEncryptVideo(
         inputPath: String,
-        keyHeader: KeyHeader
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)?
     ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
@@ -154,14 +172,16 @@ actual object FFmpegUtils {
             segmentInternal(
                 inputPath = inputPath,
                 outputDir = outputDir,
-                keyInfoFile = keyInfoFile
+                keyInfoFile = keyInfoFile,
+                onProgress = onProgress
             )
         }
 
     private suspend fun segmentInternal(
         inputPath: String,
         outputDir: File,
-        keyInfoFile: File? = null
+        keyInfoFile: File? = null,
+        onProgress: ((Float) -> Unit)? = null
     ): Pair<String, String>? {
         val playlistPath = File(outputDir, "index.m3u8").absolutePath
         val segmentPath = File(outputDir, "index.ts").absolutePath
@@ -205,8 +225,13 @@ actual object FFmpegUtils {
                 add(keyInfoFile.absolutePath)
             }
 
+            add("-progress")
+            add("pipe:1")
+            add("-nostats")
+
             addAll(
                 listOf(
+
                     "-f", "hls",
                     "-hls_segment_filename", segmentPath,
                     playlistPath
@@ -214,7 +239,13 @@ actual object FFmpegUtils {
             )
         }
 
-        val result = runProcessWithLogs(command)
+        val durationMs = getDurationMs(inputPath)
+
+        val result = runProcessWithLogs(
+            command = command,
+            totalDurationMs = durationMs,
+            onProgress = onProgress
+        )
 
         if (result.exitCode != 0) {
             throw VideoSegmentException(
@@ -235,13 +266,6 @@ actual object FFmpegUtils {
         }
 
         return playlistPath to segmentPath
-
-//        val exitCode = runProcess(command)
-//        return if (exitCode == 0 && File(playlistPath).exists()) {
-//            playlistPath to segmentPath
-//        } else {
-//            null
-//        }
     }
 
 
@@ -311,7 +335,11 @@ actual object FFmpegUtils {
     }
 
 
-    private fun runProcessWithLogs(command: List<String>): ProcessResult {
+    private fun runProcessWithLogs(
+        command: List<String>,
+        totalDurationMs: Long,
+        onProgress: ((Float) -> Unit)?
+    ): ProcessResult {
         val process = ProcessBuilder(command)
             .redirectErrorStream(true)
             .start()
@@ -320,21 +348,25 @@ actual object FFmpegUtils {
 
         val readerThread = Thread {
             process.inputStream.bufferedReader().useLines { lines ->
-                lines.forEach {
-                    output.appendLine(it)
+                lines.forEach { line ->
+                    output.appendLine(line)
+
+                    if (onProgress != null && line.startsWith("out_time_ms=")) {
+                        val outMs =
+                            line.removePrefix("out_time_ms=").toLongOrNull() ?: return@forEach
+                        val pct = (outMs.toFloat() / totalDurationMs).coerceIn(0f, 1f)
+                        onProgress(pct)
+                    }
                 }
             }
         }
 
         readerThread.start()
-
-        val completed = process.waitFor(5, TimeUnit.MINUTES)
+        process.waitFor(5, TimeUnit.MINUTES)
         readerThread.join()
 
-        val exitCode = if (completed) process.exitValue() else -1
-
         return ProcessResult(
-            exitCode = exitCode,
+            exitCode = process.exitValue(),
             output = output.toString()
         )
     }

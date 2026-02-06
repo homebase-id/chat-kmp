@@ -11,9 +11,25 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import android.media.MediaMetadataRetriever
 
 actual object FFmpegUtils {
     private const val TAG = "FFmpegUtils"
+
+    actual suspend fun getDurationMs(inputPath: String): Long {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(inputPath)
+            retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?: 0L
+        } catch (_: Exception) {
+            0L
+        } finally {
+            retriever.release()
+        }
+    }
 
     actual fun getUniqueId(filePath: String): String {
         val file = File(filePath)
@@ -130,7 +146,8 @@ actual object FFmpegUtils {
             }
         }
 
-    actual suspend fun segmentVideo(inputPath: String): Pair<String, String>? =
+    actual suspend fun segmentVideo(inputPath: String,
+                                    onProgress: ((Float) -> Unit)?): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             val context = ActivityProvider.requireActivity().applicationContext
             val file = File(inputPath)
@@ -204,7 +221,8 @@ actual object FFmpegUtils {
 
     actual suspend fun segmentAndEncryptVideo(
         inputPath: String,
-        keyHeader: KeyHeader
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)?
     ): Pair<String, String>? =
         withContext(Dispatchers.IO) {
             val context = ActivityProvider.requireActivity().applicationContext

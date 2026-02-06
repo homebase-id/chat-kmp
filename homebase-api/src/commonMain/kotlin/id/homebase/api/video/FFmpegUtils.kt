@@ -11,12 +11,18 @@ expect object FFmpegUtils {
 
     suspend fun compressVideo(inputPath: String, onProgress: ((Float) -> Unit)? = null): String?
 
+    suspend fun getDurationMs(inputPath: String): Long
+
     suspend fun segmentAndEncryptVideo(
         inputPath: String,
-        keyHeader: KeyHeader
+        keyHeader: KeyHeader,
+        onProgress: ((Float) -> Unit)?
     ): Pair<String, String>?
 
-    suspend fun segmentVideo(inputPath: String): Pair<String, String>?
+    suspend fun segmentVideo(
+        inputPath: String,
+        onProgress: ((Float) -> Unit)?
+    ): Pair<String, String>?
 
     suspend fun cacheInputVideo(fileName: String, data: ByteArray): String
 }

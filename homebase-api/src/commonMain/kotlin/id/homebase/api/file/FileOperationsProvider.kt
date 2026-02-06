@@ -8,4 +8,6 @@ interface FileOperationsProvider {
 
     fun deleteTempFile(path: String): Boolean
     fun getCacheDirectory(): String
+
+    fun getFileSize(path: String): Long
 }

@@ -1,19 +1,23 @@
 package id.homebase.chat.services
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.writeBytesToTempFile
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.FFmpegUtils
-import id.homebase.api.video.VideoSegmentException
+import id.homebase.api.video.PayloadProgressPhase
+import id.homebase.api.video.VideoPayloadProcessor
 
 class PayloadBundleEncryptionService(
-    private val fileOps: FileOperationsProvider
+    private val fileOps: FileOperationsProvider,
+    private val videoProcessor: VideoPayloadProcessor
 ) {
 
     suspend fun encryptBundle(
         bundle: PayloadBundle?,
-        keyHeader: KeyHeader
+        keyHeader: KeyHeader,
+        onProgress: ((PayloadProgressPhase) -> Unit)? = null
     ): PayloadBundle {
 
         if (bundle == null) {
@@ -24,76 +28,44 @@ class PayloadBundleEncryptionService(
             )
         }
 
-        val encryptedPayloads =
-            bundle.payloads.map { payload ->
+        val newPayloads = mutableListOf<PayloadFile>()
+        val newThumbnails = mutableListOf<ThumbnailFile>()
 
-                if (payload.contentType.startsWith("video/")) {
+        for (payload in bundle.payloads) {
 
-                    val video = encryptVideo(payload.filePath, keyHeader)
+            if (payload.contentType.startsWith("video/")) {
 
-                    // TODO: what to do w/ this? video.segmentPath
-
-                    payload.copy(
-                        filePath = video.playlistPath,
-                        iv = video.iv,
-                        isPreEncrypted = true
+                val result =
+                    videoProcessor.process(
+                        payload = payload,
+                        keyHeader = keyHeader,
+                        onProgress = onProgress
                     )
 
-                } else {
-                    val encrypted = encryptFile(payload.filePath, keyHeader)
-                    payload.copy(
-                        filePath = encrypted.filePath,
-                        iv = encrypted.iv,
-                        isPreEncrypted = true
-                    )
-                }
+                newPayloads += result.payloads
+                newThumbnails += result.thumbnails
+
+            } else {
+                // ✅ EXACTLY your existing logic — nothing invented
+                val encrypted = encryptFile(payload.filePath, keyHeader)
+                newPayloads += payload.copy(
+                    filePath = encrypted.filePath,
+                    iv = encrypted.iv,
+                    isPreEncrypted = true
+                )
             }
-
-        val ivByKey =
-            encryptedPayloads.associate { payload ->
-                payload.key to (payload.iv ?: error("Missing IV for payload ${payload.key}"))
-            }
-
-        val encryptedThumbnails =
-            bundle.thumbnails.map { thumb ->
-
-                if (thumb.skipEncryption) {
-                    thumb
-                } else {
-                    val iv =
-                        ivByKey[thumb.key]
-                            ?: error("No payload IV found for thumbnail key=${thumb.key}")
-
-                    val encryptedBytes =
-                        encryptBytes(
-                            data = thumb.thumbnailBytes,
-                            keyHeader = keyHeader,
-                            iv = iv
-                        )
-
-                    thumb.copy(
-                        thumbnailBytes = encryptedBytes,
-                        skipEncryption = true
-                    )
-                }
-            }
+        }
 
         return bundle.copy(
-            payloads = encryptedPayloads,
-            thumbnails = encryptedThumbnails
-            // previewThumbs intentionally untouched
+            payloads = newPayloads,
+            thumbnails = newThumbnails
         )
     }
-
-    /* ============================
-       Private helpers
-       ============================ */
 
     private suspend fun encryptFile(
         inputFile: String,
         keyHeader: KeyHeader
     ): EncryptedFileResult {
-
         val plainBytes = fileOps.readFileBytes(inputFile)
         val iv = ByteArrayUtil.getRndByteArray(16)
 
@@ -115,48 +87,4 @@ class PayloadBundleEncryptionService(
             iv = iv
         )
     }
-
-    private suspend fun encryptVideo(
-        inputFile: String,
-        keyHeader: KeyHeader
-    ): EncryptedVideoResult {
-
-        val (playlistPath, segmentPath) =
-            try {
-                FFmpegUtils.segmentAndEncryptVideo(
-                    inputPath = inputFile,
-                    keyHeader = keyHeader
-                ) ?: throw IllegalStateException(
-                    "FFmpeg returned null for segmentAndEncryptVideo: $inputFile"
-                )
-            } catch (e: VideoSegmentException) {
-                // ✅ this is where you handle FFmpeg failures
-
-                // log
-                // map to UI error
-                // retry if appropriate
-                // attach diagnostics
-
-                throw e // IMPORTANT: rethrow unless you intentionally recover
-            }
-
-        // IMPORTANT:
-        // - IV must be the same IV used by FFmpeg (from KeyHeader)
-        // - This IV is reused for thumbnails later
-        return EncryptedVideoResult(
-            playlistPath = playlistPath,
-            segmentPath = segmentPath,
-            iv = keyHeader.iv
-        )
-    }
-
-    private suspend fun encryptBytes(
-        data: ByteArray,
-        keyHeader: KeyHeader,
-        iv: ByteArray
-    ): ByteArray =
-        keyHeader.encryptDataAes(
-            data = data,
-            customIv = iv
-        )
 }

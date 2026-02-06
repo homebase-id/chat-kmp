@@ -2,7 +2,6 @@ package id.homebase.chat.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.PushNotificationOptions
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
@@ -10,7 +9,6 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive
@@ -96,10 +94,8 @@ class ChatMessageSenderService(
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationService.getRecipients(conversationId)
 
-        val encryptedBundle =
-            payloadBundleEncryptionService.encryptBundle(payloadBundle, keyHeader)
-        val encryptedPayloads = encryptedBundle.payloads
-        val encryptedThumbnails = encryptedBundle.thumbnails
+        val encryptedBundle = payloadBundleEncryptionService
+            .encryptBundle(payloadBundle, keyHeader, onProgress = null)
 
         val metadata =
             UploadFileMetadata(
@@ -136,8 +132,8 @@ class ChatMessageSenderService(
                             unEncryptedMessage = notificationText
                         )
                 ),
-            payloads = encryptedPayloads,
-            thumbnails = encryptedThumbnails
+            payloads = encryptedBundle.payloads,
+            thumbnails = encryptedBundle.thumbnails
         )
         try {
 
