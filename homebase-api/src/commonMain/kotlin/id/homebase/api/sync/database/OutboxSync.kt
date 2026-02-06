@@ -95,7 +95,7 @@ class OutboxSync(
 
             try {
                 // We sent the item, send an event
-                eventBus.emit(BackendEvent.OutboxEvent.ItemStarted(outboxRecord.driveId, outboxRecord.fileId))
+                eventBus.emit(BackendEvent.OutboxEvent.ItemStarted(outboxRecord.driveId, outboxRecord.uniqueId))
                 Logger.i("Log the data from the outboxRecord here...")
 
                 uploader.upload(outboxRecord, eventBus)
@@ -104,11 +104,11 @@ class OutboxSync(
                 databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
 
                 // We sent the item, send an event
-                eventBus.emit(BackendEvent.OutboxEvent.ItemCompleted(outboxRecord.driveId, outboxRecord.fileId))
+                eventBus.emit(BackendEvent.OutboxEvent.ItemCompleted(outboxRecord.driveId, outboxRecord.uniqueId))
                 totalSent.incrementAndGet()
             } catch (e: Exception) {
                 val n = WAIT_INCREMENT_SECONDS * outboxRecord.checkOutCount
-                Logger.w("Failed upload for ${outboxRecord.fileId}, retry in $n seconds (attempt ${outboxRecord.checkOutCount + 1})", e)
+                Logger.w("Failed upload for ${outboxRecord.uniqueId}, retry in $n seconds (attempt ${outboxRecord.checkOutCount + 1})", e)
                 databaseManager.outbox.checkInFailed(outboxRecord.checkOutStamp!!,
                     UnixTimeUtc.now().addSeconds(n).seconds)
                 eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))

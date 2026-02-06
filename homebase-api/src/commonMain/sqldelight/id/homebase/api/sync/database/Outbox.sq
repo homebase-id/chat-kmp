@@ -14,7 +14,6 @@ CREATE TABLE IF NOT EXISTS Outbox(
    json BLOB NOT NULL,
    files BLOB,
 
-   -- TODO: Is it unique? How about the same file queued many times?
    UNIQUE(driveId,uniqueId)
 );
 
@@ -34,17 +33,17 @@ WHERE checkOutStamp IS NULL AND
     FROM Outbox AS o
     WHERE o.checkOutStamp IS NULL
         AND o.nextRunTime <= :now
-        AND ((o.dependencyFileId IS NULL)
+        AND ((o.dependencyUniqueId IS NULL)
             OR (NOT EXISTS (
                   SELECT 1
                   FROM Outbox AS ib
-                  WHERE ib.uniqueId = o.dependencyFileId) --- uniqueId here --- see other lines
+                  WHERE ib.uniqueId = o.dependencyUniqueId)
         )
     )
     ORDER BY o.priority ASC, o.nextRunTime ASC
     LIMIT 1
 )
-RETURNING rowId, driveId, uniqueId, dependencyFileId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType, json, files;
+RETURNING rowId, driveId, uniqueId, dependencyUniqueId, priority, lastAttempt, nextRunTime, checkOutCount, checkOutStamp, uploadType, json, files;
 
 -- What's the lowest timestamp of the next item to process in the outbox?
 nextScheduled:
