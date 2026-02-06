@@ -10,7 +10,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
-import id.homebase.chat.services.ChatMessageReaderService
+import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
-class ConversationStreamService(
+class ConversationStream(
     private val credentialsManager: CredentialsManager,
     private val conversationService: ConversationService,
     private val dbm: DatabaseManager,
@@ -95,7 +95,7 @@ class ConversationStreamService(
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingMessages =
             messageFiles.mapNotNull { file ->
-                ChatMessageReaderService.Companion.mapToMessageData(
+                ChatMessageStream.Companion.mapToMessageData(
                     file
                 )
             }

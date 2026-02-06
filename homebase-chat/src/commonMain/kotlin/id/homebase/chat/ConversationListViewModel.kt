@@ -8,9 +8,11 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
-import id.homebase.chat.services.ChatMessageReaderService
+import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ContactService
@@ -32,8 +34,8 @@ import kotlinx.coroutines.launch
 class ChatListViewModel(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
-    private val conversationService: ConversationStreamService,
-    private val chatMessageService: ChatMessageReaderService,
+    private val conversationStream: ConversationStream,
+    private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
@@ -52,19 +54,13 @@ class ChatListViewModel(
         }
 
         viewModelScope.launch {
-            conversationService.start()
-            conversationService.conversations.collect { conversations ->
+            conversationStream.start()
+            conversationStream.conversations.collect { conversations ->
                 val sorted = conversations.sortedByDescending { it.timestamp }
                 _uiState.value = _uiState.value.copy(conversations = sorted.toPersistentList())
             }
         }
 
-        contactService.start()
-        viewModelScope.launch {
-            contactService.contacts.collect { contacts ->
-                _uiState.value = _uiState.value.copy(contacts = contacts.toPersistentList())
-            }
-        }
     }
 
     fun eventConsumed() {
@@ -354,16 +350,17 @@ class ChatListViewModel(
     private fun loadMessagesForConversation(conversationId: Uuid) {
         viewModelScope.launch {
             try {
-                chatMessageService.loadConversation(conversationId)
+                chatMessageStream.loadConversation(conversationId)
 
-                chatMessageService.observeMessages(conversationId).collect { messages ->
-                    val sorted = messages.sortedBy { it.created }
-                    _uiState.value = _uiState.value.copy(
-                        selectedConversationId = conversationId,
-                        currentConversationMessages = sorted.toPersistentList(),
-                        conversationScrollPosition = getScrollPosition(conversationId),
-                    )
-                }
+                chatMessageStream
+                    .observeMessages(conversationId).collect { messages ->
+                        val sorted = messages.sortedBy { it.created }
+                        _uiState.value = _uiState.value.copy(
+                            selectedConversationId = conversationId,
+                            currentConversationMessages = sorted.toPersistentList(),
+                            conversationScrollPosition = getScrollPosition(conversationId),
+                        )
+                    }
             } catch (e: Exception) {
                 sendEvent(
                     ConversationListUiEvent.ShowErrorMessage(
