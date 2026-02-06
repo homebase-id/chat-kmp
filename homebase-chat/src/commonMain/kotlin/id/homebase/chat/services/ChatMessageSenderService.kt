@@ -9,20 +9,18 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
-import id.homebase.api.crypto.toUtf8ByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.chat.services.convo.ConversationStreamService
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive
-import io.ktor.utils.io.core.toByteArray
 import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
     private val databaseManager: DatabaseManager,
-    private val conversationService: ConversationStreamService,
-    private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
-    private val outboxSync: OutboxSync
+    private val outboxSync: OutboxSync,
+    private val conversationService: ConversationStream,
+    private val payloadBundleEncryptionService: PayloadBundleEncryptionService
 ) {
     private val chatDrive = chatTargetDrive.alias
 
