@@ -6,5 +6,6 @@ interface FileOperationsProvider {
     fun openFileInput(path: String): InputProvider
     suspend fun readFileBytes(path: String): ByteArray
 
+    fun deleteTempFile(path: String): Boolean
     fun getCacheDirectory(): String
 }
