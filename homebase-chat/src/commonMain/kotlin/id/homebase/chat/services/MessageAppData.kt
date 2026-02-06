@@ -3,9 +3,9 @@ package id.homebase.chat.services
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.time.UnixTimeUtc
+import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
-import kotlin.uuid.Uuid
 
 /** Data class representing chat message homebaseFile.AppData (parsed from JSON) */
 @Serializable
@@ -33,8 +33,8 @@ data class MessageAppData(
 data class ReplyPreview(
     val replyUniqueId: Uuid, // FileId of the message that was replied to
     val authorOdinId: String, // frodo.baggins.demo.rocks
-    val message: String, // chopped chars (IDK how many you use? 40? 80? use truncateToCodePoints(80))
-    val previewThumbnail: EmbeddedThumb // Real thumb via replyUniqueId
+    val message: String, // chopped chars (IDK how many you use? 40? 80? use truncateToCodePoints(80)
+    val previewThumbnail: EmbeddedThumb? = null // Real thumb via replyUniqueId, null for text-only messages
 ) // Tiny tiny thumb, can be even smaller than tinyThumb even a 1px color
 
 enum class ChatDeliveryStatus(val value: Int) {
@@ -54,11 +54,9 @@ enum class ChatDeliveryStatus(val value: Int) {
     Failed(50);
 
     companion object {
-        fun fromValue(value: Int): ChatDeliveryStatus? =
-            entries.find { it.value == value }
+        fun fromValue(value: Int): ChatDeliveryStatus? = entries.find { it.value == value }
     }
 }
-
 
 @Serializable
 data class LinkPreview(
@@ -68,9 +66,10 @@ data class LinkPreview(
     val imageUrl: String?,
     val imageHeight: Int?,
     val imageWidth: Int?,
-    )
-{
-    fun getThumbUrl() : String { return "" }
+) {
+    fun getThumbUrl(): String {
+        return ""
+    }
 }
 
 @Serializable
