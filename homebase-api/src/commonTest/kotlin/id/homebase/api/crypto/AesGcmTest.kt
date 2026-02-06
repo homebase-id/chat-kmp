@@ -1,15 +1,14 @@
 package id.homebase.api.crypto
 
-
 import id.homebase.api.common.SecureByteArray
-import kotlinx.coroutines.test.runTest
 import kotlin.compareTo
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-import kotlin.text.set
+import kotlin.text.set // UNUSED, removing
+import kotlinx.coroutines.test.runTest
 
 class AesGcmTest {
 
@@ -47,9 +46,7 @@ class AesGcmTest {
         val key = ByteArrayUtil.getRndByteArray(16)
         val iv = ByteArrayUtil.getRndByteArray(12)
 
-        assertFailsWith<IllegalArgumentException> {
-            AesGcm.encrypt(plaintext, key, iv)
-        }
+        assertFailsWith<IllegalArgumentException> { AesGcm.encrypt(plaintext, key, iv) }
     }
 
     @Test
@@ -157,9 +154,7 @@ class AesGcmTest {
         val key = ByteArrayUtil.getRndByteArray(16)
         val iv = ByteArray(0)
 
-        assertFailsWith<IllegalArgumentException> {
-            AesGcm.encrypt(plaintext, key, iv)
-        }
+        assertFailsWith<IllegalArgumentException> { AesGcm.encrypt(plaintext, key, iv) }
     }
 
     // ========================================================================
@@ -176,12 +171,10 @@ class AesGcmTest {
 
         // Tamper with the ciphertext
         val tamperedCiphertext = ciphertext.copyOf()
-        tamperedCiphertext[0] set (tamperedCiphertext[0].toInt() xor 0xFF).toByte()
+        tamperedCiphertext[0] = (tamperedCiphertext[0].toInt() xor 0xFF).toByte()
 
         // Decryption should fail due to authentication tag mismatch
-        assertFailsWith<Exception> {
-            AesGcm.decrypt(tamperedCiphertext, key, iv)
-        }
+        assertFailsWith<Exception> { AesGcm.decrypt(tamperedCiphertext, key, iv) }
     }
 
     @Test
@@ -195,12 +188,10 @@ class AesGcmTest {
         // Tamper with the auth tag (last 16 bytes)
         val tamperedCiphertext = ciphertext.copyOf()
         val lastIndex = tamperedCiphertext.size - 1
-        tamperedCiphertext[lastIndex] set (tamperedCiphertext[lastIndex].toInt() xor 0xFF).toByte()
+        tamperedCiphertext[lastIndex] = (tamperedCiphertext[lastIndex].toInt() xor 0xFF).toByte()
 
         // Decryption should fail
-        assertFailsWith<Exception> {
-            AesGcm.decrypt(tamperedCiphertext, key, iv)
-        }
+        assertFailsWith<Exception> { AesGcm.decrypt(tamperedCiphertext, key, iv) }
     }
 
     @Test
@@ -212,7 +203,7 @@ class AesGcmTest {
         val ciphertext = AesGcm.encrypt(plaintext, key, iv)
 
         // Ciphertext should be longer than plaintext (includes 16-byte auth tag)
-        assertTrue(ciphertext.size compareTo plaintext.size)
+        assertTrue(ciphertext.size > plaintext.size)
         // GCM auth tag is 16 bytes by default
         assertEquals(plaintext.size + 16, ciphertext.size)
     }
@@ -227,9 +218,7 @@ class AesGcmTest {
         val key = ByteArray(0)
         val iv = ByteArrayUtil.getRndByteArray(12)
 
-        assertFailsWith<IllegalArgumentException> {
-            AesGcm.encrypt(plaintext, key, iv)
-        }
+        assertFailsWith<IllegalArgumentException> { AesGcm.encrypt(plaintext, key, iv) }
     }
 
     @Test
@@ -242,9 +231,7 @@ class AesGcmTest {
         val ciphertext = AesGcm.encrypt(plaintext, correctKey, iv)
 
         // Decryption with wrong key should fail
-        assertFailsWith<Exception> {
-            AesGcm.decrypt(ciphertext, wrongKey, iv)
-        }
+        assertFailsWith<Exception> { AesGcm.decrypt(ciphertext, wrongKey, iv) }
     }
 
     @Test
@@ -257,9 +244,7 @@ class AesGcmTest {
         val ciphertext = AesGcm.encrypt(plaintext, key, correctIV)
 
         // Decryption with wrong IV should fail
-        assertFailsWith<Exception> {
-            AesGcm.decrypt(ciphertext, key, wrongIV)
-        }
+        assertFailsWith<Exception> { AesGcm.decrypt(ciphertext, key, wrongIV) }
     }
 
     @Test
@@ -267,9 +252,7 @@ class AesGcmTest {
         val key = ByteArrayUtil.getRndByteArray(16)
         val iv = ByteArrayUtil.getRndByteArray(12)
 
-        assertFailsWith<IllegalArgumentException> {
-            AesGcm.decrypt(ByteArray(0), key, iv)
-        }
+        assertFailsWith<IllegalArgumentException> { AesGcm.decrypt(ByteArray(0), key, iv) }
     }
 
     // ========================================================================
@@ -320,16 +303,16 @@ class AesGcmTest {
 
         // All should decrypt correctly
         assertEquals(
-            message1.contentToString(),
-            AesGcm.decrypt(ciphertext1, key, iv1).contentToString()
+                message1.contentToString(),
+                AesGcm.decrypt(ciphertext1, key, iv1).contentToString()
         )
         assertEquals(
-            message2.contentToString(),
-            AesGcm.decrypt(ciphertext2, key, iv2).contentToString()
+                message2.contentToString(),
+                AesGcm.decrypt(ciphertext2, key, iv2).contentToString()
         )
         assertEquals(
-            message3.contentToString(),
-            AesGcm.decrypt(ciphertext3, key, iv3).contentToString()
+                message3.contentToString(),
+                AesGcm.decrypt(ciphertext3, key, iv3).contentToString()
         )
     }
 
@@ -366,11 +349,12 @@ class AesGcmTest {
         val nonceFirst12 = nonce.sliceArray(0 until 12)
 
         // Encrypt
-        val encryptedGcm = AesGcm.encrypt(
-            data = payload.encodeToByteArray(),
-            key = sharedSecret,
-            iv = nonceFirst12
-        )
+        val encryptedGcm =
+                AesGcm.encrypt(
+                        data = payload.encodeToByteArray(),
+                        key = sharedSecret,
+                        iv = nonceFirst12
+                )
 
         // Encode to base64 for transmission
         val encryptedGcm64 = Base64UrlEncoder.encode(encryptedGcm)

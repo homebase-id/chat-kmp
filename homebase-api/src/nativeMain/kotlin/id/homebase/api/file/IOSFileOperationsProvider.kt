@@ -33,6 +33,7 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         return bytes
     }
 
+    @OptIn(ExperimentalForeignApi::class)
     override fun getCacheDirectory(): String {
         val fileManager = NSFileManager.defaultManager
         val cacheUrl =

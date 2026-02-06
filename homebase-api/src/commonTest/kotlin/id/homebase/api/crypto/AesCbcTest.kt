@@ -1,6 +1,7 @@
 package id.homebase.api.crypto
 
 
+import id.homebase.api.common.SecureByteArray
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

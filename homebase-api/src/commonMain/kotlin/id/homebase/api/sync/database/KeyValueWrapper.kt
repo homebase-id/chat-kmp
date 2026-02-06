@@ -1,9 +1,6 @@
-package id.homebase.api.lib.database
+package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.SqlDriver
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.KeyValue
-import id.homebase.api.sync.database.KeyValueQueries
 import kotlin.Any
 import kotlin.uuid.Uuid
 
@@ -24,8 +21,7 @@ class KeyValueWrapper(
 
     fun selectByKey(
         key: Uuid,
-    ): KeyValue?
-    {
+    ): KeyValue? {
         try {
             return delegate.selectByKey(key).executeAsOneOrNull()
         } catch (e: Exception) {
@@ -37,15 +33,13 @@ class KeyValueWrapper(
     suspend fun upsertValue(
         key: Uuid,
         data: ByteArray,
-    ): Boolean
-    {
+    ): Boolean {
         return databaseManager.withWriteValue { delegate.upsertValue(key, data).value > 0 }
     }
 
     suspend fun deleteByKey(
         key: Uuid,
-    ): Boolean
-    {
+    ): Boolean {
         return databaseManager.withWriteValue { delegate.deleteByKey(key).value > 0 }
     }
 }

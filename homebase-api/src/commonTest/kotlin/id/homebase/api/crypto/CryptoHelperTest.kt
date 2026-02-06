@@ -1,7 +1,7 @@
 package id.homebase.api.crypto
 
-import id.homebase.homebasekmppoc.prototype.lib.crypto.CryptoHelper
-import id.homebase.homebasekmppoc.prototype.lib.serialization.OdinSystemSerializer
+import id.homebase.api.client.CryptoHelper
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals

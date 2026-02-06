@@ -1,13 +1,13 @@
 package id.homebase.api.crypto
 
-import id.homebase.homebasekmppoc.prototype.lib.core.SecureByteArray
-import kotlinx.coroutines.test.runTest
+import id.homebase.api.common.SecureByteArray
 import kotlin.compareTo
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
 
 class EccKeyFunctionsTest {
 
@@ -23,7 +23,7 @@ class EccKeyFunctionsTest {
         // Verify public key
         assertEquals(EccKeySize.P256, keyPair.publicKey.keySize)
         assertTrue(keyPair.publicKey.publicKeyDer.unsafeBytes.isNotEmpty())
-        assertTrue(keyPair.publicKey.crc32c compareTo 0u)
+        assertTrue(keyPair.publicKey.crc32c > 0u)
 
         // Verify private key is encrypted
         assertTrue(keyPair.privateKey.encryptedKey.unsafeBytes.isNotEmpty())
@@ -31,7 +31,7 @@ class EccKeyFunctionsTest {
         assertTrue(keyPair.privateKey.keyHash.unsafeBytes.isNotEmpty())
 
         // Verify timestamps
-        assertTrue(keyPair.publicKey.expiration.compareTo(keyPair.privateKey.createdTimeStamp))
+        assertTrue(keyPair.publicKey.expiration > keyPair.privateKey.createdTimeStamp)
     }
 
     @Test
@@ -53,8 +53,8 @@ class EccKeyFunctionsTest {
 
         // Different passwords should produce different key hashes
         assertNotEquals(
-            keyPair1.privateKey.keyHash.unsafeBytes.contentToString(),
-            keyPair2.privateKey.keyHash.unsafeBytes.contentToString()
+                keyPair1.privateKey.keyHash.unsafeBytes.contentToString(),
+                keyPair2.privateKey.keyHash.unsafeBytes.contentToString()
         )
     }
 
@@ -73,8 +73,8 @@ class EccKeyFunctionsTest {
 
         // Public keys should match
         assertEquals(
-            original.publicKey.publicKeyDer.unsafeBytes.contentToString(),
-            restored.publicKeyDer.unsafeBytes.contentToString()
+                original.publicKey.publicKeyDer.unsafeBytes.contentToString(),
+                restored.publicKeyDer.unsafeBytes.contentToString()
         )
         assertEquals(original.publicKey.keySize, restored.keySize)
     }
@@ -88,8 +88,8 @@ class EccKeyFunctionsTest {
         val restored = publicKeyFromJwk(jwk, 1)
 
         assertEquals(
-            original.publicKey.publicKeyDer.unsafeBytes.contentToString(),
-            restored.publicKeyDer.unsafeBytes.contentToString()
+                original.publicKey.publicKeyDer.unsafeBytes.contentToString(),
+                restored.publicKeyDer.unsafeBytes.contentToString()
         )
         assertEquals(original.publicKey.keySize, restored.keySize)
     }
@@ -103,8 +103,8 @@ class EccKeyFunctionsTest {
         val restored = publicKeyFromJwkBase64Url(jwkBase64, 1)
 
         assertEquals(
-            original.publicKey.publicKeyDer.unsafeBytes.contentToString(),
-            restored.publicKeyDer.unsafeBytes.contentToString()
+                original.publicKey.publicKeyDer.unsafeBytes.contentToString(),
+                restored.publicKeyDer.unsafeBytes.contentToString()
         )
     }
 
@@ -112,18 +112,14 @@ class EccKeyFunctionsTest {
     fun testPublicKeyFromJwk_InvalidKeyType() = runTest {
         val invalidJwk = """{"kty":"RSA","n":"...","e":"..."}"""
 
-        assertFailsWith<IllegalArgumentException> {
-            publicKeyFromJwk(invalidJwk, 1)
-        }
+        assertFailsWith<IllegalArgumentException> { publicKeyFromJwk(invalidJwk, 1) }
     }
 
     @Test
     fun testPublicKeyFromJwk_MissingCurve() = runTest {
         val invalidJwk = """{"kty":"EC","x":"AAAA","y":"BBBB"}"""
 
-        assertFailsWith<IllegalArgumentException> {
-            publicKeyFromJwk(invalidJwk, 1)
-        }
+        assertFailsWith<IllegalArgumentException> { publicKeyFromJwk(invalidJwk, 1) }
     }
 
     // ========================================================================
@@ -170,25 +166,17 @@ class EccKeyFunctionsTest {
         val salt = ByteArray(16) { it.toByte() }
 
         // Alice computes shared secret using Bob's public key
-        val aliceSharedSecret = performEcdhKeyAgreement(
-            aliceKeyPair,
-            alicePassword,
-            bobKeyPair.publicKey,
-            salt
-        )
+        val aliceSharedSecret =
+                performEcdhKeyAgreement(aliceKeyPair, alicePassword, bobKeyPair.publicKey, salt)
 
         // Bob computes shared secret using Alice's public key
-        val bobSharedSecret = performEcdhKeyAgreement(
-            bobKeyPair,
-            bobPassword,
-            aliceKeyPair.publicKey,
-            salt
-        )
+        val bobSharedSecret =
+                performEcdhKeyAgreement(bobKeyPair, bobPassword, aliceKeyPair.publicKey, salt)
 
         // Shared secrets should match
         assertEquals(
-            aliceSharedSecret.unsafeBytes.contentToString(),
-            bobSharedSecret.unsafeBytes.contentToString()
+                aliceSharedSecret.unsafeBytes.contentToString(),
+                bobSharedSecret.unsafeBytes.contentToString()
         )
     }
 
@@ -202,23 +190,15 @@ class EccKeyFunctionsTest {
 
         val salt = ByteArray(16) { it.toByte() }
 
-        val aliceSharedSecret = performEcdhKeyAgreement(
-            aliceKeyPair,
-            alicePassword,
-            bobKeyPair.publicKey,
-            salt
-        )
+        val aliceSharedSecret =
+                performEcdhKeyAgreement(aliceKeyPair, alicePassword, bobKeyPair.publicKey, salt)
 
-        val bobSharedSecret = performEcdhKeyAgreement(
-            bobKeyPair,
-            bobPassword,
-            aliceKeyPair.publicKey,
-            salt
-        )
+        val bobSharedSecret =
+                performEcdhKeyAgreement(bobKeyPair, bobPassword, aliceKeyPair.publicKey, salt)
 
         assertEquals(
-            aliceSharedSecret.unsafeBytes.contentToString(),
-            bobSharedSecret.unsafeBytes.contentToString()
+                aliceSharedSecret.unsafeBytes.contentToString(),
+                bobSharedSecret.unsafeBytes.contentToString()
         )
     }
 
@@ -234,14 +214,14 @@ class EccKeyFunctionsTest {
         val salt2 = ByteArray(16) { 0x02 }
 
         val secret1 =
-            performEcdhKeyAgreement(aliceKeyPair, alicePassword, bobKeyPair.publicKey, salt1)
+                performEcdhKeyAgreement(aliceKeyPair, alicePassword, bobKeyPair.publicKey, salt1)
         val secret2 =
-            performEcdhKeyAgreement(aliceKeyPair, alicePassword, bobKeyPair.publicKey, salt2)
+                performEcdhKeyAgreement(aliceKeyPair, alicePassword, bobKeyPair.publicKey, salt2)
 
         // Different salts should produce different derived keys
         assertNotEquals(
-            secret1.unsafeBytes.contentToString(),
-            secret2.unsafeBytes.contentToString()
+                secret1.unsafeBytes.contentToString(),
+                secret2.unsafeBytes.contentToString()
         )
     }
 
@@ -304,25 +284,22 @@ class EccKeyFunctionsTest {
         val agreedSalt = ByteArray(32) { 0x42 }
 
         // Alice computes shared secret
-        val aliceSharedSecret = performEcdhKeyAgreement(
-            aliceKeyPair,
-            alicePassword,
-            bobPublicKeyForAlice,
-            agreedSalt
-        )
+        val aliceSharedSecret =
+                performEcdhKeyAgreement(
+                        aliceKeyPair,
+                        alicePassword,
+                        bobPublicKeyForAlice,
+                        agreedSalt
+                )
 
         // Bob computes shared secret
-        val bobSharedSecret = performEcdhKeyAgreement(
-            bobKeyPair,
-            bobPassword,
-            alicePublicKeyForBob,
-            agreedSalt
-        )
+        val bobSharedSecret =
+                performEcdhKeyAgreement(bobKeyPair, bobPassword, alicePublicKeyForBob, agreedSalt)
 
         // Both should have the same shared secret
         assertEquals(
-            aliceSharedSecret.unsafeBytes.contentToString(),
-            bobSharedSecret.unsafeBytes.contentToString()
+                aliceSharedSecret.unsafeBytes.contentToString(),
+                bobSharedSecret.unsafeBytes.contentToString()
         )
 
         // Derived key should be 16 bytes (as specified in performEcdhKeyAgreement)
