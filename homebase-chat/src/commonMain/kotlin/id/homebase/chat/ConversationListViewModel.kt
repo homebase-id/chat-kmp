@@ -6,10 +6,10 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.services.ChatMessageActionService
-import id.homebase.chat.services.ChatMessageReaderService
+import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.convo.ContactService
-import id.homebase.chat.services.convo.ConversationStreamService
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationService
@@ -29,8 +29,8 @@ import kotlin.uuid.Uuid
 class ChatListViewModel(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
-    private val conversationService: ConversationStreamService,
-    private val chatMessageService: ChatMessageReaderService,
+    private val conversationStream: ConversationStream,
+    private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
@@ -65,8 +65,8 @@ class ChatListViewModel(
         }
 
         viewModelScope.launch {
-            conversationService.start()
-            conversationService.conversations.collect { conversations ->
+            conversationStream.start()
+            conversationStream.conversations.collect { conversations ->
                 val sorted = conversations.sortedByDescending { it.timestamp }
                 _uiState.value = _uiState.value.copy(
                     conversations = sorted.toPersistentList()
@@ -348,9 +348,9 @@ class ChatListViewModel(
     private fun loadMessagesForConversation(conversationId: Uuid) {
         viewModelScope.launch {
             try {
-                chatMessageService.loadConversation(conversationId)
+                chatMessageStream.loadConversation(conversationId)
 
-                chatMessageService
+                chatMessageStream
                     .observeMessages(conversationId).collect { messages ->
                         val sorted = messages.sortedBy { it.created }
                         _uiState.value = _uiState.value.copy(
