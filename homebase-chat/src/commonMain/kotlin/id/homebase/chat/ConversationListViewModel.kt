@@ -46,6 +46,13 @@ class ChatListViewModel(
 
     init {
         viewModelScope.launch {
+            contactService.start()
+            contactService.contacts.collect { contacts ->
+                _uiState.value = _uiState.value.copy(
+                    contacts = contacts.toPersistentList()
+                )
+            }
+
             val domain = credentialsManager.requireActiveCredentials().domain.trim().lowercase()
 
             _uiState.update { it.copy(currentOdinId = domain) }
@@ -350,15 +357,14 @@ class ChatListViewModel(
             try {
                 chatMessageStream.loadConversation(conversationId)
 
-                chatMessageStream
-                    .observeMessages(conversationId).collect { messages ->
-                        val sorted = messages.sortedBy { it.created }
-                        _uiState.value = _uiState.value.copy(
-                            selectedConversationId = conversationId,
-                            currentConversationMessages = sorted.toPersistentList(),
-                            conversationScrollPosition = getScrollPosition(conversationId),
-                        )
-                    }
+                chatMessageStream.observeMessages(conversationId).collect { messages ->
+                    val sorted = messages.sortedBy { it.created }
+                    _uiState.value = _uiState.value.copy(
+                        selectedConversationId = conversationId,
+                        currentConversationMessages = sorted.toPersistentList(),
+                        conversationScrollPosition = getScrollPosition(conversationId),
+                    )
+                }
             } catch (e: Exception) {
                 sendEvent(
                     ConversationListUiEvent.ShowErrorMessage(
