@@ -16,18 +16,17 @@ class DriveOutboxUploader(
         outboxRecord: Outbox,
         eventBus: EventBus
     ) {
-        val jsonString = outboxRecord.json.decodeToString()
-        val request = OdinSystemSerializer.deserialize<UploadFileRequest>(jsonString)
-        driveUploadProvider.uploadFile(request)
-    }
-
-    //TODO: Michael we need to do this too
-    suspend fun updateFileByUniqueIdRequest(
-        outboxRecord: Outbox,
-        eventBus: EventBus
-    ) {
-        val jsonString = outboxRecord.json.decodeToString()
-        val request = OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(jsonString)
-        driveUploadProvider.updateFileByUniqueId(request)
+        if(outboxRecord.uploadType == 1L)
+        {
+            val jsonString = outboxRecord.json.decodeToString()
+            val request = OdinSystemSerializer.deserialize<UploadFileRequest>(jsonString)
+            driveUploadProvider.uploadFile(request)
+        }
+        else if(outboxRecord.uploadType == 2L)
+        {
+            val jsonString = outboxRecord.json.decodeToString()
+            val request = OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(jsonString)
+            driveUploadProvider.updateFileByUniqueId(request)
+        }
     }
 }
