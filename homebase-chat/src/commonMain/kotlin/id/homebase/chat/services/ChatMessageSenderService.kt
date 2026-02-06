@@ -171,3 +171,9 @@ data class EncryptedFileResult(
     val iv: ByteArray
 )
 
+data class EncryptedVideoResult(
+    val playlistPath: String,
+    val segmentPath: String,
+    val iv: ByteArray
+)
+

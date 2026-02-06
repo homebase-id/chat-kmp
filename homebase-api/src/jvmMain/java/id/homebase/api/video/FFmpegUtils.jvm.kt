@@ -132,7 +132,12 @@ actual object FFmpegUtils {
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) {
                 println("FFmpeg binaries not available for this platform")
-                return@withContext null
+                throw VideoSegmentException(
+                    message = "Binaries not found",
+                    command = emptyList(),
+                    exitCode = 1,
+                    ffmpegOutput = ""
+                )
             }
 
             val outputDir = File(
@@ -209,12 +214,34 @@ actual object FFmpegUtils {
             )
         }
 
-        val exitCode = runProcess(command)
-        return if (exitCode == 0 && File(playlistPath).exists()) {
-            playlistPath to segmentPath
-        } else {
-            null
+        val result = runProcessWithLogs(command)
+
+        if (result.exitCode != 0) {
+            throw VideoSegmentException(
+                message = "FFmpeg failed during segment${if (keyInfoFile != null) "+encrypt" else ""}",
+                command = command,
+                exitCode = result.exitCode,
+                ffmpegOutput = result.output
+            )
         }
+
+        if (!File(playlistPath).exists()) {
+            throw VideoSegmentException(
+                message = "FFmpeg reported success but index.m3u8 was not created",
+                command = command,
+                exitCode = result.exitCode,
+                ffmpegOutput = result.output
+            )
+        }
+
+        return playlistPath to segmentPath
+
+//        val exitCode = runProcess(command)
+//        return if (exitCode == 0 && File(playlistPath).exists()) {
+//            playlistPath to segmentPath
+//        } else {
+//            null
+//        }
     }
 
 
@@ -283,4 +310,37 @@ actual object FFmpegUtils {
         return keyInfoFile
     }
 
+
+    private fun runProcessWithLogs(command: List<String>): ProcessResult {
+        val process = ProcessBuilder(command)
+            .redirectErrorStream(true)
+            .start()
+
+        val output = StringBuilder()
+
+        val readerThread = Thread {
+            process.inputStream.bufferedReader().useLines { lines ->
+                lines.forEach {
+                    output.appendLine(it)
+                }
+            }
+        }
+
+        readerThread.start()
+
+        val completed = process.waitFor(5, TimeUnit.MINUTES)
+        readerThread.join()
+
+        val exitCode = if (completed) process.exitValue() else -1
+
+        return ProcessResult(
+            exitCode = exitCode,
+            output = output.toString()
+        )
+    }
 }
+
+data class ProcessResult(
+    val exitCode: Int,
+    val output: String
+)

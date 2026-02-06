@@ -4,6 +4,8 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.writeBytesToTempFile
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.FFmpegUtils
+import id.homebase.api.video.VideoSegmentException
 
 class PayloadBundleEncryptionService(
     private val fileOps: FileOperationsProvider
@@ -25,18 +27,26 @@ class PayloadBundleEncryptionService(
         val encryptedPayloads =
             bundle.payloads.map { payload ->
 
-                val encrypted =
-                    if (payload.contentType.startsWith("video/")) {
-                        encryptVideo(payload.filePath, keyHeader)
-                    } else {
-                        encryptFile(payload.filePath, keyHeader)
-                    }
+                if (payload.contentType.startsWith("video/")) {
 
-                payload.copy(
-                    filePath = encrypted.filePath,
-                    iv = encrypted.iv,
-                    isPreEncrypted = true
-                )
+                    val video = encryptVideo(payload.filePath, keyHeader)
+
+                    // TODO: what to do w/ this? video.segmentPath
+
+                    payload.copy(
+                        filePath = video.playlistPath,
+                        iv = video.iv,
+                        isPreEncrypted = true
+                    )
+
+                } else {
+                    val encrypted = encryptFile(payload.filePath, keyHeader)
+                    payload.copy(
+                        filePath = encrypted.filePath,
+                        iv = encrypted.iv,
+                        isPreEncrypted = true
+                    )
+                }
             }
 
         val ivByKey =
@@ -109,14 +119,36 @@ class PayloadBundleEncryptionService(
     private suspend fun encryptVideo(
         inputFile: String,
         keyHeader: KeyHeader
-    ): EncryptedFileResult {
-        // Delegates to your existing logic
-        return encryptFile(
-            inputFile = inputFile,
-            keyHeader = keyHeader
+    ): EncryptedVideoResult {
+
+        val (playlistPath, segmentPath) =
+            try {
+                FFmpegUtils.segmentAndEncryptVideo(
+                    inputPath = inputFile,
+                    keyHeader = keyHeader
+                ) ?: throw IllegalStateException(
+                    "FFmpeg returned null for segmentAndEncryptVideo: $inputFile"
+                )
+            } catch (e: VideoSegmentException) {
+                // ✅ this is where you handle FFmpeg failures
+
+                // log
+                // map to UI error
+                // retry if appropriate
+                // attach diagnostics
+
+                throw e // IMPORTANT: rethrow unless you intentionally recover
+            }
+
+        // IMPORTANT:
+        // - IV must be the same IV used by FFmpeg (from KeyHeader)
+        // - This IV is reused for thumbnails later
+        return EncryptedVideoResult(
+            playlistPath = playlistPath,
+            segmentPath = segmentPath,
+            iv = keyHeader.iv
         )
     }
-
 
     private suspend fun encryptBytes(
         data: ByteArray,
