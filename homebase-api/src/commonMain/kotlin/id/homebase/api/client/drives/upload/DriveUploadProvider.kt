@@ -50,6 +50,7 @@ private data class UpdateLocalMetadataContentRequest(
     val content: String?
 )
 
+@Serializable
 data class UploadFileRequest(
     val driveId: Uuid,
     /// The KeyHeader used to encrypt content and payloads
@@ -61,6 +62,7 @@ data class UploadFileRequest(
     val fileSystemType: FileSystemType? = null
 )
 
+@Serializable
 data class UpdateFileByFileIdRequest(
     val driveId: Uuid,
     val fileId: Uuid,
@@ -71,6 +73,7 @@ data class UpdateFileByFileIdRequest(
     val thumbnails: List<ThumbnailFile>? = null,
 )
 
+@Serializable
 data class UpdateFileByUniqueIdRequest(
     val driveId: Uuid,
     val uniqueId: Uuid,

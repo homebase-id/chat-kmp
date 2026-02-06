@@ -29,6 +29,7 @@ class ChatMessageSenderService(
     suspend fun sendNewMessage(
         conversationId: Uuid,
         messageText: String,
+        previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
     ): SendMessageResult =
         deliverMessage(
@@ -41,6 +42,7 @@ class ChatMessageSenderService(
                     deliveryStatus = ChatDeliveryStatus.Sent.value
                 ),
             notificationText = "You have a new message",
+            previousMessageUniqueId = previousMessageUniqueId,
             payloadBundle = payloadBundle
         )
 
@@ -48,6 +50,7 @@ class ChatMessageSenderService(
         conversationId: Uuid,
         replyTo: ReplyPreview,
         messageText: String,
+        previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
     ): SendMessageResult =
         deliverMessage(
@@ -59,6 +62,7 @@ class ChatMessageSenderService(
                     deliveryStatus = ChatDeliveryStatus.Sent.value
                 ),
             notificationText = "You have a new reply",
+            previousMessageUniqueId = previousMessageUniqueId,
             payloadBundle = payloadBundle
         )
 
@@ -66,13 +70,20 @@ class ChatMessageSenderService(
         conversationId: Uuid,
         content: MessageAppData,
         notificationText: String,
+        previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
     ): SendMessageResult {
 
         // distribute the conversation file if needed
 //        conversationWriterService.updateConversationRecipients(conversationId, )
 
-        val result = sendMessageInternal(conversationId, content, notificationText, payloadBundle)
+        val result = sendMessageInternal(
+            conversationId,
+            content,
+            notificationText,
+            previousMessageUniqueId,
+            payloadBundle
+        )
         return result;
     }
 
@@ -80,6 +91,7 @@ class ChatMessageSenderService(
         conversationId: Uuid,
         content: MessageAppData,
         notificationText: String,
+        previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
     ): SendMessageResult {
 
@@ -110,40 +122,39 @@ class ChatMessageSenderService(
                     )
             )
 
-        val request =
-            UploadFileRequest(
-                driveId = chatDrive,
-                keyHeader = keyHeader,
-                metadata = metadata.encryptContent(keyHeader),
-                transitOptions =
-                    TransitOptions(
-                        recipients = recipients,
-                        useAppNotification = true,
-                        appNotificationOptions =
-                            PushNotificationOptions(
-                                appId = ChatProtocol.ChatAppId.toString(),
-                                typeId = conversationId.toString(),
-                                tagId = uniqueId.toString(),
-                                silent = false,
-                                unEncryptedMessage = notificationText
-                            )
-                    ),
-                payloads = encryptedPayloads,
-                thumbnails = encryptedThumbnails
-            )
+        val request = UploadFileRequest(
+            driveId = chatDrive,
+            keyHeader = keyHeader,
+            metadata = metadata.encryptContent(keyHeader),
+            transitOptions =
+                TransitOptions(
+                    recipients = recipients,
+                    useAppNotification = true,
+                    appNotificationOptions =
+                        PushNotificationOptions(
+                            appId = ChatProtocol.ChatAppId.toString(),
+                            typeId = conversationId.toString(),
+                            tagId = uniqueId.toString(),
+                            silent = false,
+                            unEncryptedMessage = notificationText
+                        )
+                ),
+            payloads = encryptedPayloads,
+            thumbnails = encryptedThumbnails
+        )
         try {
 
 //            val result =&
 //                driveUploadProvider.uploadFile(request)
 //                    ?: error("Failed to upload chat message")
 
-            databaseManager.outbox.insert(
-                request.driveId, uniqueId,
-                dependencyUniqueId = null,
+            outboxSync.enqueue(
+                request.driveId,
+                uniqueId,
+                dependencyUniqueId = previousMessageUniqueId,
                 priority = 1,
-                uploadType = 0,
-                json = OdinSystemSerializer.serialize(request).toUtf8ByteArray(),
-                filePaths = null
+                uploadType = 1,
+                json = OdinSystemSerializer.serialize(request),
             )
 
             outboxSync.send()
