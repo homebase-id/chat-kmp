@@ -1,22 +1,13 @@
-package id.homebase.homebasekmppoc.prototype.lib.database
+package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.SqlDriver
-import id.homebase.api.sync.database.OdinDatabase
-import id.homebase.api.sync.database.AppNotifications
-import id.homebase.api.sync.database.ChatReadCount
-import id.homebase.api.sync.database.DriveLocalTagIndex
-import id.homebase.api.sync.database.DriveMainIndex
-import id.homebase.api.sync.database.DriveTagIndex
-import id.homebase.api.sync.database.KeyValue
-import id.homebase.api.sync.database.Outbox
-import id.homebase.api.sync.database.UuidAdapter
 
 /**
- * Factory for creating test databases with all necessary adapters pre-configured.
- * Centralizes adapter definitions to avoid duplication across test files.
+ * Factory for creating test databases with all necessary adapters pre-configured. Centralizes
+ * adapter definitions to avoid duplication across test files.
  */
 object TestDatabaseFactory {
-    
+
     // Shared adapters - defined once here and reused across all tests
     private val driveTagIndexAdapter = DriveTagIndex.Adapter(
         identityIdAdapter = UuidAdapter,
@@ -41,9 +32,7 @@ object TestDatabaseFactory {
         uniqueIdAdapter = UuidAdapter
     )
 
-    private val keyValueAdapter = KeyValue.Adapter(
-        keyAdapter = UuidAdapter
-    )
+    private val keyValueAdapter = KeyValue.Adapter(keyAdapter = UuidAdapter)
 
     private val outboxAdapter = Outbox.Adapter(
         driveIdAdapter = UuidAdapter,
@@ -52,24 +41,21 @@ object TestDatabaseFactory {
     )
 
     private val appNotificationsAdapter = AppNotifications.Adapter(
-        identityIdAdapter = UuidAdapter,
-        notificationIdAdapter = UuidAdapter
+        identityIdAdapter = UuidAdapter, notificationIdAdapter = UuidAdapter
     )
 
-    private val chatReadCountAdapter = ChatReadCount.Adapter(
-        groupIdAdapter = UuidAdapter
-    )
+    private val chatReadCountAdapter = ChatReadCount.Adapter(groupIdAdapter = UuidAdapter)
 
     /**
-     * Creates a test database with all adapters pre-configured.
-     * Uses the platform-specific in-memory driver.
-     * 
+     * Creates a test database with all adapters pre-configured. Uses the platform-specific
+     * in-memory driver.
+     *
      * @param driver Optional custom SQL driver. If null, uses in-memory database.
      * @return Configured OdinDatabase instance ready for testing
      */
     fun createTestDatabase(driver: SqlDriver? = null): OdinDatabase {
         val sqlDriver = driver ?: createInMemoryDatabase()
-        
+
         return OdinDatabase.Companion(
             sqlDriver,
             appNotificationsAdapter,

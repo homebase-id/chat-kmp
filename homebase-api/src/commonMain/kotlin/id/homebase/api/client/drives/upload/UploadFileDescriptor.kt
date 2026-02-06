@@ -7,7 +7,7 @@ import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
-import id.homebase.homebasekmppoc.prototype.lib.serialization.Base64ByteArraySerializer
+import id.homebase.api.prototype.lib.serialization.Base64ByteArraySerializer
 import kotlin.io.encoding.Base64
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.ExperimentalEncodingApi

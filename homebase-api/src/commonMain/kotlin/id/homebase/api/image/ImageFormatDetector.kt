@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.lib.image
+package id.homebase.api.lib.image
 
 import co.touchlab.kermit.Logger
 
