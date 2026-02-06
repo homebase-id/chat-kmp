@@ -13,7 +13,6 @@ import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.FileSystemType
-import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.file.FileOperationsProvider
@@ -25,7 +24,6 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
-/** Local metadata upload result. */
 @Serializable
 data class LocalMetadataUploadResult(val newLocalVersionTag: String)
 
@@ -50,6 +48,7 @@ private data class UpdateLocalMetadataContentRequest(
     val content: String?
 )
 
+@Serializable
 data class UploadFileRequest(
     val driveId: Uuid,
     /// The KeyHeader used to encrypt content and payloads
@@ -61,6 +60,7 @@ data class UploadFileRequest(
     val fileSystemType: FileSystemType? = null
 )
 
+@Serializable
 data class UpdateFileByFileIdRequest(
     val driveId: Uuid,
     val fileId: Uuid,
@@ -71,6 +71,7 @@ data class UpdateFileByFileIdRequest(
     val thumbnails: List<ThumbnailFile>? = null,
 )
 
+@Serializable
 data class UpdateFileByUniqueIdRequest(
     val driveId: Uuid,
     val uniqueId: Uuid,
@@ -133,6 +134,11 @@ class DriveUploadProvider(
             )
 
         val result = pureUpload(request.driveId, data, request.fileSystemType, onVersionConflict)
+
+        if (result != null) {
+            cleanupPayloadTempFiles(request.payloads)
+        }
+
         return result
     }
 
@@ -163,7 +169,13 @@ class DriveUploadProvider(
             )
 
         val path = "/drives/${request.driveId}/files/${request.fileId}"
-        return pureUpdate(data, path, onVersionConflict)
+        val result = pureUpdate(data, path, onVersionConflict)
+
+        if (result != null) {
+            cleanupPayloadTempFiles(request.payloads)
+        }
+
+        return result
     }
 
     suspend fun updateFileByUniqueId(
@@ -192,7 +204,13 @@ class DriveUploadProvider(
             )
 
         val path = "/drives/${request.driveId}/files/by-uid/${request.uniqueId}"
-        return pureUpdate(data, path, onVersionConflict)
+        val result = pureUpdate(data, path, onVersionConflict)
+
+        if (result != null) {
+            cleanupPayloadTempFiles(request.payloads)
+        }
+
+        return result;
     }
 
     // ==================== LOCAL METADATA METHODS ====================
@@ -474,5 +492,29 @@ class DriveUploadProvider(
 
         throwForFailure(response)
         return null
+    }
+
+    private fun cleanupPayloadTempFiles(payloads: List<PayloadFile>?) {
+
+
+        payloads?.forEach { payload ->
+            val path = payload.filePath
+            Logger.d(TAG) { "Attempting to delete temp payload file $path" }
+
+            val deleted =
+                runCatching {
+                    fileOperationsProvider.deleteTempFile(path)
+                }.getOrElse { e ->
+                    Logger.w(TAG, e) { "Exception while deleting temp file: $path" }
+                    false
+                }
+
+            if (deleted) {
+                Logger.d(TAG) { "Deleted temp payload file $path" }
+
+            } else {
+                Logger.w(TAG) { "Temp file could not be deleted (best-effort): $path" }
+            }
+        }
     }
 }

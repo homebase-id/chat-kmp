@@ -5,11 +5,14 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
-import id.homebase.chat.services.ChatMessageReaderService
+import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.convo.ContactService
-import id.homebase.chat.services.convo.ConversationStreamService
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationService
@@ -18,19 +21,19 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import io.github.vinceglb.filekit.name
+import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.uuid.Uuid
 
 class ChatListViewModel(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
-    private val conversationService: ConversationStreamService,
-    private val chatMessageService: ChatMessageReaderService,
+    private val conversationStream: ConversationStream,
+    private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
@@ -49,28 +52,17 @@ class ChatListViewModel(
                     contacts = contacts.toPersistentList()
                 )
             }
+
+            val domain = credentialsManager.requireActiveCredentials().domain.trim().lowercase()
+
+            _uiState.update { it.copy(currentOdinId = domain) }
         }
 
         viewModelScope.launch {
-            val domain =
-                credentialsManager
-                    .requireActiveCredentials()
-                    .domain
-                    .trim()
-                    .lowercase()
-
-            _uiState.update {
-                it.copy(currentOdinId = domain)
-            }
-        }
-
-        viewModelScope.launch {
-            conversationService.start()
-            conversationService.conversations.collect { conversations ->
+            conversationStream.start()
+            conversationStream.conversations.collect { conversations ->
                 val sorted = conversations.sortedByDescending { it.timestamp }
-                _uiState.value = _uiState.value.copy(
-                    conversations = sorted.toPersistentList()
-                )
+                _uiState.value = _uiState.value.copy(conversations = sorted.toPersistentList())
             }
         }
 
@@ -84,7 +76,6 @@ class ChatListViewModel(
         _uiState.update { it.copy(uiDialog = null) }
     }
 
-
     fun onAction(action: ConversationListUiAction) {
         when (action) {
             is ConversationListUiAction.ConversationClicked -> {
@@ -96,17 +87,11 @@ class ChatListViewModel(
             }
 
             ConversationListUiAction.NewChatClicked -> {
-                _uiState.value = _uiState.value.copy(
-                    showingNewChatPane = true,
-                    searchQuery = ""
-                )
+                _uiState.value = _uiState.value.copy(showingNewChatPane = true, searchQuery = "")
             }
 
             ConversationListUiAction.BackToListClicked -> {
-                _uiState.value = _uiState.value.copy(
-                    showingNewChatPane = false,
-                    searchQuery = ""
-                )
+                _uiState.value = _uiState.value.copy(showingNewChatPane = false, searchQuery = "")
             }
 
             is ConversationListUiAction.ContactClicked -> {
@@ -117,27 +102,30 @@ class ChatListViewModel(
                         payloadBundle = null,
                     )
 
-                    _uiState.value = _uiState.value.copy(
-                        showingNewChatPane = false,
-                        searchQuery = ""
-                    )
+                    _uiState.value =
+                        _uiState.value.copy(showingNewChatPane = false, searchQuery = "")
 
                     loadMessagesForConversation(conversationId)
                 }
             }
 
             is ConversationListUiAction.SearchQueryChanged -> {
-                _uiState.value = _uiState.value.copy(
-                    searchQuery = action.query
-                )
+                _uiState.value = _uiState.value.copy(searchQuery = action.query)
             }
 
             is ConversationListUiAction.SendMessage -> {
                 if (action.content.isNotBlank()) {
-                    addMessage(
-                        conversationId = action.conversationId,
-                        content = action.content
-                    )
+                    val replyTo = _uiState.value.replyToMessage
+                    if (replyTo != null) {
+                        replyToMessage(
+                            conversationId = action.conversationId,
+                            replyTo = replyTo,
+                            content = action.content
+                        )
+                        _uiState.update { it.copy(replyToMessage = null) }
+                    } else {
+                        addMessage(conversationId = action.conversationId, content = action.content)
+                    }
                 }
             }
 
@@ -145,8 +133,7 @@ class ChatListViewModel(
                 _uiState.update {
                     it.copy(
                         conversationScrollPosition = ScrollPosition(
-                            action.firstVisibleItemIndex,
-                            action.firstVisibleItemScrollOffset
+                            action.firstVisibleItemIndex, action.firstVisibleItemScrollOffset
                         )
                     )
                 }
@@ -154,20 +141,18 @@ class ChatListViewModel(
                 // Persist to user settings
                 viewModelScope.launch {
                     userPreferences.setConversationScrollIndex(
-                        action.conversationId.toString(),
-                        action.firstVisibleItemIndex
+                        action.conversationId.toString(), action.firstVisibleItemIndex
                     )
                     userPreferences.setConversationScrollOffset(
-                        action.conversationId.toString(),
-                        action.firstVisibleItemScrollOffset
+                        action.conversationId.toString(), action.firstVisibleItemScrollOffset
                     )
                 }
             }
 
             is ConversationListUiAction.DeleteMessage -> {
-                val message =
-                    _uiState.value.currentConversationMessages.firstOrNull { it.id == action.messageId }
-                        ?: return
+                val message = _uiState.value.currentConversationMessages.firstOrNull {
+                    it.id == action.messageId
+                } ?: return
                 val isCurrentUserMessage = message.senderId == _uiState.value.currentOdinId
                 _uiState.update {
                     it.copy(
@@ -191,11 +176,14 @@ class ChatListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId,
-                            deleteForEveryone = true
+                            action.messageId, deleteForEveryone = true
                         )
                     } catch (e: Exception) {
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to delete message for everyone: ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to delete message for everyone: ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -204,11 +192,14 @@ class ChatListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId,
-                            deleteForEveryone = false
+                            action.messageId, deleteForEveryone = false
                         )
                     } catch (e: Exception) {
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to delete message for me: ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to delete message for me: ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -218,7 +209,11 @@ class ChatListViewModel(
                     try {
                         chatMessageActionService.markAsRead(listOf(action.messageId))
                     } catch (e: Exception) {
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to mark message as read: ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to mark message as read: ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -228,7 +223,11 @@ class ChatListViewModel(
                     try {
                         chatMessageActionService.addReaction(action.messageId, action.reaction)
                     } catch (e: Exception) {
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to add reaction: ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to add reaction: ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -238,7 +237,11 @@ class ChatListViewModel(
                     try {
                         chatMessageActionService.deleteReaction(action.messageId, action.reaction)
                     } catch (e: Exception) {
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to delete reaction: ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to delete reaction: ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -264,11 +267,16 @@ class ChatListViewModel(
                         chatMessageSenderService.sendNewMessage(
                             conversationId = action.conversationId,
                             messageText = action.message,
+                            previousMessageUniqueId = null,
                             payloadBundle = bundle
                         )
                     } catch (e: Exception) {
                         Logger.e("Failed to send file(s)", e)
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to send file(s): ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to send file(s): ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -301,26 +309,20 @@ class ChatListViewModel(
                                 }
                             }
 
-                            contentType.startsWith("video/") ||
-                                    contentType == "application/vnd.apple.mpegurl" -> {
-
+                            contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
                             }
 
-                            contentType.startsWith("audio/") -> {
-
-                            }
-
-                            contentType.startsWith("application/") -> {
-
-                            }
-
-                            else -> {
-
-                            }
+                            contentType.startsWith("audio/") -> {}
+                            contentType.startsWith("application/") -> {}
+                            else -> {}
                         }
                     } catch (e: Exception) {
                         Logger.e("Failed to handle media click", e)
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to handle media click: ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to handle media click: ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -329,15 +331,21 @@ class ChatListViewModel(
                 _uiState.update { it.copy(fullScreenMedia = null) }
             }
 
+            //            is ConversationListUiAction.ArchiveConversation -> TODO()
+            //            is ConversationListUiAction.ClearConversation -> TODO()
+            //            is ConversationListUiAction.DeleteConversation -> TODO()
+            //            is ConversationListUiAction.EditMessage -> TODO()
+            //            is ConversationListUiAction.ShowConversationInfo -> TODO()
+            //            is ConversationListUiAction.ShowMessageInfo -> TODO()
+            //            is ConversationListUiAction.StarMessage -> TODO()
 
-//            is ConversationListUiAction.ArchiveConversation -> TODO()
-//            is ConversationListUiAction.ClearConversation -> TODO()
-//            is ConversationListUiAction.DeleteConversation -> TODO()
-//            is ConversationListUiAction.EditMessage -> TODO()
-//            is ConversationListUiAction.ReplyToMessage -> TODO()
-//            is ConversationListUiAction.ShowConversationInfo -> TODO()
-//            is ConversationListUiAction.ShowMessageInfo -> TODO()
-//            is ConversationListUiAction.StarMessage -> TODO()
+            is ConversationListUiAction.ReplyToMessage -> {
+                _uiState.update { it.copy(replyToMessage = action.message) }
+            }
+
+            ConversationListUiAction.CancelReplyToMessage -> {
+                _uiState.update { it.copy(replyToMessage = null) }
+            }
 
             else -> {
                 println("Unhandled action: $action")
@@ -348,19 +356,22 @@ class ChatListViewModel(
     private fun loadMessagesForConversation(conversationId: Uuid) {
         viewModelScope.launch {
             try {
-                chatMessageService.loadConversation(conversationId)
+                chatMessageStream.loadConversation(conversationId)
 
-                chatMessageService
-                    .observeMessages(conversationId).collect { messages ->
-                        val sorted = messages.sortedBy { it.created }
-                        _uiState.value = _uiState.value.copy(
-                            selectedConversationId = conversationId,
-                            currentConversationMessages = sorted.toPersistentList(),
-                            conversationScrollPosition = getScrollPosition(conversationId),
-                        )
-                    }
+                chatMessageStream.observeMessages(conversationId).collect { messages ->
+                    val sorted = messages.sortedBy { it.created }
+                    _uiState.value = _uiState.value.copy(
+                        selectedConversationId = conversationId,
+                        currentConversationMessages = sorted.toPersistentList(),
+                        conversationScrollPosition = getScrollPosition(conversationId),
+                    )
+                }
             } catch (e: Exception) {
-                sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to load messages: ${e.message}"))
+                sendEvent(
+                    ConversationListUiEvent.ShowErrorMessage(
+                        "Failed to load messages: ${e.message}"
+                    )
+                )
             }
         }
     }
@@ -384,21 +395,49 @@ class ChatListViewModel(
         _uiState.update { it.copy(uiEvent = event) }
     }
 
-    fun addMessage(
-        conversationId: Uuid,
-        content: String
-    ) {
+    fun addMessage(conversationId: Uuid, content: String) {
         viewModelScope.launch {
             try {
                 chatMessageSenderService.sendNewMessage(
                     conversationId = conversationId,
                     messageText = content,
+                    previousMessageUniqueId = null,
                     payloadBundle = null,
                 )
 
                 // you can also use chatMessageSenderService.replyToMessage
             } catch (e: Exception) {
-                sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to send message: ${e.message}"))
+                sendEvent(
+                    ConversationListUiEvent.ShowErrorMessage(
+                        "Failed to send message: ${e.message}"
+                    )
+                )
+            }
+        }
+    }
+
+    private fun replyToMessage(conversationId: Uuid, replyTo: MessageUiModel, content: String) {
+        viewModelScope.launch {
+            try {
+                val replyPreview = ReplyPreview(
+                    replyUniqueId = replyTo.id,
+                    authorOdinId = replyTo.senderOdinId,
+                    message = replyTo.content.truncateToCodePoints(80),
+                    previewThumbnail = replyTo.previewThumbnail
+                )
+                chatMessageSenderService.replyToMessage(
+                    conversationId = conversationId,
+                    replyTo = replyPreview,
+                    messageText = content,
+                    previousMessageUniqueId = null,
+                    payloadBundle = null
+                )
+            } catch (e: Exception) {
+                sendEvent(
+                    ConversationListUiEvent.ShowErrorMessage(
+                        "Failed to send reply: ${e.message}"
+                    )
+                )
             }
         }
     }

@@ -7,10 +7,10 @@ import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.util.ScrollPosition
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.persistentListOf
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 
 @Immutable
 data class ConversationListUiState(
@@ -23,7 +23,7 @@ data class ConversationListUiState(
     val conversationScrollPosition: ScrollPosition? = null,
     val currentOdinId: String = "",
     val fullScreenMedia: FullScreenMessageData? = null,
-
+    val replyToMessage: MessageUiModel? = null,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
 )

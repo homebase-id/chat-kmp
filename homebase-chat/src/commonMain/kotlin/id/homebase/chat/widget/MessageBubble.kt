@@ -5,6 +5,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -42,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
@@ -52,6 +55,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.ReplyPreview
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -60,9 +64,12 @@ import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
-import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.stringResource
+import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.decodeToImageBitmap
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Displays a message bubble for messages sent to other users.
@@ -147,6 +154,7 @@ fun SentMessageBubble(
                     payloads = message.payloads,
                     fileId = message.fileId,
                     previewThumbnail = message.previewThumbnail,
+                    replyPreview = message.messageAppData.replyPreview,
                     onLongClick = { showMenu = true },
                     keyHeader = message.keyHeader,
                     onMediaClick = onMediaClick,
@@ -173,7 +181,7 @@ fun SentMessageBubble(
  * @param onAddReaction Callback invoked when user wants to add a reaction to this message.
  * @param onDeleteReaction Callback invoked when user wants to remove a reaction from this message.
  * @param onMediaClick Callback invoked when user clicks on media attachment.
-  */
+ */
 @Composable
 fun ReceivedMessageBubble(
     message: MessageUiModel,
@@ -209,6 +217,7 @@ fun ReceivedMessageBubble(
                     fileId = message.fileId,
                     keyHeader = message.keyHeader,
                     previewThumbnail = message.previewThumbnail,
+                    replyPreview = message.messageAppData.replyPreview,
                     onLongClick = { showMenu = true },
                     onMediaClick = onMediaClick,
                     sharedTransitionScope = sharedTransitionScope,
@@ -228,9 +237,7 @@ fun ReceivedMessageBubble(
                     }
                     ReceivedMessageMenu(
                         showMenu = showMenu,
-                        dismissMenu = {
-                            showMenu = false
-                        },
+                        dismissMenu = { showMenu = false },
                         onMessageInfo = {
                             showMenu = false
                             onMessageInfo(message.id)
@@ -273,7 +280,8 @@ fun ReceivedMessageBubble(
  * Features:
  * - Renders rich HTML text content with proper formatting
  * - Displays media attachments (images, videos, etc.)
- * - Smart timestamp positioning: fits on last line of text when space permits, otherwise creates new line
+ * - Smart timestamp positioning: fits on last line of text when space permits, otherwise creates
+ * new line
  * - Long-press animation with spring physics on mobile devices
  * - Gradient overlay on media-only messages for timestamp readability
  * - Different styling for sent vs received messages
@@ -297,30 +305,27 @@ fun MessageBubble(
     payloads: List<PayloadDescriptor>? = null,
     fileId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
+    replyPreview: ReplyPreview? = null,
     keyHeader: KeyHeader,
     onLongClick: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
-    val filteredPayloads =
-        payloads?.filter {
-            !listOf(
-                ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                ChatProtocol.DEFAULT_PAYLOAD_KEY,
-                ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-            )
-                .contains(it.key)
-        }
+    val filteredPayloads = payloads?.filter {
+        !listOf(
+            ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
+            ChatProtocol.DEFAULT_PAYLOAD_KEY,
+            ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
+        ).contains(it.key)
+    }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val backgroundColor =
-        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
-        else MaterialTheme.colorScheme.surfaceContainerHigh
-    val contentColor =
-        if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
-        else MaterialTheme.colorScheme.onSurface
+    val backgroundColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+    else MaterialTheme.colorScheme.surfaceContainerHigh
+    val contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+    else MaterialTheme.colorScheme.onSurface
 
     val pressInteractionSource = remember { MutableInteractionSource() }
     val isPressed by pressInteractionSource.collectIsPressedAsState()
@@ -356,7 +361,6 @@ fun MessageBubble(
                 scaleAnim.animateTo(1f, animationSpec = springSpec)
             } finally {
                 isAnimatingLongPress.value = false
-
             }
         }
     }
@@ -366,29 +370,24 @@ fun MessageBubble(
     textState.config.listIndent = 0
     textState.setHtml(text)
 
-    val shape =
-        RoundedCornerShape(
-            topStart = Dimens.Message.cornerRadius,
-            topEnd = Dimens.Message.cornerRadius,
-            bottomStart = if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-            bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-        )
+    val shape = RoundedCornerShape(
+        topStart = Dimens.Message.cornerRadius,
+        topEnd = Dimens.Message.cornerRadius,
+        bottomStart = if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+        bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+    )
     Surface(
-        modifier =
-            modifier
-                .clip(shape)
-                .ifTrue(isMobile()) {
-                    Modifier.combinedClickable(
-                        onClick = {},
-                        onLongClick = { handleLongClick() },
-                        interactionSource = pressInteractionSource,
-                        indication = null
-                    )
-                }
-                .graphicsLayer {
-                    scaleX = scaleAnim.value
-                    scaleY = scaleAnim.value
-                },
+        modifier = modifier.clip(shape).ifTrue(isMobile()) {
+            Modifier.combinedClickable(
+                onClick = {},
+                onLongClick = { handleLongClick() },
+                interactionSource = pressInteractionSource,
+                indication = null
+            )
+        }.graphicsLayer {
+            scaleX = scaleAnim.value
+            scaleY = scaleAnim.value
+        },
         shape = shape,
         color = backgroundColor,
     ) {
@@ -401,133 +400,195 @@ fun MessageBubble(
                     driveId = chatTargetDrive.alias,
                     previewThumbnail = previewThumbnail,
                     onMediaClick = onMediaClick,
-                    onMediaLongPress = { _, _ ->
-                        handleLongClick()
-                    },
+                    onMediaLongPress = { _, _ -> handleLongClick() },
                     shape = RoundedCornerShape(Dimens.Message.cornerRadius),
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
                 Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .align(Alignment.BottomEnd)
-                        .background(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Black.copy(alpha = 0.6f)
+                    modifier = Modifier.matchParentSize().align(Alignment.BottomEnd).background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent, Color.Black.copy(
+                                    alpha = 0.6f
                                 )
                             )
-                        ),
+                        )
+                    ),
                 ) {
                     Text(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(12.dp),
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
                         text = timestamp,
                         style = MaterialTheme.typography.labelSmall,
                         color = contentColor.copy(alpha = 0.7f)
                     )
                 }
             }
-        } else
-            Column {
-                Layout(
-                    content = {
-                        Column {
-                            if (hasMedia) {
-                                MediaMessage(
-                                    payloads = filteredPayloads,
-                                    fileId = fileId,
-                                    driveId = chatTargetDrive.alias,
-                                    previewThumbnail = previewThumbnail,
-                                    onMediaClick = onMediaClick,
-                                    keyHeader = keyHeader,
-                                    onMediaLongPress = { _, _ ->
-                                        handleLongClick()
-                                    },
-                                    sharedTransitionScope = sharedTransitionScope,
-                                    animatedVisibilityScope = animatedVisibilityScope,
+        } else Column {
+            // Inline reply preview if this message is a reply
+            replyPreview?.let { reply ->
+                InlineReplyPreview(replyPreview = reply, sentByYou = sentByYou)
+            }
+            Layout(
+                content = {
+                    Column {
+                        if (hasMedia) {
+                            MediaMessage(
+                                payloads = filteredPayloads,
+                                fileId = fileId,
+                                driveId = chatTargetDrive.alias,
+                                previewThumbnail = previewThumbnail,
+                                onMediaClick = onMediaClick,
+                                keyHeader = keyHeader,
+                                onMediaLongPress = { _, _ -> handleLongClick() },
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                            )
+                        }
+                        SelectionContainer {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                            ) {
+                                RichText(
+                                    state = textState,
+                                    onTextLayout = { textLayoutResult = it },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = contentColor
                                 )
                             }
-                            SelectionContainer {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                ) {
-                                    RichText(
-                                        state = textState,
-                                        onTextLayout = { textLayoutResult = it },
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = contentColor
-                                    )
-                                }
-                            }
                         }
-                        Text(
-                            modifier = Modifier.padding(
-                                top = 12.dp,
-                                bottom = 12.dp,
-                                end = 12.dp,
-                                start = 12.dp
-                            ),
-                            text = timestamp,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.7f)
+                    }
+                    Text(
+                        modifier = Modifier.padding(
+                            top = 12.dp, bottom = 12.dp, end = 12.dp, start = 12.dp
+                        ),
+                        text = timestamp,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.7f)
+                    )
+                }) { measurables, constraints ->
+                val textPlaceable = measurables[0].measure(constraints)
+                val timePlaceable = measurables[1].measure(constraints)
+
+                val layoutResult = textLayoutResult
+                var totalWidth: Int
+                var totalHeight: Int
+                var timeX: Int
+                var timeY: Int
+
+                if (layoutResult == null) {
+                    // Fallback if layout isn't ready yet
+                    totalWidth = textPlaceable.width
+                    totalHeight = textPlaceable.height
+                    timeX = 0
+                    timeY = 0
+                } else {
+                    val lastLineIndex = layoutResult.lineCount - 1
+                    val lastLineRight = layoutResult.getLineRight(lastLineIndex)
+
+                    // Determine if timestamp fits on the last line
+                    // We add a small gap (8dp converted to px) between text and time
+                    val horizontalGap = 8.dp.toPx()
+                    val fitsOnLastLine =
+                        (constraints.maxWidth - lastLineRight) > (timePlaceable.width + horizontalGap)
+
+                    if (fitsOnLastLine) {
+                        // Fits on the same line
+                        totalWidth = maxOf(
+                            textPlaceable.width,
+                            (lastLineRight + horizontalGap + timePlaceable.width).toInt()
                         )
-                    }
-                ) { measurables, constraints ->
-                    val textPlaceable = measurables[0].measure(constraints)
-                    val timePlaceable = measurables[1].measure(constraints)
-
-                    val layoutResult = textLayoutResult
-                    var totalWidth: Int
-                    var totalHeight: Int
-                    var timeX: Int
-                    var timeY: Int
-
-                    if (layoutResult == null) {
-                        // Fallback if layout isn't ready yet
-                        totalWidth = textPlaceable.width
                         totalHeight = textPlaceable.height
-                        timeX = 0
-                        timeY = 0
+                        timeX = totalWidth - timePlaceable.width
+                        timeY = totalHeight - timePlaceable.height
                     } else {
-                        val lastLineIndex = layoutResult.lineCount - 1
-                        val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-
-                        // Determine if timestamp fits on the last line
-                        // We add a small gap (8dp converted to px) between text and time
-                        val horizontalGap = 8.dp.toPx()
-                        val fitsOnLastLine =
-                            (constraints.maxWidth - lastLineRight) >
-                                    (timePlaceable.width + horizontalGap)
-
-                        if (fitsOnLastLine) {
-                            // Fits on the same line
-                            totalWidth =
-                                maxOf(
-                                    textPlaceable.width,
-                                    (lastLineRight + horizontalGap + timePlaceable.width)
-                                        .toInt()
-                                )
-                            totalHeight = textPlaceable.height
-                            timeX = totalWidth - timePlaceable.width
-                            timeY = totalHeight - timePlaceable.height
-                        } else {
-                            // Needs a new line
-                            totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
-                            totalHeight = textPlaceable.height + timePlaceable.height
-                            timeX = totalWidth - timePlaceable.width
-                            timeY = totalHeight - timePlaceable.height
-                        }
-                    }
-
-                    layout(totalWidth, totalHeight) {
-                        textPlaceable.placeRelative(0, 0)
-                        timePlaceable.placeRelative(timeX, timeY)
+                        // Needs a new line
+                        totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
+                        totalHeight = textPlaceable.height + timePlaceable.height
+                        timeX = totalWidth - timePlaceable.width
+                        timeY = totalHeight - timePlaceable.height
                     }
                 }
+
+                layout(totalWidth, totalHeight) {
+                    textPlaceable.placeRelative(0, 0)
+                    timePlaceable.placeRelative(timeX, timeY)
+                }
             }
+        }
+    }
+}
+
+/**
+ * Displays a compact preview of the message being replied to, shown inline within the message
+ * bubble.
+ *
+ * This appears at the top of a message bubble when the message is a reply to another message. Shows
+ * a vertical accent bar followed by the author's odinId and a truncated preview of the original
+ * message content. If a preview thumbnail exists, it displays a small image on the right.
+ *
+ * @param replyPreview The reply preview data containing author and message details
+ * @param sentByYou Whether this reply was sent by the current user (affects theming)
+ */
+@OptIn(ExperimentalResourceApi::class)
+@Composable
+private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
+    val accentColor = if (sentByYou) {
+        HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+    val contentColor = if (sentByYou) {
+        HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+    }
+
+    // Decode preview thumbnail if available
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail) {
+        replyPreview.previewThumbnail?.content?.let { base64Content ->
+            try {
+                val bytes = Base64.decode(base64Content)
+                bytes.decodeToImageBitmap()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    Row(
+        modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Vertical accent bar
+        Box(
+            modifier = Modifier.width(3.dp).heightIn(min = 24.dp)
+                .background(color = accentColor, shape = RoundedCornerShape(2.dp))
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f, fill = false)) {
+            Text(
+                text = replyPreview.authorOdinId,
+                style = MaterialTheme.typography.labelSmall,
+                color = accentColor,
+                maxLines = 1
+            )
+            Text(
+                text = replyPreview.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = contentColor,
+                maxLines = 2
+            )
+        }
+        // Thumbnail image if available
+        thumbnailBitmap?.let { bitmap ->
+            Spacer(modifier = Modifier.width(8.dp))
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)),
+                contentScale = ContentScale.Crop
+            )
+        }
     }
 }
