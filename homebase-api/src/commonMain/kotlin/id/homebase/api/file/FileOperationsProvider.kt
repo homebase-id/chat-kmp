@@ -10,4 +10,11 @@ interface FileOperationsProvider {
     fun getCacheDirectory(): String
 
     fun getFileSize(path: String): Long
+
+    suspend fun writeBytesToTempFile(
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String
+
 }

@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
+import io.ktor.utils.io.core.toByteArray
 
 class VideoPayloadProcessor(
     private val fileOperationsProvider: FileOperationsProvider,
@@ -16,7 +17,9 @@ class VideoPayloadProcessor(
     suspend fun process(
         payload: PayloadFile,
         keyHeader: KeyHeader,
-        onProgress: ((PayloadProgressPhase) -> Unit)?
+        onProgress: ((PayloadProgressPhase) -> Unit)?,
+        auxiliaryPayloadKey: String
+
     ): VideoProcessResult {
 
         /* ---------- PHASE 1: THUMBNAIL ---------- */
@@ -63,12 +66,14 @@ class VideoPayloadProcessor(
         val segmentSize =
             fileOperationsProvider.getFileSize(segmentPath)
 
+        val durationMs = FFmpegUtils.getDurationMs(payload.filePath)
+
         val metadata =
             VideoMetadata(
                 mimeType = "application/vnd.apple.mpegurl",
                 isSegmented = true,
                 fileSize = segmentSize,
-                durationMs = 0 // fill later if available
+                durationMs = durationMs
             )
 
         val metadataJson = OdinSystemSerializer.serialize(metadata)
@@ -99,10 +104,10 @@ class VideoPayloadProcessor(
                 listOf(
                     videoPayload,
                     PayloadFile(
-                        key = DEFAULT_PAYLOAD_DESCRIPTOR_KEY,
-                        payloadBytes = metadataJson.toByteArray(),
+                        key = auxiliaryPayloadKey,
+                        filePath = fileOperationsProvider.writeBytesToTempFile(metadataJson.toByteArray(), "payload", ".metadata"),
                         contentType = "application/json",
-                        skipEncryption = false
+                        isPreEncrypted = false
                     )
                 )
             }
@@ -114,7 +119,7 @@ class VideoPayloadProcessor(
             thumbnails = thumbnails,
             tinyThumb = tinyThumb,
             playlistPath = playlistPath,
-            metadata = metadata
+            videoMetadata = metadata
         )
     }
 }

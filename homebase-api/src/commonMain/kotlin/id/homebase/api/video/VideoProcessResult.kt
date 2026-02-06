@@ -8,5 +8,6 @@ data class VideoProcessResult(
     val payloads: List<PayloadFile>,
     val thumbnails: List<ThumbnailFile>,
     val tinyThumb: EmbeddedThumb?,
-    val playlistPath: String
+    val playlistPath: String,
+    val videoMetadata: VideoMetadata
 )

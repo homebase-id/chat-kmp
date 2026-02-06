@@ -1,5 +1,8 @@
 package id.homebase.api.video
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class VideoMetadata(
     val mimeType: String,
     val isSegmented: Boolean,

@@ -3,7 +3,6 @@ package id.homebase.chat.services
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.api.client.drives.writeBytesToTempFile
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.video.PayloadProgressPhase
@@ -39,8 +38,9 @@ class PayloadBundleEncryptionService(
                     videoProcessor.process(
                         payload = payload,
                         keyHeader = keyHeader,
-                        onProgress = onProgress
-                    )
+                        onProgress = onProgress,
+                        auxiliaryPayloadKey = ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
+                        )
 
                 newPayloads += result.payloads
                 newThumbnails += result.thumbnails
@@ -76,7 +76,7 @@ class PayloadBundleEncryptionService(
             )
 
         val path =
-            writeBytesToTempFile(
+            fileOps.writeBytesToTempFile(
                 bytes = encrypted,
                 prefix = "enc",
                 suffix = ".encrypted"
