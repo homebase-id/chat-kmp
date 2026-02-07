@@ -1,6 +1,7 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,33 +29,41 @@ class ChatReadCountWrapperTest {
         val conv2Id = Uuid.random() // 1 message
         val conv3Id = Uuid.random() // 3 messages
 
-        // Create messages (fileType 7878)
-        val msg2_1Id = Uuid.random() // Message for conv2
-        val msg3_1Id = Uuid.random() // First message for conv3
-        val msg3_2Id = Uuid.random() // Second message for conv3
-        val msg3_3Id = Uuid.random() // Third message for conv3
-
         // Create conversation files (fileType 8888)
         val conv1 = createMockHomebaseFile(conv1Id, driveId, 8888, null, currentTime)
         val conv2 = createMockHomebaseFile(conv2Id, driveId, 8888, null, currentTime)
         val conv3 = createMockHomebaseFile(conv3Id, driveId, 8888, null, currentTime)
-
-        // Create message files (fileType 7878)
-        val msg2_1 = createMockHomebaseFile(msg2_1Id, driveId, 7878, conv2Id, currentTime + 1000)
-        val msg3_1 = createMockHomebaseFile(msg3_1Id, driveId, 7878, conv3Id, currentTime + 2000)
-        val msg3_2 = createMockHomebaseFile(msg3_2Id, driveId, 7878, conv3Id, currentTime + 3000)
-        val msg3_3 = createMockHomebaseFile(msg3_3Id, driveId, 7878, conv3Id, currentTime + 4000)
 
         // Insert conversations into DriveMainIndex
         insertHomebaseFile(dbm, identityId, driveId, conv1)
         insertHomebaseFile(dbm, identityId, driveId, conv2)
         insertHomebaseFile(dbm, identityId, driveId, conv3)
 
+        // Create messages (fileType 7878)
+        val msg2_1Id = Uuid.random() // Message for conv2
+        val msg3_1Id = Uuid.random() // First message for conv3
+        val msg3_2Id = Uuid.random() // Second message for conv3
+        val msg3_3Id = Uuid.random() // Third message for conv3
+
+        val msg2time = currentTime + 1000
+        val msg3time = currentTime + 4000
+
+        // Create message files (fileType 7878)
+        val msg2_1 = createMockHomebaseFile(msg2_1Id, driveId, 7878, conv2Id, msg2time)
+        val msg3_1 = createMockHomebaseFile(msg3_1Id, driveId, 7878, conv3Id, currentTime + 2000)
+        val msg3_2 = createMockHomebaseFile(msg3_2Id, driveId, 7878, conv3Id, currentTime + 3000)
+        val msg3_3 = createMockHomebaseFile(msg3_3Id, driveId, 7878, conv3Id, msg3time)
+
         // Insert messages into DriveMainIndex
         insertHomebaseFile(dbm, identityId, driveId, msg2_1)
         insertHomebaseFile(dbm, identityId, driveId, msg3_1)
         insertHomebaseFile(dbm, identityId, driveId, msg3_2)
         insertHomebaseFile(dbm, identityId, driveId, msg3_3)
+
+        // Insert data into the ChatReadCount table
+        // No last read count for conv1
+        insertChatReadCount(dbm, conv2Id, UnixTimeUtc(msg2time))
+        insertChatReadCount(dbm, conv3Id, UnixTimeUtc(msg3time))
 
         return MockTestData(
             identityId = identityId,
@@ -69,11 +78,11 @@ class ChatReadCountWrapperTest {
 
     /** Creates a mock HomebaseFile with the specified parameters */
     private fun createMockHomebaseFile(
-        fileId: Uuid, driveId: Uuid, fileType: Int, groupId: Uuid?, created: Long
+        uniqueId: Uuid, driveId: Uuid, fileType: Int, groupId: Uuid?, created: Long
     ): HomebaseFile {
         val jsonHeader = """{
-            "fileId": "${fileId}",
             "driveId": "${driveId}",
+            "fileId": "${Uuid.random()}",
             "fileState": "active",
             "fileSystemType": "standard",
             "serverFileIsEncrypted": true,
@@ -93,7 +102,7 @@ class ChatReadCountWrapperTest {
                 "senderOdinId": "test-sender",
                 "originalAuthor": "test-sender",
                 "appData": {
-                    "uniqueId": "${Uuid.random()}",
+                    "uniqueId": "${uniqueId}",
                     "tags": null,
                     "fileType": ${fileType},
                     "dataType": 1,
@@ -128,6 +137,14 @@ class ChatReadCountWrapperTest {
         }"""
 
         return OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader)
+    }
+
+    /** Inserts a HomebaseFile into the DriveMainIndex table */
+    private suspend fun insertChatReadCount(
+        dbm: DatabaseManager, groupId: Uuid, lastReadTime: UnixTimeUtc)
+    {
+        val wrapper = dbm.chatReadCount
+        wrapper.upsertLastReadTime(groupId, lastReadTime.milliseconds)
     }
 
     /** Inserts a HomebaseFile into the DriveMainIndex table */
@@ -222,7 +239,7 @@ class ChatReadCountWrapperTest {
                 conv2Result.message, "Conversation with one message should have last message"
             )
             assertEquals(
-                testData.convWithOneMessage.second.fileId, conv2Result.message!!.fileId
+                testData.convWithOneMessage.second.fileId, conv2Result.message.fileId
             )
 
             // Verify conversation with three messages (should return the last one)
@@ -234,7 +251,7 @@ class ChatReadCountWrapperTest {
                 conv3Result.message, "Conversation with three messages should have last message"
             )
             assertEquals(
-                testData.convWithThreeMessages.second.last().fileId, conv3Result.message!!.fileId
+                testData.convWithThreeMessages.second.last().fileId, conv3Result.message.fileId
             )
         }
     }
