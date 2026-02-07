@@ -1,19 +1,16 @@
-package id.homebase.homebasekmppoc.prototype.lib.database
+package id.homebase.api.sync.database
 
-import  kotlinx.coroutines.runBlocking
-import  kotlinx.coroutines.test.runTest
+import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.random.Random
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.test.runTest
 
 class DriveLocalTagIndexTest {
     @Test
     fun testInsertSelectDeleteLocalTag() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->        // Create a QueryBatchCursor with all fields populated
+        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
 
             // Test data - create sample byte arrays
             val randomId = Random.nextLong()
@@ -24,24 +21,17 @@ class DriveLocalTagIndexTest {
 
             // Clean up any existing data for this file
             dbm.driveLocalTagIndex.deleteByFile(
-                identityId = identityId,
-                driveId = driveId,
-                fileId = fileId
+                identityId = identityId, driveId = driveId, fileId = fileId
             )
 
             // Insert a local tag
             dbm.driveLocalTagIndex.insertLocalTag(
-                identityId = identityId,
-                driveId = driveId,
-                fileId = fileId,
-                tagId = tagId
+                identityId = identityId, driveId = driveId, fileId = fileId, tagId = tagId
             )
 
             // Select local tags for the file
             val tags = dbm.driveLocalTagIndex.selectByFile(
-                identityId = identityId,
-                driveId = driveId,
-                fileId = fileId
+                identityId = identityId, driveId = driveId, fileId = fileId
             )
 
             // Verify insertion
@@ -54,33 +44,24 @@ class DriveLocalTagIndexTest {
             // Insert another local tag for the same file
             val tagId2 = Uuid.random()
             dbm.driveLocalTagIndex.insertLocalTag(
-                identityId = identityId,
-                driveId = driveId,
-                fileId = fileId,
-                tagId = tagId2
+                identityId = identityId, driveId = driveId, fileId = fileId, tagId = tagId2
             )
 
             // Verify we now have 2 local tags
             val tagsAfterSecondInsert = dbm.driveLocalTagIndex.selectByFile(
-                identityId = identityId,
-                driveId = driveId,
-                fileId = fileId
+                identityId = identityId, driveId = driveId, fileId = fileId
             )
 
             assertEquals(2, tagsAfterSecondInsert.size, "Should have exactly two local tags")
 
             // Delete all local tags for the file
             dbm.driveLocalTagIndex.deleteByFile(
-                identityId = identityId,
-                driveId = driveId,
-                fileId = fileId
+                identityId = identityId, driveId = driveId, fileId = fileId
             )
 
             // Verify deletion
             val tagsAfterDelete = dbm.driveLocalTagIndex.selectByFile(
-                identityId = identityId,
-                driveId = driveId,
-                fileId = fileId
+                identityId = identityId, driveId = driveId, fileId = fileId
             )
 
             assertTrue(tagsAfterDelete.isEmpty(), "Should have no local tags after deletion")
@@ -89,7 +70,7 @@ class DriveLocalTagIndexTest {
 
     @Test
     fun testSelectByFileWithNoLocalTags() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->        // Create a QueryBatchCursor with all fields populated
+        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Test data for non-existent file
             val identityId = Uuid.random()
             val driveId = Uuid.random()
@@ -97,9 +78,7 @@ class DriveLocalTagIndexTest {
 
             // Select local tags for non-existent file
             val tags = dbm.driveLocalTagIndex.selectByFile(
-                identityId = identityId,
-                driveId = driveId,
-                fileId = fileId
+                identityId = identityId, driveId = driveId, fileId = fileId
             )
 
             // Verify no local tags found
@@ -109,7 +88,7 @@ class DriveLocalTagIndexTest {
 
     @Test
     fun testUniqueConstraint() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->        // Create a QueryBatchCursor with all fields populated
+        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
 
             // Test data
             val identityId = Uuid.random()
@@ -119,33 +98,23 @@ class DriveLocalTagIndexTest {
 
             // Clean up any existing data
             dbm.driveLocalTagIndex.deleteByFile(
-                identityId = identityId,
-                driveId = driveId,
-                fileId = fileId
+                identityId = identityId, driveId = driveId, fileId = fileId
             )
 
             // Insert a local tag
             dbm.driveLocalTagIndex.insertLocalTag(
-                identityId = identityId,
-                driveId = driveId,
-                fileId = fileId,
-                tagId = tagId
+                identityId = identityId, driveId = driveId, fileId = fileId, tagId = tagId
             )
 
             // Try to insert the same local tag again (should violate UNIQUE constraint)
             try {
                 dbm.driveLocalTagIndex.insertLocalTag(
-                    identityId = identityId,
-                    driveId = driveId,
-                    fileId = fileId,
-                    tagId = tagId
+                    identityId = identityId, driveId = driveId, fileId = fileId, tagId = tagId
                 )
                 // If we get here, the constraint wasn't enforced (this might be expected behavior)
                 // Check if we have 1 or 2 records
                 val tags = dbm.driveLocalTagIndex.selectByFile(
-                    identityId = identityId,
-                    driveId = driveId,
-                    fileId = fileId
+                    identityId = identityId, driveId = driveId, fileId = fileId
                 )
                 assertTrue(tags.size >= 1, "Should have at least one local tag")
             } catch (e: Exception) {
