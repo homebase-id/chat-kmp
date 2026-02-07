@@ -12,12 +12,14 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive
+import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
     private val outboxSync: OutboxSync,
     private val conversationService: ConversationStream,
-    private val payloadBundleEncryptionService: PayloadBundleEncryptionService
+    private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
+    private val scope: CoroutineScope
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -94,8 +96,13 @@ class ChatMessageSenderService(
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationService.getRecipients(conversationId)
 
+
         val encryptedBundle = payloadBundleEncryptionService
-            .encryptBundle(payloadBundle, keyHeader, onProgress = null)
+            .encryptBundle(
+                payloadBundle,
+                keyHeader.aesKey,
+                scope = scope
+            )
 
         val metadata =
             UploadFileMetadata(
@@ -136,10 +143,6 @@ class ChatMessageSenderService(
             thumbnails = encryptedBundle.thumbnails
         )
         try {
-
-//            val result =&
-//                driveUploadProvider.uploadFile(request)
-//                    ?: error("Failed to upload chat message")
 
             outboxSync.enqueue(
                 request.driveId,

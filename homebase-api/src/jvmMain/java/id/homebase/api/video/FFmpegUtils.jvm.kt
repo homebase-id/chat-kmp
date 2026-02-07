@@ -83,36 +83,39 @@ actual object FFmpegUtils {
             output.trim().toIntOrNull() ?: 0
         }
 
-    actual suspend fun compressVideo(inputPath: String, onProgress: ((Float) -> Unit)?): String? =
+    actual suspend fun compressVideo(
+        inputPath: String,
+        onProgress: ((Float) -> Unit)?
+    ): String? =
         withContext(Dispatchers.IO) {
-            if (!FFmpegBinaryManager.isAvailable()) {
-                println("FFmpeg binaries not available for this platform")
-                return@withContext null
-            }
+            if (!FFmpegBinaryManager.isAvailable()) return@withContext null
 
             val inputFile = File(inputPath)
             val outputPath =
                 "${System.getProperty("java.io.tmpdir")}/compressed_${inputFile.name}"
 
-            val command =
-                listOf(
-                    FFmpegBinaryManager.ffmpegPath(),
-                    "-y",
-                    "-i",
-                    inputPath,
-                    "-c:v",
-                    "libx264",
-                    "-b:v",
-                    "3000k",
-                    "-vf",
-                    "scale='min(1280,iw)':-2",
-                    "-preset",
-                    "fast",
-                    outputPath
-                )
+            val durationMs = getDurationMs(inputPath)
 
-            val exitCode = runProcess(command)
-            if (exitCode == 0 && File(outputPath).exists()) {
+            val command = listOf(
+                FFmpegBinaryManager.ffmpegPath(),
+                "-y",
+                "-i", inputPath,
+                "-c:v", "libx264",
+                "-b:v", "3000k",
+                "-vf", "scale='min(1280,iw)':-2",
+                "-preset", "fast",
+                "-progress", "pipe:1",
+                "-nostats",
+                outputPath
+            )
+
+            val result = runProcessWithLogs(
+                command = command,
+                totalDurationMs = durationMs,
+                onProgress = onProgress
+            )
+
+            if (result.exitCode == 0 && File(outputPath).exists()) {
                 outputPath
             } else {
                 null
@@ -333,7 +336,6 @@ actual object FFmpegUtils {
 
         return keyInfoFile
     }
-
 
     private fun runProcessWithLogs(
         command: List<String>,

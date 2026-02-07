@@ -2,6 +2,7 @@ package id.homebase.api.client.eventbus
 
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.video.VideoProcessingPhase
 import kotlin.uuid.Uuid
 
 sealed interface BackendEvent {
@@ -76,6 +77,44 @@ sealed interface BackendEvent {
     }
     // Add sealed interface UploadUpdate for Outbox / upload status
     // Add sealed interface VideoUpdate (or WorkUpdate) compression & segmentation & encryption
+
+
+    sealed interface PayloadBundlingEvent : BackendEvent {
+
+        /* ---------- VIDEO ---------- */
+
+        sealed interface Video : PayloadBundlingEvent {
+
+            data class Started(
+                val payloadKey: String
+            ) : Video
+
+            data class PhaseStarted(
+                val payloadKey: String,
+                val phase: VideoProcessingPhase
+            ) : Video
+
+            data class PhaseProgress(
+                val payloadKey: String,
+                val phase: VideoProcessingPhase,
+                val progress: Float // 0.0 → 1.0
+            ) : Video
+
+            data class PhaseCompleted(
+                val payloadKey: String,
+                val phase: VideoProcessingPhase
+            ) : Video
+
+            data class Completed(
+                val payloadKey: String
+            ) : Video
+
+            data class Failed(
+                val payloadKey: String,
+                val errorMessage: String
+            ) : Video
+        }
+    }
 
 
     // We go online / offline when the websocket listener is connected / disconnected

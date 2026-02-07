@@ -7,7 +7,5 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 data class VideoProcessResult(
     val payloads: List<PayloadFile>,
     val thumbnails: List<ThumbnailFile>,
-    val tinyThumb: EmbeddedThumb?,
-    val playlistPath: String,
     val videoMetadata: VideoMetadata
 )

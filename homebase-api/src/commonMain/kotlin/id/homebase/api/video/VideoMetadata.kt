@@ -5,9 +5,11 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class VideoMetadata(
     val mimeType: String,
+    val isDescriptorContentComplete: Boolean = true,
     val isSegmented: Boolean,
     val fileSize: Long,
     val durationMs: Long,
-    val isDescriptorContentComplete: Boolean = true,
-    val key: String
+    val key: String,
+    val codec: String,
+    val hlsPlaylist: String? = null,
 )
