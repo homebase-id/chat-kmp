@@ -93,6 +93,10 @@ kotlin {
             implementation("com.mayakapps.kache:file-kache:2.1.1")
             implementation("com.squareup.okio:okio:3.16.4")
         }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+        }
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
             implementation(libs.ktor.client.okhttp)
@@ -110,6 +114,7 @@ kotlin {
             implementation(libs.ktor.client.darwin)
             implementation(libs.sqldelight.native.driver)
         }
+
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
             implementation(libs.sqldelight.sqlite.driver)

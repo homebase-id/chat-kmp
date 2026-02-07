@@ -3,7 +3,7 @@ package id.homebase.api.client.drives.upload
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.homebasekmppoc.prototype.lib.serialization.Base64ByteArraySerializer
+import id.homebase.api.prototype.lib.serialization.Base64ByteArraySerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
