@@ -56,4 +56,18 @@ class AndroidFileOperationsProvider(
 
 
     override fun getCacheDirectory(): String = context.cacheDir.absolutePath
+
+    override fun getFileSize(path: String): Long =
+        File(path).length()
+
+    override suspend fun writeBytesToTempFile(
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String =
+        withContext(Dispatchers.IO) {
+            val file = File.createTempFile(prefix, suffix)
+            file.writeBytes(bytes)
+            file.absolutePath
+        }
 }

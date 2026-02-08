@@ -261,10 +261,11 @@ class ChatListViewModel(
                             )
                         }
 
-                        val bundle =
-                            MessageAttachmentBuilder.build(attachments, fileOperationsProvider)
+                        val bundle = MessageAttachmentBuilder
+                            .build(attachments, fileOperationsProvider)
 
                         chatMessageSenderService.sendNewMessage(
+                            messageUniqueId = Uuid.random(),
                             conversationId = action.conversationId,
                             messageText = action.message,
                             previousMessageUniqueId = null,
@@ -399,6 +400,7 @@ class ChatListViewModel(
         viewModelScope.launch {
             try {
                 chatMessageSenderService.sendNewMessage(
+                    messageUniqueId = Uuid.random(),
                     conversationId = conversationId,
                     messageText = content,
                     previousMessageUniqueId = null,
@@ -426,6 +428,7 @@ class ChatListViewModel(
                     previewThumbnail = replyTo.previewThumbnail
                 )
                 chatMessageSenderService.replyToMessage(
+                    messageUniqueId = Uuid.random(),
                     conversationId = conversationId,
                     replyTo = replyPreview,
                     messageText = content,

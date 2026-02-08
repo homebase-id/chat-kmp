@@ -11,15 +11,14 @@ object MessageAttachmentBuilder {
         fileOperationsProvider: FileOperationsProvider,
     ): PayloadBundle {
         val bundles =
-            attachments.mapIndexed { index, input ->
+            attachments.mapIndexed { index, attachment ->
                 val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                val descriptorKey = "${ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index"
 
                 when {
-                    input.contentType.startsWith("image/") -> {
+                    attachment.contentType.startsWith("image/") -> {
                         val thumbs =
                             MessageThumbnailGenerator.generate(
-                                input.filePath,
+                                attachment.filePath,
                                 payloadKey,
                                 fileOperationsProvider,
                             )
@@ -29,10 +28,10 @@ object MessageAttachmentBuilder {
                                 listOf(
                                     PayloadFile(
                                         key = payloadKey,
-                                        filePath = input.filePath,
-                                        contentType = input.contentType,
+                                        filePath = attachment.filePath,
+                                        contentType = attachment.contentType,
                                         previewThumbnail = thumbs.preview,
-                                        descriptorContent = descriptorKey
+                                        descriptorContent = ""
                                     )
                                 ),
                             thumbnails = thumbs.thumbnails,
@@ -45,9 +44,9 @@ object MessageAttachmentBuilder {
                                 listOf(
                                     PayloadFile(
                                         key = payloadKey,
-                                        filePath = input.filePath,
-                                        contentType = input.contentType,
-                                        descriptorContent = input.displayName
+                                        filePath = attachment.filePath,
+                                        contentType = attachment.contentType,
+                                        descriptorContent = attachment.displayName
                                     )
                                 ),
                             thumbnails = emptyList(),

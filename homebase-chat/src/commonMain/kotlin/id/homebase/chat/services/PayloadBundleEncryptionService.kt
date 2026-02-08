@@ -1,130 +1,119 @@
 package id.homebase.chat.services
 
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.writeBytesToTempFile
+import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.VideoPayloadProgressPhase
+import id.homebase.api.video.VideoPayloadProcessor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
 class PayloadBundleEncryptionService(
-    private val fileOps: FileOperationsProvider
+    private val fileOps: FileOperationsProvider,
+    private val videoProcessor: VideoPayloadProcessor,
+    private val eventBus: EventBus
 ) {
 
     suspend fun encryptBundle(
+        uniqueId: Uuid,
         bundle: PayloadBundle?,
-        keyHeader: KeyHeader
+        aesKey: SecureByteArray,
+        scope: CoroutineScope
     ): PayloadBundle {
 
         if (bundle == null) {
             return PayloadBundle(
-                payloads = emptyList(),
-                thumbnails = emptyList(),
-                previewThumbs = emptyList()
+                payloads = emptyList(), thumbnails = emptyList(), previewThumbs = emptyList()
             )
         }
 
-        val encryptedPayloads =
-            bundle.payloads.map { payload ->
+        // Note: the incoming payloads from the bundle will
+        // be unencrypted and ordered
+        val newPayloads = mutableListOf<PayloadFile>()
+        val newThumbnails = mutableListOf<ThumbnailFile>()
 
-                val encrypted =
-                    if (payload.contentType.startsWith("video/")) {
-                        encryptVideo(payload.filePath, keyHeader)
-                    } else {
-                        encryptFile(payload.filePath, keyHeader)
+        var index = 0;
+        for (payload in bundle.payloads) {
+
+            // payloads get their own IV
+            val keyHeader = KeyHeader(
+                aesKey = aesKey,
+                iv = ByteArrayUtil.getRndByteArray(16)
+            )
+
+            if (payload.contentType.startsWith("video/")) {
+
+                val progress: (VideoPayloadProgressPhase) -> Unit = { phase ->
+                    scope.launch {
+                        eventBus.emit(
+                            BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(
+                                uniqueId = uniqueId,
+                                payloadKey = phase.payloadKey,
+                                phase = phase.phase,
+                                progress = phase.progress
+                            )
+                        )
                     }
+                }
 
-                payload.copy(
-                    filePath = encrypted.filePath,
-                    iv = encrypted.iv,
+                val result = videoProcessor.process(
+                    payload = payload,
+                    keyHeader = keyHeader,
+                    onProgress = progress,
+                    descriptorContentPayloadKey = "${ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index"
+                )
+
+                newPayloads += result.payloads
+                newThumbnails += result.thumbnails
+            } else {
+                val encryptedFile = encryptFile(payload.filePath, keyHeader)
+                newPayloads += payload.copy(
+                    filePath = encryptedFile,
+                    iv = keyHeader.iv,
                     isPreEncrypted = true
                 )
+
+                val encryptedThumbnails =
+                    bundle.thumbnails.map { thumb ->
+                        val encryptedBytes = encryptBytes(thumb.thumbnailBytes, keyHeader)
+                        thumb.copy(thumbnailBytes = encryptedBytes)
+                    }
+                newThumbnails += encryptedThumbnails
             }
 
-        val ivByKey =
-            encryptedPayloads.associate { payload ->
-                payload.key to (payload.iv ?: error("Missing IV for payload ${payload.key}"))
-            }
-
-        val encryptedThumbnails =
-            bundle.thumbnails.map { thumb ->
-
-                if (thumb.skipEncryption) {
-                    thumb
-                } else {
-                    val iv =
-                        ivByKey[thumb.key]
-                            ?: error("No payload IV found for thumbnail key=${thumb.key}")
-
-                    val encryptedBytes =
-                        encryptBytes(
-                            data = thumb.thumbnailBytes,
-                            keyHeader = keyHeader,
-                            iv = iv
-                        )
-
-                    thumb.copy(
-                        thumbnailBytes = encryptedBytes,
-                        skipEncryption = true
-                    )
-                }
-            }
+            index++;
+        }
 
         return bundle.copy(
-            payloads = encryptedPayloads,
-            thumbnails = encryptedThumbnails
-            // previewThumbs intentionally untouched
+            payloads = newPayloads, thumbnails = newThumbnails
         )
     }
-
-    /* ============================
-       Private helpers
-       ============================ */
 
     private suspend fun encryptFile(
-        inputFile: String,
-        keyHeader: KeyHeader
-    ): EncryptedFileResult {
-
+        inputFile: String, keyHeader: KeyHeader
+    ): String {
         val plainBytes = fileOps.readFileBytes(inputFile)
-        val iv = ByteArrayUtil.getRndByteArray(16)
 
-        val encrypted =
-            keyHeader.encryptDataAes(
-                data = plainBytes,
-                customIv = iv
-            )
+        val encrypted = encryptBytes(plainBytes, keyHeader)
 
-        val path =
-            writeBytesToTempFile(
-                bytes = encrypted,
-                prefix = "enc",
-                suffix = ".encrypted"
-            )
-
-        return EncryptedFileResult(
-            filePath = path,
-            iv = iv
+        val path = fileOps.writeBytesToTempFile(
+            bytes = encrypted, prefix = "enc", suffix = ".encrypted"
         )
-    }
 
-    private suspend fun encryptVideo(
-        inputFile: String,
-        keyHeader: KeyHeader
-    ): EncryptedFileResult {
-        // Delegates to your existing logic
-        return encryptFile(
-            inputFile = inputFile,
-            keyHeader = keyHeader
-        )
+        return path
     }
-
 
     private suspend fun encryptBytes(
-        data: ByteArray,
-        keyHeader: KeyHeader,
-        iv: ByteArray
-    ): ByteArray =
-        keyHeader.encryptDataAes(
-            data = data,
-            customIv = iv
-        )
+        plainBytes: ByteArray,
+        keyHeader: KeyHeader
+    ): ByteArray {
+        val encrypted = keyHeader.encryptDataAes(data = plainBytes)
+        return encrypted
+    }
 }

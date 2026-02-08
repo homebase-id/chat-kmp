@@ -11,7 +11,6 @@ data class ThumbnailFile(
     val key: String,
     val contentType: String = "image/webp",
     val quality: Int = 76,
-    val skipEncryption: Boolean = false
 ) {
     // Convenience property to match test expectations
     val imageSize: ImageSize
@@ -29,7 +28,6 @@ data class ThumbnailFile(
         if (key != other.key) return false
         if (contentType != other.contentType) return false
         if (quality != other.quality) return false
-        if (skipEncryption != other.skipEncryption) return false
 
         return true
     }
@@ -41,7 +39,6 @@ data class ThumbnailFile(
         result = 31 * result + key.hashCode()
         result = 31 * result + contentType.hashCode()
         result = 31 * result + quality
-        result = 31 * result + skipEncryption.hashCode()
         return result
     }
 }
