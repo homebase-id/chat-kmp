@@ -1,12 +1,12 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
 
@@ -21,12 +21,22 @@ class ChatReadCountWrapperTest {
     private suspend fun populateMockData(dbm: DatabaseManager): MockTestData {
         val identityId = Uuid.random()
         val driveId = Uuid.random()
-        val currentTime = Clock.System.now().epochSeconds
+        val currentTime = UnixTimeUtc.now()
 
         // Create conversations (fileType 8888)
         val conv1Id = Uuid.random() // No messages
         val conv2Id = Uuid.random() // 1 message
         val conv3Id = Uuid.random() // 3 messages
+
+        // Create conversation files (fileType 8888)
+        val conv1 = createMockHomebaseFile(conv1Id, driveId, 8888, null, currentTime)
+        val conv2 = createMockHomebaseFile(conv2Id, driveId, 8888, null, currentTime)
+        val conv3 = createMockHomebaseFile(conv3Id, driveId, 8888, null, currentTime)
+
+        // Insert conversations into DriveMainIndex
+        insertHomebaseFile(dbm, identityId, driveId, conv1)
+        insertHomebaseFile(dbm, identityId, driveId, conv2)
+        insertHomebaseFile(dbm, identityId, driveId, conv3)
 
         // Create messages (fileType 7878)
         val msg2_1Id = Uuid.random() // Message for conv2
@@ -34,27 +44,25 @@ class ChatReadCountWrapperTest {
         val msg3_2Id = Uuid.random() // Second message for conv3
         val msg3_3Id = Uuid.random() // Third message for conv3
 
-        // Create conversation files (fileType 8888)
-        val conv1 = createMockHomebaseFile(conv1Id, driveId, 8888, null, currentTime)
-        val conv2 = createMockHomebaseFile(conv2Id, driveId, 8888, null, currentTime)
-        val conv3 = createMockHomebaseFile(conv3Id, driveId, 8888, null, currentTime)
+        val msg2time = currentTime.addMilliseconds(1000)
+        val msg3time = currentTime.addMilliseconds(4000)
 
         // Create message files (fileType 7878)
-        val msg2_1 = createMockHomebaseFile(msg2_1Id, driveId, 7878, conv2Id, currentTime + 1000)
-        val msg3_1 = createMockHomebaseFile(msg3_1Id, driveId, 7878, conv3Id, currentTime + 2000)
-        val msg3_2 = createMockHomebaseFile(msg3_2Id, driveId, 7878, conv3Id, currentTime + 3000)
-        val msg3_3 = createMockHomebaseFile(msg3_3Id, driveId, 7878, conv3Id, currentTime + 4000)
-
-        // Insert conversations into DriveMainIndex
-        insertHomebaseFile(dbm, identityId, driveId, conv1)
-        insertHomebaseFile(dbm, identityId, driveId, conv2)
-        insertHomebaseFile(dbm, identityId, driveId, conv3)
+        val msg2_1 = createMockHomebaseFile(msg2_1Id, driveId, 7878, conv2Id, msg2time)
+        val msg3_1 = createMockHomebaseFile(msg3_1Id, driveId, 7878, conv3Id, currentTime.addMilliseconds( 2000))
+        val msg3_2 = createMockHomebaseFile(msg3_2Id, driveId, 7878, conv3Id, currentTime.addMilliseconds(3000))
+        val msg3_3 = createMockHomebaseFile(msg3_3Id, driveId, 7878, conv3Id, msg3time)
 
         // Insert messages into DriveMainIndex
         insertHomebaseFile(dbm, identityId, driveId, msg2_1)
         insertHomebaseFile(dbm, identityId, driveId, msg3_1)
         insertHomebaseFile(dbm, identityId, driveId, msg3_2)
         insertHomebaseFile(dbm, identityId, driveId, msg3_3)
+
+        // Insert data into the ChatReadCount table
+        // No last read count for conv1
+        upsertChatReadCount(dbm, conv2Id, msg2time.addMilliseconds(-1000))
+        upsertChatReadCount(dbm, conv3Id, msg3time.addMilliseconds(-10000))
 
         return MockTestData(
             identityId = identityId,
@@ -69,11 +77,11 @@ class ChatReadCountWrapperTest {
 
     /** Creates a mock HomebaseFile with the specified parameters */
     private fun createMockHomebaseFile(
-        fileId: Uuid, driveId: Uuid, fileType: Int, groupId: Uuid?, created: Long
+        uniqueId: Uuid, driveId: Uuid, fileType: Int, groupId: Uuid?, created: UnixTimeUtc
     ): HomebaseFile {
         val jsonHeader = """{
-            "fileId": "${fileId}",
             "driveId": "${driveId}",
+            "fileId": "${Uuid.random()}",
             "fileState": "active",
             "fileSystemType": "standard",
             "serverFileIsEncrypted": true,
@@ -85,20 +93,20 @@ class ChatReadCountWrapperTest {
             },
             "fileMetadata": {
                 "globalTransitId": "${Uuid.random()}",
-                "created": ${created}000,
-                "updated": ${created}000,
+                "created": ${created.milliseconds},
+                "updated": ${created.milliseconds},
                 "transitCreated": 0,
                 "transitUpdated": 0,
                 "serverFileIsEncrypted": true,
                 "senderOdinId": "test-sender",
                 "originalAuthor": "test-sender",
                 "appData": {
-                    "uniqueId": "${Uuid.random()}",
+                    "uniqueId": "${uniqueId}",
                     "tags": null,
                     "fileType": ${fileType},
                     "dataType": 1,
-                    "groupId": ${groupId?.let { "\"$it\"" } ?: "null"},
-                    "userDate": ${created}000,
+                    "groupId": ${if (groupId != null) "\"$groupId\"" else "null"},
+                    "userDate": ${created.milliseconds},
                     "content": "test content",
                     "previewThumbnail": null,
                     "archivalStatus": 1
@@ -131,6 +139,14 @@ class ChatReadCountWrapperTest {
     }
 
     /** Inserts a HomebaseFile into the DriveMainIndex table */
+    private suspend fun upsertChatReadCount(
+        dbm: DatabaseManager, groupId: Uuid, lastReadTime: UnixTimeUtc)
+    {
+        val wrapper = dbm.chatReadCount
+        wrapper.upsertLastReadTime(groupId, lastReadTime)
+    }
+
+    /** Inserts a HomebaseFile into the DriveMainIndex table */
     private suspend fun insertHomebaseFile(
         dbm: DatabaseManager, identityId: Uuid, driveId: Uuid, file: HomebaseFile
     ) {
@@ -152,14 +168,14 @@ class ChatReadCountWrapperTest {
             assertEquals(3, conversations.size, "Should return all conversations")
 
             // Verify all test conversations are present
-            val conversationIds = conversations.map { it.fileId }.toSet()
-            assertTrue(conversationIds.contains(testData.convWithNoMessages.fileId))
+            val conversationIds = conversations.map { it.fileMetadata.appData.uniqueId }.toSet()
+            assertTrue(conversationIds.contains(testData.convWithNoMessages.fileMetadata.appData.uniqueId))
             assertTrue(
-                conversationIds.contains(testData.convWithOneMessage.first.fileId)
+                conversationIds.contains(testData.convWithOneMessage.first.fileMetadata.appData.uniqueId)
             )
             assertTrue(
                 conversationIds.contains(
-                    testData.convWithThreeMessages.first.fileId
+                    testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId
                 )
             )
         }
@@ -193,19 +209,19 @@ class ChatReadCountWrapperTest {
 
             // Find specific conversations by ID
             val conv1Result = conversationsWithMessages.find {
-                it.conversation.fileId == testData.convWithNoMessages.fileId
+                it.conversation.fileMetadata.appData.uniqueId == testData.convWithNoMessages.fileMetadata.appData.uniqueId
             }
             val conv2Result = conversationsWithMessages.find {
-                it.conversation.fileId == testData.convWithOneMessage.first.fileId
+                it.conversation.fileMetadata.appData.uniqueId == testData.convWithOneMessage.first.fileMetadata.appData.uniqueId
             }
             val conv3Result = conversationsWithMessages.find {
-                it.conversation.fileId == testData.convWithThreeMessages.first.fileId
+                it.conversation.fileMetadata.appData.uniqueId == testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId
             }
 
             // Verify conversation with no messages
             assertNotNull(conv1Result)
             assertEquals(
-                testData.convWithNoMessages.fileId, conv1Result.conversation.fileId
+                testData.convWithNoMessages.fileMetadata.appData.uniqueId, conv1Result.conversation.fileMetadata.appData.uniqueId
             )
             assertEquals(
                 null,
@@ -216,25 +232,25 @@ class ChatReadCountWrapperTest {
             // Verify conversation with one message
             assertNotNull(conv2Result)
             assertEquals(
-                testData.convWithOneMessage.first.fileId, conv2Result.conversation.fileId
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId, conv2Result.conversation.fileMetadata.appData.uniqueId
             )
             assertNotNull(
                 conv2Result.message, "Conversation with one message should have last message"
             )
             assertEquals(
-                testData.convWithOneMessage.second.fileId, conv2Result.message!!.fileId
+                testData.convWithOneMessage.second.fileMetadata.appData.uniqueId, conv2Result.message.fileMetadata.appData.uniqueId
             )
 
             // Verify conversation with three messages (should return the last one)
             assertNotNull(conv3Result)
             assertEquals(
-                testData.convWithThreeMessages.first.fileId, conv3Result.conversation.fileId
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId, conv3Result.conversation.fileMetadata.appData.uniqueId
             )
             assertNotNull(
                 conv3Result.message, "Conversation with three messages should have last message"
             )
             assertEquals(
-                testData.convWithThreeMessages.second.last().fileId, conv3Result.message!!.fileId
+                testData.convWithThreeMessages.second.last().fileMetadata.appData.uniqueId, conv3Result.message.fileMetadata.appData.uniqueId
             )
         }
     }
@@ -260,14 +276,15 @@ class ChatReadCountWrapperTest {
             val wrapper = dbm.chatReadCount
 
             // No read time set, so all messages should be unread
+            // FAILS HERE :
             val conv1Unread = wrapper.selectUnreadCountForConversation(
-                testData.convWithNoMessages.fileId
+                testData.convWithNoMessages.fileMetadata.appData.uniqueId!!
             )
             val conv2Unread = wrapper.selectUnreadCountForConversation(
-                testData.convWithOneMessage.first.fileId
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
             )
             val conv3Unread = wrapper.selectUnreadCountForConversation(
-                testData.convWithThreeMessages.first.fileId
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
             )
 
             assertEquals(
@@ -289,13 +306,13 @@ class ChatReadCountWrapperTest {
             val wrapper = dbm.chatReadCount
 
             // Set read time after the first 2 messages of conv3
-            val readTime = Clock.System.now().epochSeconds + 3500
+            val readTime = UnixTimeUtc.now().addMilliseconds(3500)
             wrapper.upsertLastReadTime(
-                testData.convWithThreeMessages.first.fileId, readTime
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!, readTime
             )
 
             val conv3Unread = wrapper.selectUnreadCountForConversation(
-                testData.convWithThreeMessages.first.fileId
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
             )
 
             // Should only count messages after the read time (only the 3rd message)
@@ -410,16 +427,16 @@ class ChatReadCountWrapperTest {
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
-            val readTime = Clock.System.now().epochSeconds
+            val readTime = UnixTimeUtc.now().addSeconds(100)
             val result = wrapper.upsertLastReadTime(
-                testData.convWithOneMessage.first.fileId, readTime
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!, readTime
             )
 
             assertTrue(result, "Upsert should succeed")
 
             // Verify unread count changed
             val unreadCount = wrapper.selectUnreadCountForConversation(
-                testData.convWithOneMessage.first.fileId
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(
                 0L, unreadCount, "Should have 0 unread messages after setting read time"
@@ -434,15 +451,15 @@ class ChatReadCountWrapperTest {
             val wrapper = dbm.chatReadCount
 
             // Insert initial read time
-            val initialReadTime = Clock.System.now().epochSeconds + 1000
+            val initialReadTime = UnixTimeUtc.now().addMilliseconds(1000)
             wrapper.upsertLastReadTime(
-                testData.convWithThreeMessages.first.fileId, initialReadTime
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!, initialReadTime
             )
 
             // Update with later read time
-            val updatedReadTime = Clock.System.now().epochSeconds + 5000
+            val updatedReadTime = UnixTimeUtc.now().addMilliseconds(5000)
             val result = wrapper.upsertLastReadTime(
-                testData.convWithThreeMessages.first.fileId, updatedReadTime
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!, updatedReadTime
             )
 
             assertTrue(result, "Update should succeed")
@@ -450,7 +467,7 @@ class ChatReadCountWrapperTest {
             // Verify unread count changed (should be 0 now since read time is after all
             // messages)
             val unreadCount = wrapper.selectUnreadCountForConversation(
-                testData.convWithThreeMessages.first.fileId
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(
                 0L, unreadCount, "Should have 0 unread messages after updating read time"
@@ -463,7 +480,7 @@ class ChatReadCountWrapperTest {
         DatabaseManager { createInMemoryDatabase() }.use { dbm ->
             val wrapper = dbm.chatReadCount
             val nonExistentGroupId = Uuid.random()
-            val readTime = Clock.System.now().epochSeconds
+            val readTime = UnixTimeUtc.now()
 
             val result = wrapper.upsertLastReadTime(nonExistentGroupId, readTime)
 
@@ -480,24 +497,24 @@ class ChatReadCountWrapperTest {
             val wrapper = dbm.chatReadCount
 
             // First insert a read time
-            val readTime = Clock.System.now().epochSeconds
+            val readTime = UnixTimeUtc.now().addSeconds(100)
             wrapper.upsertLastReadTime(
-                testData.convWithOneMessage.first.fileId, readTime
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!, readTime
             )
 
             // Verify it exists by checking unread count
             var unreadCount = wrapper.selectUnreadCountForConversation(
-                testData.convWithOneMessage.first.fileId
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(0L, unreadCount, "Should have 0 unread with read time set")
 
             // Delete the read count entry
-            val result = wrapper.deleteByGroupId(testData.convWithOneMessage.first.fileId)
+            val result = wrapper.deleteByGroupId(testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!)
             assertTrue(result, "Delete should succeed")
 
             // Verify it's gone - unread count should be back to original
             unreadCount = wrapper.selectUnreadCountForConversation(
-                testData.convWithOneMessage.first.fileId
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(
                 1L, unreadCount, "Should have 1 unread after deleting read time"
@@ -527,31 +544,31 @@ class ChatReadCountWrapperTest {
             val wrapper = dbm.chatReadCount
 
             // Insert read time
-            val initialReadTime = Clock.System.now().epochSeconds + 1000
+            val initialReadTime = UnixTimeUtc.now().addMilliseconds(1000)
             wrapper.upsertLastReadTime(
-                testData.convWithThreeMessages.first.fileId, initialReadTime
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!, initialReadTime
             )
 
             // Delete it
-            val deleteResult = wrapper.deleteByGroupId(testData.convWithThreeMessages.first.fileId)
+            val deleteResult = wrapper.deleteByGroupId(testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!)
             assertTrue(deleteResult, "Delete should succeed")
 
             // Verify unread count is back to original
             var unreadCount = wrapper.selectUnreadCountForConversation(
-                testData.convWithThreeMessages.first.fileId
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(3L, unreadCount, "Should have 3 unread after deletion")
 
             // Reinsert with new read time
-            val newReadTime = Clock.System.now().epochSeconds + 5000
+            val newReadTime = UnixTimeUtc.now().addMilliseconds(5000)
             val upsertResult = wrapper.upsertLastReadTime(
-                testData.convWithThreeMessages.first.fileId, newReadTime
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!, newReadTime
             )
             assertTrue(upsertResult, "Reinsert should succeed")
 
             // Verify new read time is effective
             unreadCount = wrapper.selectUnreadCountForConversation(
-                testData.convWithThreeMessages.first.fileId
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(
                 0L, unreadCount, "Should have 0 unread after reinserting with new read time"

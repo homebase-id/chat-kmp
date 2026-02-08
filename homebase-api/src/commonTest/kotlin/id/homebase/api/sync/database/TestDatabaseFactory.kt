@@ -36,8 +36,8 @@ object TestDatabaseFactory {
 
     private val outboxAdapter = Outbox.Adapter(
         driveIdAdapter = UuidAdapter,
-        fileIdAdapter = UuidAdapter,
-        dependencyFileIdAdapter = UuidAdapter
+        uniqueIdAdapter = UuidAdapter,
+        dependencyUniqueIdAdapter = UuidAdapter
     )
 
     private val appNotificationsAdapter = AppNotifications.Adapter(

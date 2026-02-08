@@ -123,7 +123,7 @@ suspend fun <T> withRetryResult(
     }
 
     return if (lastException != null) {
-        RetryResult.Failure(lastException!!, config.maxRetries + 1)
+        RetryResult.Failure(lastException, config.maxRetries + 1)
     } else {
         // All attempts returned null
         RetryResult.Success(null)

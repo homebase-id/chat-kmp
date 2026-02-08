@@ -30,12 +30,12 @@ class OutboxTest {
             // Insert into outbox
             dbm.outbox.insert(
                 driveId = Uuid.random(),
-                fileId = Uuid.random(),
-                dependencyFileId = Uuid.random(),
+                uniqueId = Uuid.random(),
+                dependencyUniqueId = Uuid.random(),
                 priority = 0L,
                 uploadType = 0L,
                 json = data,
-                files = files
+                filePaths = files
             )
 
             // Get count to verify insertion
@@ -103,12 +103,12 @@ class OutboxTest {
             // Insert item
             dbm.outbox.insert(
                 driveId = Uuid.random(),
-                fileId = Uuid.random(),
-                dependencyFileId = Uuid.random(),
+                uniqueId = Uuid.random(),
+                dependencyUniqueId = Uuid.random(),
                 priority = 0L,
                 uploadType = 0L,
                 json = data,
-                files = null
+                filePaths = null
             )
 
             // Verify count
@@ -138,12 +138,12 @@ class OutboxTest {
             // Insert item with null files
             dbm.outbox.insert(
                 driveId = Uuid.random(),
-                fileId = Uuid.random(),
-                dependencyFileId = Uuid.random(),
+                uniqueId = Uuid.random(),
+                dependencyUniqueId = Uuid.random(),
                 priority = 0L,
                 uploadType = 0L,
                 json = data,
-                files = null
+                filePaths = null
             )
 
             // Checkout and select
@@ -169,12 +169,12 @@ class OutboxTest {
 
                 val insertSuccess = dbm.outbox.insert(
                     driveId = Uuid.random(),
-                    fileId = Uuid.random(),
-                    dependencyFileId = Uuid.random(),
+                    uniqueId = Uuid.random(),
+                    dependencyUniqueId = Uuid.random(),
                     priority = 0L,
                     uploadType = 0L,
                     json = data,
-                    files = null
+                    filePaths = null
                 )
                 assertTrue(insertSuccess > 0, "Insert should succeed")
 
@@ -193,12 +193,12 @@ class OutboxTest {
                 dbm.outbox.deleteByRowId(item.rowId)
                 val insertSuccess2 = dbm.outbox.insert(
                     driveId = Uuid.random(),
-                    fileId = Uuid.random(),
-                    dependencyFileId = Uuid.random(),
+                    uniqueId = Uuid.random(),
+                    dependencyUniqueId = Uuid.random(),
                     priority = 0L,
                     uploadType = 0L,
                     json = data,
-                    files = null
+                    filePaths = null
                 )
                 assertTrue(insertSuccess2 > 0, "Second insert should succeed")
 
@@ -228,12 +228,12 @@ class OutboxTest {
                 priorities.forEachIndexed { index, priority ->
                     val insertSuccess = dbm.outbox.insert(
                         driveId = driveId,
-                        fileId = fileIds[index],
-                        dependencyFileId = null,
+                        uniqueId = fileIds[index],
+                        dependencyUniqueId = null,
                         priority = priority,
                         uploadType = 0L,
                         json = values[index],
-                        files = null
+                        filePaths = null
                     )
                     assertTrue(insertSuccess > 0, "Insert should succeed")
                 }
@@ -275,12 +275,12 @@ class OutboxTest {
                 priorities.forEachIndexed { index, priority ->
                     val insertSuccess = dbm.outbox.insert(
                         driveId = driveId,
-                        fileId = fileIds[index],
-                        dependencyFileId = null,
+                        uniqueId = fileIds[index],
+                        dependencyUniqueId = null,
                         priority = priority,
                         uploadType = 0L,
                         json = values[index],
-                        files = null
+                        filePaths = null
                     )
                     assertTrue(insertSuccess > 0, "Insert should succeed")
                 }
@@ -321,14 +321,14 @@ class OutboxTest {
                     val (recipient, fileId) = pair2
                     val insertSuccess = dbm.outbox.insert(
                         driveId = driveId,
-                        fileId = fileId,
-                        dependencyFileId = null,
+                        uniqueId = fileId,
+                        dependencyUniqueId = null,
                         priority = 0L,
                         uploadType = 0L,
                         json = "$recipient-data".toByteArray(), // Use recipient in
                         // data for
                         // identification
-                        files = null
+                        filePaths = null
                     )
                     assertTrue(insertSuccess > 0, "Insert should succeed")
                 }
@@ -374,35 +374,35 @@ class OutboxTest {
                 val checkoutResult1 = dbm.outbox.checkout()
                 assertNotNull(checkoutResult1, "Should successfully checkout f3")
                 var item = dbm.outbox.selectCheckedOut(checkoutResult1.checkOutStamp!!)
-                assertTrue(item!!.fileId == f3, "Expected item to be f3")
+                assertTrue(item!!.uniqueId == f3, "Expected item to be f3")
                 dbm.outbox.deleteByRowId(item.rowId)
 
                 // Now f2 (depends on f3, depends on f3 which is done)
                 val checkoutResult2 = dbm.outbox.checkout()
                 assertNotNull(checkoutResult2, "Should successfully checkout f2")
                 item = dbm.outbox.selectCheckedOut(checkoutResult2.checkOutStamp!!)
-                assertTrue(item!!.fileId == f2, "Expected item to be f2")
+                assertTrue(item!!.uniqueId == f2, "Expected item to be f2")
                 dbm.outbox.deleteByRowId(item.rowId)
 
                 // Now f4 (depends on f2, depends on f2 which is done)
                 val checkoutResult3 = dbm.outbox.checkout()
                 assertNotNull(checkoutResult3, "Should successfully checkout f4")
                 item = dbm.outbox.selectCheckedOut(checkoutResult3.checkOutStamp!!)
-                assertTrue(item!!.fileId == f4, "Expected item to be f4")
+                assertTrue(item!!.uniqueId == f4, "Expected item to be f4")
                 dbm.outbox.deleteByRowId(item.rowId)
 
                 // Now f5 (depends on f4, depends on f4 which is done)
                 val checkoutResult4 = dbm.outbox.checkout()
                 assertNotNull(checkoutResult4, "Should successfully checkout f5")
                 item = dbm.outbox.selectCheckedOut(checkoutResult4.checkOutStamp!!)
-                assertTrue(item!!.fileId == f5, "Expected item to be f5")
+                assertTrue(item!!.uniqueId == f5, "Expected item to be f5")
                 dbm.outbox.deleteByRowId(item.rowId)
 
                 // Finally f1 (depends on f5, depends on f5 which is done)
                 val checkoutResult5 = dbm.outbox.checkout()
                 assertNotNull(checkoutResult5, "Should successfully checkout f1")
                 item = dbm.outbox.selectCheckedOut(checkoutResult5.checkOutStamp!!)
-                assertTrue(item!!.fileId == f1, "Expected item to be f1")
+                assertTrue(item!!.uniqueId == f1, "Expected item to be f1")
                 dbm.outbox.deleteByRowId(item.rowId)
             }
         }
@@ -440,7 +440,7 @@ class OutboxTest {
                 val checkoutResult1 = dbm.outbox.checkout()
                 assertNotNull(checkoutResult1, "Should successfully checkout f3")
                 val item = dbm.outbox.selectCheckedOut(checkoutResult1.checkOutStamp!!)
-                assertTrue(item!!.fileId == f3, "Expected item to be f3")
+                assertTrue(item!!.uniqueId == f3, "Expected item to be f3")
 
                 // Next scheduled should be null (f2 depends on f3, which is checked out)
                 nextTime = dbm.outbox.nextScheduled()
@@ -456,7 +456,7 @@ class OutboxTest {
                 val checkoutResult2 = dbm.outbox.checkout()
                 assertNotNull(checkoutResult2, "Should successfully checkout f2")
                 var item2 = dbm.outbox.selectCheckedOut(checkoutResult2.checkOutStamp!!)
-                assertTrue(item2!!.fileId == f2, "Expected item to be f2")
+                assertTrue(item2!!.uniqueId == f2, "Expected item to be f2")
 
                 // Next scheduled should be null (f4 depends on f2, which is checked out)
                 nextTime = dbm.outbox.nextScheduled()
@@ -472,7 +472,7 @@ class OutboxTest {
                 val checkoutResult3 = dbm.outbox.checkout()
                 assertNotNull(checkoutResult3, "Should successfully checkout f4")
                 item2 = dbm.outbox.selectCheckedOut(checkoutResult3.checkOutStamp!!)
-                assertTrue(item2!!.fileId == f4, "Expected item to be f4")
+                assertTrue(item2!!.uniqueId == f4, "Expected item to be f4")
 
                 // Next scheduled should be null (f5 depends on f4, which is checked out)
                 nextTime = dbm.outbox.nextScheduled()
@@ -488,7 +488,7 @@ class OutboxTest {
                 val checkoutResult4 = dbm.outbox.checkout()
                 assertNotNull(checkoutResult4, "Should successfully checkout f5")
                 item2 = dbm.outbox.selectCheckedOut(checkoutResult4.checkOutStamp!!)
-                assertTrue(item2!!.fileId == f5, "Expected item to be f5")
+                assertTrue(item2!!.uniqueId == f5, "Expected item to be f5")
 
                 // Next scheduled should be null (f1 depends on f5, which is checked out)
                 nextTime = dbm.outbox.nextScheduled()
@@ -504,7 +504,7 @@ class OutboxTest {
                 val checkoutResult5 = dbm.outbox.checkout()
                 assertNotNull(checkoutResult5, "Should successfully checkout f1")
                 item2 = dbm.outbox.selectCheckedOut(checkoutResult5.checkOutStamp!!)
-                assertTrue(item2!!.fileId == f1, "Expected item to be f1")
+                assertTrue(item2!!.uniqueId == f1, "Expected item to be f1")
 
                 // Next scheduled should be null
                 nextTime = dbm.outbox.nextScheduled()
