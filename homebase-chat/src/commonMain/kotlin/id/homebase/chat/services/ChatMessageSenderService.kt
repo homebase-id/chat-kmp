@@ -141,7 +141,7 @@ class ChatMessageSenderService(
                         PushNotificationOptions(
                             appId = ChatProtocol.ChatAppId.toString(),
                             typeId = conversationId.toString(),
-                            tagId = uniqueId.toString(),
+                            tagId = messageUniqueId.toString(),
                             silent = false,
                             unEncryptedMessage = notificationText
                         )
@@ -153,7 +153,7 @@ class ChatMessageSenderService(
 
             outboxSync.enqueue(
                 request.driveId,
-                uniqueId,
+                messageUniqueId,
                 dependencyUniqueId = previousMessageUniqueId,
                 priority = 1,
                 uploadType = 1,
@@ -162,7 +162,7 @@ class ChatMessageSenderService(
 
             outboxSync.send()
 
-            return SendMessageResult(uniqueId = uniqueId)
+            return SendMessageResult(uniqueId = messageUniqueId)
 
         } catch (t: Throwable) {
             Logger.e("ChatMessageSenderService", t)

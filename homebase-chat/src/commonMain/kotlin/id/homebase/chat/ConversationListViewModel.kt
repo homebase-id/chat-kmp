@@ -428,6 +428,7 @@ class ChatListViewModel(
                     previewThumbnail = replyTo.previewThumbnail
                 )
                 chatMessageSenderService.replyToMessage(
+                    messageUniqueId = Uuid.random(),
                     conversationId = conversationId,
                     replyTo = replyPreview,
                     messageText = content,
