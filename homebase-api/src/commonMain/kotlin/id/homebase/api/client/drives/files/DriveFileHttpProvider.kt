@@ -27,6 +27,35 @@ public class DriveFileHttpProvider(
 
     // ==================== GET METHODS ====================
 
+    public suspend fun getPayloadUrl(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        options: PayloadOperationOptions = PayloadOperationOptions()
+    ): String {
+
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
+        require(key.isNotBlank()) { "Key must be defined" }
+
+        val creds = requireCreds()
+
+        val path =
+            if (options.chunkStart != null)
+                "/drives/$driveId/files/$fileId/payload/$key/${options.chunkStart}/${options.chunkLength ?: ""}"
+            else
+                "/drives/$driveId/files/$fileId/payload/$key"
+
+        val baseUrl = apiUrl(creds.domain, path)
+
+        return URLBuilder(baseUrl).apply {
+            options.lastModified?.let {
+                parameters.append("lastModified", it.toString())
+            }
+        }.buildString()
+    }
+
+
     // This ought to be private / protected and only used by driveCache but probably rewire it all
     // TODO: Shouldn't it (always) be streaming?! If it's a 500MB file we dont want it in memory
     // TODO: Should we discern between HLS needing chunks and payloads not needing chunks? Two different calls?
@@ -43,12 +72,12 @@ public class DriveFileHttpProvider(
 
         val creds = requireCreds()
 
-        val queryParams =
-            buildMap<String, String> {
-                options.lastModified?.let {
-                    put("lastModified", it.toString())
-                }
-            }
+        val url = getPayloadUrl(
+            driveId = driveId,
+            fileId = fileId,
+            key = key,
+            options = options
+        )
 
         val rangeResult =
             DriveFileHelpers.getRangeHeader(
@@ -56,21 +85,9 @@ public class DriveFileHttpProvider(
                 options.chunkLength
             )
 
-        val path =
-            if (options.chunkStart != null)
-                "/drives/$driveId/files/$fileId/payload/$key/${options.chunkStart}/${options.chunkLength ?: ""}"
-            else
-                "/drives/$driveId/files/$fileId/payload/$key"
-
-        val url = apiUrl(creds.domain, path)
-
         val response = requestBytes {
             httpClient.get(url) {
                 bearerAuth(creds.accessToken)
-
-                queryParams.forEach { (k, v) ->
-                    url { parameters.append(k, v) }
-                }
 
                 rangeResult.rangeHeader?.let {
                     header(HttpHeaders.Range, it)

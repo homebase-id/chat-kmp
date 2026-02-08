@@ -311,6 +311,21 @@ class ChatListViewModel(
                             }
 
                             contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+                                _uiState.update {
+                                    it.copy(
+                                        fullScreenMedia = FullScreenMessageData(
+                                            messageId = action.message.id,
+                                            title = action.message.senderId,
+                                            created = action.message.created,
+                                            content = action.message.content,
+                                            fileId = action.message.fileId,
+                                            driveId = chatTargetDrive.alias,
+                                            payloads = action.message.payloads,
+                                            selectedPayloadKey = action.payloadKey,
+                                            keyHeader = action.message.keyHeader,
+                                        )
+                                    )
+                                }
                             }
 
                             contentType.startsWith("audio/") -> {}

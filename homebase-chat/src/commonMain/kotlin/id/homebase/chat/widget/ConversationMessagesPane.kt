@@ -20,6 +20,7 @@ import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.FullScreenMessageData
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.widget.video.FullScreenVideoViewer
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.ScrollPosition
 import kotlinx.collections.immutable.ImmutableList
@@ -259,19 +260,24 @@ fun ConversationMessagesPane(
                     sharedTransitionScope = this@SharedTransitionLayout,
                 )
             } else {
-                FullScreenMediaViewer(
+                FullScreenVideoViewer(
                     data = data,
-                    onShare = { id, key ->
-                        onUiAction(ConversationListUiAction.ShareMedia(id, key))
-                    },
-                    onSave = { id, key ->
-                        onUiAction(ConversationListUiAction.DownloadMedia(id, key))
-                    },
-                    onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(it)) },
-                    onDismiss = { onUiAction(ConversationListUiAction.CloseFullScreenMedia) },
-                    animatedVisibilityScope = this@AnimatedContent,
-                    sharedTransitionScope = this@SharedTransitionLayout,
+                    onDismiss = { onUiAction(ConversationListUiAction.CloseFullScreenMedia) }
                 )
+
+//                FullScreenMediaViewer(
+//                    data = data,
+//                    onShare = { id, key ->
+//                        onUiAction(ConversationListUiAction.ShareMedia(id, key))
+//                    },
+//                    onSave = { id, key ->
+//                        onUiAction(ConversationListUiAction.DownloadMedia(id, key))
+//                    },
+//                    onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(it)) },
+//                    onDismiss = { onUiAction(ConversationListUiAction.CloseFullScreenMedia) },
+//                    animatedVisibilityScope = this@AnimatedContent,
+//                    sharedTransitionScope = this@SharedTransitionLayout,
+//                )
             }
         }
     }

@@ -8,7 +8,7 @@ data class VideoMetadata(
     val isDescriptorContentComplete: Boolean = true,
     val isSegmented: Boolean,
     val fileSize: Long,
-    val durationMs: Long,
+    val duration: Long,
     val key: String,
     val codec: String,
     val hlsPlaylist: String? = null,
