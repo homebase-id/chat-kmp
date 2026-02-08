@@ -30,7 +30,7 @@ class TestUploader : OutboxUploader {
 
         eventBus.emit(
             BackendEvent.OutboxEvent.ItemProgress(
-                outboxRecord.driveId, outboxRecord.fileId, 0.5F
+                outboxRecord.driveId, outboxRecord.uniqueId, 0.5F
             )
         )
 
@@ -78,10 +78,10 @@ class OutboxSyncTest {
 
             // Insert a record
             val driveId = Uuid.random()
-            val fileId = Uuid.random()
+            val uniqueId = Uuid.random()
             db.outbox.insert(
                 driveId = driveId,
-                uniqueId = fileId,
+                uniqueId = uniqueId,
                 dependencyUniqueId = null,
                 priority = 0,
                 uploadType = 0,
@@ -103,7 +103,7 @@ class OutboxSyncTest {
             assertEquals(1, completedCount)
             assertEquals(1, uploader.uploaded.size)
             assertEquals(driveId, uploader.uploaded[0].driveId)
-            assertEquals(fileId, uploader.uploaded[0].fileId)
+            assertEquals(uniqueId, uploader.uploaded[0].uniqueId)
             // Check that item was deleted
             assertEquals(0L, db.outbox.count())
         }
