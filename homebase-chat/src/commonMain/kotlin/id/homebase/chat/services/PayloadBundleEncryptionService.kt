@@ -1,6 +1,5 @@
 package id.homebase.chat.services
 
-import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -21,7 +20,6 @@ class PayloadBundleEncryptionService(
     private val eventBus: EventBus
 ) {
 
-    val TAG: String = "PayloadBundleEncryptionService"
     suspend fun encryptBundle(
         uniqueId: Uuid,
         bundle: PayloadBundle?,
@@ -45,27 +43,24 @@ class PayloadBundleEncryptionService(
 
             // payloads get their own IV
             val keyHeader = KeyHeader(
-                aesKey = aesKey, iv = ByteArrayUtil.getRndByteArray(16)
+                aesKey = aesKey,
+                iv = ByteArrayUtil.getRndByteArray(16)
             )
 
-            Logger.i(TAG) {
-                "IN payload key=${payload.key} " + "type=${payload.contentType} " + "path=${payload.filePath}"
-            }
-
-            val progress: (VideoPayloadProgressPhase) -> Unit = { phase ->
-                scope.launch {
-                    eventBus.emit(
-                        BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(
-                            uniqueId = uniqueId,
-                            payloadKey = phase.payloadKey,
-                            phase = phase.phase,
-                            progress = phase.progress
-                        )
-                    )
-                }
-            }
-
             if (payload.contentType.startsWith("video/")) {
+
+                val progress: (VideoPayloadProgressPhase) -> Unit = { phase ->
+                    scope.launch {
+                        eventBus.emit(
+                            BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(
+                                uniqueId = uniqueId,
+                                payloadKey = phase.payloadKey,
+                                phase = phase.phase,
+                                progress = phase.progress
+                            )
+                        )
+                    }
+                }
 
                 val result = videoProcessor.process(
                     payload = payload,
@@ -76,23 +71,20 @@ class PayloadBundleEncryptionService(
 
                 newPayloads += result.payloads
                 newThumbnails += result.thumbnails
-
-                result.payloads.forEach {
-                    Logger.i(TAG) {
-                        "OUT video payload key=${it.key} " + "type=${it.contentType} " + "path=${it.filePath}"
-                    }
-                }
-
             } else {
-                val encrypted = encryptFile(payload.filePath, keyHeader)
-
-                Logger.i(TAG) {
-                    "OUT file payload key=${payload.key} " + "path=${encrypted.filePath}"
-                }
-
+                val encryptedFile = encryptFile(payload.filePath, keyHeader)
                 newPayloads += payload.copy(
-                    filePath = encrypted.filePath, iv = encrypted.iv, isPreEncrypted = true
+                    filePath = encryptedFile,
+                    iv = keyHeader.iv,
+                    isPreEncrypted = true
                 )
+
+                val encryptedThumbnails =
+                    bundle.thumbnails.map { thumb ->
+                        val encryptedBytes = encryptBytes(thumb.thumbnailBytes, keyHeader)
+                        thumb.copy(thumbnailBytes = encryptedBytes)
+                    }
+                newThumbnails += encryptedThumbnails
             }
 
             index++;
@@ -105,9 +97,8 @@ class PayloadBundleEncryptionService(
 
     private suspend fun encryptFile(
         inputFile: String, keyHeader: KeyHeader
-    ): EncryptedFileResult {
+    ): String {
         val plainBytes = fileOps.readFileBytes(inputFile)
-        val iv = ByteArrayUtil.getRndByteArray(16)
 
         val encrypted = encryptBytes(plainBytes, keyHeader)
 
@@ -115,13 +106,12 @@ class PayloadBundleEncryptionService(
             bytes = encrypted, prefix = "enc", suffix = ".encrypted"
         )
 
-        return EncryptedFileResult(
-            filePath = path, iv = iv
-        )
+        return path
     }
 
     private suspend fun encryptBytes(
-        plainBytes: ByteArray, keyHeader: KeyHeader
+        plainBytes: ByteArray,
+        keyHeader: KeyHeader
     ): ByteArray {
         val encrypted = keyHeader.encryptDataAes(data = plainBytes)
         return encrypted

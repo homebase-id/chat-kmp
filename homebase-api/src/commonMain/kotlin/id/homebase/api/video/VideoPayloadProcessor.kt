@@ -47,7 +47,6 @@ class VideoPayloadProcessor(
                 thumbnails = generatedThumbnails.map { thumb ->
                     thumb.copy(
                         thumbnailBytes = keyHeader.encryptDataAes(thumb.thumbnailBytes),
-                        skipEncryption = true
                     )
                 }
 
