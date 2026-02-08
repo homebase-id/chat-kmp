@@ -5,7 +5,6 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
-import id.homebase.homebasekmppoc.lib.database.KeyValueWrapper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -145,6 +144,7 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
             this
         )
     }
+
     // Lazy wrappers
     public val keyValue: KeyValueWrapper by lazy {
         KeyValueWrapper(driver, keyValueAdapter, this)

@@ -1,4 +1,4 @@
-package id.homebase.homebasekmppoc.prototype.lib.serialization
+package id.homebase.api.prototype.lib.serialization
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.descriptors.PrimitiveKind

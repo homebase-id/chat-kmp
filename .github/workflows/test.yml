@@ -1,0 +1,82 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            name: Android & Desktop
+            # Run Android Unit Tests and Desktop Tests
+            test-command: |
+              set -o pipefail
+              ./gradlew testDebugUnitTest --rerun-tasks --info | tee test-output.log
+              ./gradlew desktopTest --rerun-tasks
+          - os: macos-latest
+            name: iOS
+            # Run iOS Simulator Tests
+            test-command: ./gradlew iosSimulatorArm64Test --rerun-tasks
+      fail-fast: false
+    name: ${{ matrix.name }} Tests on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Gradle Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Boot iOS Simulator
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "Listing available devices..."
+          xcrun simctl list devices available
+
+          echo "Booting iPhone 15..."
+          # Try to boot iPhone 15 (standard on macos-14/15 runners)
+          xcrun simctl boot "iPhone 15" || true
+
+          # Wait for it to be ready
+          xcrun simctl bootstatus "iPhone 15" -b || true
+
+      - name: Run tests
+        run: ${{ matrix.test-command }}
+
+      # Verification step removed as RobolectricVerificationTest does not exist yet.
+      # - name: Verify Robolectric Usage
+      #   if: matrix.os == 'ubuntu-latest'
+      #   ...
+
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+            test-output.log
+          retention-days: 30
