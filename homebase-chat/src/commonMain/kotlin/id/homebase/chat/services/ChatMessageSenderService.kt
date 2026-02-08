@@ -24,12 +24,14 @@ class ChatMessageSenderService(
     private val chatDrive = chatTargetDrive.alias
 
     suspend fun sendNewMessage(
+        messageUniqueId: Uuid,
         conversationId: Uuid,
         messageText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
     ): SendMessageResult =
         deliverMessage(
+            messageUniqueId = messageUniqueId,
             conversationId = conversationId,
             content =
                 MessageAppData(
@@ -44,6 +46,7 @@ class ChatMessageSenderService(
         )
 
     suspend fun replyToMessage(
+        messageUniqueId: Uuid,
         conversationId: Uuid,
         replyTo: ReplyPreview,
         messageText: String,
@@ -51,6 +54,7 @@ class ChatMessageSenderService(
         payloadBundle: PayloadBundle?
     ): SendMessageResult =
         deliverMessage(
+            messageUniqueId = messageUniqueId,
             conversationId = conversationId,
             content =
                 MessageAppData(
@@ -64,6 +68,7 @@ class ChatMessageSenderService(
         )
 
     private suspend fun deliverMessage(
+        messageUniqueId: Uuid,
         conversationId: Uuid,
         content: MessageAppData,
         notificationText: String,
@@ -75,6 +80,7 @@ class ChatMessageSenderService(
 //        conversationWriterService.updateConversationRecipients(conversationId, )
 
         val result = sendMessageInternal(
+            messageUniqueId,
             conversationId,
             content,
             notificationText,
@@ -85,6 +91,7 @@ class ChatMessageSenderService(
     }
 
     private suspend fun sendMessageInternal(
+        messageUniqueId: Uuid,
         conversationId: Uuid,
         content: MessageAppData,
         notificationText: String,
@@ -92,13 +99,13 @@ class ChatMessageSenderService(
         payloadBundle: PayloadBundle?
     ): SendMessageResult {
 
-        val uniqueId = Uuid.random()
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationService.getRecipients(conversationId)
 
 
         val encryptedBundle = payloadBundleEncryptionService
             .encryptBundle(
+                messageUniqueId,
                 payloadBundle,
                 keyHeader.aesKey,
                 scope = scope
@@ -110,7 +117,7 @@ class ChatMessageSenderService(
                 isEncrypted = true,
                 appData =
                     UploadAppFileMetaData(
-                        uniqueId = uniqueId.toString(),
+                        uniqueId = messageUniqueId.toString(),
                         groupId = conversationId.toString(),
                         fileType = ChatProtocol.MessageFileType,
                         userDate = UnixTimeUtc.now().milliseconds,

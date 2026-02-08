@@ -95,6 +95,7 @@ sealed interface BackendEvent {
             ) : Video
 
             data class PhaseProgress(
+                val uniqueId: Uuid,
                 val payloadKey: String,
                 val phase: VideoProcessingPhase,
                 val progress: Float // 0.0 → 1.0

@@ -265,6 +265,7 @@ class ChatListViewModel(
                             .build(attachments, fileOperationsProvider)
 
                         chatMessageSenderService.sendNewMessage(
+                            messageUniqueId = Uuid.random(),
                             conversationId = action.conversationId,
                             messageText = action.message,
                             previousMessageUniqueId = null,
@@ -399,6 +400,7 @@ class ChatListViewModel(
         viewModelScope.launch {
             try {
                 chatMessageSenderService.sendNewMessage(
+                    messageUniqueId = Uuid.random(),
                     conversationId = conversationId,
                     messageText = content,
                     previousMessageUniqueId = null,

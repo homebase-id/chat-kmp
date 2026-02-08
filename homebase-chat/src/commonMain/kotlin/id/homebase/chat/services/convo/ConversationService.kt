@@ -64,7 +64,7 @@ class ConversationService(
         )
 
         val encryptedBundle = payloadBundleEncryptionService
-            .encryptBundle(payloadBundle, keyHeader.aesKey, scope)
+            .encryptBundle(newConversationId, payloadBundle, keyHeader.aesKey, scope)
 
         val metadata =
             UploadFileMetadata(
@@ -205,7 +205,7 @@ class ConversationService(
             )
 
         val encryptedBundle = payloadBundleEncryptionService
-            .encryptBundle(payloadBundle, keyHeader.aesKey, scope)
+            .encryptBundle(conversationId, payloadBundle, keyHeader.aesKey, scope)
 
         val manifest =
             UpdateManifest.build(

@@ -13,6 +13,7 @@ import id.homebase.api.video.VideoPayloadProgressPhase
 import id.homebase.api.video.VideoPayloadProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
 class PayloadBundleEncryptionService(
     private val fileOps: FileOperationsProvider,
@@ -22,7 +23,10 @@ class PayloadBundleEncryptionService(
 
     val TAG: String = "PayloadBundleEncryptionService"
     suspend fun encryptBundle(
-        bundle: PayloadBundle?, aesKey: SecureByteArray, scope: CoroutineScope
+        uniqueId: Uuid,
+        bundle: PayloadBundle?,
+        aesKey: SecureByteArray,
+        scope: CoroutineScope
     ): PayloadBundle {
 
         if (bundle == null) {
@@ -52,6 +56,7 @@ class PayloadBundleEncryptionService(
                 scope.launch {
                     eventBus.emit(
                         BackendEvent.PayloadBundlingEvent.Video.PhaseProgress(
+                            uniqueId = uniqueId,
                             payloadKey = phase.payloadKey,
                             phase = phase.phase,
                             progress = phase.progress
