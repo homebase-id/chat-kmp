@@ -37,7 +37,7 @@ ORDER BY msgCreated DESC;
 -- Return unread message count for a specific groupId
 -- probably shouldn't be needed - with good design we should only need to call selectAllReadCount
 selectUnreadCountForConversation:
-SELECT d.jsonHeader,COUNT(*) AS unreadCount
+SELECT COUNT(*) AS unreadCount
 FROM DriveMainIndex d
 LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
 WHERE d.groupId = ?
