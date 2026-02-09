@@ -70,6 +70,7 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.api.common.OdinId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -265,7 +266,12 @@ fun ConversationContent(
                             items(
                                 items = section.messages,
                                 key = { message -> message.id }) { message ->
-                                if (message.isCurrentUser(currentOdinId)) {
+
+                                // TODO: currentOdinId is "" - is that supposed to be the case??
+                                val odinId: OdinId? = try { OdinId(currentOdinId) }
+                                    catch (e: Exception) { null }
+
+                                if (message.isCurrentUser(odinId)) {
                                     SentMessageBubble(
                                         message = message,
                                         onMessageInfo = {
