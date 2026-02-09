@@ -31,8 +31,7 @@ data class MessageUiModel(
     val previewThumbnail: EmbeddedThumb?,
     /** List of payload descriptors with metadata */
     val payloads: List<PayloadDescriptor>?,
-
-    val keyHeader: KeyHeader // TODO: Todd <-- make it simple and just store the key? (if we use the IV elsewhere that's kind of a bug)
+    val keyHeader: KeyHeader
     ) {
     fun isCurrentUser(domain: OdinId?): Boolean = (senderOdinId == domain)
 }
