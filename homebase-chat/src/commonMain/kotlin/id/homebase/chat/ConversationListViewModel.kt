@@ -153,7 +153,7 @@ class ChatListViewModel(
                 val message = _uiState.value.currentConversationMessages.firstOrNull {
                     it.id == action.messageId
                 } ?: return
-                val isCurrentUserMessage = message.senderId == _uiState.value.currentOdinId
+                val isCurrentUserMessage = message.originalAuthorOdinId?.domainName == _uiState.value.currentOdinId
                 _uiState.update {
                     it.copy(
                         uiDialog = ConversationListUiDialog.DeleteMessage(
@@ -297,7 +297,7 @@ class ChatListViewModel(
                                     it.copy(
                                         fullScreenMedia = FullScreenMessageData(
                                             messageId = action.message.id,
-                                            title = action.message.senderId,
+                                            title = action.message.originalAuthorOdinId?.domainName ?: "null",
                                             created = action.message.created,
                                             content = action.message.content,
                                             fileId = action.message.fileId,
@@ -423,7 +423,7 @@ class ChatListViewModel(
             try {
                 val replyPreview = ReplyPreview(
                     replyUniqueId = replyTo.id,
-                    authorOdinId = replyTo.senderOdinId,
+                    authorOdinId = replyTo.senderOdinId?.domainName ?: "null",
                     message = replyTo.content.truncateToCodePoints(80),
                     previewThumbnail = replyTo.previewThumbnail
                 )
