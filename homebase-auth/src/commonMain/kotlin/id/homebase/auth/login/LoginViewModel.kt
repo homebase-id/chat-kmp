@@ -53,7 +53,12 @@ class LoginViewModel(
     fun onAction(action: LoginUiAction) {
         when (action) {
             is LoginUiAction.LoginClicked -> {
-                startLogin(action.homebaseId)
+                val odinId: OdinId = try { OdinId(action.homebaseId) }
+                catch (e: Exception) {
+                    throw Exception("Login Form: identity is not a valid domain ${action.homebaseId}", e)
+                }
+
+                startLogin(odinId)
             }
 
             is LoginUiAction.RetryClicked -> {

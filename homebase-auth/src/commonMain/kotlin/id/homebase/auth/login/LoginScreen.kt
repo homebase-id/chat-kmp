@@ -181,29 +181,29 @@ private fun LoginSuccess() {
 
 @Composable
 private fun LoginForm(
-        onLoginClick: (homebaseId: OdinId) -> Unit,
+        onLoginClick: (homebaseId: String) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
     var homebaseId by remember { mutableStateOf("") }
 
-    val odinId: OdinId = try { OdinId(homebaseId) }
-        catch (e: Exception) {
-            throw Exception("Login Form: identity is not a valid domain $homebaseId", e)
-        }
-
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+//    val odinId: OdinId = try { OdinId(homebaseId) }
+//    catch (e: Exception) {
+//        throw Exception("Login Form: identity is not a valid domain $homebaseId", e)
+//    }
 
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         HomebaseIdField(
                 value = homebaseId,
                 onValueChange = { homebaseId = it },
                 focusRequester = focusRequester,
-                onDone = { onLoginClick(odinId) }
+                onDone = { onLoginClick(homebaseId) }
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Button(onClick = { onLoginClick(odinId) }, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = { onLoginClick(homebaseId) }, modifier = Modifier.fillMaxWidth()) {
             Text("Sign In")
         }
     }
