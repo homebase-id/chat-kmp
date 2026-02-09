@@ -34,6 +34,8 @@ kotlin {
             isStatic = true
             linkerOpts("-lsqlite3")
             linkerOpts("-lz", "-lbz2", "-liconv")
+            // Export homebase-api to make FFmpegKitBridge accessible from Swift
+            export(project(":homebase-api"))
         }
     }
 
@@ -43,7 +45,8 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(project(":homebase-api"))
+            // Use api so it can be exported to Swift
+            api(project(":homebase-api"))
             implementation(project(":homebase-common"))
             implementation(project(":homebase-auth"))
             implementation(project(":homebase-chat"))
