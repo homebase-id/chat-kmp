@@ -34,6 +34,5 @@ data class MessageUiModel(
 
     val keyHeader: KeyHeader // TODO: Todd <-- make it simple and just store the key? (if we use the IV elsewhere that's kind of a bug)
     ) {
-    fun isCurrentUser(domain: OdinId): Boolean = (senderOdinId == OdinId)
-
+    fun isCurrentUser(domain: OdinId?): Boolean = (senderOdinId == domain)
 }

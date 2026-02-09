@@ -51,6 +51,7 @@ import id.homebase.resources.chat_select_a_conversation_subtitle
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.api.common.OdinId
 
 @Composable
 fun ConversationListScreen(
@@ -272,7 +273,7 @@ fun ChatListUi(
                                     }
                                 },
                                 onUiAction = onUiAction,
-                                currentOdinId = uiState.currentOdinId ?: error("uiState.currentOdinId is null"),
+                                currentOdinId = uiState.currentOdinId,
                                 replyToMessage = uiState.replyToMessage
                             )
                         } else {

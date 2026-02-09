@@ -82,7 +82,7 @@ fun ConversationContent(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
-    currentOdinId: OdinId,
+    currentOdinId: OdinId?,
     replyToMessage: MessageUiModel?,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,

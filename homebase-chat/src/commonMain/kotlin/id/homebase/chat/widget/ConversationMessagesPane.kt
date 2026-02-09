@@ -42,7 +42,7 @@ fun ConversationMessagesPane(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
-    currentOdinId: OdinId,
+    currentOdinId: OdinId?,
     replyToMessage: MessageUiModel?,
 ) {
     val coroutineScope = rememberCoroutineScope()
