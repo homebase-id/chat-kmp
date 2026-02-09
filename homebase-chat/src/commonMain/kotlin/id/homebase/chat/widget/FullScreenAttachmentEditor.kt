@@ -110,7 +110,10 @@ fun FullScreenAttachmentEditor(
             }
             IconButton(
                 onClick = onDismiss,
-                modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
+                modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                )
             ) {
                 Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.menu_back))
             }
@@ -121,16 +124,18 @@ fun FullScreenAttachmentEditor(
                     .padding(16.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(data.conversationTitle)
+                Text(data.conversationTitle, style = MaterialTheme.typography.labelSmall)
             }
 
             LazyRow(
                 modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 if (data.files.size > 1) {
                     items(data.files) { file ->
@@ -182,13 +187,9 @@ fun FullScreenAttachmentEditor(
                     // Plus button to add more images
                     IconButton(
                         onClick = onAddFile,
-                        modifier = Modifier
-                            .size(60.dp)
-                            .border(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.outline,
-                                shape = RoundedCornerShape(8.dp)
-                            )
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                        )
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
