@@ -46,6 +46,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.gallery.rememberGalleryPermissionState
 import id.homebase.core.ui.theme.Dimens
@@ -88,7 +89,7 @@ fun AttachmentGallery(
     if (isMobile()) {
         val scope = rememberCoroutineScope()
         val galleryLoader = koinInject<PlatformGalleryManager>()
-        val galleryItems = remember { mutableStateListOf<PlatformFile>() }
+        val galleryItems = remember { mutableStateListOf<GalleryImage>() }
         val galleryPermissionState = rememberGalleryPermissionState(
             onGalleryPermissionGranted = {
                 scope.launch {
@@ -133,12 +134,12 @@ fun AttachmentGallery(
 
                         items(galleryItems.size) { index ->
                             AsyncImage(
-                                model = galleryItems[index].toString(),
+                                model = galleryItems[index].file.toString(),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .size(160.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { onImageSelected(galleryItems[index]) },
+                                    .clickable { onImageSelected(galleryItems[index].file) },
                                 contentScale = ContentScale.Crop
                             )
                         }

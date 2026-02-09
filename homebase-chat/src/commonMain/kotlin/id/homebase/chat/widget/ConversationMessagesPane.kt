@@ -10,15 +10,30 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import co.touchlab.kermit.Logger
+import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.ConversationListUiAction
-import id.homebase.chat.FullScreenMessageData
+import id.homebase.chat.ConversationListUiAction.AttachFile
+import id.homebase.chat.ConversationListUiAction.CloseFullScreenOverlay
+import id.homebase.chat.ConversationListUiAction.DeleteMessage
+import id.homebase.chat.ConversationListUiAction.DownloadMedia
+import id.homebase.chat.ConversationListUiAction.SaveFile
+import id.homebase.chat.ConversationListUiAction.SaveScrollPosition
+import id.homebase.chat.ConversationListUiAction.SendFile
+import id.homebase.chat.ConversationListUiAction.ShareMedia
+import id.homebase.chat.ConversationListUiAction.UnAttachFile
+import id.homebase.chat.FullScreenOverlay
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.ScrollPosition
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.FlowPreview
@@ -31,16 +46,25 @@ import kotlinx.datetime.toLocalDateTime
 @Composable
 fun ConversationMessagesPane(
     conversation: ConversationUiModel,
+    textFieldState: RichTextState,
     messages: ImmutableList<MessageUiModel>,
     isLoadingNewMessage: Boolean,
     savedScrollPosition: ScrollPosition?,
-    fullScreenMessageData: FullScreenMessageData?,
+    fullScreenOverlay: FullScreenOverlay?,
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
     currentOdinId: String,
     replyToMessage: MessageUiModel?,
 ) {
+    var currentGalleryPage by remember { mutableStateOf(0) }
+    val galleryLauncher =
+        rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+            file?.let {
+                onUiAction(AttachFile(conversation.id, listOf(file)))
+            }
+        }
+
     // Group messages within day sections
     val groupedMessages = remember(conversation.id, messages) {
         val timezone = TimeZone.currentSystemDefault()
@@ -97,32 +121,6 @@ fun ConversationMessagesPane(
         }
     }
 
-    // Initialize list state with saved position to prevent flash
-    // Key by conversation.id so a new state is created when switching conversations
-//    val listState = remember(conversation.id) {
-//        // Capture savedScrollPosition at the moment of conversation change
-//        val totalItems = groupedMessages.sumOf { it.messages.size + 1 } + 2
-//        val initialScrollPosition = savedScrollPosition
-//        val conversationId = conversation.id
-//
-//        if (savedScrollPosition != null) {
-//            Logger.i("Restoring scroll position: id=${conversationId} -> ${initialScrollPosition.firstVisibleItemIndex}:${savedScrollPosition.firstVisibleItemScrollOffset}")
-//            LazyListState(
-//                firstVisibleItemIndex = initialScrollPosition.firstVisibleItemIndex.coerceIn(
-//                    0,
-//                    totalItems - 1
-//                ),
-//                firstVisibleItemScrollOffset = initialScrollPosition.firstVisibleItemScrollOffset
-//            )
-//        } else {
-//            Logger.i("Initializing scroll position: id=${conversationId}")
-//            LazyListState(
-//                firstVisibleItemIndex = (totalItems - 1).coerceAtLeast(0),
-//                firstVisibleItemScrollOffset = 0
-//            )
-//        }
-//    }
-
     // Save scroll position when it changes
     LaunchedEffect(conversation.id) {
         val currentConversationId = conversation.id
@@ -135,7 +133,7 @@ fun ConversationMessagesPane(
 
                 Logger.i("Scroll changed: id=${currentConversationId} -> $index:$offset")
                 onUiAction(
-                    ConversationListUiAction.SaveScrollPosition(
+                    SaveScrollPosition(
                         conversationId = currentConversationId,
                         firstVisibleItemIndex = index,
                         firstVisibleItemScrollOffset = offset
@@ -186,7 +184,7 @@ fun ConversationMessagesPane(
 
     SharedTransitionLayout {
         AnimatedContent(
-            targetState = fullScreenMessageData,
+            targetState = fullScreenOverlay,
             transitionSpec = {
                 if (targetState != null) {
                     // Entering full-screen: fade in viewer over fading out conversation
@@ -204,6 +202,7 @@ fun ConversationMessagesPane(
             if (data == null) {
                 ConversationContent(
                     conversation = conversation,
+                    textFieldState = textFieldState,
                     listState = listState,
                     isLoadingNewMessage = isLoadingNewMessage,
                     isScrollPositionReady = true,
@@ -217,15 +216,44 @@ fun ConversationMessagesPane(
                     sharedTransitionScope = this@SharedTransitionLayout,
                 )
             } else {
-                FullScreenMediaViewer(
-                    data = data,
-                    onShare = { id, key -> onUiAction(ConversationListUiAction.ShareMedia(id, key)) },
-                    onSave = { id, key -> onUiAction(ConversationListUiAction.DownloadMedia(id, key)) },
-                    onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(it)) },
-                    onDismiss = { onUiAction(ConversationListUiAction.CloseFullScreenMedia) },
-                    animatedVisibilityScope = this@AnimatedContent,
-                    sharedTransitionScope = this@SharedTransitionLayout,
-                )
+                when (data) {
+                    is FullScreenOverlay.ViewMessageData -> {
+                        FullScreenMediaViewer(
+                            data = data,
+                            onShare = { id, key -> onUiAction(ShareMedia(id, key)) },
+                            onSave = { id, key -> onUiAction(DownloadMedia(id, key)) },
+                            onDelete = { onUiAction(DeleteMessage(it)) },
+                            onDismiss = { onUiAction(CloseFullScreenOverlay) },
+                            animatedVisibilityScope = this@AnimatedContent,
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                        )
+                    }
+
+                    is FullScreenOverlay.AttachmentData -> {
+                        FullScreenAttachmentEditor(
+                            data = data,
+                            textFieldState = textFieldState,
+                            currentPage = currentGalleryPage,
+                            onPageChanged = { currentGalleryPage = it },
+                            onSaveFile = {
+                                onUiAction(SaveFile(it.file))
+                            },
+                            onAddFile = { galleryLauncher.launch() },
+                            onRemoveFile = { conversationId, attachmentId ->
+                                onUiAction(
+                                    UnAttachFile(
+                                        conversationId,
+                                        attachmentId
+                                    )
+                                )
+                            },
+                            onSendMessage = { conversationId, message, files ->
+                                onUiAction(SendFile(conversationId, message, files))
+                            },
+                            onDismiss = { onUiAction(CloseFullScreenOverlay) },
+                        )
+                    }
+                }
             }
         }
     }

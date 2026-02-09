@@ -1,10 +1,9 @@
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
-
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.androidLibrary)
+    alias(libs.plugins.sqldelight)
     alias(libs.plugins.kotlinSerialization)
 }
 
@@ -34,6 +33,8 @@ kotlin {
             isStatic = true
             linkerOpts("-lsqlite3")
             linkerOpts("-lz", "-lbz2", "-liconv")
+
+            freeCompilerArgs += listOf("-Xbinary=bundleId=id.homebase.core")
         }
     }
 

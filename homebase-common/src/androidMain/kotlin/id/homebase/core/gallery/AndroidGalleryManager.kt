@@ -8,13 +8,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class AndroidGalleryManager(val context: Context): PlatformGalleryManager {
-    override suspend fun fetchGalleryImages(limit: Int): List<PlatformFile> = withContext(Dispatchers.IO) {
+    override suspend fun fetchGalleryImages(limit: Int): List<GalleryImage> = withContext(Dispatchers.IO) {
         val images = mutableListOf<GalleryImage>()
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DATA,
             MediaStore.Images.Media.DATE_ADDED,
-            MediaStore.Images.Media.MIME_TYPE
+            MediaStore.Images.Media.MIME_TYPE,
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
         )
 
         context.contentResolver.query(
@@ -28,6 +29,7 @@ class AndroidGalleryManager(val context: Context): PlatformGalleryManager {
             val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
             val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
             val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
+            val bucketColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
 
             var count = 0
             while (cursor.moveToNext() && count < limit) {
@@ -39,13 +41,14 @@ class AndroidGalleryManager(val context: Context): PlatformGalleryManager {
 
                 images.add(GalleryImage(
                     id = id.toString(),
-                    uri = uri,
+                    file = PlatformFile(uri),
                     dateAdded = cursor.getLong(dateColumn),
-                    mimeType = cursor.getString(mimeColumn)
+                    mimeType = cursor.getString(mimeColumn),
+                    galleryName = cursor.getString(bucketColumn),
                 ))
                 count++
             }
         }
-        images.map { PlatformFile(it.uri) }
+        images
     }
 }

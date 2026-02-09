@@ -49,10 +49,11 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
-import id.homebase.core.ui.theme.Dimens
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.AvatarImage
@@ -64,8 +65,6 @@ import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -77,11 +76,14 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import id.homebase.api.common.OdinId
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationContent(
     conversation: ConversationUiModel,
+    textFieldState: RichTextState,
     listState: LazyListState,
     isLoadingNewMessage: Boolean,
     isScrollPositionReady: Boolean,
@@ -105,9 +107,8 @@ fun ConversationContent(
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
             onUiAction(
-                ConversationListUiAction.SendFile(
+                ConversationListUiAction.AttachFile(
                     conversation.id,
-                    "",
                     listOf(file),
                 )
             )
@@ -116,9 +117,8 @@ fun ConversationContent(
     val fileLauncher = rememberFilePickerLauncher { file ->
         file?.let {
             onUiAction(
-                ConversationListUiAction.SendFile(
+                ConversationListUiAction.AttachFile(
                     conversation.id,
-                    "",
                     listOf(file),
                 )
             )
@@ -128,9 +128,8 @@ fun ConversationContent(
         rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
             file?.let {
                 onUiAction(
-                    ConversationListUiAction.SendFile(
+                    ConversationListUiAction.AttachFile(
                         conversation.id,
-                        "",
                         listOf(file),
                     )
                 )
@@ -449,14 +448,12 @@ fun ConversationContent(
                         )
                     }
                     MessageInputBar(
+                        textFieldState = textFieldState,
                         focusRequester = focusRequester,
                         onSendMessage = {
                             if (it.isNotBlank()) {
                                 onUiAction(
-                                    ConversationListUiAction.SendMessage(
-                                        conversation.id,
-                                        it
-                                    )
+                                    ConversationListUiAction.SendMessage(conversation.id)
                                 )
                                 // Scroll to bottom will happen automatically when the message
                                 // is added to UI state
@@ -490,9 +487,8 @@ fun ConversationContent(
                             onImageSelected = {
                                 showAttachmentSheet = false
                                 onUiAction(
-                                    ConversationListUiAction.SendFile(
+                                    ConversationListUiAction.AttachFile(
                                         conversationId = conversation.id,
-                                        message = "",
                                         files = listOf(it)
                                     )
                                 )
