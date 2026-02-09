@@ -3,6 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.size
@@ -132,7 +133,8 @@ fun MediaItem(
             MediaPlaceholder(
                 emoji = "📹",
                 label = "Video",
-                modifier = baseModifier,
+                modifier = baseModifier
+                    .clickable(onClick = onClick!!)
             )
         }
 

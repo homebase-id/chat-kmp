@@ -125,6 +125,9 @@ kotlin {
             implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.11.0")
             implementation("io.ktor:ktor-server-html-builder:2.3.7")
 
+            implementation("uk.co.caprica:vlcj:4.8.2")
+
+
         }
     }
 

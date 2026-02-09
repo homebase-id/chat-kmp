@@ -78,6 +78,14 @@ kotlin {
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
+            implementation("uk.co.caprica:vlcj:4.8.2")
+            implementation("org.openjfx:javafx-controls:21")
+            implementation("org.openjfx:javafx-controls:21:mac-aarch64")
+            implementation("org.openjfx:javafx-base:21:mac-aarch64")
+            implementation("org.openjfx:javafx-graphics:21:mac-aarch64")
+            implementation("org.openjfx:javafx-swing:21:mac-aarch64")
+            implementation("org.openjfx:javafx-media:21:mac-aarch64")
+
         }
     }
 }

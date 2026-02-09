@@ -1,41 +1,35 @@
 package id.homebase.chat.widget.video
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-
+import androidx.compose.ui.awt.SwingPanel
+import javax.swing.JPanel
+import java.awt.BorderLayout
+import javafx.scene.Scene
+import javafx.application.Platform
+import javafx.embed.swing.JFXPanel
 @Composable
 actual fun VideoPlayer(
     videoUrl: String?,
     modifier: Modifier
 ) {
+    val jfxPanel = remember { JFXPanel() }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(300.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center
-    ) {
-        if (videoUrl != null) {
-            // For now, show a placeholder text
-            // To enable video playback on desktop, you would need to add VLC or JavaFX libraries
-            Text(
-                text = "Video player (Desktop)\n\nTo enable video playback, add VLC or JavaFX dependencies",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            Text(
-                text = "Loading video...",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+    LaunchedEffect(videoUrl) {
+        if (videoUrl == null) return@LaunchedEffect
+
+        Platform.runLater {
+            val media = javafx.scene.media.Media(videoUrl)
+            val player = javafx.scene.media.MediaPlayer(media)
+            val view = javafx.scene.media.MediaView(player)
+            jfxPanel.scene = Scene(javafx.scene.Group(view))
+            player.play()
         }
     }
+
+    SwingPanel(
+        modifier = modifier,
+        factory = { JPanel(BorderLayout()).apply { add(jfxPanel) } }
+    )
 }
+
