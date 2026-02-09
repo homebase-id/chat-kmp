@@ -84,13 +84,13 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
             val version = instance.driveMainIndex.getSchemaVersion()
 
             if (version < DATABASE_VERSION) {
-                wipeTables(driver);
+                wipeTables(instance, driver);
                 OdinDatabase.Schema.create(driver)
             }
         }
 
-        suspend fun wipeTables(driver: SqlDriver) {
-            withContext(Dispatchers.Default) {
+        suspend fun wipeTables(dbm:DatabaseManager, driver: SqlDriver) {
+            dbm.withWriteTransaction { db ->
                 try {
                     val tables = listOf(
                         "AppNotifications",
