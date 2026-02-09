@@ -47,6 +47,7 @@ import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
+import id.homebase.api.common.OdinId
 
 @Composable
 fun LoginScreen(
@@ -136,7 +137,7 @@ fun LoginScreen(
                 uiState.errorMessage != null ->
                         LoginError(
                                 message = uiState.errorMessage ?: "",
-                                homebaseId = uiState.homebaseId,
+                                homebaseId = uiState.homebaseId!!,
                                 onRetryClick = {
                                     viewModel.onAction(LoginUiAction.RetryClicked(it))
                                 }
@@ -180,10 +181,15 @@ private fun LoginSuccess() {
 
 @Composable
 private fun LoginForm(
-        onLoginClick: (homebaseId: String) -> Unit,
+        onLoginClick: (homebaseId: OdinId) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
     var homebaseId by remember { mutableStateOf("") }
+
+    val odinId: OdinId = try { OdinId(homebaseId) }
+        catch (e: Exception) {
+            throw Exception("Login Form: identity is not a valid domain $homebaseId", e)
+        }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
@@ -192,12 +198,12 @@ private fun LoginForm(
                 value = homebaseId,
                 onValueChange = { homebaseId = it },
                 focusRequester = focusRequester,
-                onDone = { onLoginClick(homebaseId) }
+                onDone = { onLoginClick(odinId) }
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Button(onClick = { onLoginClick(homebaseId) }, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = { onLoginClick(odinId) }, modifier = Modifier.fillMaxWidth()) {
             Text("Sign In")
         }
     }
@@ -206,8 +212,8 @@ private fun LoginForm(
 @Composable
 private fun LoginError(
         message: String,
-        homebaseId: String,
-        onRetryClick: (homebaseId: String) -> Unit,
+        homebaseId: OdinId,
+        onRetryClick: (homebaseId: OdinId) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
     var homebaseId by remember { mutableStateOf(homebaseId) }
@@ -225,8 +231,8 @@ private fun LoginError(
         Spacer(modifier = Modifier.height(16.dp))
 
         HomebaseIdField(
-                value = homebaseId,
-                onValueChange = { homebaseId = it },
+                value = homebaseId.domainName,
+                onValueChange = { homebaseId = OdinId(it) },
                 focusRequester = focusRequester,
                 onDone = { onRetryClick(homebaseId) }
         )

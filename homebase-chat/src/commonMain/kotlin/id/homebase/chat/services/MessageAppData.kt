@@ -6,6 +6,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import id.homebase.api.common.OdinId
 
 /** Data class representing chat message homebaseFile.AppData (parsed from JSON) */
 @Serializable
@@ -32,7 +33,7 @@ data class MessageAppData(
 @Serializable
 data class ReplyPreview(
     val replyUniqueId: Uuid, // FileId of the message that was replied to
-    val authorOdinId: String, // frodo.baggins.demo.rocks
+    val authorOdinId: OdinId, // frodo.baggins.demo.rocks, can't be null
     val message: String, // chopped chars (IDK how many you use? 40? 80? use truncateToCodePoints(80)
     val previewThumbnail: EmbeddedThumb? = null // Real thumb via replyUniqueId, null for text-only messages
 ) // Tiny tiny thumb, can be even smaller than tinyThumb even a 1px color

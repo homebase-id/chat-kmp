@@ -2,6 +2,7 @@ package id.homebase.api.client.auth
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import id.homebase.api.common.OdinId
 
 class CredentialsManager {
     private val mutex = Mutex()
@@ -17,23 +18,23 @@ class CredentialsManager {
 
     //
 
-    suspend fun getActiveDomain(): String? = mutex.withLock {
+    suspend fun getActiveDomain(): OdinId? = mutex.withLock {
         activeCredentials?.domain
     }
 
     //
 
     suspend fun storeCredentials(credentials: ApiCredentials) = mutex.withLock {
-        storedCredentials[credentials.domain] = credentials
+        storedCredentials[credentials.domain.domainName] = credentials
     }
 
     //
 
-    suspend fun removeCredentials(domain: String) = mutex.withLock {
+    suspend fun removeCredentials(domain: OdinId) = mutex.withLock {
         if (activeCredentials?.domain == domain) {
             activeCredentials = null
         }
-        storedCredentials.remove(domain)
+        storedCredentials.remove(domain.domainName)
     }
 
     //
@@ -52,7 +53,7 @@ class CredentialsManager {
     //
 
     suspend fun setActiveCredentials(credentials: ApiCredentials) = mutex.withLock {
-        storedCredentials[credentials.domain] = credentials
+        storedCredentials[credentials.domain.domainName] = credentials
         activeCredentials = credentials
     }
 

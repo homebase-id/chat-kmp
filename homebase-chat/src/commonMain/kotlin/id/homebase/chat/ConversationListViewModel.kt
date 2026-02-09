@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import id.homebase.api.common.OdinId
 
 class ChatListViewModel(
     private val credentialsManager: CredentialsManager,
@@ -53,9 +54,7 @@ class ChatListViewModel(
                 )
             }
 
-            val domain = credentialsManager.requireActiveCredentials().domain.trim().lowercase()
-
-            _uiState.update { it.copy(currentOdinId = domain) }
+            _uiState.update { it.copy(currentOdinId = credentialsManager.requireActiveCredentials().domain) }
         }
 
         viewModelScope.launch {
@@ -153,7 +152,7 @@ class ChatListViewModel(
                 val message = _uiState.value.currentConversationMessages.firstOrNull {
                     it.id == action.messageId
                 } ?: return
-                val isCurrentUserMessage = message.senderId == _uiState.value.currentOdinId
+                val isCurrentUserMessage = message.senderOdinId == _uiState.value.currentOdinId
                 _uiState.update {
                     it.copy(
                         uiDialog = ConversationListUiDialog.DeleteMessage(
@@ -297,7 +296,7 @@ class ChatListViewModel(
                                     it.copy(
                                         fullScreenMedia = FullScreenMessageData(
                                             messageId = action.message.id,
-                                            title = action.message.senderId,
+                                            title = action.message.senderOdinId.domainName,
                                             created = action.message.created,
                                             content = action.message.content,
                                             fileId = action.message.fileId,

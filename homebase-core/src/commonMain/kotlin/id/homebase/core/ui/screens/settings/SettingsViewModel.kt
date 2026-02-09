@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import id.homebase.api.common.OdinId
 
 class SettingsViewModel(
     private val userPreferences: UserPreferences,
@@ -18,7 +19,7 @@ class SettingsViewModel(
     private val credentialsManager: CredentialsManager
 ): ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState(loggedInDomain = ""))
+    private val _uiState = MutableStateFlow(SettingsUiState(loggedInDomain = OdinId("your.domain.id")))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {

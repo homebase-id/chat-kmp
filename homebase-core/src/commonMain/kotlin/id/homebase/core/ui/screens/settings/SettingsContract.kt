@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.settings
 
 import id.homebase.core.settings.Language
+import id.homebase.api.common.OdinId
 
 data class SettingsUiState(
     val isLoading: Boolean = false,
@@ -8,7 +9,7 @@ data class SettingsUiState(
     val selectedLanguage: Language = Language.SYSTEM,
     val availableLanguages: List<Language> = Language.entries,
     val uiEvent: SettingsUiEvent? = null,
-    val loggedInDomain: String
+    val loggedInDomain: OdinId
 )
 
 /** All possible user actions on Settings screen. */

@@ -11,6 +11,7 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import id.homebase.api.common.OdinId
 
 @Immutable
 data class ConversationListUiState(
@@ -21,7 +22,7 @@ data class ConversationListUiState(
     val searchQuery: String = "",
     val currentConversationMessages: ImmutableList<MessageUiModel> = persistentListOf(),
     val conversationScrollPosition: ScrollPosition? = null,
-    val currentOdinId: String = "",
+    val currentOdinId: OdinId? = null,
     val fullScreenMedia: FullScreenMessageData? = null,
     val replyToMessage: MessageUiModel? = null,
     val uiDialog: ConversationListUiDialog? = null,

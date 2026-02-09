@@ -272,7 +272,7 @@ fun ChatListUi(
                                     }
                                 },
                                 onUiAction = onUiAction,
-                                currentOdinId = uiState.currentOdinId,
+                                currentOdinId = uiState.currentOdinId ?: error("uiState.currentOdinId is null"),
                                 replyToMessage = uiState.replyToMessage
                             )
                         } else {

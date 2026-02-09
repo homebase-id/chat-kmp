@@ -1,6 +1,7 @@
 package id.homebase.api.client.drives
 
 import kotlinx.serialization.Serializable
+import id.homebase.api.common.OdinId
 
 /**
  * Server metadata
@@ -26,13 +27,13 @@ data class ServerMetadata(
 @Serializable
 data class AccessControlList(
     val requiredSecurityGroup: String? = null,
-    val circleIdList: List<String>? = null,
-    val odinIdList: List<String>? = null
+    val circleIdList: List<String> = emptyList(),
+    val odinIdList: List<String> = emptyList()
     // Add fields as needed from the C# AccessControlList
 )
 
 @Serializable
 data class RecipientTransferHistory(
-    val recipients: List<String>? = null
+    val recipients: List<OdinId> = emptyList()
     // Add fields as needed
 )

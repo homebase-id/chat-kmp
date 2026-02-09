@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import id.homebase.api.common.OdinId
 
 class LoginViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
@@ -87,16 +88,15 @@ class LoginViewModel(
         }
     }
 
-    private fun startLogin(homebaseIdValue: String) {
-        val homebaseId = homebaseIdValue.trim()
-
-        if (homebaseId.isEmpty()) {
-            _uiState.update {
-                it.copy(errorMessage = "Homebase ID is required")
-            }
-            return
-        }
-
+    private fun startLogin(homebaseId: OdinId)
+    {
+// Cannot be empty
+//        if (homebaseId.isEmpty()) {
+//            _uiState.update {
+//                it.copy(errorMessage = "Homebase ID is required")
+//            }
+//            return
+//        }
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -106,17 +106,19 @@ class LoginViewModel(
                 )
             }
 
-            if (!isValidHomebaseId(homebaseId)) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = "Unable to ping $homebaseId - are you sure it's a Homebase ID?"
-                    )
-                }
-
-                return@launch
-            }
-
+// Cannot be invalid
+//
+//            if (!isValidHomebaseId(homebaseId)) {
+//                _uiState.update {
+//                    it.copy(
+//                        isLoading = false,
+//                        errorMessage = "Unable to ping $homebaseId - are you sure it's a Homebase ID?"
+//                    )
+//                }
+//
+//                return@launch
+//            }
+//
             try {
                 val authUrl = youAuthFlowManager.authorize(
                     identity = homebaseId,
@@ -141,7 +143,7 @@ class LoginViewModel(
     private fun loadUsernameFromStorage() {
         val savedUsername = usernameStorage.loadUsername()
         if (savedUsername.isNotBlank()) {
-            _uiState.update { it.copy(homebaseId = savedUsername) }
+            _uiState.update { it.copy(homebaseId = OdinId(savedUsername)) }
         }
     }
 
@@ -167,7 +169,7 @@ class LoginViewModel(
             youAuthFlowManager.authState.collect { authState ->
                 when (authState) {
                     is YouAuthState.Authenticated -> {
-                        usernameStorage.saveUsername(_uiState.value.homebaseId)
+                        usernameStorage.saveUsername(_uiState.value.homebaseId?.domainName ?:"")
 
                         _uiState.update {
                             it.copy(

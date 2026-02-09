@@ -3,6 +3,7 @@ package id.homebase.api.youauth
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.storage.SecureStorage
 import kotlin.io.encoding.Base64
+import id.homebase.api.common.OdinId
 
 /**
  * Factory for creating OdinClient instances with proper configuration. Handles loading credentials
@@ -12,7 +13,7 @@ object CredentialStorage {
 
     fun getCredentials(): StoredIdentity? {
         val identity =
-            SecureStorage.get(YouAuthStorageKeys.IDENTITY) ?: return null
+            OdinId(SecureStorage.get(YouAuthStorageKeys.IDENTITY) ?: return null)
 
         val sharedSecretBase64 =
             SecureStorage.get(YouAuthStorageKeys.SHARED_SECRET) ?: return null
@@ -36,8 +37,8 @@ object CredentialStorage {
 
 
     /** Save authentication credentials to secure storage. */
-    fun saveCredentials(identity: String, clientAuthToken: String, sharedSecret: ByteArray) {
-        SecureStorage.put(YouAuthStorageKeys.IDENTITY, identity)
+    fun saveCredentials(identity: OdinId, clientAuthToken: String, sharedSecret: ByteArray) {
+        SecureStorage.put(YouAuthStorageKeys.IDENTITY, identity.domainName)
         SecureStorage.put(YouAuthStorageKeys.CLIENT_AUTH_TOKEN, clientAuthToken)
         SecureStorage.put(YouAuthStorageKeys.SHARED_SECRET, Base64.encode(sharedSecret))
     }
@@ -63,7 +64,7 @@ object CredentialStorage {
 
 
 data class StoredIdentity(
-    val identity: String,
+    val identity: OdinId,
     val sharedSecret: SecureByteArray,
     val clientAuthToken: String
 )

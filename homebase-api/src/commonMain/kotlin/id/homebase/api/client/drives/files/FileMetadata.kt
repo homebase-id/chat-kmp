@@ -3,6 +3,7 @@
 package id.homebase.api.client.drives.files
 
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.UuidSerializer
@@ -18,8 +19,8 @@ data class FileMetadata(
     val transitCreated: UnixTimeUtc = UnixTimeUtc.ZeroTime,
     val transitUpdated: UnixTimeUtc = UnixTimeUtc.ZeroTime,
     val isEncrypted: Boolean = false,
-    val senderOdinId: String? = null,
-    val originalAuthor: String? = null,
+    val senderOdinId: OdinId? = null,
+    val originalAuthor: OdinId? = null,
     val appData: AppFileMetaData = AppFileMetaData(),
     val localAppData: LocalAppMetadata? = null,
     val referencedFile: GlobalTransitIdFileIdentifier? = null,

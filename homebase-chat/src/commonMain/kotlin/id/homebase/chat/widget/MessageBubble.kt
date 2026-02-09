@@ -568,7 +568,7 @@ private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
         Spacer(modifier = Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f, fill = false)) {
             Text(
-                text = replyPreview.authorOdinId,
+                text = replyPreview.authorOdinId.domainName,
                 style = MaterialTheme.typography.labelSmall,
                 color = accentColor,
                 maxLines = 1

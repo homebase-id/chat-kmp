@@ -42,6 +42,7 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.settings
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.log
+import id.homebase.api.common.OdinId
 
 @Composable
 fun SettingsScreen(
@@ -198,7 +199,7 @@ private fun getStringResourceForLanguage(language: Language): org.jetbrains.comp
 fun SettingsUiPreview() {
     HomebaseTheme {
         SettingsUi(
-            uiState = SettingsUiState(loggedInDomain = "your.identity.id"),
+            uiState = SettingsUiState(loggedInDomain = OdinId("your.identity.id")),
             onAction = {},
             onBackClick = {}
         )
