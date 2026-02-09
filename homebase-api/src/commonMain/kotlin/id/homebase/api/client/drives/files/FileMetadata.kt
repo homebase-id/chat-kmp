@@ -9,6 +9,7 @@ import id.homebase.api.serialization.UuidSerializer
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
+import id.homebase.api.common.OdinId
 
 @Serializable
 data class FileMetadata(
@@ -18,8 +19,8 @@ data class FileMetadata(
     val transitCreated: UnixTimeUtc = UnixTimeUtc.ZeroTime,
     val transitUpdated: UnixTimeUtc = UnixTimeUtc.ZeroTime,
     val isEncrypted: Boolean = false,
-    val senderOdinId: String? = null,
-    val originalAuthor: String? = null,
+    val senderOdinId: OdinId? = null,
+    val originalAuthor: OdinId? = null,
     val appData: AppFileMetaData = AppFileMetaData(),
     val localAppData: LocalAppMetadata? = null,
     val referencedFile: GlobalTransitIdFileIdentifier? = null,
