@@ -53,6 +53,9 @@ kotlinStdlib = "2.3.10"
 googleAccompanist = "0.37.3"
 kmpnotifier = "1.6.1"
 google-services = "4.4.4"
+detekt = "2.0.0-alpha.2"
+ktlint = "14.0.1"
+ktlintRules = "0.5.6"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
@@ -155,6 +158,8 @@ kmpnotifier = { module = "io.github.mirzemehdi:kmpnotifier", version.ref = "kmpn
 kache-file = { module = "com.mayakapps.kache:file-kache", version.ref = "kache" }
 kache = { module = "com.mayakapps.kache:kache", version.ref = "kache" }
 
+ktlint-rules = { module = "io.nlopez.compose.rules:ktlint", version.ref = "ktlintRules" }
+
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
@@ -167,3 +172,6 @@ kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 androidLint = { id = "com.android.lint", version.ref = "agp" }
 googleServices = { id = "com.google.gms.google-services", version.ref = "google-services" }
+
+detekt = { id = "dev.detekt", version.ref = "detekt" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }

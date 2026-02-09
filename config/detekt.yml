@@ -1,0 +1,40 @@
+config:
+  validation: true
+  warningsAsErrors: false
+  # Add 'common-excludes' here so Detekt doesn't complain about it
+  excludes: ['common-excludes']
+
+common-excludes: &common-excludes
+  - '**/generated/**'
+  - '**/build/**'
+  - '**/.gradle/**'
+  - '**/resources/**'
+  - '**/*.kts'
+  - '**/commonTest/**'
+  - '**/androidTest/**'
+
+complexity:
+  active: true
+  excludes: *common-excludes
+  LongParameterList:
+    allowedFunctionParameters: 10
+    ignoreDefaultParameters: true
+
+style:
+  active: true
+  excludes: *common-excludes
+  UnusedPrivateFunction:
+    ignoreAnnotated: ['Preview']
+
+naming:
+  active: true
+  excludes: *common-excludes
+  FunctionNaming:
+    functionPattern: '([A-Za-z][a-zA-Z0-9]*)|(.)'
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Z][A-Za-z0-9]*'
+
+
+
+
