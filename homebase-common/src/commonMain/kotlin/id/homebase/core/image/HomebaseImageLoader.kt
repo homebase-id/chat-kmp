@@ -46,23 +46,6 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
         )
     }
 
-    /** Decode embedded preview thumbnail from base64 */
-    @OptIn(ExperimentalEncodingApi::class)
-    fun decodePreviewThumbnail(data: HomebaseImageData): CachedImage? {
-        val preview = data.previewThumbnail ?: return null
-        return try {
-            val bytes = Base64.Default.decode(preview.content)
-            CachedImage(
-                bytes = bytes,
-                contentType = preview.contentType,
-                size = ImageSize(preview.pixelWidth, preview.pixelHeight)
-            )
-        } catch (e: Exception) {
-            Logger.e(TAG) { "Failed to decode preview thumbnail: ${e.message}" }
-            null
-        }
-    }
-
     /**
      * Load thumbnail at the requested size with automatic retry on failure.
      *

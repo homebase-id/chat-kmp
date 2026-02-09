@@ -260,24 +260,19 @@ fun ConversationMessagesPane(
                     sharedTransitionScope = this@SharedTransitionLayout,
                 )
             } else {
-                FullScreenVideoViewer(
+                FullScreenMediaViewer(
                     data = data,
-                    onDismiss = { onUiAction(ConversationListUiAction.CloseFullScreenMedia) }
+                    onShare = { id, key ->
+                        onUiAction(ConversationListUiAction.ShareMedia(id, key))
+                    },
+                    onSave = { id, key ->
+                        onUiAction(ConversationListUiAction.DownloadMedia(id, key))
+                    },
+                    onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(it)) },
+                    onDismiss = { onUiAction(ConversationListUiAction.CloseFullScreenMedia) },
+                    animatedVisibilityScope = this@AnimatedContent,
+                    sharedTransitionScope = this@SharedTransitionLayout,
                 )
-
-//                FullScreenMediaViewer(
-//                    data = data,
-//                    onShare = { id, key ->
-//                        onUiAction(ConversationListUiAction.ShareMedia(id, key))
-//                    },
-//                    onSave = { id, key ->
-//                        onUiAction(ConversationListUiAction.DownloadMedia(id, key))
-//                    },
-//                    onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(it)) },
-//                    onDismiss = { onUiAction(ConversationListUiAction.CloseFullScreenMedia) },
-//                    animatedVisibilityScope = this@AnimatedContent,
-//                    sharedTransitionScope = this@SharedTransitionLayout,
-//                )
             }
         }
     }

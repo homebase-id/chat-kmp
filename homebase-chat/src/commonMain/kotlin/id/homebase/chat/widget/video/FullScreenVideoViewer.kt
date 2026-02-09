@@ -1,6 +1,10 @@
 package id.homebase.chat.widget.video
 
-
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -8,59 +12,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import co.touchlab.kermit.Logger
+import androidx.compose.ui.unit.dp
 import id.homebase.chat.FullScreenMessageData
-
-/* -----------------------------
-   STUB: Local video server
--------------------------------- */
-
-class LocalVideoServer {
-    fun startIfNeeded() {
-        Logger.d("LocalVideoServer") { "startIfNeeded()" }
-    }
-
-    fun registerVideo(payloadKey: String): String {
-        Logger.d("LocalVideoServer") { "registerVideo($payloadKey)" }
-        return "http://localhost:12345/video/$payloadKey/playlist.m3u8"
-    }
-
-    fun unregisterVideo(payloadKey: String) {
-        Logger.d("LocalVideoServer") { "unregisterVideo($payloadKey)" }
-    }
-}
-
-/* -----------------------------
-   STUB: Preparation result
--------------------------------- */
-
-sealed class VideoPrepResult {
-    object Loading : VideoPrepResult()
-    data class Ready(val url: String) : VideoPrepResult()
-    data class Error(val message: String) : VideoPrepResult()
-}
-
-/* -----------------------------
-   STUB: Preparation logic
--------------------------------- */
-
-suspend fun prepareVideo(
-    server: LocalVideoServer,
-    payloadKey: String
-): VideoPrepResult {
-    return try {
-        server.startIfNeeded()
-        val url = server.registerVideo(payloadKey)
-        VideoPrepResult.Ready(url)
-    } catch (e: Exception) {
-        VideoPrepResult.Error(e.message ?: "Unknown error")
-    }
-}
-
-/* -----------------------------
-   SCREEN
--------------------------------- */
+import id.homebase.chat.widget.VideoDebugState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,71 +24,105 @@ fun FullScreenVideoViewer(
     data: FullScreenMessageData,
     onDismiss: () -> Unit
 ) {
-    val videoServer = remember { LocalVideoServer() }
+    val videoPlaybackPreparer: VideoPlaybackPreparer = org.koin.compose.koinInject()
 
     var showUI by remember { mutableStateOf(true) }
-    var videoState by remember { mutableStateOf<VideoPrepResult>(VideoPrepResult.Loading) }
+    var videoState by remember { mutableStateOf<VideoPlaybackPreparationResult>(VideoPlaybackPreparationResult.Loading) }
+    var debugState by remember { mutableStateOf(VideoDebugState()) }
+    var debugUrl: String = "empty"
 
     val payloadKey = data.selectedPayloadKey
 
     /* ---- prepare video ---- */
     LaunchedEffect(payloadKey) {
-        videoState = VideoPrepResult.Loading
-        videoState = prepareVideo(videoServer, payloadKey)
+        videoState = VideoPlaybackPreparationResult.Loading
+
+        videoState = videoPlaybackPreparer.prepareVideoContentForPlayback(
+            data.fileId,
+            data.driveId,
+            data.selectedPayloadKey,
+            data.keyHeader
+        )
     }
 
-    /* ---- cleanup ---- */
-    DisposableEffect(payloadKey) {
-        onDispose {
-            videoServer.unregisterVideo(payloadKey)
-        }
-    }
-
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
     ) {
 
-        /* ---- video content ---- */
-        when (val state = videoState) {
-            VideoPrepResult.Loading -> {
-                CircularProgressIndicator(Modifier.align(Alignment.Center))
-            }
-
-            is VideoPrepResult.Error -> {
-                Text(
-                    text = "Video error: ${state.message}",
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            }
-
-            is VideoPrepResult.Ready -> {
-                VideoPlayer(
-                    videoUrl = state.url,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectTapGestures {
-                                showUI = !showUI
-                            }
-                        }
-                )
-            }
-        }
-
-        /* ---- simple top bar ---- */
-        if (showUI) {
+        /* ───────── TOP BAR ROW ───────── */
+        AnimatedVisibility(
+            visible = showUI,
+            enter = fadeIn() + slideInVertically(),
+            exit = fadeOut() + slideOutVertically()
+        ) {
             TopAppBar(
                 title = { Text("Video") },
                 navigationIcon = {
                     IconButton(onClick = onDismiss) {
                         Text("←")
                     }
-                },
-                modifier = Modifier.align(Alignment.TopCenter)
+                }
             )
+        }
+
+        /* ───────── VIDEO ROW ───────── */
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .background(Color.Black)
+                .pointerInput(Unit) {
+                    detectTapGestures { showUI = !showUI }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            when (val state = videoState) {
+                VideoPlaybackPreparationResult.Loading -> {
+                    CircularProgressIndicator()
+                }
+
+                is VideoPlaybackPreparationResult.Error -> {
+                    Text(
+                        text = "Video error: ${state.message}",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                is VideoPlaybackPreparationResult.Success -> {
+                    debugUrl = state.url
+                    VideoPlayer(
+                        videoUrl = state.url,
+                        modifier = Modifier.fillMaxSize(),
+                        onDebugUpdate = { debugState = it }
+                    )
+                }
+            }
+        }
+
+        /* ───────── DEBUG / STATUS ROW ───────── */
+        AnimatedVisibility(
+            visible = showUI,
+            enter = fadeIn() + slideInVertically { it },
+            exit = fadeOut() + slideOutVertically { it }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+                    .padding(12.dp)
+            ) {
+                Text("URL: ${debugUrl}")
+
+                Text("Status: ${debugState.status}")
+                if (debugState.buffered.isNotEmpty()) {
+                    Text("Buffered: ${debugState.buffered}")
+                }
+                debugState.error?.let {
+                    Text("Error: $it", color = MaterialTheme.colorScheme.error)
+                }
+            }
         }
     }
 }

@@ -57,6 +57,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
 import id.homebase.chat.FullScreenMessageData
+import id.homebase.chat.widget.video.FullScreenVideoViewer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.util.formatTimestamp
@@ -66,6 +67,7 @@ import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,6 +99,18 @@ fun FullScreenMediaViewer(
         data.payloads.firstOrNull { it.key == selectedKey }
     }
 
+
+    // short circuit hand off
+    if (selectedPayload?.contentType?.startsWith("video/") == true ||
+        selectedPayload?.contentType == "application/vnd.apple.mpegurl") {
+        FullScreenVideoViewer(
+            data = data.copy(selectedPayloadKey = selectedKey),
+            onDismiss = onDismiss
+        )
+        return
+    }
+
+
     val selectedPayloadIv = remember(selectedPayload) {
         selectedPayload?.iv?.let { Base64.decode(it) }
     }
@@ -111,6 +125,7 @@ fun FullScreenMediaViewer(
     val textState = remember { RichTextState() }
     textState.config.listIndent = 0
     textState.setHtml(data.content)
+
 
     BoxWithConstraints(
         modifier = modifier

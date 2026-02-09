@@ -21,11 +21,9 @@ import io.ktor.utils.io.ByteReadChannel
 /**
  * Simple HTTP server for serving video content locally
  * Supports both HLS manifests/segments and regular video files
- *
- * This is fully common code - Ktor server works across all platforms!
  * Auth tokens are registered with content and used for proxying remote URLs
  */
-class LocalVideoServer {
+public class LocalVideoServerJvm {
     private lateinit var server: EmbeddedServer<*, *>
     private lateinit var serverUrl: String
     private val contentRegistry = mutableMapOf<String, ContentData>()
@@ -34,8 +32,8 @@ class LocalVideoServer {
     private data class ContentData(
         val data: SecureByteArray,
         val contentType: String,
-        val authTokenHeaderName: String? = null,
-        val authToken: String? = null
+        val authTokenHeaderName: String?,
+        val authToken: String?
     )
 
     /**
@@ -213,8 +211,8 @@ class LocalVideoServer {
         id: String,
         data: ByteArray,
         contentType: String,
-        authTokenHeaderName: String? = null,
-        authToken: String? = null) {
+        authTokenHeaderName: String?,
+        authToken: String?) {
         contentRegistry[id] = ContentData(
             SecureByteArray(data),
             contentType,

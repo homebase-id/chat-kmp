@@ -3,7 +3,6 @@ package id.homebase.chat.widget.video
 
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,17 +19,19 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import co.touchlab.kermit.Logger
+import id.homebase.chat.widget.VideoDebugState
 
 @Composable
 actual fun VideoPlayer(
     videoUrl: String?,
-    modifier: Modifier
+    modifier: Modifier,
+    onDebugUpdate: (VideoDebugState) -> Unit
+
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -154,5 +155,3 @@ actual fun VideoPlayer(
         )
     }
 }
-
-

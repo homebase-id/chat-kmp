@@ -10,6 +10,7 @@ import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.convo.ContactService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.widget.video.VideoPlaybackPreparer
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.settings.UserPreferences
@@ -34,6 +35,7 @@ val appModule = module {
     singleOf(::ChatMessageSenderService)
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
+    singleOf(::VideoPlaybackPreparer)
 
     viewModelOf(::HomeViewModel)
     viewModelOf(::ChatListViewModel)

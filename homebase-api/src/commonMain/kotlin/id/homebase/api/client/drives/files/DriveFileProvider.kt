@@ -62,6 +62,15 @@ public class DriveFileProvider(
 
     // ==================== GET METHODS ====================
 
+    public suspend fun getPayloadUrl(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        options: PayloadOperationOptions = PayloadOperationOptions()
+    ): String {
+        return driveCache.getPayloadUrl(driveId, fileId, key, options)
+    }
+
     /**
      * Gets a file header with optional decryption.
      *

@@ -44,6 +44,9 @@ appcompatV7 = "28.0.0"
 uiToolingPreview = "1.10.2"
 kotlinStdlib = "2.3.0"
 googleAccompanist = "0.37.3"
+media3Exoplayer = "1.9.2"
+media3ExoplayerHls = "1.9.2"
+media3Ui = "1.9.2"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -133,6 +136,9 @@ coil3-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil
 kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlinStdlib" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "googleAccompanist" }
 accompanist-systemuicontroller = { module = "com.google.accompanist:accompanist-systemuicontroller", version.ref = "googleAccompanist" }
+media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3Exoplayer" }
+media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3ExoplayerHls" }
+media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3Ui" }
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }

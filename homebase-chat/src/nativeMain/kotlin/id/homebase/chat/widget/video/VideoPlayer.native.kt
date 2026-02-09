@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import co.touchlab.kermit.Logger
+import id.homebase.chat.widget.VideoDebugState
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.pause
@@ -25,7 +26,8 @@ import platform.Foundation.NSURL
 @Composable
 actual fun VideoPlayer(
     videoUrl: String?,
-    modifier: Modifier
+    modifier: Modifier,
+    onDebugUpdate: (VideoDebugState) -> Unit
 ) {
     Logger.i("VideoPlayer.iOS") { "VideoPlayer with URL: $videoUrl" }
 
@@ -105,6 +107,3 @@ actual fun VideoPlayer(
         }
     }
 }
-
-
-
