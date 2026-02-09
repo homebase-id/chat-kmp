@@ -3,13 +3,37 @@ package id.homebase.api.common
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.runBlocking
 import id.homebase.api.crypto.ByteArrayUtil.reduceSha256Hash
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.descriptors.SerialDescriptor
 
+
+/**
+ * Serializes `OdinId` **as its domain name string** (the same value you see in `toString()` / `domainName`).
+ * Deserialization goes through the public `OdinId(String)` constructor → validation + hash recomputation.
+ */
+object OdinIdSerializer : KSerializer<OdinId> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("OdinId", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: OdinId) {
+        encoder.encodeString(value.domainName)
+    }
+
+    override fun deserialize(decoder: Decoder): OdinId =
+        OdinId(decoder.decodeString())   // calls your public constructor → validates + hashes
+}
 /**
  * Holds the identity for an individual using the dotYou platform.
  *
  * This is the Kotlin Multiplatform equivalent of the original C# `OdinId` readonly struct.
  * It is immutable, value-like, and behaves identically for equality, hashing, conversions, etc.
  */
+@Serializable(with = OdinIdSerializer::class)
 class OdinId public constructor(
     private val _domainName: AsciiDomainName,
     private val _hash: Uuid

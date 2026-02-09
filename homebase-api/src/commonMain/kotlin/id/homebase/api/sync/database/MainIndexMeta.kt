@@ -103,7 +103,7 @@ object MainIndexMetaHelpers {
                 fileId = header.fileId,
                 uniqueId = header.fileMetadata.appData.uniqueId,
                 globalTransitId = header.fileMetadata.globalTransitId,
-                senderId = header.fileMetadata.senderOdinId,
+                senderId = header.fileMetadata.senderOdinId?.domainName,
                 groupId = header.fileMetadata.appData.groupId,
                 fileType = (header.fileMetadata.appData.fileType ?: 0).toLong(),
                 dataType = (header.fileMetadata.appData.dataType ?: 0).toLong(),
