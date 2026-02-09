@@ -5,7 +5,6 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
-import id.homebase.homebasekmppoc.lib.database.KeyValueWrapper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -85,13 +84,13 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
             val version = instance.driveMainIndex.getSchemaVersion()
 
             if (version < DATABASE_VERSION) {
-                wipeTables(driver);
+                wipeTables(instance, driver);
                 OdinDatabase.Schema.create(driver)
             }
         }
 
-        suspend fun wipeTables(driver: SqlDriver) {
-            withContext(Dispatchers.Default) {
+        suspend fun wipeTables(dbm:DatabaseManager, driver: SqlDriver) {
+            dbm.withWriteTransaction { db ->
                 try {
                     val tables = listOf(
                         "AppNotifications",
@@ -145,6 +144,7 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
             this
         )
     }
+
     // Lazy wrappers
     public val keyValue: KeyValueWrapper by lazy {
         KeyValueWrapper(driver, keyValueAdapter, this)

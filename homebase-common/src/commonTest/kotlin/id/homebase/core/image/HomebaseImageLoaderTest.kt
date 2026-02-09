@@ -1,5 +1,6 @@
 package id.homebase.core.image
 
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,41 +36,40 @@ class HomebaseImageLoaderTest {
 
     @Test
     fun `HomebaseImageData isPending returns false for remote files`() {
-        val remote =
-                HomebaseImageData(
-                        driveId = Uuid.random(),
-                        fileId = Uuid.random(),
-                        payloadKey = "key"
-                )
+        val remote = HomebaseImageData(
+            driveId = Uuid.random(),
+            fileId = Uuid.random(),
+            payloadKey = "key",
+            keyHeader = KeyHeader.newRandom16()
+        )
         assertFalse(remote.isPending)
     }
 
     @Test
     fun `HomebaseImageData contentTypeHint from preview thumbnail`() {
-        val data =
-                HomebaseImageData(
-                        driveId = Uuid.random(),
-                        fileId = Uuid.random(),
-                        payloadKey = "key",
-                        previewThumbnail =
-                                EmbeddedThumb(
-                                        pixelWidth = 20,
-                                        pixelHeight = 20,
-                                        contentType = "image/webp",
-                                        content = "base64data"
-                                )
-                )
+        val data = HomebaseImageData(
+            driveId = Uuid.random(),
+            fileId = Uuid.random(),
+            payloadKey = "key",
+            keyHeader = KeyHeader.newRandom16(),
+            previewThumbnail = EmbeddedThumb(
+                pixelWidth = 20,
+                pixelHeight = 20,
+                contentType = "image/webp",
+                content = "base64data"
+            )
+        )
         assertEquals("image/webp", data.contentTypeHint)
     }
 
     @Test
     fun `HomebaseImageData contentTypeHint is null when no preview`() {
-        val data =
-                HomebaseImageData(
-                        driveId = Uuid.random(),
-                        fileId = Uuid.random(),
-                        payloadKey = "key"
-                )
+        val data = HomebaseImageData(
+            driveId = Uuid.random(),
+            fileId = Uuid.random(),
+            payloadKey = "key",
+            keyHeader = KeyHeader.newRandom16()
+        )
         assertNull(data.contentTypeHint)
     }
 

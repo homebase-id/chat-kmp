@@ -49,14 +49,6 @@ class KeyHeader(
         )
     }
 
-    suspend fun encryptDataAes(data: ByteArray,customIv: ByteArray?): ByteArray {
-        return AesCbc.encrypt(
-            data = data,
-            key = aesKey,
-            iv = customIv ?: iv
-        )
-    }
-
     /**
      * Decrypts data using AES-CBC with this KeyHeader's IV
      */

@@ -1,9 +1,9 @@
 package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.database.createInMemoryDatabase
-import id.homebase.api.eventbus.BackendEvent
-import id.homebase.api.eventbus.EventBus
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -22,14 +22,17 @@ class TestUploader : OutboxUploader {
     private val currentActive = atomic(0)
     var maxActive = 0
 
-    override suspend fun upload(outboxRecord: Outbox, eventBus : EventBus) {
+    override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
         Logger.i("Uploading item")
 
         val current = currentActive.incrementAndGet()
         maxActive = maxOf(maxActive, current)
 
-        eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId,
-            outboxRecord.fileId, 0.5F))
+        eventBus.emit(
+            BackendEvent.OutboxEvent.ItemProgress(
+                outboxRecord.driveId, outboxRecord.uniqueId, 0.5F
+            )
+        )
 
         if (shouldFail) {
             currentActive.decrementAndGet()
@@ -60,10 +63,7 @@ class OutboxSyncTest {
             val uploader = TestUploader()
 
             val sync = OutboxSync(
-                databaseManager = db,
-                uploader = uploader,
-                eventBus = eventBus,
-                scope = this
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = this
             )
 
             // This will count total number of items sent via the events.
@@ -78,10 +78,10 @@ class OutboxSyncTest {
 
             // Insert a record
             val driveId = Uuid.random()
-            val fileId = Uuid.random()
+            val uniqueId = Uuid.random()
             db.outbox.insert(
                 driveId = driveId,
-                uniqueId = fileId,
+                uniqueId = uniqueId,
                 dependencyUniqueId = null,
                 priority = 0,
                 uploadType = 0,
@@ -103,7 +103,7 @@ class OutboxSyncTest {
             assertEquals(1, completedCount)
             assertEquals(1, uploader.uploaded.size)
             assertEquals(driveId, uploader.uploaded[0].driveId)
-            assertEquals(fileId, uploader.uploaded[0].fileId)
+            assertEquals(uniqueId, uploader.uploaded[0].uniqueId)
             // Check that item was deleted
             assertEquals(0L, db.outbox.count())
         }
@@ -111,8 +111,7 @@ class OutboxSyncTest {
     }
 
     @Test
-    fun testFailureAndRetry()
-    {
+    fun testFailureAndRetry() {
         val db = DatabaseManager { createInMemoryDatabase() }
 
         runTest {
@@ -122,10 +121,7 @@ class OutboxSyncTest {
             uploader.shouldFail = true
 
             val sync = OutboxSync(
-                databaseManager = db,
-                uploader = uploader,
-                eventBus = eventBus,
-                scope = this
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = this
             )
 
             val completedDeferred = async {
@@ -147,12 +143,9 @@ class OutboxSyncTest {
                 filePaths = null
             )
 
-            try
-            {
+            try {
                 sync.send()
-            }
-            catch (e : Exception)
-            {
+            } catch (e: Exception) {
                 // It's meant to fail, snatch the exception without an error in the log
             }
             advanceUntilIdle()
@@ -170,8 +163,7 @@ class OutboxSyncTest {
     }
 
     @Test
-    fun testConcurrencyLimit()
-    {
+    fun testConcurrencyLimit() {
         val db = DatabaseManager { createInMemoryDatabase() }
 
         runTest {
@@ -180,10 +172,7 @@ class OutboxSyncTest {
             val uploader = TestUploader()
 
             val sync = OutboxSync(
-                databaseManager = db,
-                uploader = uploader,
-                eventBus = eventBus,
-                scope = this
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = this
             )
 
             val completedDeferred = async {
@@ -230,8 +219,7 @@ class OutboxSyncTest {
     }
 
     @Test
-    fun testEmptyOutbox()
-    {
+    fun testEmptyOutbox() {
         val db = DatabaseManager { createInMemoryDatabase() }
 
         runTest {
@@ -240,10 +228,7 @@ class OutboxSyncTest {
             val uploader = TestUploader()
 
             val sync = OutboxSync(
-                databaseManager = db,
-                uploader = uploader,
-                eventBus = eventBus,
-                scope = this
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = this
             )
 
             val completedDeferred = async {

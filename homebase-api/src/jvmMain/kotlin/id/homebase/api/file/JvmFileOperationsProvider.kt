@@ -13,7 +13,7 @@ class JvmFileOperationsProvider : FileOperationsProvider {
     }
 
     override suspend fun readFileBytes(path: String): ByteArray =
-            withContext(Dispatchers.IO) { File(path).readBytes() }
+        withContext(Dispatchers.IO) { File(path).readBytes() }
 
     override fun deleteTempFile(path: String): Boolean {
         val file = File(path)
@@ -36,22 +36,41 @@ class JvmFileOperationsProvider : FileOperationsProvider {
         val userHome = System.getProperty("user.home")
 
         val cacheDir =
-                when {
-                    osName.contains("mac") -> File(userHome, "Library/Caches/homebase-chat")
-                    osName.contains("win") -> {
-                        val localAppData =
-                                System.getenv("LOCALAPPDATA")
-                                        ?: File(userHome, "AppData/Local").absolutePath
-                        File(localAppData, "homebase-chat/cache")
-                    }
-                    else -> { // Linux and other Unix-like systems
-                        val xdgCache =
-                                System.getenv("XDG_CACHE_HOME")
-                                        ?: File(userHome, ".cache").absolutePath
-                        File(xdgCache, "homebase-chat")
-                    }
+            when {
+                osName.contains("mac") -> File(userHome, "Library/Caches/homebase-chat")
+                osName.contains("win") -> {
+                    val localAppData =
+                        System.getenv("LOCALAPPDATA")
+                            ?: File(userHome, "AppData/Local").absolutePath
+                    File(localAppData, "homebase-chat/cache")
                 }
+
+                else -> { // Linux and other Unix-like systems
+                    val xdgCache =
+                        System.getenv("XDG_CACHE_HOME")
+                            ?: File(userHome, ".cache").absolutePath
+                    File(xdgCache, "homebase-chat")
+                }
+            }
 
         return cacheDir.absolutePath
     }
+
+    override fun getFileSize(path: String): Long {
+        val file = File(path)
+        return if (file.exists() && file.isFile) file.length() else 0L
+    }
+
+    override suspend fun writeBytesToTempFile(
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String =
+        withContext(Dispatchers.IO) {
+            val file = File.createTempFile(prefix, suffix)
+            file.writeBytes(bytes)
+            file.absolutePath
+        }
+
+
 }

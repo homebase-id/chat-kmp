@@ -103,7 +103,10 @@ fun HomebaseImage(
 
     // Shared transition modifier
     val transitionKey = "image-${imageData.fileId}-${imageData.payloadKey}"
-    Logger.d("HomebaseImage: transitionKey = $transitionKey")
+
+    // OMG SO LOUD
+    // Logger.d("HomebaseImage: transitionKey = $transitionKey")
+
     if (sharedTransitionScope != null) {
         with(sharedTransitionScope) {
             customModified = customModified.sharedBounds(

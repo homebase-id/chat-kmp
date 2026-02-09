@@ -2,7 +2,6 @@ package id.homebase.chat.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.PushNotificationOptions
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
@@ -10,27 +9,29 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive
+import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
-    private val databaseManager: DatabaseManager,
     private val outboxSync: OutboxSync,
     private val conversationService: ConversationStream,
-    private val payloadBundleEncryptionService: PayloadBundleEncryptionService
+    private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
+    private val scope: CoroutineScope
 ) {
     private val chatDrive = chatTargetDrive.alias
 
     suspend fun sendNewMessage(
+        messageUniqueId: Uuid,
         conversationId: Uuid,
         messageText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
     ): SendMessageResult =
         deliverMessage(
+            messageUniqueId = messageUniqueId,
             conversationId = conversationId,
             content =
                 MessageAppData(
@@ -45,6 +46,7 @@ class ChatMessageSenderService(
         )
 
     suspend fun replyToMessage(
+        messageUniqueId: Uuid,
         conversationId: Uuid,
         replyTo: ReplyPreview,
         messageText: String,
@@ -52,6 +54,7 @@ class ChatMessageSenderService(
         payloadBundle: PayloadBundle?
     ): SendMessageResult =
         deliverMessage(
+            messageUniqueId = messageUniqueId,
             conversationId = conversationId,
             content =
                 MessageAppData(
@@ -65,6 +68,7 @@ class ChatMessageSenderService(
         )
 
     private suspend fun deliverMessage(
+        messageUniqueId: Uuid,
         conversationId: Uuid,
         content: MessageAppData,
         notificationText: String,
@@ -76,6 +80,7 @@ class ChatMessageSenderService(
 //        conversationWriterService.updateConversationRecipients(conversationId, )
 
         val result = sendMessageInternal(
+            messageUniqueId,
             conversationId,
             content,
             notificationText,
@@ -86,6 +91,7 @@ class ChatMessageSenderService(
     }
 
     private suspend fun sendMessageInternal(
+        messageUniqueId: Uuid,
         conversationId: Uuid,
         content: MessageAppData,
         notificationText: String,
@@ -93,14 +99,17 @@ class ChatMessageSenderService(
         payloadBundle: PayloadBundle?
     ): SendMessageResult {
 
-        val uniqueId = Uuid.random()
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationService.getRecipients(conversationId)
 
-        val encryptedBundle =
-            payloadBundleEncryptionService.encryptBundle(payloadBundle, keyHeader)
-        val encryptedPayloads = encryptedBundle.payloads
-        val encryptedThumbnails = encryptedBundle.thumbnails
+
+        val encryptedBundle = payloadBundleEncryptionService
+            .encryptBundle(
+                messageUniqueId,
+                payloadBundle,
+                keyHeader.aesKey,
+                scope = scope
+            )
 
         val metadata =
             UploadFileMetadata(
@@ -108,7 +117,7 @@ class ChatMessageSenderService(
                 isEncrypted = true,
                 appData =
                     UploadAppFileMetaData(
-                        uniqueId = uniqueId.toString(),
+                        uniqueId = messageUniqueId.toString(),
                         groupId = conversationId.toString(),
                         fileType = ChatProtocol.MessageFileType,
                         userDate = UnixTimeUtc.now().milliseconds,
@@ -132,23 +141,19 @@ class ChatMessageSenderService(
                         PushNotificationOptions(
                             appId = ChatProtocol.ChatAppId.toString(),
                             typeId = conversationId.toString(),
-                            tagId = uniqueId.toString(),
+                            tagId = messageUniqueId.toString(),
                             silent = false,
                             unEncryptedMessage = notificationText
                         )
                 ),
-            payloads = encryptedPayloads,
-            thumbnails = encryptedThumbnails
+            payloads = encryptedBundle.payloads,
+            thumbnails = encryptedBundle.thumbnails
         )
         try {
 
-//            val result =&
-//                driveUploadProvider.uploadFile(request)
-//                    ?: error("Failed to upload chat message")
-
             outboxSync.enqueue(
                 request.driveId,
-                uniqueId,
+                messageUniqueId,
                 dependencyUniqueId = previousMessageUniqueId,
                 priority = 1,
                 uploadType = 1,
@@ -157,7 +162,7 @@ class ChatMessageSenderService(
 
             outboxSync.send()
 
-            return SendMessageResult(uniqueId = uniqueId)
+            return SendMessageResult(uniqueId = messageUniqueId)
 
         } catch (t: Throwable) {
             Logger.e("ChatMessageSenderService", t)
@@ -169,6 +174,12 @@ class ChatMessageSenderService(
 
 data class EncryptedFileResult(
     val filePath: String,
+    val iv: ByteArray
+)
+
+data class EncryptedVideoResult(
+    val playlistPath: String,
+    val segmentPath: String,
     val iv: ByteArray
 )
 

@@ -117,7 +117,7 @@ fun ConversationContent(
         }
     }
     val galleryLauncher =
-        rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+        rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
             file?.let {
                 onUiAction(
                     ConversationListUiAction.SendFile(

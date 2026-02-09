@@ -2,6 +2,7 @@ package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.uuid.Uuid
 
@@ -65,7 +66,7 @@ class ChatReadCountWrapper(
         if (result == null)
             return 0
 
-        return result.unreadCount
+        return result
     }
 
     /**
@@ -85,9 +86,9 @@ class ChatReadCountWrapper(
     /**
      * Upsert last read time for a conversation
      */
-    suspend fun upsertLastReadTime(groupId: Uuid, lastReadTime: Long): Boolean {
+    suspend fun upsertLastReadTime(groupId: Uuid, lastReadTime: UnixTimeUtc): Boolean {
         return databaseManager.withWriteValue { db ->
-            db.chatReadCountQueries.upsertLastReadTime(groupId, lastReadTime).value > 0
+            db.chatReadCountQueries.upsertLastReadTime(groupId, lastReadTime.milliseconds).value > 0
         }
     }
 
