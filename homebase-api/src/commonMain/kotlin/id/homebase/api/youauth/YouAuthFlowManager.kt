@@ -239,9 +239,8 @@ class YouAuthFlowManager(
                 throw Exception("Missing /authorization-code-callback")
             }
 
-            val identity: OdinId
-            try {
-                identity = OdinId(decodeUrl(queryParams["identity"] ?: ""))
+            val identity = try {
+                OdinId(decodeUrl(queryParams["identity"] ?: ""))
             }
             catch (e: Exception)
             {
