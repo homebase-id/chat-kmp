@@ -13,12 +13,9 @@ object CredentialStorage {
 
     fun getCredentials(): StoredIdentity? {
 
-        val u = SecureStorage.get(YouAuthStorageKeys.IDENTITY)
+        val s = SecureStorage.get(YouAuthStorageKeys.IDENTITY) ?: return null
 
-        if (u.isNullOrEmpty())
-            return null;
-
-        val identity = OdinId(u)
+        val identity = try { OdinId(s) } catch (e: Exception) { return null }
 
         val sharedSecretBase64 =
             SecureStorage.get(YouAuthStorageKeys.SHARED_SECRET) ?: return null
