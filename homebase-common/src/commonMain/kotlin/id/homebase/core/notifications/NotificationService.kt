@@ -28,6 +28,7 @@ class NotificationService(private val api: PushNotificationApi, private val scop
 
         NotifierManager.addListener(object : NotifierManager.Listener {
             override fun onNewToken(token: String) {
+                super.onNewToken(token)
                 Logger.i("NotificationService") { "New push token: $token" }
                 registerToken(token)
             }
@@ -35,6 +36,7 @@ class NotificationService(private val api: PushNotificationApi, private val scop
             override fun onPushNotificationWithPayloadData(
                 title: String?, body: String?, data: PayloadData
             ) {
+                super.onPushNotificationWithPayloadData(title, body, data)
                 Logger.i("NotificationService") {
                     "Push received — title=$title body=$body data=$data"
                 }
@@ -44,6 +46,20 @@ class NotificationService(private val api: PushNotificationApi, private val scop
             override fun onNotificationClicked(data: PayloadData) {
                 Logger.i("NotificationService") { "Notification clicked: $data" }
                 // TODO: Navigate to relevant screen based on payload
+            }
+
+            override fun onPushNotification(title: String?, body: String?) {
+                super.onPushNotification(title, body)
+                Logger.i("NotificationService") {
+                    "Push received — title=$title body=$body"
+                }
+                // TODO: onPushNotificationHandle
+            }
+
+            override fun onPayloadData(data: PayloadData) {
+                super.onPayloadData(data)
+                Logger.i("NotificationService") { "Payload received: $data" }
+                // TODO: onPayloadDataHandle
             }
         })
 

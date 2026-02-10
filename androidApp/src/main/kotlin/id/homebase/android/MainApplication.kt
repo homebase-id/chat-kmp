@@ -8,10 +8,12 @@ import id.homebase.api.storage.SharedPreferences
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
+import id.homebase.core.notifications.NotificationService
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.component.KoinComponent
+import org.koin.core.component.get
 import org.koin.core.context.GlobalContext.startKoin
 
 class MainApplication : Application(), KoinComponent {
@@ -44,5 +46,10 @@ class MainApplication : Application(), KoinComponent {
                 showPushNotification = true,
             )
         )
+
+        // Register notification listener immediately so tokens/pushes arriving
+        // before the UI composes are not lost
+        val notificationService: NotificationService = get()
+        notificationService.startListening()
     }
 }

@@ -36,7 +36,7 @@ fun App(
 
     HomebaseTheme {
         LaunchedEffect(Unit) {
-            launch { notificationService.startListening() }
+            notificationService.startListening()
             launch { youAuthFlowManager.authState.collect { coordinator.onAuthStateChanged(it) } }
         }
 
