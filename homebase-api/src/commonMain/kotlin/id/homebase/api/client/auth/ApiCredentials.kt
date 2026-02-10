@@ -3,15 +3,16 @@ package id.homebase.api.client.auth
 import id.homebase.api.common.SecureByteArray
 
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 
 @ConsistentCopyVisibility
 data class ApiCredentials private constructor(
-    val domain: String,
+    val domain: OdinId,
     val clientAccessToken: String,
     val sharedSecret: SecureByteArray
 ) {
     init {
-        require(domain.isNotBlank())
+        //require(domain.isNotBlank())
         require(clientAccessToken.isNotBlank())
         require(sharedSecret.unsafeBytes.isNotEmpty())
     }
@@ -24,12 +25,12 @@ data class ApiCredentials private constructor(
 
     companion object {
         fun create(
-            domain: String,
+            domain: OdinId,
             clientAccessToken: String,
             sharedSecret: SecureByteArray
         ): ApiCredentials {
             return ApiCredentials(
-                domain = domain.lowercase().trim(),
+                domain = domain,
                 clientAccessToken = clientAccessToken,
                 sharedSecret = sharedSecret
             )

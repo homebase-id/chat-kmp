@@ -2,6 +2,7 @@ package id.homebase.api.client.drives.upload
 
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 
 
 /**
@@ -28,7 +29,7 @@ data class AppNotificationOptions(
      * If specified, the push notification should only be sent to this list
      * of recipients (instead of any other list)
      */
-    val recipients: List<String>? = null,
+    val recipients: List<OdinId>? = null,
 
     val unEncryptedMessage: String? = null
 )

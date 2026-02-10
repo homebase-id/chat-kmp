@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
@@ -219,7 +220,7 @@ class ConversationStream(
         }
     }
 
-    suspend fun getRecipients(conversationId: Uuid): List<String> {
+    suspend fun getRecipients(conversationId: Uuid): List<OdinId> {
 
         val domain = credentialsManager.getActiveDomain()!!
         val conversation = getConversationById(conversationId) ?: return listOf()

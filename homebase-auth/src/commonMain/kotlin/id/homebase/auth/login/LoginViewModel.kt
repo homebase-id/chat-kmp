@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import id.homebase.api.common.OdinId
 
 class LoginViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
@@ -74,7 +75,7 @@ class LoginViewModel(
 
     /* ---------------- PRIVATE ---------------- */
 
-    suspend fun isValidHomebaseId(identity: String): Boolean {
+    suspend fun isValidHomebaseId(identity: OdinId): Boolean {
         try {
             val response = httpClient.get("https://$identity/api/v2/health/ping")
             return when (response.status.value) {
@@ -88,11 +89,12 @@ class LoginViewModel(
     }
 
     private fun startLogin(homebaseIdValue: String) {
-        val homebaseId = homebaseIdValue.trim()
 
-        if (homebaseId.isEmpty()) {
+        val homebaseId = try {
+            OdinId(homebaseIdValue)
+        } catch (e: Exception) {
             _uiState.update {
-                it.copy(errorMessage = "Homebase ID is required")
+                it.copy(errorMessage = "Valid Homebase ID is required")
             }
             return
         }
@@ -100,7 +102,7 @@ class LoginViewModel(
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
-                    homebaseId = homebaseId,
+                    homebaseId = homebaseId.domainName,
                     isLoading = true,
                     errorMessage = null
                 )

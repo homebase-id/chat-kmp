@@ -22,6 +22,7 @@ import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 
 /** Options for payload operations with range support. */
 data class PayloadOperationOptions(
@@ -178,7 +179,7 @@ public class DriveFileProvider(
     suspend fun softDeleteFile(
         driveId: Uuid,
         fileId: Uuid,
-        recipients: List<String>? = null
+        recipients: List<OdinId>? = null
     ): DeleteFileResult {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -210,7 +211,7 @@ public class DriveFileProvider(
     suspend fun hardDeleteFile(
         driveId: Uuid,
         fileId: Uuid,
-        recipients: List<String>? = null,
+        recipients: List<OdinId>? = null,
     ): Boolean {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -243,7 +244,7 @@ public class DriveFileProvider(
     suspend fun deleteFiles(
         driveId: Uuid,
         fileIds: List<Uuid>,
-        recipients: List<String>? = null
+        recipients: List<OdinId>? = null
     ): DeleteFileIdBatchResult {
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuidList(fileIds, "fileIds")
@@ -278,7 +279,7 @@ public class DriveFileProvider(
     suspend fun deleteFilesByGroupId(
         driveId: Uuid,
         groupIds: List<Uuid>,
-        recipients: List<String>? = null
+        recipients: List<OdinId>? = null
     ): DeleteFilesByGroupIdBatchResult {
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuidList(groupIds, "groupIds")
@@ -473,7 +474,7 @@ public class DriveFileProvider(
 // Request data classes for delete operations
 
 @Serializable
-data class DeleteFileRequest(val fileId: Uuid, val recipients: List<String>? = null)
+data class DeleteFileRequest(val fileId: Uuid, val recipients: List<OdinId>? = null)
 
 @Serializable
 enum class DeleteLinkedFileStatus(val value: String) {
@@ -515,7 +516,7 @@ data class DeleteFilesBatchRequest(val requests: List<DeleteFileRequest>)
 @Serializable
 data class DeleteByGroupIdRequest(
     val groupId: Uuid,
-    val recipients: List<String>? = null
+    val recipients: List<OdinId>? = null
 )
 
 @Serializable
