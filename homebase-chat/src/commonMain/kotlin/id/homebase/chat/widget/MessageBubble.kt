@@ -12,6 +12,7 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.filled.AddReaction
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +51,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
@@ -61,9 +65,12 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
+import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
+import id.homebase.resources.chat_message_reaction
+import id.homebase.resources.chat_message_reply
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
@@ -104,64 +111,87 @@ fun SentMessageBubble(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         Spacer(modifier = Modifier.width(16.dp))
-        Column(
+        Row(
             modifier = Modifier.weight(1f).hoverable(interactionSource),
-            horizontalAlignment = Alignment.End
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row {
-                Column {
-                    IconButton(
-                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { showMenu = true },
-                        enabled = isHovered
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MoreHoriz,
-                            contentDescription = stringResource(MR.string.chat_message_options),
-                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                        )
-                    }
-                    SentMessageMenu(
-                        showMenu = showMenu,
-                        dismissMenu = { showMenu = false },
-                        onMessageInfo = {
-                            showMenu = false
-                            onMessageInfo(message.id)
-                        },
-                        onReply = {
-                            showMenu = false
-                            onReply(message.id)
-                        },
-                        onStar = {
-                            showMenu = false
-                            onStar(message.id)
-                        },
-                        onEdit = {
-                            showMenu = false
-                            onEdit(message.id)
-                        },
-                        onDelete = {
-                            showMenu = false
-                            onDelete(message.id)
-                        },
+            Column {
+                IconButton(
+                    modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                    onClick = { showMenu = true },
+                    enabled = isHovered
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreHoriz,
+                        contentDescription = stringResource(MR.string.chat_message_options),
+                        tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                     )
                 }
-                MessageBubble(
-                    modifier = Modifier.heightIn(min = 48.dp),
-                    text = message.content + " isread: ${message.isRead} | sent emojis: ${message.getAllEmojis()}",
-                    timestamp = formatMessageTimestamp(message.created),
-                    sentByYou = true,
-                    payloads = message.payloads,
-                    fileId = message.fileId,
-                    previewThumbnail = message.previewThumbnail,
-                    replyPreview = message.messageAppData.replyPreview,
-                    onLongClick = { showMenu = true },
-                    keyHeader = message.keyHeader,
-                    onMediaClick = onMediaClick,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
+                SentMessageMenu(
+                    showMenu = showMenu,
+                    dismissMenu = { showMenu = false },
+                    onMessageInfo = {
+                        showMenu = false
+                        onMessageInfo(message.id)
+                    },
+                    onReply = {
+                        showMenu = false
+                        onReply(message.id)
+                    },
+                    onStar = {
+                        showMenu = false
+                        onStar(message.id)
+                    },
+                    onEdit = {
+                        showMenu = false
+                        onEdit(message.id)
+                    },
+                    onDelete = {
+                        showMenu = false
+                        onDelete(message.id)
+                    },
                 )
             }
+            IconButton(
+                modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                onClick = { onReply(message.id) },
+                enabled = isHovered
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Reply,
+                    contentDescription = stringResource(MR.string.chat_message_reply),
+                    tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                )
+            }
+            Column {
+                IconButton(
+                    modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                    onClick = { },
+                    enabled = isHovered
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddReaction,
+                        contentDescription = stringResource(MR.string.chat_message_reaction),
+                        tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                    )
+                }
+            }
+            MessageBubble(
+                modifier = Modifier.heightIn(min = 48.dp),
+                text = message.content,
+                timestamp = formatMessageTimestamp(message.created),
+                sentByYou = true,
+                payloads = message.payloads,
+                fileId = message.fileId,
+                previewThumbnail = message.previewThumbnail,
+                replyPreview = message.messageAppData.replyPreview,
+                onLongClick = { showMenu = true },
+                keyHeader = message.keyHeader,
+                onMediaClick = onMediaClick,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
         }
     }
 }
@@ -203,14 +233,15 @@ fun ReceivedMessageBubble(
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
-        Column(
+        Row(
             modifier = Modifier.weight(1f).hoverable(interactionSource),
-            horizontalAlignment = Alignment.Start,
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Row {
                 MessageBubble(
                     modifier = Modifier.heightIn(min = 48.dp),
-                    text = message.content + " isread: ${message.isRead} | rcd emojis: ${message.getAllEmojis()}",
+                    text = message.content + "isread: ${message.isRead}",
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = false,
                     payloads = message.payloads,
@@ -223,51 +254,51 @@ fun ReceivedMessageBubble(
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
-                Column {
-                    IconButton(
-                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { showMenu = true },
-                        enabled = isHovered
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MoreHoriz,
-                            contentDescription = stringResource(MR.string.chat_message_options),
-                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                        )
-                    }
-                    ReceivedMessageMenu(
-                        showMenu = showMenu,
-                        dismissMenu = { showMenu = false },
-                        onMessageInfo = {
-                            showMenu = false
-                            onMessageInfo(message.id)
-                        },
-                        onReply = {
-                            showMenu = false
-                            onReply(message.id)
-                        },
-                        onStar = {
-                            showMenu = false
-                            onStar(message.id)
-                        },
-                        onDelete = {
-                            showMenu = false
-                            onDelete(message.id)
-                        },
-                        onMarkAsRead = {
-                            showMenu = false
-                            onMarkAsRead(message.id)
-                        },
-                        onAddReaction = {
-                            showMenu = false
-                            onAddReaction(message.id, "😥")
-                        },
-                        onDeleteReaction = {
-                            showMenu = false
-                            onDeleteReaction(message.id, "😥")
-                        },
+            }
+            Column {
+                IconButton(
+                    modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                    onClick = { showMenu = true },
+                    enabled = isHovered
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreHoriz,
+                        contentDescription = stringResource(MR.string.chat_message_options),
+                        tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                     )
                 }
+                ReceivedMessageMenu(
+                    showMenu = showMenu,
+                    dismissMenu = { showMenu = false },
+                    onMessageInfo = {
+                        showMenu = false
+                        onMessageInfo(message.id)
+                    },
+                    onReply = {
+                        showMenu = false
+                        onReply(message.id)
+                    },
+                    onStar = {
+                        showMenu = false
+                        onStar(message.id)
+                    },
+                    onDelete = {
+                        showMenu = false
+                        onDelete(message.id)
+                    },
+                    onMarkAsRead = {
+                        showMenu = false
+                        onMarkAsRead(message.id)
+                    },
+                    onAddReaction = {
+                        showMenu = false
+                        onAddReaction(message.id, ":heart:")
+                    },
+                    onDeleteReaction = {
+                        showMenu = false
+                        onDeleteReaction(message.id, ":heart:")
+                    },
+                )
             }
         }
         Spacer(modifier = Modifier.width(16.dp))
@@ -322,11 +353,6 @@ fun MessageBubble(
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val backgroundColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
-    else MaterialTheme.colorScheme.surfaceContainerHigh
-    val contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
-    else MaterialTheme.colorScheme.onSurface
-
     val pressInteractionSource = remember { MutableInteractionSource() }
     val isPressed by pressInteractionSource.collectIsPressedAsState()
 
@@ -366,6 +392,12 @@ fun MessageBubble(
     }
 
     val mediaOnly = !text.hasContent() && hasMedia
+    val emojiOnly = text.isEmojiContentOnly() && !hasMedia
+    val backgroundColor = if (emojiOnly) Color.Unspecified else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+    else MaterialTheme.colorScheme.surfaceContainerHigh
+    val contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+    else MaterialTheme.colorScheme.onSurface
+
     val textState = RichTextState()
     textState.config.listIndent = 0
     textState.setHtml(text)
@@ -376,6 +408,7 @@ fun MessageBubble(
         bottomStart = if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
         bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
     )
+
     Surface(
         modifier = modifier.clip(shape).ifTrue(isMobile()) {
             Modifier.combinedClickable(
@@ -449,12 +482,25 @@ fun MessageBubble(
                             Row(
                                 modifier = Modifier.padding(12.dp),
                             ) {
-                                RichText(
-                                    state = textState,
-                                    onTextLayout = { textLayoutResult = it },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = contentColor
-                                )
+                                if (emojiOnly) {
+                                    // Render emoji-only messages prominently
+                                    val size = if (text.length <= 6) 56.sp else 42.sp
+                                    Text(
+                                        text = text,
+                                        onTextLayout = { textLayoutResult = it },
+                                        fontSize = size,
+                                        style = MaterialTheme.typography.displaySmall,
+                                        color = contentColor
+                                    )
+                                } else {
+                                    // Display normal rich text
+                                    RichText(
+                                        state = textState,
+                                        onTextLayout = { textLayoutResult = it },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = contentColor
+                                    )
+                                }
                             }
                         }
                     }

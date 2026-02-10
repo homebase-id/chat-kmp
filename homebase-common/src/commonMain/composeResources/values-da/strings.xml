@@ -58,6 +58,7 @@
     <!-- Conversation message -->
     <string name="chat_message_info">Besked info</string>
     <string name="chat_message_reply">Svar</string>
+    <string name="chat_message_reaction">Reaktion'</string>
     <string name="chat_message_star">Stjerne</string>
     <string name="chat_message_edit">Redigér</string>
     <string name="chat_message_delete_for_everyone">Slet for alle</string>
