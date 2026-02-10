@@ -43,6 +43,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.util.cleanDomain
 import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
@@ -190,7 +191,7 @@ private fun LoginForm(
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         HomebaseIdField(
                 value = homebaseId,
-                onValueChange = { homebaseId = it },
+                onValueChange = { homebaseId = it.cleanDomain() },
                 focusRequester = focusRequester,
                 onDone = { onLoginClick(homebaseId) }
         )

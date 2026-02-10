@@ -25,7 +25,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
@@ -103,10 +102,6 @@ fun HomebaseImage(
 
     // Shared transition modifier
     val transitionKey = "image-${imageData.fileId}-${imageData.payloadKey}"
-
-    // OMG SO LOUD
-    // Logger.d("HomebaseImage: transitionKey = $transitionKey")
-
     if (sharedTransitionScope != null) {
         with(sharedTransitionScope) {
             customModified = customModified.sharedBounds(
