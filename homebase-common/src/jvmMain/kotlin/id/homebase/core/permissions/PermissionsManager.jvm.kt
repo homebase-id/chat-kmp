@@ -2,24 +2,19 @@ package id.homebase.core.permissions
 
 import androidx.compose.runtime.Composable
 
-class PermissionsManager(val callback: PermissionCallback) : PermissionHandler {
-    @Composable
-    override fun askPermission(permission: PermissionType) {
-
-    }
-
-    @Composable
-    override fun isPermissionGranted(permission: PermissionType): Boolean {
-        return true
-    }
-
-    @Composable
-    override fun launchSettings() {
-
-    }
-}
-
 @Composable
-actual fun createPermissionsManager(callback: PermissionCallback): PermissionHandler {
-    return PermissionsManager(callback)
+actual fun createPermissionsManager(onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit): PermissionsManager {
+    return object : PermissionsManager {
+        override fun askPermission(permission: PermissionType) {
+
+        }
+
+        override fun isPermissionGranted(permission: PermissionType): Boolean {
+            return true
+        }
+
+        override fun launchSettings() {
+
+        }
+    }
 }

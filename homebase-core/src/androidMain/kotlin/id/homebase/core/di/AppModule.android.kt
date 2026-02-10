@@ -4,6 +4,8 @@ import coil3.ImageLoader
 import coil3.memory.MemoryCache
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.gallery.AndroidGalleryManager
+import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.settings.createSettings
 import org.koin.android.ext.koin.androidContext
@@ -13,6 +15,7 @@ import org.koin.dsl.module
 actual fun platformModule(): Module = module {
     single<FileOperationsProvider> { AndroidFileOperationsProvider(androidContext()) }
     single { createSettings(androidContext()) }
+    single<PlatformGalleryManager> { AndroidGalleryManager(androidContext()) }
     single {
         ImageLoader.Builder(androidContext())
                 .components { add(HomebaseImageFetcher.Factory(get())) }

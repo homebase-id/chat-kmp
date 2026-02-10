@@ -64,12 +64,12 @@ import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
-import kotlin.io.encoding.Base64
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
+import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 
 /**
  * Displays a message bubble for messages sent to other users.
@@ -365,7 +365,7 @@ fun MessageBubble(
         }
     }
 
-    val mediaOnly = text.isEmpty() && hasMedia
+    val mediaOnly = !text.hasContent() && hasMedia
     val textState = RichTextState()
     textState.config.listIndent = 0
     textState.setHtml(text)
@@ -391,7 +391,7 @@ fun MessageBubble(
         shape = shape,
         color = backgroundColor,
     ) {
-        if (text.isEmpty() && hasMedia) {
+        if (mediaOnly) {
             Box {
                 MediaMessage(
                     payloads = filteredPayloads,
@@ -517,6 +517,13 @@ fun MessageBubble(
             }
         }
     }
+}
+
+private fun String.hasContent(): Boolean {
+    if (this.isBlank()) return false
+    if (this.lines().all { it.isBlank() }) return false
+    if (this == "<br>") return false
+    return true
 }
 
 /**
