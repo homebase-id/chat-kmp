@@ -3,33 +3,34 @@ package id.homebase.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
-import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ReplyPreview
-import id.homebase.chat.services.convo.ContactService
-import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.chat.services.convo.ContactService
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import io.github.vinceglb.filekit.name
-import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
-class ChatListViewModel(
+class ConversationListViewModel(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
     private val conversationStream: ConversationStream,
@@ -44,6 +45,8 @@ class ChatListViewModel(
     private val _uiState = MutableStateFlow(ConversationListUiState())
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
+    val messageState = RichTextState()
+
     init {
         viewModelScope.launch {
             contactService.start()
@@ -52,9 +55,10 @@ class ChatListViewModel(
                     contacts = contacts.toPersistentList()
                 )
             }
+        }
 
+        viewModelScope.launch {
             val domain = credentialsManager.requireActiveCredentials().domain.trim().lowercase()
-
             _uiState.update { it.copy(currentOdinId = domain) }
         }
 
@@ -66,6 +70,18 @@ class ChatListViewModel(
             }
         }
 
+        viewModelScope.launch {
+            // TODO - configure properties for textField here
+            //textFieldState.config.linkColor = Color.Blue
+            //textFieldState.config.linkTextDecoration = TextDecoration.Underline
+            //textFieldState.config.codeSpanColor = Color.Blue
+            //textFieldState.config.codeSpanBackgroundColor = Color.Magenta
+            //textFieldState.config.codeSpanStrokeColor = Color.Yellow
+            messageState.config.listIndent = 0
+
+            // TODO - restore any draft message stored for conversation here
+            messageState.setHtml("")
+        }
     }
 
     fun eventConsumed() {
@@ -114,18 +130,21 @@ class ChatListViewModel(
             }
 
             is ConversationListUiAction.SendMessage -> {
-                if (action.content.isNotBlank()) {
+                val hasMessage = !messageState.annotatedString.isBlank()
+                if (hasMessage) {
+                    val content = messageState.toHtml()
                     val replyTo = _uiState.value.replyToMessage
                     if (replyTo != null) {
                         replyToMessage(
                             conversationId = action.conversationId,
                             replyTo = replyTo,
-                            content = action.content
+                            content = content
                         )
                         _uiState.update { it.copy(replyToMessage = null) }
                     } else {
-                        addMessage(conversationId = action.conversationId, content = action.content)
+                        addMessage(conversationId = action.conversationId, content = content)
                     }
+                    messageState.clear()
                 }
             }
 
@@ -169,6 +188,10 @@ class ChatListViewModel(
             }
 
             is ConversationListUiAction.DownloadMedia -> {
+                sendEvent(ConversationListUiEvent.ShowErrorMessage("Not implemented yet"))
+            }
+
+            is ConversationListUiAction.SaveFile -> {
                 sendEvent(ConversationListUiEvent.ShowErrorMessage("Not implemented yet"))
             }
 
@@ -249,13 +272,20 @@ class ChatListViewModel(
             is ConversationListUiAction.SendFile -> {
                 viewModelScope.launch {
                     try {
+                        _uiState.update {
+                            it.copy(
+                                loadingNewMessage = true,
+                                conversationScrollPosition = null,
+                                fullScreenOverlay = null,
+                            )
+                        }
                         val attachments = mutableListOf<AttachmentInput>()
                         action.files.forEach { file ->
                             val filePath = file.toString()
                             attachments.add(
                                 AttachmentInput(
                                     filePath = filePath,
-                                    contentType = detectContentTypeFromExtensionOrHint(filePath),
+                                    contentType = detectContentTypeFromExtensionOrHint(file.name),
                                     displayName = file.name,
                                 )
                             )
@@ -269,15 +299,67 @@ class ChatListViewModel(
                             conversationId = action.conversationId,
                             messageText = action.message,
                             previousMessageUniqueId = null,
-                            payloadBundle = bundle
+                            payloadBundle = bundle,
                         )
+                        _uiState.update { it.copy(loadingNewMessage = false) }
                     } catch (e: Exception) {
                         Logger.e("Failed to send file(s)", e)
-                        sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
-                                "Failed to send file(s): ${e.message}"
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to send file(s): ${e.message}"))
+                    }
+                }
+            }
+
+            is ConversationListUiAction.AttachFile -> {
+                viewModelScope.launch {
+                    try {
+                        val newFiles =
+                            action.files.map { AttachmentPendingFile(Uuid.generateV7(), it) }
+                        val conversation =
+                            _uiState.value.conversations.find { it.id == action.conversationId }
+                        if (newFiles.isEmpty() || conversation == null) return@launch
+
+                        val overlay = _uiState.value.fullScreenOverlay
+                        val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
+                            overlay.copy(
+                                files = overlay.files + newFiles,
                             )
-                        )
+                        } else {
+                            FullScreenOverlay.AttachmentData(
+                                conversationTitle = conversation.name,
+                                conversationId = action.conversationId,
+                                selected = newFiles.last().id,
+                                files = newFiles,
+                            )
+                        }
+
+                        _uiState.update {
+                            it.copy(
+                                fullScreenOverlay = newOverlay,
+                                loadingNewMessage = false,
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("Failed to attach file(s)", e)
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to attach file(s): ${e.message}"))
+                    }
+                }
+            }
+
+            is ConversationListUiAction.UnAttachFile -> {
+                viewModelScope.launch {
+                    try {
+                        val fullScreenOverlay = _uiState.value.fullScreenOverlay
+                        if (fullScreenOverlay == null || fullScreenOverlay !is FullScreenOverlay.AttachmentData) return@launch
+
+                        val newFiles = fullScreenOverlay.files.filter { it.id != action.id }
+                        _uiState.update {
+                            it.copy(
+                                fullScreenOverlay = fullScreenOverlay.copy(files = newFiles),
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("Failed to unattach file", e)
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to unattach file: ${e.message}"))
                     }
                 }
             }
@@ -295,7 +377,7 @@ class ChatListViewModel(
 
                                 _uiState.update {
                                     it.copy(
-                                        fullScreenMedia = FullScreenMessageData(
+                                        fullScreenOverlay = FullScreenOverlay.ViewMessageData(
                                             messageId = action.message.id,
                                             title = action.message.originalAuthorOdinId?.domainName ?: "null",
                                             created = action.message.created,
@@ -328,8 +410,8 @@ class ChatListViewModel(
                 }
             }
 
-            ConversationListUiAction.CloseFullScreenMedia -> {
-                _uiState.update { it.copy(fullScreenMedia = null) }
+            ConversationListUiAction.CloseFullScreenOverlay -> {
+                _uiState.update { it.copy(fullScreenOverlay = null) }
             }
 
             //            is ConversationListUiAction.ArchiveConversation -> TODO()
