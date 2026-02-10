@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -56,6 +58,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
@@ -67,6 +70,8 @@ import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
+import id.homebase.core.widget.ReactionList
+import id.homebase.core.widget.ReactionPopup
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
@@ -100,15 +105,18 @@ fun SentMessageBubble(
     onEdit: (messageId: Uuid) -> Unit,
     onDelete: (messageId: Uuid) -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
+    onShowReactions: (ReactionSummary) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showReactionPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
     ) {
         Spacer(modifier = Modifier.width(16.dp))
         Row(
@@ -167,7 +175,7 @@ fun SentMessageBubble(
             Column {
                 IconButton(
                     modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                    onClick = { },
+                    onClick = { showReactionPicker = !showReactionPicker },
                     enabled = isHovered
                 ) {
                     Icon(
@@ -176,25 +184,45 @@ fun SentMessageBubble(
                         tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                     )
                 }
+                if (showReactionPicker) {
+                    ReactionPopup(
+                        onSelect = { reaction ->
+                            showReactionPicker = false
+                            onAddReaction(message.id, reaction)
+                        },
+                        onDismiss = { showReactionPicker = false }
+                    )
+                }
             }
-            MessageBubble(
-                modifier = Modifier.heightIn(min = 48.dp),
-                text = message.content,
-                timestamp = formatMessageTimestamp(message.created),
-                sentByYou = true,
-                payloads = message.payloads,
-                fileId = message.fileId,
-                previewThumbnail = message.previewThumbnail,
-                replyPreview = message.messageAppData.replyPreview,
-                onLongClick = { showMenu = true },
-                keyHeader = message.keyHeader,
-                onMediaClick = onMediaClick,
-                sharedTransitionScope = sharedTransitionScope,
-                animatedVisibilityScope = animatedVisibilityScope,
-            )
+            Box {
+                MessageBubble(
+                    modifier = Modifier.heightIn(min = 48.dp).padding(bottom = if (message.reactionPreview == null) 0.dp else 28.dp),
+                    text = message.content,
+                    timestamp = formatMessageTimestamp(message.created),
+                    sentByYou = true,
+                    payloads = message.payloads,
+                    fileId = message.fileId,
+                    previewThumbnail = message.previewThumbnail,
+                    replyPreview = message.messageAppData.replyPreview,
+                    onLongClick = { showMenu = true },
+                    keyHeader = message.keyHeader,
+                    onMediaClick = onMediaClick,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                )
+                message.reactionPreview?.let { reactionSummary ->
+                    ReactionList(
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
+                        reactionSummary = reactionSummary,
+                        onClick = { onShowReactions(reactionSummary) }
+                    )
+                }
+            }
         }
     }
 }
+
+
 
 /**
  * Displays a message bubble for messages received from other users.
@@ -222,26 +250,28 @@ fun ReceivedMessageBubble(
     onMarkAsRead: (messageId: Uuid) -> Unit,
     onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
     onDeleteReaction: (messageId: Uuid, reaction: String) -> Unit,
+    onShowReactions: (ReactionSummary) -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showReactionPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
     ) {
         Row(
             modifier = Modifier.weight(1f).hoverable(interactionSource),
             horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row {
+            Box {
                 MessageBubble(
-                    modifier = Modifier.heightIn(min = 48.dp),
-                    text = message.content + "isread: ${message.isRead}",
+                    modifier = Modifier.heightIn(min = 48.dp).padding(bottom = if (message.reactionPreview == null) 0.dp else 28.dp),
+                    text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = false,
                     payloads = message.payloads,
@@ -253,6 +283,46 @@ fun ReceivedMessageBubble(
                     onMediaClick = onMediaClick,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                )
+                message.reactionPreview?.let { reactionSummary ->
+                    ReactionList(
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp),
+                        reactionSummary = reactionSummary,
+                        onClick = { onShowReactions(reactionSummary) }
+                    )
+                }
+            }
+            Column {
+                IconButton(
+                    modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                    onClick = { showReactionPicker = !showReactionPicker },
+                    enabled = isHovered
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddReaction,
+                        contentDescription = stringResource(MR.string.chat_message_reaction),
+                        tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
+                    )
+                }
+                if (showReactionPicker) {
+                    ReactionPopup(
+                        onSelect = { reaction ->
+                            showReactionPicker = false
+                            onAddReaction(message.id, reaction)
+                        },
+                        onDismiss = { showReactionPicker = false }
+                    )
+                }
+            }
+            IconButton(
+                modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+                onClick = { onReply(message.id) },
+                enabled = isHovered
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Reply,
+                    contentDescription = stringResource(MR.string.chat_message_reply),
+                    tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                 )
             }
             Column {
@@ -425,7 +495,7 @@ fun MessageBubble(
         color = backgroundColor,
     ) {
         if (mediaOnly) {
-            Box {
+            Box(modifier = Modifier.wrapContentWidth()) {
                 MediaMessage(
                     payloads = filteredPayloads,
                     fileId = fileId,
@@ -439,22 +509,31 @@ fun MessageBubble(
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
                 Box(
-                    modifier = Modifier.matchParentSize().align(Alignment.BottomEnd).background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent, Color.Black.copy(
-                                    alpha = 0.6f
-                                )
-                            )
-                        )
-                    ),
+                    modifier = Modifier
+                        .matchParentSize()
+                        .align(Alignment.BottomStart)
                 ) {
-                    Text(
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                        text = timestamp,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.7f)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp)
+                            .align(Alignment.BottomStart)
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        Color.Black.copy(alpha = 0.6f),
+                                    )
+                                )
+                            ),
+                    ) {
+                        Text(
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                            text = timestamp,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f)
+                        )
+                    }
                 }
             }
         } else Column {

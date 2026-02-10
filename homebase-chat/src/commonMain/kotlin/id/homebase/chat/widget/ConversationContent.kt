@@ -278,8 +278,11 @@ fun ConversationContent(
                                 key = { message -> message.id }) { message ->
 
                                 // TODO: currentOdinId is "" - is that supposed to be the case??
-                                val odinId: OdinId? = try { OdinId(currentOdinId) }
-                                    catch (e: Exception) { null }
+                                val odinId: OdinId? = try {
+                                    OdinId(currentOdinId)
+                                } catch (_: Exception) {
+                                    null
+                                }
 
                                 if (message.isCurrentUser(odinId)) {
                                     SentMessageBubble(
@@ -326,6 +329,17 @@ fun ConversationContent(
                                                     payload.key,
                                                 )
                                             )
+                                        },
+                                        onAddReaction = { _, reaction ->
+                                            onUiAction(
+                                                ConversationListUiAction.AddReaction(
+                                                    message.id,
+                                                    reaction = reaction
+                                                )
+                                            )
+                                        },
+                                        onShowReactions = {
+                                            // TODO
                                         },
                                         animatedVisibilityScope = animatedVisibilityScope,
                                         sharedTransitionScope = sharedTransitionScope,
@@ -383,6 +397,9 @@ fun ConversationContent(
                                                     reaction = reaction
                                                 )
                                             )
+                                        },
+                                        onShowReactions = {
+                                            // TODO
                                         },
                                         onMediaClick = { payload ->
                                             onUiAction(
