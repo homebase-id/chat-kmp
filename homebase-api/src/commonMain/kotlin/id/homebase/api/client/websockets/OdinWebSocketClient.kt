@@ -12,7 +12,6 @@ import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.SharedSecretEncryptedPayload
-import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -29,9 +28,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
-import kotlin.time.Instant
-import kotlin.uuid.Uuid
-
 
 /**
  * WebSocket client for connecting to Odin notify/ws endpoint
@@ -62,6 +58,13 @@ class OdinWebSocketClient(
 
     private var connectionJob: Job? = null
     private var session: DefaultClientWebSocketSession? = null
+
+    private val notificationBuffer =
+        mutableListOf<ClientNotificationPayload>()
+
+    private var notificationFlushJob: Job? = null
+
+    private val NOTIFICATION_BURST_MS = 200L
 
 
     private val pingSupervisor = WebSocketPingSupervisor(
@@ -194,7 +197,25 @@ class OdinWebSocketClient(
     }
 
     private suspend fun handleNotification(notification: ClientNotificationPayload) {
-//        Logger.i("Handling notification type ${notification.notificationType}")
+        notificationBuffer += notification
+
+        // cancel pending flush
+        notificationFlushJob?.cancel()
+
+        notificationFlushJob = scope.launch {
+            delay(NOTIFICATION_BURST_MS)
+
+            val batch = notificationBuffer.toList()
+            notificationBuffer.clear()
+
+            for (n in batch) {
+                dispatchNotification(n)
+            }
+        }
+    }
+
+    private suspend fun dispatchNotification(notification: ClientNotificationPayload) {
+        //        Logger.i("Handling notification type ${notification.notificationType}")
         when (notification.notificationType) {
             ClientNotificationType.deviceHandshakeSuccess -> {
                 onHandshakeSuccess()
@@ -210,7 +231,6 @@ class OdinWebSocketClient(
 
             ClientNotificationType.fileAdded -> {
                 Logger.i { "fileAdded received at ${Clock.System.now()}" }
-
                 handleFileEvent(notification)
             }
 
@@ -243,15 +263,19 @@ class OdinWebSocketClient(
             }
 
             ClientNotificationType.statisticsChanged -> {
+                handleFileEvent(notification)
             }
 
             ClientNotificationType.reactionContentAdded -> {
+                handleReactionEvent(notification, false)
             }
 
             ClientNotificationType.reactionContentDeleted -> {
+                handleReactionEvent(notification, true)
             }
 
             ClientNotificationType.allReactionsByFileDeleted -> {
+                handleAllReactionsDeletedEvent(notification)
             }
 
             ClientNotificationType.appNotificationAdded -> {
@@ -264,6 +288,7 @@ class OdinWebSocketClient(
             }
 
             ClientNotificationType.connectionFinalized -> {
+                // you're now connected
             }
 
             ClientNotificationType.error -> {
@@ -275,9 +300,7 @@ class OdinWebSocketClient(
         }
     }
 
-    private suspend fun handleProcessInbox(
-        notification: ClientNotificationPayload
-    ) {
+    private suspend fun handleProcessInbox(notification: ClientNotificationPayload) {
         val n =
             OdinSystemSerializer.deserialize<InboxItemReceivedNotification>(
                 notification.data
@@ -292,13 +315,28 @@ class OdinWebSocketClient(
         )
     }
 
-    private val fileEventBuffer =
-        mutableMapOf<Uuid, MutableList<HomebaseFile>>()
+    private suspend fun handleReactionEvent(
+        notification: ClientNotificationPayload,
+        isDeleted: Boolean
+    ) {
+        val eventData = OdinSystemSerializer
+            .deserialize<ClientReactionNotification>(notification.data)
 
-    private val fileEventFlushJobs =
-        mutableMapOf<Uuid, Job>()
+        val reaction = runCatching {
+            OdinSystemSerializer.deserialize<ReactionContent>(eventData.reactionContent)
+        }.getOrElse {
+            // log + drop reaction
+            null
+        }
 
-    private val FILE_EVENT_BURST_MS = 200L
+
+    }
+
+    private suspend fun handleAllReactionsDeletedEvent(notification: ClientNotificationPayload) {
+        val fileId =
+            OdinSystemSerializer.deserialize<InternalDriveFileId>(notification.data)
+    }
+
 
     private suspend fun handleFileEvent(notification: ClientNotificationPayload) {
         val fileNotification =
@@ -311,48 +349,33 @@ class OdinWebSocketClient(
         val file = header.asHomebaseFile(SecureByteArray(sharedSecret))
         val lastModified = file.fileMetadata.updated
 
-        val buffer = fileEventBuffer.getOrPut(driveId) { mutableListOf() }
-        buffer.add(file)
-
-        // TODO: remove this collet and flush - when Anders can help fix the event bus
-
-        // Cancel any pending flush and reschedule
-        fileEventFlushJobs[driveId]?.cancel()
-
-        fileEventFlushJobs[driveId] = scope.launch {
-            delay(FILE_EVENT_BURST_MS)
-
-            val batch = fileEventBuffer.remove(driveId) ?: return@launch
-            if (batch.isEmpty()) return@launch
-
-            try {
-                fileHeaderProcessor.baseUpsertEntryZapZap(
-                    identityId = identityId,
-                    driveId = driveId,
-                    fileHeaders = batch,
-                    cursor = null
-                )
-            } catch (e: Exception) {
-                Logger.e("DB upsert failed for burst: ${e.message}")
-            }
-
-            eventBus.emit(
-                BackendEvent.DriveEvent.BatchReceived(
-                    driveId = driveId,
-                    totalCount = batch.size,
-                    batchCount = batch.size,
-                    latestModified = lastModified,
-                    batchData = batch,
-                    source = BackendEvent.SyncSource.WebSocket
-                )
+        val batch = listOf(file)
+        try {
+            fileHeaderProcessor.baseUpsertEntryZapZap(
+                identityId = identityId,
+                driveId = driveId,
+                fileHeaders = batch,
+                cursor = null
             )
+        } catch (e: Exception) {
+            Logger.e("DB upsert failed for burst: ${e.message}")
+        }
 
-            Logger.i {
-                "Flushed ${batch.size} file events for drive $driveId"
-            }
+        eventBus.emit(
+            BackendEvent.DriveEvent.BatchReceived(
+                driveId = driveId,
+                totalCount = batch.size,
+                batchCount = batch.size,
+                latestModified = lastModified,
+                batchData = batch,
+                source = BackendEvent.SyncSource.WebSocket
+            )
+        )
+
+        Logger.i {
+            "Flushed ${batch.size} file events for drive $driveId"
         }
     }
-
 
     private suspend fun handleAuthError(notification: ClientNotificationPayload) {
         var message = notification.data
@@ -364,13 +387,9 @@ class OdinWebSocketClient(
         Logger.i { "Device handshake successful" }
         pingSupervisor.notifySessionReconnected()
         pingSupervisor.start()
-
         onConnected()
-
         eventBus.emit(BackendEvent.ConnectionOnline)
-
     }
-
 
     /**
      *
@@ -404,7 +423,8 @@ class OdinWebSocketClient(
         text: String
     ): String {
 
-        val envelope = OdinSystemSerializer.deserialize<WebSocketClientNotificationPayload>(text)
+        val envelope =
+            OdinSystemSerializer.deserialize<WebSocketClientNotificationPayload>(text)
         if (!envelope.isEncrypted) {
             return envelope.payload
         }

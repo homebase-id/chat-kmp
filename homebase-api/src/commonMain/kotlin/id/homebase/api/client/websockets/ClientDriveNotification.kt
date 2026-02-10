@@ -8,5 +8,8 @@ import kotlinx.serialization.Serializable
 data class ClientDriveNotification(
     val targetDrive: TargetDrive? = null,
     val header: ServerFile? = null,
-    val previousServerFileHeader: ServerFile? = null
+    val previousServerFileHeader: ServerFile? = null,
+    val isDeleteNotification: Boolean = false
 )
+
+
