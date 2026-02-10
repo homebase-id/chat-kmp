@@ -12,6 +12,8 @@ expect class LocalVideoServer {
         authToken: String?
     )
 
+    fun getServerUrl(): String
+
     fun unregisterContent(id: String)
     fun getContentUrl(id: String): String
 }

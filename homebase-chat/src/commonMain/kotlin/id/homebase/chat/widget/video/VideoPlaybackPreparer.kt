@@ -2,18 +2,22 @@ package id.homebase.chat.widget.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.video.LocalVideoServer
 import id.homebase.api.video.VideoMetadata
+import io.ktor.http.HttpHeaders
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.ceil
-import kotlin.toString
 import kotlin.uuid.Uuid
 
 class VideoPlaybackPreparer(
-    private val driveFileProvider: DriveFileProvider
+    private val driveFileProvider: DriveFileProvider,
+    private val videoServer: LocalVideoServer,
+    private val credentialsManager: CredentialsManager
 ) {
     suspend fun prepareVideoContentForPlayback(
         driveId: Uuid,
@@ -22,6 +26,8 @@ class VideoPlaybackPreparer(
         keyHeader: KeyHeader
     ): VideoPlaybackPreparationResult = withContext(Dispatchers.Default) {
         try {
+
+            val authToken = credentialsManager.requireActiveCredentials().clientAccessToken
 
             val header = driveFileProvider.getFileHeader(driveId, fileId)
                 ?: throw Exception("No header found for file")
@@ -53,20 +59,16 @@ class VideoPlaybackPreparer(
             //
             // HLS
             //
-            val isHls = videoMetaData.isSegmented && (
-                    (videoMetaData.hlsPlaylist != null && videoMetaData.key == null) ||
-                            (videoMetaData.hlsPlaylist == null && videoMetaData.key != null)
-                    )
+//            val isHls = videoMetaData.isSegmented &&
+//                    (
+//                            (videoMetaData.hlsPlaylist != null && videoMetaData.key == null)
+//                                    ||
+//                                    (videoMetaData.hlsPlaylist == null && videoMetaData.key != null)
+//                            )
+
+            val isHls = videoMetaData.isSegmented && videoMetaData.hlsPlaylist != null
 
             if (isHls) {
-
-//                if (videoMetaData.hlsPlaylist == null) {
-//                    val videoMetaDataPayload =
-//                        videoPayload.headerWrapper.getPayloadWrapper(videoMetaData.key!!)
-//                    val json =
-//                        videoMetaDataPayload.getPayloadBytes(appOrOwner).decodeToString()
-//                    videoMetaData = OdinSystemSerializer.deserialize<VideoMetadata>(json)
-//                }
 
                 Logger.i("VideoPreparer") { "Preparing HLS video playback" }
 
@@ -99,8 +101,8 @@ class VideoPlaybackPreparer(
                     id = contentId,
                     data = proxiedPlayList.encodeToByteArray(),
                     contentType = "application/vnd.apple.mpegurl",
-                    authTokenHeaderName = cookieNameFrom(appOrOwner),
-                    authToken = videoPayload.authenticated.clientAuthToken
+                    authTokenHeaderName = HttpHeaders.Authorization,
+                    authToken = authToken
                 )
 
                 return@withContext VideoPlaybackPreparationResult.Success(
@@ -116,15 +118,16 @@ class VideoPlaybackPreparer(
                 //TODO: consider streaming
                 val videoBytes = driveFileProvider
                     .getPayloadBytesDecrypted(driveId, fileId, payloadKey, keyHeader)
+                    ?: throw Exception("No file for fileId")
 
                 val contentId = "video-${Uuid.random()}"
 
                 videoServer.registerContent(
                     id = contentId,
-                    data = videoBytes,
-                    contentType = "video/mp4",
-                    authTokenHeaderName = cookieNameFrom(appOrOwner),
-                    authToken = videoPayload.authenticated.clientAuthToken
+                    data = videoBytes.bytes,
+                    contentType = videoMetaData.mimeType,
+                    authTokenHeaderName = HttpHeaders.Authorization,
+                    authToken = authToken
                 )
 
                 return@withContext VideoPlaybackPreparationResult.Success(
@@ -174,7 +177,7 @@ class VideoPlaybackPreparer(
             lines
         )
         lines = fixTargetDuration(lines)
-        lines = convertByteRangesToUrlPath(lines)
+//        lines = convertByteRangesToUrlPath(lines)
 
         return lines.joinToString("\n")
     }

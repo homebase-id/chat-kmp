@@ -74,6 +74,7 @@ kotlin {
             implementation(libs.jetbrains.compose.desktop.jvm.linux.x64)
             implementation(libs.kotlinx.coroutinesSwing)
             implementation(libs.sqldelight.sqlite.driver)
+            implementation("uk.co.caprica:vlcj:4.8.2")
         }
 
         commonTest.dependencies {

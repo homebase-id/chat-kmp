@@ -23,4 +23,8 @@ actual class LocalVideoServer {
     actual fun getContentUrl(id: String): String {
         TODO("Not yet implemented")
     }
+
+    actual fun getServerUrl(): String {
+        TODO("Not yet implemented")
+    }
 }

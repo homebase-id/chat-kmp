@@ -145,7 +145,7 @@ class VideoPayloadProcessor(
                     if (isSegmented) "application/vnd.apple.mpegurl" else "video/mp4",
                 isSegmented = isSegmented,
                 fileSize = fileOperationsProvider.getFileSize(finalVideoPath),
-                duration = durationMs,
+                durationMs = durationMs,
                 codec = codec,
                 hlsPlaylist = playlistContent,
                 key = payload.key

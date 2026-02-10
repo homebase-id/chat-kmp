@@ -14,6 +14,7 @@ import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
+import id.homebase.api.video.LocalVideoServer
 import id.homebase.api.video.VideoPayloadProcessor
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage

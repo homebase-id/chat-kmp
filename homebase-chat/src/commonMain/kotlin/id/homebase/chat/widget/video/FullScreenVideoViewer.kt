@@ -27,7 +27,11 @@ fun FullScreenVideoViewer(
     val videoPlaybackPreparer: VideoPlaybackPreparer = org.koin.compose.koinInject()
 
     var showUI by remember { mutableStateOf(true) }
-    var videoState by remember { mutableStateOf<VideoPlaybackPreparationResult>(VideoPlaybackPreparationResult.Loading) }
+    var videoState by remember {
+        mutableStateOf<VideoPlaybackPreparationResult>(
+            VideoPlaybackPreparationResult.Loading
+        )
+    }
     var debugState by remember { mutableStateOf(VideoDebugState()) }
     var debugUrl: String = "empty"
 
@@ -38,8 +42,8 @@ fun FullScreenVideoViewer(
         videoState = VideoPlaybackPreparationResult.Loading
 
         videoState = videoPlaybackPreparer.prepareVideoContentForPlayback(
-            data.fileId,
             data.driveId,
+            data.fileId,
             data.selectedPayloadKey,
             data.keyHeader
         )
@@ -113,7 +117,12 @@ fun FullScreenVideoViewer(
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
                     .padding(12.dp)
             ) {
-                Text("URL: ${debugUrl}")
+
+                OutlinedTextField(
+                    value = "URL: $debugUrl",
+                    onValueChange = {},
+                    readOnly = true
+                )
 
                 Text("Status: ${debugState.status}")
                 if (debugState.buffered.isNotEmpty()) {
