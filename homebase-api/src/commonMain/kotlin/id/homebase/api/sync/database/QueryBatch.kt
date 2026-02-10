@@ -17,7 +17,7 @@ import kotlin.uuid.Uuid
  * QueryBatch for batch querying of drive records with sorting and filtering
  *
  * Ported from C# Odin.Core.Storage.Database.Identity.Abstractions.QueryBatch
- * 
+ *
  * NOTE: This is a simplified KMP conversion. The original C# code uses database-specific
  * implementations that would need to be adapted for your specific database layer.
  * This provides the structure and logic for porting to your KMP database solution.
@@ -25,7 +25,7 @@ import kotlin.uuid.Uuid
 class QueryBatch(
     private val odinIdentity: Uuid
 ) {
-    
+
     companion object {
         // Initialize selectOutputFields statically
         private const val SELECT_OUTPUT_FIELDS = "rowId, jsonHeader";
@@ -60,7 +60,8 @@ class QueryBatch(
 
         // ACL handling - security group with optional circles
         if (!aclAnyOf.isNullOrEmpty()) {
-            leftJoin = "LEFT JOIN driveAclIndex cir ON (driveMainIndex.identityId = cir.identityId AND driveMainIndex.driveId = cir.driveId AND driveMainIndex.fileId = cir.fileId)"
+            leftJoin =
+                "LEFT JOIN driveAclIndex cir ON (driveMainIndex.identityId = cir.identityId AND driveMainIndex.driveId = cir.driveId AND driveMainIndex.fileId = cir.fileId)"
             listWhere.add("( (cir.fileId IS NULL) OR cir.aclMemberId IN (${hexList(aclAnyOf)}) )")
         }
 
@@ -81,11 +82,23 @@ class QueryBatch(
         }
 
         if (!tagsAnyOf.isNullOrEmpty()) {
-            listWhere.add("driveMainIndex.fileId IN (SELECT DISTINCT fileId FROM driveTagIndex WHERE driveTagIndex.identityId=driveMainIndex.identityId AND tagId IN (${hexList(tagsAnyOf)}))")
+            listWhere.add(
+                "driveMainIndex.fileId IN (SELECT DISTINCT fileId FROM driveTagIndex WHERE driveTagIndex.identityId=driveMainIndex.identityId AND tagId IN (${
+                    hexList(
+                        tagsAnyOf
+                    )
+                }))"
+            )
         }
 
         if (!localTagsAnyOf.isNullOrEmpty()) {
-            listWhere.add("driveMainIndex.fileId IN (SELECT DISTINCT fileId FROM driveLocalTagIndex WHERE driveLocalTagIndex.identityId=driveMainIndex.identityId AND TagId IN (${hexList(localTagsAnyOf)}))")
+            listWhere.add(
+                "driveMainIndex.fileId IN (SELECT DISTINCT fileId FROM driveLocalTagIndex WHERE driveLocalTagIndex.identityId=driveMainIndex.identityId AND TagId IN (${
+                    hexList(
+                        localTagsAnyOf
+                    )
+                }))"
+            )
         }
 
         if (!archivalStatusAnyOf.isNullOrEmpty()) {
@@ -122,7 +135,7 @@ class QueryBatch(
      * Asynchronously retrieves a batch of records from the drive main index
      */
     suspend fun queryBatchAsync(
-        dbm : DatabaseManager,
+        dbm: DatabaseManager,
         driveId: Uuid,
         noOfItems: Int,
         cursor: QueryBatchCursor? = null,
@@ -144,7 +157,7 @@ class QueryBatch(
         localTagsAnyOf: List<Uuid>? = null,
         localTagsAllOf: List<Uuid>? = null
     ): QueryBatchResult {
-        
+
         if (fileSystemType == null) {
             throw IllegalArgumentException("fileSystemType required in Query Batch")
         }
@@ -159,17 +172,18 @@ class QueryBatch(
 
         // Set order for appropriate direction
         val (sign, isign, direction) = when (sortOrder) {
-            QueryBatchSortOrder.NewestFirst, QueryBatchSortOrder.Default -> 
+            QueryBatchSortOrder.NewestFirst, QueryBatchSortOrder.Default ->
                 Triple('<', '>', "DESC")
-            QueryBatchSortOrder.OldestFirst -> 
+
+            QueryBatchSortOrder.OldestFirst ->
                 Triple('>', '<', "ASC")
         }
 
         val timeField: String
         val listWhereAnd = mutableListOf<String>()
-        
-        
-        
+
+
+
         timeField = when (sortField) {
             QueryBatchSortField.CreatedDate, QueryBatchSortField.FileId -> "created"
             QueryBatchSortField.UserDate -> "userDate"
@@ -178,6 +192,7 @@ class QueryBatch(
                 listWhereAnd.add("modified < ${UnixTimeUtc.now().milliseconds}")
                 "modified"
             }
+
             QueryBatchSortField.OnlyModifiedDate -> {
                 listWhereAnd.add("modified < ${UnixTimeUtc.now().milliseconds}")
                 listWhereAnd.add("modified != created")
@@ -187,13 +202,15 @@ class QueryBatch(
 
         // Handle paging cursor
         workingCursor.paging?.let { pagingCursor ->
-            val rowId = pagingCursor.row ?: if (sortOrder == QueryBatchSortOrder.NewestFirst) Long.MAX_VALUE else 0L
+            val rowId = pagingCursor.row
+                ?: if (sortOrder == QueryBatchSortOrder.NewestFirst) Long.MAX_VALUE else 0L
             listWhereAnd.add("($timeField, driveMainIndex.rowId) $sign (${pagingCursor.time.milliseconds}, $rowId)")
         }
 
         // Handle stop boundary
         workingCursor.stop?.let { stopBoundary ->
-            val rowId = stopBoundary.row ?: if (sortOrder == QueryBatchSortOrder.NewestFirst) Long.MAX_VALUE else 0L
+            val rowId = stopBoundary.row
+                ?: if (sortOrder == QueryBatchSortOrder.NewestFirst) Long.MAX_VALUE else 0L
             listWhereAnd.add("($timeField, driveMainIndex.rowId) $isign (${stopBoundary.time.milliseconds}, $rowId)")
         }
 
@@ -211,9 +228,10 @@ class QueryBatch(
         val orderString = "$timeField $direction, driveMainIndex.rowId $direction"
 
         // Read +1 more than requested to see if we're at the end of the dataset
-        val sqlStatement = "SELECT DISTINCT $SELECT_OUTPUT_FIELDS FROM driveMainIndex $leftJoin WHERE ${
-            listWhereAnd.joinToString(" AND ")
-        } ORDER BY $orderString LIMIT ${actualNoOfItems + 1}"
+        val sqlStatement =
+            "SELECT DISTINCT $SELECT_OUTPUT_FIELDS FROM driveMainIndex $leftJoin WHERE ${
+                listWhereAnd.joinToString(" AND ")
+            } ORDER BY $orderString LIMIT ${actualNoOfItems + 1}"
 
         // Execute custom SQL using SQLDelight driver
         val result = dbm.executeReadQuery(
@@ -225,23 +243,41 @@ class QueryBatch(
                 lateinit var header: HomebaseFile
                 var rowId: Long? = -1
 
-                while (sqlCursor.next().value && count < actualNoOfItems) {
+                var hasMoreRows = false
+                while (sqlCursor.next().value) {
+                    if (count >= actualNoOfItems) {
+                        hasMoreRows = true
+                        break
+                    }
                     rowId = sqlCursor.getLong(0)
                     val jsonHeader = sqlCursor.getString(1) ?: ""
                     header = OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader)
                     records.add(header)
                     count++
                 }
-                val hasMoreRows = sqlCursor.next().value // Check if there's at least one more record
 
-                if (count > 0)
-                {
+                if (count > 0) {
                     if (sortField === QueryBatchSortField.UserDate)
-                        workingCursor = workingCursor.copy(paging = TimeRowCursor(UnixTimeUtc(header.fileMetadata.appData.userDate!!), 0L))
+                        workingCursor = workingCursor.copy(
+                            paging = TimeRowCursor(
+                                UnixTimeUtc(header.fileMetadata.appData.userDate!!),
+                                0L
+                            )
+                        )
                     else if (sortField === QueryBatchSortField.AnyChangeDate || sortField === QueryBatchSortField.OnlyModifiedDate)
-                        workingCursor = workingCursor.copy(paging = TimeRowCursor(header.fileMetadata.updated, 0L))
+                        workingCursor = workingCursor.copy(
+                            paging = TimeRowCursor(
+                                header.fileMetadata.updated,
+                                0L
+                            )
+                        )
                     else if (sortField === QueryBatchSortField.FileId || sortField === QueryBatchSortField.CreatedDate)
-                        workingCursor = workingCursor.copy(paging = TimeRowCursor(header.fileMetadata.created, 0L))
+                        workingCursor = workingCursor.copy(
+                            paging = TimeRowCursor(
+                                header.fileMetadata.created,
+                                0L
+                            )
+                        )
                     else
                         throw IllegalArgumentException("Invalid QueryBatchSortField type")
                 }
@@ -257,7 +293,7 @@ class QueryBatch(
      * Smart cursor variant with automatic boundary management for NewestFirst queries
      */
     suspend fun queryBatchSmartCursorAsync(
-        dbm : DatabaseManager,
+        dbm: DatabaseManager,
         driveId: Uuid,
         noOfItems: Int,
         cursor: QueryBatchCursor? = null,
@@ -280,10 +316,11 @@ class QueryBatch(
         localTagsAnyOf: List<Uuid>? = null,
         localTagsAllOf: List<Uuid>? = null
     ): QueryBatchResult {
-        
+
         val pagingCursorWasNull = cursor?.paging == null
 
-        val (result, moreRows, refCursor) = queryBatchAsync(dbm,
+        val (result, moreRows, refCursor) = queryBatchAsync(
+            dbm,
             driveId, noOfItems, cursor, sortOrder, sortField,
             fileSystemType, fileStateAnyOf,
             globalTransitIdAnyOf, filetypesAnyOf, datatypesAnyOf,
@@ -302,10 +339,16 @@ class QueryBatch(
                 val nextBoundaryCursor = when (sortField) {
                     QueryBatchSortField.CreatedDate, QueryBatchSortField.FileId ->
                         TimeRowCursor(UnixTimeUtc(result[0].fileMetadata.created.milliseconds), 0L)
+
                     QueryBatchSortField.AnyChangeDate ->
                         TimeRowCursor(UnixTimeUtc(result[0].fileMetadata.updated.milliseconds), 0L)
+
                     QueryBatchSortField.UserDate ->
-                        TimeRowCursor(UnixTimeUtc(result[0].fileMetadata.appData.userDate ?: 0L), 0L)
+                        TimeRowCursor(
+                            UnixTimeUtc(result[0].fileMetadata.appData.userDate ?: 0L),
+                            0L
+                        )
+
                     QueryBatchSortField.OnlyModifiedDate ->
                         TimeRowCursor(UnixTimeUtc(result[0].fileMetadata.updated.milliseconds), 0L)
                 }
@@ -326,7 +369,8 @@ class QueryBatch(
                     }
 
                     // Recursive call to check for more items
-                    val (r2, moreRows2, refCursor2) = queryBatchSmartCursorAsync(dbm,
+                    val (r2, moreRows2, refCursor2) = queryBatchSmartCursorAsync(
+                        dbm,
                         driveId, noOfItems - result.size, updatedCursor,
                         sortOrder, sortField, fileSystemType, fileStateAnyOf,
                         requiredSecurityGroup, globalTransitIdAnyOf, filetypesAnyOf,
@@ -349,7 +393,8 @@ class QueryBatch(
                     next = null,
                     paging = null
                 )
-                return queryBatchSmartCursorAsync(dbm,
+                return queryBatchSmartCursorAsync(
+                    dbm,
                     driveId, noOfItems, updatedCursor, sortOrder, sortField,
                     fileSystemType, fileStateAnyOf, requiredSecurityGroup,
                     globalTransitIdAnyOf, filetypesAnyOf, datatypesAnyOf,
@@ -357,7 +402,11 @@ class QueryBatch(
                     userDateSpan, aclAnyOf, tagsAnyOf, tagsAllOf, localTagsAnyOf, localTagsAllOf
                 )
             } else {
-                return QueryBatchResult(result, moreRows, refCursor.copy(next = null, paging = null))
+                return QueryBatchResult(
+                    result,
+                    moreRows,
+                    refCursor.copy(next = null, paging = null)
+                )
             }
         }
 
@@ -368,7 +417,7 @@ class QueryBatch(
      * Legacy query for modified items - should be removed eventually
      */
     suspend fun queryModifiedAsync(
-        dbm : DatabaseManager,
+        dbm: DatabaseManager,
         driveId: Uuid,
         noOfItems: Int,
         cursorString: String? = null,
@@ -401,7 +450,8 @@ class QueryBatch(
             stop = stopAtModifiedUnixTimeSeconds
         )
 
-        val (records, hasMoreRows, updatedCursor) = queryBatchAsync(dbm,
+        val (records, hasMoreRows, updatedCursor) = queryBatchAsync(
+            dbm,
             driveId, noOfItems, queryCursor, QueryBatchSortOrder.OldestFirst,
             QueryBatchSortField.OnlyModifiedDate, fileSystemType, null,
             globalTransitIdAnyOf, filetypesAnyOf,
@@ -441,7 +491,8 @@ class QueryBatch(
             throw IllegalArgumentException("AllOf list must have at least two entries")
         }
 
-        var sql = "driveMainIndex.fileId IN (SELECT DISTINCT fileId FROM $tableName WHERE tagId = ${list[0].toSqlString()} "
+        var sql =
+            "driveMainIndex.fileId IN (SELECT DISTINCT fileId FROM $tableName WHERE tagId = ${list[0].toSqlString()} "
 
         for (i in 1 until list.size) {
             sql += "INTERSECT SELECT DISTINCT fileId FROM $tableName WHERE tagId = ${list[i].toSqlString()} "
