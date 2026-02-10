@@ -2,6 +2,7 @@ package id.homebase.chat.data
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.OdinId
 import id.homebase.api.util.truncateToCodePoints
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -16,7 +17,7 @@ data class ConversationUiModel(  // TODO: Move the data objects / classes into C
     val avatarInitials: String,
     val avatarUrl: String = "",
     val avatarTiny: EmbeddedThumb?,
-    val participants: List<String> = listOf(),
+    val participants: List<OdinId> = listOf(),
     val isPinned: Boolean = false,
     val lastRead: Instant
 ) {
@@ -30,7 +31,7 @@ data class ConversationUiModel(  // TODO: Move the data objects / classes into C
 
     fun getDisplay(): String {
         if (name.isEmpty() || name.isBlank()) {
-            return participants.first()
+            return participants.first().domainName
         }
         return name
     }

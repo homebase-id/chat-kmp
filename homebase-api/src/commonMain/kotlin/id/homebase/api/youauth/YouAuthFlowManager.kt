@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.io.encoding.Base64
+import id.homebase.api.common.OdinId
 
 /** Authentication state for the YouAuth flow. */
 @Immutable
@@ -36,7 +37,7 @@ sealed class YouAuthState {
 
     /** User is authenticated with valid tokens */
     data class Authenticated(
-        val identity: String,
+        val identity: OdinId,
         val clientAuthToken: String,
         val sharedSecret: String
     ) : YouAuthState()
@@ -47,7 +48,7 @@ sealed class YouAuthState {
 
 /** Internal state for the auth code flow. */
 private data class AuthCodeFlowState(
-    val identity: String,
+    val identity: OdinId,
     val password: SecureByteArray,
     val keyPair: EccKeyPair
 )
@@ -151,7 +152,7 @@ class YouAuthFlowManager(
      * @param drives List of drive access requests
      */
     suspend fun authorize(
-        identity: String,
+        identity: OdinId,
         scope: CoroutineScope,
         appId: String,
         appName: String,
@@ -238,8 +239,14 @@ class YouAuthFlowManager(
                 throw Exception("Missing /authorization-code-callback")
             }
 
-            val identity = decodeUrl(queryParams["identity"] ?: "")
-            if (identity.isEmpty()) throw Exception("Missing query param: identity")
+            val identity: OdinId
+            try {
+                identity = OdinId(decodeUrl(queryParams["identity"] ?: ""))
+            }
+            catch (e: Exception)
+            {
+                throw Exception("Invalid query param: identity")
+            }
 
             val publicKey = decodeUrl(queryParams["public_key"] ?: "")
             if (publicKey.isEmpty()) throw Exception("Missing query param: public_key")

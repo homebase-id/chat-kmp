@@ -34,7 +34,7 @@ class SettingsViewModel(
 
         _uiState.value = _uiState.value.copy(
             selectedLanguage = selectedLanguage,
-            loggedInDomain = credentials.domain)
+            loggedInDomain = credentials.domain.domainName)
     }
 
     /** Single entry point for all UI actions. */

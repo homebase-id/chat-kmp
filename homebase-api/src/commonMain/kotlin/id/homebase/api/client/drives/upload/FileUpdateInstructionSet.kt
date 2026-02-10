@@ -2,6 +2,7 @@ package id.homebase.api.client.drives.upload
 
 import id.homebase.api.prototype.lib.serialization.Base64ByteArraySerializer
 import kotlinx.serialization.Serializable
+import id.homebase.api.common.OdinId
 
 @Serializable
 data class FileUpdateInstructionSet(
@@ -10,7 +11,7 @@ data class FileUpdateInstructionSet(
 
     val locale: UpdateLocale,
 
-    val recipients: List<String>,
+    val recipients: List<OdinId>,
 
     val manifest: UpdateManifest,
 

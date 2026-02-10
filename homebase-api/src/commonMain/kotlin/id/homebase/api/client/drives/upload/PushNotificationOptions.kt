@@ -1,6 +1,7 @@
 package id.homebase.api.client.drives.upload
 
 import kotlinx.serialization.Serializable
+import id.homebase.api.common.OdinId
 
 /**
  * Push notification options for transit operations.
@@ -13,5 +14,5 @@ data class PushNotificationOptions(
     val silent: Boolean,
     val unEncryptedMessage: String? = null,
     val peerSubscriptionId: String? = null,
-    val recipients: List<String>? = null
+    val recipients: List<OdinId>? = null
 )
