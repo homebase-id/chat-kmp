@@ -71,9 +71,17 @@ class NotificationSettingsViewModel(
                 }
             }
 
+            NotificationSettingsUiAction.RequestPermission -> {
+                // Handled by UI
+            }
+
             NotificationSettingsUiAction.OpenSystemNotificationSettings -> {
                 // Handled by the screen composable — triggers platform-specific system settings
             }
         }
+    }
+
+    fun updatePermissionStatus(isGranted: Boolean) {
+        _uiState.update { it.copy(isPermissionGranted = isGranted) }
     }
 }

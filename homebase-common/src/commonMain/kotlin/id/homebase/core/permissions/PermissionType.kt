@@ -4,4 +4,5 @@ enum class PermissionType {
     CAMERA,
     GALLERY,
     GALLERY_LIMITED,
+    NOTIFICATION,
 }

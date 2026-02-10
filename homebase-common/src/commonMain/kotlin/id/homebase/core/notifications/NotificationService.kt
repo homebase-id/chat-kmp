@@ -9,7 +9,6 @@ import id.homebase.core.util.Platform
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
 
 /**
  * Central notification service that wraps KMPNotifier and handles incoming push/local
