@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 
 /**
  * File query parameters for filtering drive files
@@ -18,7 +19,7 @@ data class FileQueryParams(
     val dataType: List<Int>? = null,
     val fileState: List<FileState>? = null,
     val archivalStatus: List<Int>? = null,
-    val sender: List<String>? = null, // Todo: senderId
+    val sender: List<OdinId>? = null, // Todo: senderId
     val groupId: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
     val userDate: UnixTimeUtcRange? = null,
     val userDateStart: Long? = null,

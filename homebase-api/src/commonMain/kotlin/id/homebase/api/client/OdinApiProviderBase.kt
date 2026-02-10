@@ -21,6 +21,7 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.content.TextContent
 import io.ktor.http.contentType
+import id.homebase.api.common.OdinId
 
 data class ByteApiResponse(
     val status: Int,
@@ -53,7 +54,7 @@ abstract class OdinApiProviderBase(
     private val HOST_URL_REGEX = Regex("""^[a-zA-Z][a-zA-Z0-9+.-]*://[^/]+""")
 
     protected data class ActiveCredentials(
-        val domain: String,
+        val domain: OdinId,
         val accessToken: String,
         val secret: SecureByteArray
     )
@@ -64,7 +65,7 @@ abstract class OdinApiProviderBase(
         return ActiveCredentials(domain, token, secret)
     }
 
-    protected fun apiUrl(domain: String, path: String): String =
+    protected fun apiUrl(domain: OdinId, path: String): String =
         "https://$domain/api/v2$path"
 
     // ------------------------------------------------------------

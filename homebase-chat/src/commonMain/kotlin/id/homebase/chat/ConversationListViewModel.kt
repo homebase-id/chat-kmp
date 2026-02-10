@@ -58,7 +58,7 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            val domain = credentialsManager.requireActiveCredentials().domain.trim().lowercase()
+            val domain = credentialsManager.requireActiveCredentials().domain.domainName
             _uiState.update { it.copy(currentOdinId = domain) }
         }
 
