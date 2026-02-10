@@ -38,14 +38,13 @@ import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.ConversationListScreen
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.home.HomeScreen
+import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import kotlinx.coroutines.flow.StateFlow
 import org.koin.compose.viewmodel.koinViewModel
 
 sealed class TopLevelRoute(
-    val route: Route,
-    val label: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val route: Route, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
     data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
@@ -61,20 +60,16 @@ fun AppNavHost(
     val isAuthenticated = authState is YouAuthState.Authenticated
 
     val adaptiveInfo = currentWindowAdaptiveInfo()
-    val useNavigationRail =
-        adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
+    val useNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
+        WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
+    )
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val topLevelRoutes = remember {
-        listOf(TopLevelRoute.Chat, TopLevelRoute.Home)
-    }
+    val topLevelRoutes = remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Home) }
 
     // Track if we are in a screen where bottom menu should be hidden
     var shouldHideBottomMenu by remember { mutableStateOf(false) }
-    val shouldShowBottomNav =
-        isAuthenticated &&
-                !useNavigationRail &&
-                !shouldHideBottomMenu
+    val shouldShowBottomNav = isAuthenticated && !useNavigationRail && !shouldHideBottomMenu
 
     Scaffold(
         bottomBar = {
@@ -82,51 +77,45 @@ fun AppNavHost(
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
-                            icon = { Icon(topLevelRoute.icon, contentDescription = null) },
+                            icon = {
+                                Icon(
+                                    topLevelRoute.icon,
+                                    contentDescription = null
+                                )
+                            },
                             label = { Text(topLevelRoute.label) },
-                            selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
+                            selected = currentDestination?.hasRoute(
+                                topLevelRoute.route::class
+                            ) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList) {
-                                        saveState = true
-                                    }
+                                    popUpTo(Route.ChatList) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
-                            }
-                        )
+                            })
                     }
                 }
             }
-        }
-    ) { paddingValues ->
+        }) { paddingValues ->
         Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(paddingValues)
+            modifier = Modifier.fillMaxSize().consumeWindowInsets(paddingValues)
                 .padding(paddingValues)
         ) {
             if (useNavigationRail && isAuthenticated) {
-                NavigationRail(
-                    header = {
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-                ) {
+                NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationRailItem(
                             icon = { Icon(topLevelRoute.icon, contentDescription = null) },
-                            //label = { Text(topLevelRoute.label) },
+                            // label = { Text(topLevelRoute.label) },
                             selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList) {
-                                        saveState = true
-                                    }
+                                    popUpTo(Route.ChatList) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
-                            }
-                        )
+                            })
                     }
                 }
             }
@@ -139,70 +128,71 @@ fun AppNavHost(
                 composable<Route.Login> {
                     val vm = koinViewModel<LoginViewModel>()
                     LoginScreen(
-                        viewModel = vm,
-                        onNavigateHome = {
+                        viewModel = vm, onNavigateHome = {
                             navController.navigate(Route.ChatList) {
                                 popUpTo(Route.Login) { inclusive = true }
                             }
-                        }
-                    )
+                        })
                 }
 
                 composable<Route.Home> {
                     AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState,
-                        onUnauthenticated = {
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
                             navController.navigate(Route.Login) {
                                 popUpTo(0) { inclusive = true }
                             }
-                        }
-                    ) {
+                        }) {
                         HomeScreen(
                             viewModel = koinViewModel(),
-                            onNavigateToChatList = {
-                                navController.navigate(Route.ChatList)
-                            }
-                        )
+                            onNavigateToChatList = { navController.navigate(Route.ChatList) })
                     }
                 }
 
-
                 composable<Route.ChatList> {
                     AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState,
-                        onUnauthenticated = {
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
                             navController.navigate(Route.Login) {
                                 popUpTo(0) { inclusive = true }
                             }
-                        }
-                    ) {
+                        }) {
                         ConversationListScreen(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
-                            onNavigateToSettingsScreen = { navController.navigate(Route.Settings) },
-                            onDetailPaneVisibilityChanged = {
-                                shouldHideBottomMenu = it
-                            }
-                        )
+                            onNavigateToSettingsScreen = {
+                                navController.navigate(Route.Settings)
+                            },
+                            onDetailPaneVisibilityChanged = { shouldHideBottomMenu = it })
                     }
                 }
 
                 composable<Route.Settings> {
                     AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState,
-                        onUnauthenticated = {
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
                             navController.navigate(Route.Login) {
                                 popUpTo(0) { inclusive = true }
                             }
-                        }
-                    ) {
+                        }) {
                         SettingsScreen(
                             viewModel = koinViewModel(),
-                            onBackClick = { navController.popBackStack() }
-                        )
+                            onBackClick = { navController.popBackStack() },
+                            onNavigateToNotifications = {
+                                navController.navigate(Route.NotificationSettings)
+                            })
                     }
                 }
 
+                composable<Route.NotificationSettings> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        NotificationSettingsScreen(
+                            viewModel = koinViewModel(),
+                            onBackClick = { navController.popBackStack() })
+                    }
+                }
             }
         }
     }
@@ -251,7 +241,6 @@ fun AppNavHost(
 //                    onNavigateBack = { navController.popBackStack() }
 //            )
 //        }
-
 
 /** Wrapper for routes that require authentication using YouAuthFlowManager. */
 @Composable

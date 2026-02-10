@@ -7,6 +7,23 @@ class UserPreferences(private val settings: Settings) {
         get() = settings.getString("language", "system")
         set(value) = settings.putString("language", value)
 
+    // Notification preferences
+    var playWhileAppOpen: Boolean
+        get() = settings.getBoolean("notification_play_while_app_open", true)
+        set(value) = settings.putBoolean("notification_play_while_app_open", value)
+
+    var notificationContentLevel: String
+        get() = settings.getString("notification_content_level", "name_content_actions")
+        set(value) = settings.putString("notification_content_level", value)
+
+    var includeMutedChatsInBadge: Boolean
+        get() = settings.getBoolean("notification_include_muted_badge", false)
+        set(value) = settings.putBoolean("notification_include_muted_badge", value)
+
+    var notifyOnContactJoins: Boolean
+        get() = settings.getBoolean("notification_contact_joins", false)
+        set(value) = settings.putBoolean("notification_contact_joins", value)
+
     fun getConversationScrollIndex(conversationId: String): Int? {
         return settings.getIntOrNull("conversationScrollIndex-$conversationId")
     }

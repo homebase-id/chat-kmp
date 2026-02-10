@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -41,12 +43,12 @@ import id.homebase.resources.language_system
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings
 import org.jetbrains.compose.resources.stringResource
-import kotlin.math.log
 
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBackClick: () -> Unit,
+    onNavigateToNotifications: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -69,7 +71,8 @@ fun SettingsScreen(
     SettingsUi(
         uiState = uiState,
         onAction = viewModel::onAction,
-        onBackClick = onBackClick
+        onBackClick = onBackClick,
+        onNavigateToNotifications = onNavigateToNotifications
     )
 }
 
@@ -79,22 +82,19 @@ fun SettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
+    onNavigateToNotifications: () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.settings)) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.Default.ChevronLeft,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
+            TopAppBar(title = { Text(stringResource(MR.string.settings)) }, navigationIcon = {
+                IconButton(onClick = onBackClick) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronLeft,
+                        contentDescription = stringResource(MR.string.menu_back)
+                    )
                 }
-            )
-        }
-    ) { innerPadding ->
+            })
+        }) { innerPadding ->
         Column(
             modifier = Modifier.fillMaxSize().consumeWindowInsets(innerPadding)
                 .padding(innerPadding).padding(24.dp),
@@ -103,8 +103,7 @@ fun SettingsUi(
         ) {
             // Language Section
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
                     text = stringResource(MR.string.language),
@@ -116,18 +115,46 @@ fun SettingsUi(
                     LanguageOption(
                         language = language,
                         isSelected = language == uiState.selectedLanguage,
-                        onClick = { onAction(SettingsUiAction.LanguageSelected(language)) }
+                        onClick = { onAction(SettingsUiAction.LanguageSelected(language)) })
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Notifications Row
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToNotifications)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(text = "Notifications", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onAction(SettingsUiAction.LogoutClicked) }
-            ) {
+                modifier = Modifier.fillMaxWidth().clickable {
+                    onAction(SettingsUiAction.LogoutClicked)
+                }) {
                 Row(
                     modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -141,26 +168,15 @@ fun SettingsUi(
             }
 
             Spacer(modifier = Modifier.weight(1f))
-
         }
     }
 }
 
 @Composable
-fun LanguageOption(
-    language: Language,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-    ) {
+fun LanguageOption(language: Language, isSelected: Boolean, onClick: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -183,7 +199,9 @@ fun LanguageOption(
 }
 
 @Composable
-private fun getStringResourceForLanguage(language: Language): org.jetbrains.compose.resources.StringResource {
+private fun getStringResourceForLanguage(
+    language: Language
+): org.jetbrains.compose.resources.StringResource {
     return when (language) {
         Language.SYSTEM -> MR.string.language_system
         Language.ENGLISH_US -> MR.string.language_english_us
@@ -192,7 +210,6 @@ private fun getStringResourceForLanguage(language: Language): org.jetbrains.comp
     }
 }
 
-
 @Preview
 @Composable
 fun SettingsUiPreview() {
@@ -200,7 +217,6 @@ fun SettingsUiPreview() {
         SettingsUi(
             uiState = SettingsUiState(loggedInDomain = "your.identity.id"),
             onAction = {},
-            onBackClick = {}
-        )
+            onBackClick = {})
     }
 }

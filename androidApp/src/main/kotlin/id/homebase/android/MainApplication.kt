@@ -1,6 +1,8 @@
 package id.homebase.android
 
 import android.app.Application
+import com.mmk.kmpnotifier.notification.NotifierManager
+import com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.storage.SharedPreferences
 import id.homebase.api.sync.database.DatabaseDriverFactory
@@ -34,5 +36,13 @@ class MainApplication : Application(), KoinComponent {
             // Load modules
             modules(allModules)
         }
+
+        // Initialize KMPNotifier for push notifications
+        NotifierManager.initialize(
+            configuration = NotificationPlatformConfiguration.Android(
+                notificationIconResId = R.drawable.ic_launcher_foreground,
+                showPushNotification = true,
+            )
+        )
     }
 }

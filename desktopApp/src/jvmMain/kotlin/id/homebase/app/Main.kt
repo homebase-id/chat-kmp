@@ -4,6 +4,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
@@ -21,9 +22,7 @@ import org.koin.core.context.GlobalContext.startKoin
 
 fun main() = application {
     // Initialize Koin first
-    startKoin {
-        modules(allModules)
-    }
+    startKoin { modules(allModules) }
 
     // OSX customizations
     System.setProperty("apple.awt.application.appearance", "system")
@@ -31,13 +30,18 @@ fun main() = application {
     // Initialize FileKit
     FileKit.init(appId = "HomebaseChat")
 
+    // Initialize KMPNotifier for desktop notifications
+    NotifierManager.initialize(
+        configuration = com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration.Desktop(
+            showPushNotification = true,
+        )
+    )
+
     // Apply saved locale
     val koin = GlobalContext.get()
     val userPreferences = koin.get<UserPreferences>()
 
-    runBlocking {
-        applyStoredLocale(userPreferences)
-    }
+    runBlocking { applyStoredLocale(userPreferences) }
 
     val minWidth = 480
     val minHeight = 400
@@ -50,9 +54,7 @@ fun main() = application {
         height = maxOf(config.windowHeightDp, minHeight.dp), // Minimum height
     )
 
-    runBlocking {
-        DatabaseManager.initialize { DatabaseDriverFactory().createDriver() }
-    }
+    runBlocking { DatabaseManager.initialize { DatabaseDriverFactory().createDriver() } }
 
     Window(
         onCloseRequest = {
@@ -62,7 +64,7 @@ fun main() = application {
                 config.windowWidthDp = maxOf(state.size.width, minWidth.dp)
                 config.windowHeightDp = maxOf(state.size.height, minHeight.dp)
             } catch (_: Exception) {
-                //Logger.w(TAG, e, "Error saving window state")
+                // Logger.w(TAG, e, "Error saving window state")
             }
             exitApplication()
         },
