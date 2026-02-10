@@ -243,18 +243,22 @@ class QueryBatch(
                 lateinit var header: HomebaseFile
                 var rowId: Long? = -1
 
-                var hasMoreRows = false
+                var cursorDepleted = true
                 while (sqlCursor.next().value) {
-                    if (count >= actualNoOfItems) {
-                        hasMoreRows = true
-                        break
-                    }
                     rowId = sqlCursor.getLong(0)
                     val jsonHeader = sqlCursor.getString(1) ?: ""
                     header = OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader)
                     records.add(header)
                     count++
+                    if (count >= actualNoOfItems) {
+                        cursorDepleted = false
+                        break
+                    }
                 }
+
+                // Important: iOS cannot call the cursor twice if it is EOF.
+                // Important !cursorDepleted is first in &&
+                val hasMoreRows = !cursorDepleted && sqlCursor.next().value
 
                 if (count > 0) {
                     if (sortField === QueryBatchSortField.UserDate)
@@ -281,6 +285,7 @@ class QueryBatch(
                     else
                         throw IllegalArgumentException("Invalid QueryBatchSortField type")
                 }
+
                 QueryResult.Value(QueryBatchResult(records, hasMoreRows, workingCursor))
             },
             parameters = 0
