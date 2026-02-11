@@ -230,6 +230,7 @@ fun MessageTextFieldExpanded(
                 },
                 colors = IconButtonDefaults.iconButtonColors(
                     containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                    contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                 )
             ) {
                 Icon(
@@ -327,6 +328,7 @@ fun MessageTextFieldCompact(
                     onClick = onSendMessage,
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )
                 ) {
                     Icon(
@@ -339,6 +341,7 @@ fun MessageTextFieldCompact(
                     onClick = onAddAttachmentClick,
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor =  HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )
                 ) {
                     Icon(
@@ -418,6 +421,7 @@ fun MessageTextFieldForAttachment(
                     onClick = onSendMessage,
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )
                 ) {
                     Icon(
@@ -432,6 +436,7 @@ fun MessageTextFieldForAttachment(
                     },
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor =  HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )
                 ) {
                     Icon(
