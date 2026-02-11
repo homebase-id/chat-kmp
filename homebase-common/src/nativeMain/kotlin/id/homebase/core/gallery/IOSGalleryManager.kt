@@ -9,6 +9,7 @@ import platform.Photos.PHAsset
 import platform.Photos.PHAssetCollection
 import platform.Photos.PHAssetCollectionTypeAlbum
 import platform.Photos.PHAssetMediaTypeImage
+import platform.Photos.PHAssetResource
 import platform.Photos.PHFetchOptions
 
 class IOSGalleryManager: PlatformGalleryManager {
@@ -30,6 +31,14 @@ class IOSGalleryManager: PlatformGalleryManager {
         for (i in 0 until fetchResult.count.toInt()) {
             val asset = fetchResult.objectAtIndex(i.toULong()) as PHAsset
 
+            // Get the file name from asset resources
+            val resources = PHAssetResource.assetResourcesForAsset(asset)
+            val fileName = if (resources.isNotEmpty()) {
+                (resources.first() as? PHAssetResource)?.originalFilename ?: "unknown.jpg"
+            } else {
+                "unknown.jpg"
+            }
+
             // Get the album/collection name
             val collections = PHAssetCollection.fetchAssetCollectionsContainingAsset(
                 asset,
@@ -45,8 +54,10 @@ class IOSGalleryManager: PlatformGalleryManager {
             images.add(GalleryImage(
                 id = asset.localIdentifier,
                 file = PlatformFile(asset.localIdentifier),
+                thumbnailUri = "ph://${asset.localIdentifier}",
                 dateAdded = asset.creationDate?.timeIntervalSince1970?.toLong() ?: 0L,
                 mimeType = "image/*",
+                fileName = fileName,
                 galleryName = galleryName,
             ))
         }
