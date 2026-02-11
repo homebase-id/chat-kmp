@@ -98,7 +98,7 @@ fun MessageInputBar(
 
     fun sendMessage() {
         if (textFieldState.annotatedString.isNotBlank()) {
-            onSendMessage(textFieldState.toHtml())
+            onSendMessage(textFieldState.toMarkdown())
             textFieldState.clear()
         }
     }

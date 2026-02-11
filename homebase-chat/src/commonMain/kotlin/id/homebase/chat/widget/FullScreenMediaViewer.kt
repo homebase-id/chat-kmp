@@ -110,7 +110,7 @@ fun FullScreenMediaViewer(
 
     val textState = remember { RichTextState() }
     textState.config.listIndent = 0
-    textState.setHtml(data.content)
+    textState.setMarkdown(data.content)
 
     BoxWithConstraints(
         modifier = modifier

@@ -80,7 +80,7 @@ class ConversationListViewModel(
             messageState.config.listIndent = 0
 
             // TODO - restore any draft message stored for conversation here
-            messageState.setHtml("")
+            messageState.setMarkdown("")
         }
     }
 
@@ -132,7 +132,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.SendMessage -> {
                 val hasMessage = !messageState.annotatedString.isBlank()
                 if (hasMessage) {
-                    val content = messageState.toHtml()
+                    val content = messageState.toMarkdown()
                     val replyTo = _uiState.value.replyToMessage
                     if (replyTo != null) {
                         replyToMessage(

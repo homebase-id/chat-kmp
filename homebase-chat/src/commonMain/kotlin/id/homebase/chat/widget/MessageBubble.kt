@@ -470,7 +470,7 @@ fun MessageBubble(
 
     val textState = RichTextState()
     textState.config.listIndent = 0
-    textState.setHtml(text)
+    textState.setMarkdown(text)
 
     val shape = RoundedCornerShape(
         topStart = Dimens.Message.cornerRadius,
