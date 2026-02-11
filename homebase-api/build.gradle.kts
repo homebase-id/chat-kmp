@@ -107,7 +107,7 @@ kotlin {
             implementation(libs.androidx.media3.ui)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.sqldelight.android.driver)
-            implementation(files("libs/ffmpeg-kit-lts-ndk-r27-16k.aar"))
+            implementation("id.homebase.libs:ffmpeg-kit:1.0")
             implementation(libs.smart.exception.java)
         }
         nativeMain.dependencies {
