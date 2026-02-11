@@ -58,6 +58,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
 import id.homebase.chat.FullScreenMessageData
 import id.homebase.chat.widget.video.FullScreenVideoViewer
+import id.homebase.chat.FullScreenOverlay
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.util.formatTimestamp
@@ -73,7 +74,7 @@ import kotlin.uuid.Uuid
 @Composable
 fun FullScreenMediaViewer(
     modifier: Modifier = Modifier,
-    data: FullScreenMessageData,
+    data: FullScreenOverlay.ViewMessageData,
     onShare: (messageId: Uuid, payloadKey: String) -> Unit,
     onSave: (messageId: Uuid, payloadKey: String) -> Unit,
     onDelete: (messageId: Uuid) -> Unit,
@@ -168,6 +169,7 @@ fun FullScreenMediaViewer(
                     fileId = data.fileId,
                     payloadKey = selectedKey,
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+                    loadFullPayload = true,
                     lastModified = payload.lastModified,
                     keyHeader = KeyHeader(
                         iv = selectedPayloadIv!!,

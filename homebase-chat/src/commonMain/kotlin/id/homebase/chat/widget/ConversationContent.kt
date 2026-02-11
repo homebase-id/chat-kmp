@@ -2,10 +2,12 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -19,9 +21,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,15 +42,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.common.OdinId
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.AvatarImage
@@ -58,8 +66,6 @@ import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -70,12 +76,16 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationContent(
     conversation: ConversationUiModel,
+    textFieldState: RichTextState,
     listState: LazyListState,
+    isLoadingNewMessage: Boolean,
     isScrollPositionReady: Boolean,
     groupedMessages: ImmutableList<MessageSectionItem>,
     showBackButton: Boolean,
@@ -97,9 +107,8 @@ fun ConversationContent(
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
             onUiAction(
-                ConversationListUiAction.SendFile(
+                ConversationListUiAction.AttachPlatformFile(
                     conversation.id,
-                    "",
                     listOf(file),
                 )
             )
@@ -108,9 +117,8 @@ fun ConversationContent(
     val fileLauncher = rememberFilePickerLauncher { file ->
         file?.let {
             onUiAction(
-                ConversationListUiAction.SendFile(
+                ConversationListUiAction.AttachPlatformFile(
                     conversation.id,
-                    "",
                     listOf(file),
                 )
             )
@@ -120,9 +128,8 @@ fun ConversationContent(
         rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
             file?.let {
                 onUiAction(
-                    ConversationListUiAction.SendFile(
+                    ConversationListUiAction.AttachPlatformFile(
                         conversation.id,
-                        "",
                         listOf(file),
                     )
                 )
@@ -218,7 +225,7 @@ fun ConversationContent(
                     .imePadding()
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
-            if (isScrollPositionReady) {
+            if (isScrollPositionReady && groupedMessages.isNotEmpty()) {
                 Box(
                     modifier = Modifier.weight(1f),
                 ) {
@@ -226,11 +233,16 @@ fun ConversationContent(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         state = listState,
+                        contentPadding = PaddingValues(
+                            top = 24.dp,
+                            bottom = 24.dp,
+                        )
                     ) {
-                        item { Spacer(modifier = Modifier.height(24.dp)) }
                         item {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 24.dp),
                                 horizontalArrangement = Arrangement.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -248,7 +260,6 @@ fun ConversationContent(
                                 }
                             }
                         }
-                        item { Spacer(modifier = Modifier.height(24.dp)) }
 
                         groupedMessages.forEach { section ->
                             item(key = "date_${section.date}") {
@@ -265,7 +276,12 @@ fun ConversationContent(
                             items(
                                 items = section.messages,
                                 key = { message -> message.id }) { message ->
-                                if (message.isCurrentUser(currentOdinId)) {
+
+                                // TODO: currentOdinId is "" - is that supposed to be the case??
+                                val odinId: OdinId? = try { OdinId(currentOdinId) }
+                                    catch (e: Exception) { null }
+
+                                if (message.isCurrentUser(odinId)) {
                                     SentMessageBubble(
                                         message = message,
                                         onMessageInfo = {
@@ -383,16 +399,46 @@ fun ConversationContent(
                             }
                         }
 
-                        item { Spacer(modifier = Modifier.height(16.dp)) }
+                        if (isLoadingNewMessage) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    horizontalArrangement = Arrangement.End,
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(140.dp)
+                                            .clip(RoundedCornerShape(Dimens.Message.cornerRadius))
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                            .padding(16.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.align(Alignment.Center)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                     HomebaseVerticalScrollbar(
                         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                         state = listState
                     )
                 }
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
             }
-            Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
-                Column {
+            Surface(
+                shadowElevation = 8.dp, tonalElevation = 0.dp
+            ) {
+                Column(
+                    modifier = Modifier.animateContentSize()
+                ) {
                     replyToMessage?.let { msg ->
                         ReplyPreviewBar(
                             message = msg,
@@ -402,14 +448,12 @@ fun ConversationContent(
                         )
                     }
                     MessageInputBar(
+                        textFieldState = textFieldState,
                         focusRequester = focusRequester,
                         onSendMessage = {
                             if (it.isNotBlank()) {
                                 onUiAction(
-                                    ConversationListUiAction.SendMessage(
-                                        conversation.id,
-                                        it
-                                    )
+                                    ConversationListUiAction.SendMessage(conversation.id)
                                 )
                                 // Scroll to bottom will happen automatically when the message
                                 // is added to UI state
@@ -442,12 +486,14 @@ fun ConversationContent(
                         AttachmentGallery(
                             onImageSelected = {
                                 showAttachmentSheet = false
+                                onUiAction(
+                                    ConversationListUiAction.AttachGalleryItem(
+                                        conversationId = conversation.id,
+                                        files = listOf(it)
+                                    )
+                                )
                                 // Handle image selection
                             },
-                            onPermissionRequested = {
-                                showAttachmentSheet = false
-                                // Handle permission request
-                            }
                         )
                         AttachmentOptions(
                             onGalleryClick = {

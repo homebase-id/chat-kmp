@@ -7,6 +7,7 @@ import io.ktor.client.HttpClient
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
+import id.homebase.api.common.OdinId
 
 // ==================== REQUEST / RESPONSE MODELS ====================
 
@@ -28,13 +29,13 @@ data class GetReactionsRequest(
 
 @Serializable
 data class GetReactionsByIdentityRequest(
-    val identity: String
+    val identity: OdinId
 )
 
 @Serializable
 data class ReactionItem(
     val reaction: String,
-    val identity: String,
+    val identity: OdinId,
     val createdUtc: String
 )
 
@@ -207,12 +208,12 @@ public class DriveFileReactionProvider(
     suspend fun listReactionsByIdentity(
         driveId: Uuid,
         fileId: Uuid,
-        identity: String
+        identity: OdinId
     ): List<String> {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
-        require(identity.isNotBlank()) { "identity must not be blank" }
+        // require(identity.isNotBlank()) { "identity must not be blank" }
 
         val creds = requireCreds()
         val endpoint = "/drives/$driveId/files/$fileId/reactions/listbyidentity"

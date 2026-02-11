@@ -14,22 +14,33 @@ expect object Idn {
 // Value class – identical behaviour to your original C# struct
 // ------------------------------------------------------------------
 @JvmInline
-value class AsciiDomainName public constructor(val domainName: String) {
+value class AsciiDomainName private constructor(
+    /** public string DomainName { get; init; } from C# */
+    val domainName: String
+) {
 
     fun toIDN(): String = Idn.toUnicode(domainName)
 
     override fun toString(): String = domainName
 
     companion object {
-        fun create(punyDomainName: String): AsciiDomainName {
+        /**
+         * Public constructor – exactly like your C# constructor.
+         * Lowercases + validates. You write exactly the same as in C#:
+         *     val d = AsciiDomainName("xn--bcher-kva.ch")
+         */
+        operator fun invoke(punyDomainName: String): AsciiDomainName {
             val normalized = punyDomainName.lowercase()
             AsciiDomainNameValidator.assertValidDomain(normalized)
             return AsciiDomainName(normalized)
         }
 
+        /**
+         * Exactly like the static FromIDN in C#.
+         */
         fun fromIDN(idnDomainName: String): AsciiDomainName {
             val puny = Idn.toAscii(idnDomainName)
-            return create(puny)
+            return AsciiDomainName(puny)          // calls the operator invoke above
         }
     }
 }

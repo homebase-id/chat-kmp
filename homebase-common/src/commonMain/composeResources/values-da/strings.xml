@@ -66,5 +66,8 @@
     <string name="chat_message_attachment_options">Vedhæftelses menu</string>
     <string name="chat_message_emoji_options">Emoji menu</string>
     <string name="chat_message_delete_dialog_title">Slet den valgte besked?</string>
+    <string name="chat_message_add_gallery_image">Fjern billede</string>
+    <string name="chat_message_remove_gallery_image">Tilføj billede</string>
+    <string name="chat_message_hide_keyboard">Skjul tastatur</string>
 
 </resources>

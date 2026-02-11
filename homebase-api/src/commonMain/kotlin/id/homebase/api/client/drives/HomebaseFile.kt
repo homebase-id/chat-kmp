@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 
 /**
  * A file from a homebase server, fully unencrypted ready for client usage
@@ -31,9 +32,9 @@ data class HomebaseFile(
         }
     }
 
-    fun assertOriginalAuthor(odinId: String) {
+    fun assertOriginalAuthor(odinId: OdinId) {
         val originalAuthor = fileMetadata.originalAuthor
-        if (originalAuthor.isNullOrEmpty()) {
+        if (originalAuthor == null) {
             // backwards compatibility
             assertOriginalSender(odinId)
             return
@@ -44,13 +45,13 @@ data class HomebaseFile(
         }
     }
 
-    fun isOriginalSender(odinId: String): Boolean {
+    fun isOriginalSender(odinId: OdinId): Boolean {
         return fileMetadata.senderOdinId == odinId
     }
 
-    fun assertOriginalSender(odinId: String) {
+    fun assertOriginalSender(odinId: OdinId) {
         val senderOdinId = fileMetadata.senderOdinId
-        if (senderOdinId.isNullOrEmpty()) {
+        if (senderOdinId == null) {
             throw Exception(
                 "Original file does not have a sender (FileId: $fileId on Drive: $driveId"
             )

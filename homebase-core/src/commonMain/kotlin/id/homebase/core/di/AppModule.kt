@@ -2,15 +2,14 @@ package id.homebase.core.di
 
 import id.homebase.api.di.apiModule
 import id.homebase.auth.login.LoginViewModel
-import id.homebase.chat.ChatListViewModel
+import id.homebase.chat.ConversationListViewModel
 import id.homebase.chat.services.ChatMessageActionService
-import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.convo.ContactService
-import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.ConversationService
-import id.homebase.chat.widget.video.VideoPlaybackPreparer
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.settings.UserPreferences
@@ -38,7 +37,7 @@ val appModule = module {
     singleOf(::VideoPlaybackPreparer)
 
     viewModelOf(::HomeViewModel)
-    viewModelOf(::ChatListViewModel)
+    viewModelOf(::ConversationListViewModel)
     viewModelOf(::SettingsViewModel)
     viewModelOf(::LoginViewModel)
 }

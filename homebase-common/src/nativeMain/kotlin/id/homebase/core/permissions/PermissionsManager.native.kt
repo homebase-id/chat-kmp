@@ -1,7 +1,6 @@
 package id.homebase.core.permissions
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import platform.AVFoundation.AVAuthorizationStatus
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVAuthorizationStatusDenied
@@ -11,77 +10,83 @@ import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.authorizationStatusForMediaType
 import platform.AVFoundation.requestAccessForMediaType
 import platform.Foundation.NSURL
+import platform.Photos.PHAccessLevelReadWrite
 import platform.Photos.PHAuthorizationStatus
 import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusDenied
+import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHAuthorizationStatusNotDetermined
 import platform.Photos.PHPhotoLibrary
+import platform.PhotosUI.presentLimitedLibraryPickerFromViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationOpenSettingsURLString
 
-class PermissionsManager(val callback: PermissionCallback) : PermissionHandler {
-    @Composable
+@Composable
+actual fun createPermissionsManager(onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit): PermissionsManager {
+    return IOSPermissionsManager(onPermissionResult)
+}
+
+class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit) : PermissionsManager {
     override fun askPermission(permission: PermissionType) {
         when (permission) {
             PermissionType.CAMERA -> {
-                val status: AVAuthorizationStatus =
-                    remember { AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo) }
-                askCameraPermission(status, permission, callback)
+                val status: AVAuthorizationStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+                askCameraPermission(status, permission, onPermissionResult)
             }
 
-            PermissionType.GALLERY -> {
-                val status: PHAuthorizationStatus =
-                    remember { PHPhotoLibrary.authorizationStatus() }
-                askGalleryPermission(status, permission, callback)
+            PermissionType.GALLERY, PermissionType.GALLERY_LIMITED -> {
+                // Use the new API that properly detects limited access
+                val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
+                askGalleryPermission(status, permission, onPermissionResult)
             }
-
         }
     }
 
-    @Composable
     override fun isPermissionGranted(permission: PermissionType): Boolean {
         return when (permission) {
             PermissionType.CAMERA -> {
-                val status: AVAuthorizationStatus =
-                    remember { AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo) }
+                val status: AVAuthorizationStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
                 status == AVAuthorizationStatusAuthorized
             }
 
             PermissionType.GALLERY -> {
-                val status: PHAuthorizationStatus =
-                    remember { PHPhotoLibrary.authorizationStatus() }
+                val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
                 status == PHAuthorizationStatusAuthorized
+            }
+
+            PermissionType.GALLERY_LIMITED  -> {
+                val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
+                status == PHAuthorizationStatusLimited
             }
         }
     }
 
-    @Composable
     override fun launchSettings() {
         NSURL.URLWithString(UIApplicationOpenSettingsURLString)?.let {
-            UIApplication.sharedApplication.openURL(it)
+            UIApplication.sharedApplication.openURL(it, emptyMap<Any?, String>(), {} )
         }
     }
 
     private fun askCameraPermission(
-        status: AVAuthorizationStatus, permission: PermissionType, callback: PermissionCallback
+        status: AVAuthorizationStatus, permission: PermissionType, onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
     ) {
         when (status) {
             AVAuthorizationStatusAuthorized -> {
-                callback.onPermissionStatus(permission, PermissionStatus.GRANTED)
+                onPermissionStatus(permission, PermissionStatus.GRANTED, false)
             }
 
             AVAuthorizationStatusNotDetermined -> {
                 return AVCaptureDevice.requestAccessForMediaType(AVMediaTypeVideo) { isGranted ->
                     if (isGranted) {
-                        callback.onPermissionStatus(permission, PermissionStatus.GRANTED)
+                        onPermissionStatus(permission, PermissionStatus.GRANTED, false)
                     } else {
-                        callback.onPermissionStatus(permission, PermissionStatus.DENIED)
+                        onPermissionStatus(permission, PermissionStatus.DENIED, false)
                     }
                 }
             }
 
             AVAuthorizationStatusDenied -> {
-                callback.onPermissionStatus(permission, PermissionStatus.DENIED)
+                onPermissionStatus(permission, PermissionStatus.DENIED, false)
             }
 
             else -> error("Unknown camera status $status")
@@ -89,31 +94,35 @@ class PermissionsManager(val callback: PermissionCallback) : PermissionHandler {
     }
 
     private fun askGalleryPermission(
-        status: PHAuthorizationStatus, permission: PermissionType, callback: PermissionCallback
+        status: PHAuthorizationStatus, permission: PermissionType, onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
     ) {
         when (status) {
             PHAuthorizationStatusAuthorized -> {
-                callback.onPermissionStatus(permission, PermissionStatus.GRANTED)
+                onPermissionStatus(permission, PermissionStatus.GRANTED, false)
+            }
+
+            PHAuthorizationStatusLimited -> {
+                // Show picker to select more photos when already in limited mode
+                if (permission == PermissionType.GALLERY_LIMITED) {
+                    val rootViewController = UIApplication.sharedApplication.keyWindow?.rootViewController
+                    rootViewController?.let {
+                        PHPhotoLibrary.sharedPhotoLibrary().presentLimitedLibraryPickerFromViewController(it)
+                    }
+                }
+                onPermissionStatus(permission, PermissionStatus.GRANTED, true)
             }
 
             PHAuthorizationStatusNotDetermined -> {
                 PHPhotoLibrary.requestAuthorization { newStatus ->
-                    askGalleryPermission(newStatus, permission, callback)
+                    askGalleryPermission(newStatus, permission, onPermissionStatus)
                 }
             }
 
             PHAuthorizationStatusDenied -> {
-                callback.onPermissionStatus(
-                    permission, PermissionStatus.DENIED
-                )
+                onPermissionStatus(permission, PermissionStatus.DENIED, false)
             }
 
             else -> error("Unknown gallery status $status")
         }
     }
-}
-
-@Composable
-actual fun createPermissionsManager(callback: PermissionCallback): PermissionHandler {
-    return PermissionsManager(callback)
 }

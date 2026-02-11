@@ -7,6 +7,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.*
@@ -168,7 +169,7 @@ public class DriveFileHttpProvider(
     suspend fun softDeleteFile(
         driveId: Uuid,
         fileId: Uuid,
-        recipients: List<String>? = null
+        recipients: List<OdinId>? = null
     ): DeleteFileResult {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -200,7 +201,7 @@ public class DriveFileHttpProvider(
     suspend fun hardDeleteFile(
         driveId: Uuid,
         fileId: Uuid,
-        recipients: List<String>? = null,
+        recipients: List<OdinId>? = null,
     ): Boolean {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -233,7 +234,7 @@ public class DriveFileHttpProvider(
     suspend fun deleteFiles(
         driveId: Uuid,
         fileIds: List<Uuid>,
-        recipients: List<String>? = null
+        recipients: List<OdinId>? = null
     ): DeleteFileIdBatchResult {
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuidList(fileIds, "fileIds")
@@ -268,7 +269,7 @@ public class DriveFileHttpProvider(
     suspend fun deleteFilesByGroupId(
         driveId: Uuid,
         groupIds: List<Uuid>,
-        recipients: List<String>? = null
+        recipients: List<OdinId>? = null
     ): DeleteFilesByGroupIdBatchResult {
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuidList(groupIds, "groupIds")

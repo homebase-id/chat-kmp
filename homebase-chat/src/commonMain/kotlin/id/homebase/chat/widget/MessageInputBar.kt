@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -37,7 +38,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +56,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -65,15 +66,16 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
-import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
+import id.homebase.core.util.keyboardAsState
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_attachment_options
 import id.homebase.resources.chat_message_emoji_options
+import id.homebase.resources.chat_message_hide_keyboard
 import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.collapse
@@ -83,25 +85,13 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun MessageInputBar(
     modifier: Modifier = Modifier,
+    textFieldState: RichTextState,
     focusRequester: FocusRequester,
     onSmileyClick: () -> Unit = {},
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
     onSendMessage: (String) -> Unit,
 ) {
-    val textFieldState = rememberRichTextState()
-    //textFieldState.config.linkColor = Color.Blue
-    //textFieldState.config.linkTextDecoration = TextDecoration.Underline
-    //textFieldState.config.codeSpanColor = Color.Blue
-    //textFieldState.config.codeSpanBackgroundColor = Color.Magenta
-    //textFieldState.config.codeSpanStrokeColor = Color.Yellow
-    textFieldState.config.listIndent = 0
-
-    LaunchedEffect(Unit) {
-        // TODO - restored stored draft here
-        textFieldState.clear()
-    }
-
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     var showExpanded by remember { mutableStateOf(false) }
@@ -240,6 +230,7 @@ fun MessageTextFieldExpanded(
                 },
                 colors = IconButtonDefaults.iconButtonColors(
                     containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                    contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                 )
             ) {
                 Icon(
@@ -337,6 +328,7 @@ fun MessageTextFieldCompact(
                     onClick = onSendMessage,
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )
                 ) {
                     Icon(
@@ -349,11 +341,107 @@ fun MessageTextFieldCompact(
                     onClick = onAddAttachmentClick,
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor =  HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(MR.string.chat_message_attachment_options)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MessageTextFieldForAttachment(
+    modifier: Modifier = Modifier,
+    state: RichTextState,
+    onSmileyClick: () -> Unit,
+    onSendMessage: () -> Unit
+) {
+    val isKeyboardVisible by keyboardAsState()
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    Column(
+        modifier = modifier
+    ) {
+        RichTextEditorButtons(
+            modifier = Modifier.fillMaxWidth(),
+            state = state,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RichTextEditor(
+                state = state,
+                modifier = Modifier.weight(1f)
+                    .onPreviewKeyEvent { keyEvent ->
+                        if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                            if (keyEvent.isCtrlPressed) {
+                                onSendMessage()
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    },
+                placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+                leadingIcon = {
+                    IconButton(onClick = onSmileyClick) {
+                        Icon(
+                            imageVector = Icons.Default.EmojiEmotions,
+                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                        )
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = RichTextEditorDefaults.richTextEditorColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                ),
+                minLines = 1,
+                maxLines = 3,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Default
+                )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            if (!isKeyboardVisible) {
+                IconButton(
+                    onClick = onSendMessage,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = stringResource(MR.string.chat_send_message_button),
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = {
+                        keyboardController?.hide()
+                    },
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor =  HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = stringResource(MR.string.chat_message_hide_keyboard)
                     )
                 }
             }

@@ -4,6 +4,8 @@ import io.ktor.client.request.forms.InputProvider
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.io.Buffer
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSData
@@ -15,11 +17,20 @@ import platform.Foundation.NSUserDomainMask
 import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.writeToFile
+import platform.Photos.PHAsset
+import platform.Photos.PHImageRequestOptions
+import platform.Photos.PHImageRequestOptionsDeliveryModeHighQualityFormat
 import platform.posix.memcpy
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class IOSFileOperationsProvider : FileOperationsProvider {
     @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
     override fun openFileInput(path: String): InputProvider = InputProvider {
+        if (path.startsWith("ph://") || path.contains("/L0/")) {
+            val bytes = runBlocking { readPhotoLibraryAsset(path) }
+            return@InputProvider Buffer().apply { write(bytes) }
+        }
         val data = NSData.dataWithContentsOfFile(path) ?: error("Unable to read file at $path")
 
         val bytes = ByteArray(data.length.toInt())
@@ -30,6 +41,9 @@ class IOSFileOperationsProvider : FileOperationsProvider {
 
     @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
     override suspend fun readFileBytes(path: String): ByteArray {
+        if (path.startsWith("ph://") || path.contains("/L0/")) {
+            return readPhotoLibraryAsset(path)
+        }
         val data = NSData.dataWithContentsOfFile(path) ?: error("Unable to read file at $path")
 
         val bytes = ByteArray(data.length.toInt())
@@ -97,4 +111,35 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         data.writeToFile(filePath, atomically = true)
         return filePath
     }
+
+    @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+    private suspend fun readPhotoLibraryAsset(phUri: String): ByteArray = suspendCancellableCoroutine { continuation ->
+            val assetId = phUri.removePrefix("ph://")
+            val fetchResult = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(assetId), options = null)
+
+            if (fetchResult.count.toInt() == 0) {
+                continuation.resumeWithException(IllegalArgumentException("Asset not found: $phUri"))
+                return@suspendCancellableCoroutine
+            }
+
+            val asset = fetchResult.objectAtIndex(0u) as PHAsset
+            val options = PHImageRequestOptions().apply {
+                setSynchronous(false)
+                setDeliveryMode(PHImageRequestOptionsDeliveryModeHighQualityFormat)
+            }
+
+            platform.Photos.PHImageManager.defaultManager().requestImageDataForAsset(
+                asset = asset,
+                options = options,
+                resultHandler = { data, _, _, _ ->
+                    if (data != null) {
+                        val bytes = ByteArray(data.length.toInt())
+                        bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
+                        continuation.resume(bytes)
+                    } else {
+                        continuation.resumeWithException(IllegalStateException("Failed to load asset data"))
+                    }
+                }
+            )
+        }
 }

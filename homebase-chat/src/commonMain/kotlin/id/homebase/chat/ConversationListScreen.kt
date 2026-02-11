@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -34,6 +35,7 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
@@ -48,13 +50,13 @@ import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @Composable
 fun ConversationListScreen(
-    viewModel: ChatListViewModel,
+    viewModel: ConversationListViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
@@ -124,6 +126,7 @@ fun ConversationListScreen(
     ChatListUi(
         snackbarHostState = snackbarHostState,
         uiState = uiState,
+        textFieldState = viewModel.messageState,
         onUiAction = viewModel::onAction,
         onNavigateToSettingsScreen = onNavigateToSettingsScreen,
         onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
@@ -135,6 +138,7 @@ fun ConversationListScreen(
 fun ChatListUi(
     snackbarHostState: SnackbarHostState,
     uiState: ConversationListUiState,
+    textFieldState: RichTextState,
     onUiAction: (ConversationListUiAction) -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
@@ -201,8 +205,8 @@ fun ChatListUi(
 
     BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {
-            if (uiState.fullScreenMedia != null) {
-                onUiAction(ConversationListUiAction.CloseFullScreenMedia)
+            if (uiState.fullScreenOverlay != null) {
+                onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
             } else {
                 scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
             }
@@ -258,23 +262,25 @@ fun ChatListUi(
                     uiState.selectedConversationId?.let { conversationId ->
                         val conversation = uiState.conversations.find { it.id == conversationId }
                         if (conversation != null) {
-                            ConversationMessagesPane(
-                                conversation = conversation,
-                                messages = uiState.currentConversationMessages,
-                                fullScreenMessageData = uiState.fullScreenMedia,
-                                savedScrollPosition = uiState.conversationScrollPosition,
-                                showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
-                                onBackClick = {
-                                    scope.launch {
-                                        scaffoldNavigator.navigateBack(
-                                            backNavigationBehavior
-                                        )
-                                    }
-                                },
-                                onUiAction = onUiAction,
-                                currentOdinId = uiState.currentOdinId,
-                                replyToMessage = uiState.replyToMessage
-                            )
+                            key(conversation.id) {
+                                ConversationMessagesPane(
+                                    conversation = conversation,
+                                    textFieldState = textFieldState,
+                                    messages = uiState.currentConversationMessages,
+                                    isLoadingNewMessage = uiState.loadingNewMessage,
+                                    fullScreenOverlay = uiState.fullScreenOverlay,
+                                    savedScrollPosition = uiState.conversationScrollPosition,
+                                    showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
+                                    onBackClick = {
+                                        scope.launch {
+                                            scaffoldNavigator.navigateBack(backNavigationBehavior)
+                                        }
+                                    },
+                                    onUiAction = onUiAction,
+                                    currentOdinId = uiState.currentOdinId,
+                                    replyToMessage = uiState.replyToMessage
+                                )
+                            }
                         } else {
                             EmptyDetailPane(
                                 title = stringResource(
@@ -323,6 +329,7 @@ fun ChatListUiPreview() {
         ChatListUi(
             snackbarHostState = SnackbarHostState(),
             uiState = ConversationListUiState(),
+            textFieldState = RichTextState(),
             onUiAction = {},
             onNavigateToSettingsScreen = {},
         )

@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.services.MessageAppData
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 
 @Immutable
 data class MessageUiModel(
@@ -20,8 +21,8 @@ data class MessageUiModel(
     val content: String, // the message
     val created: Instant, // When the message was created by the author
     val modified: Instant?, // When the message was last modified
-    val senderId: String, // TODO: What is that? The name?
-    val senderOdinId: String, // The message author, e.g. frodo.baggins.demo.rocks
+    val originalAuthorOdinId: OdinId?, // TODO: What is that? The name? <-- this is originalAuthorId misnamed likely
+    val senderOdinId: OdinId?, // The message author, e.g. frodo.baggins.demo.rocks
     val isRead: Boolean = false,
     val isEdited: Boolean = false,
     val messageAppData: MessageAppData, // TODO: Should we copy these up into the message?
@@ -33,7 +34,6 @@ data class MessageUiModel(
 
     val keyHeader: KeyHeader // TODO: Todd <-- make it simple and just store the key? (if we use the IV elsewhere that's kind of a bug)
     ) {
-    fun isCurrentUser(domain: String): Boolean =
-        senderOdinId.trim().equals(domain.trim(), ignoreCase = true)
+    fun isCurrentUser(domain: OdinId?): Boolean = (senderOdinId == domain)
 
 }
