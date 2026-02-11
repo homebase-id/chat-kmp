@@ -46,13 +46,6 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Make shell scripts executable
-        run: |
-          chmod +x ./run-all-tests.sh
-          chmod +x ./run-ios-tests.sh
-          chmod +x ./run-ios-tests-ci.sh
-          chmod +x ./gradlew-clean-build.sh
-
       - name: Run build command
         run: ${{ matrix.build-command }}
 
