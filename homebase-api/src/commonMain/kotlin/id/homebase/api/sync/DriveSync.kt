@@ -9,6 +9,8 @@ import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
+import id.homebase.api.client.drives.QueryBatchSortField
+import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
@@ -103,12 +105,15 @@ class DriveSync(
             Logger.i("Synchronizing drive $driveId")
             val request = QueryBatchRequest(
                 queryParams = FileQueryParams(
-                    fileState = listOf(FileState.Active) // <-- TODO: We want them all, not just "active"?
+                    // we want deleted too since we resync when the socket gets a file deleted event
+//                    fileState = listOf(FileState.Active) // <-- TODO: We want them all, not just "active"?
                 ),
                 resultOptionsRequest = QueryBatchResultOptionsRequest(
                     maxRecords = batchSize,
                     includeMetadataHeader = true,
-                    cursorState = cursor?.toJson()
+                    cursorState = cursor?.toJson(),
+                    ordering = QueryBatchSortOrder.OldestFirst,
+                    sorting = QueryBatchSortField.AnyChangeDate
                 )
             )
 

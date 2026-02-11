@@ -21,8 +21,8 @@ import kotlin.uuid.Uuid
 data class EmbeddedThumb(
         val pixelWidth: Int,
         val pixelHeight: Int,
-        val contentType: String,
-        val content: String
+        val contentType: String? = null,
+        val content: String? = null
 )
 
 /** Application file metadata for uploads. */

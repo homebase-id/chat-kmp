@@ -148,7 +148,7 @@ fun SentMessageBubble(
                 }
                 MessageBubble(
                     modifier = Modifier.heightIn(min = 48.dp),
-                    text = message.content,
+                    text = message.content + " isread: ${message.isRead} | sent emojis: ${message.getAllEmojis()}",
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = true,
                     payloads = message.payloads,
@@ -210,7 +210,7 @@ fun ReceivedMessageBubble(
             Row {
                 MessageBubble(
                     modifier = Modifier.heightIn(min = 48.dp),
-                    text = message.content + "isread: ${message.isRead}",
+                    text = message.content + " isread: ${message.isRead} | rcd emojis: ${message.getAllEmojis()}",
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = false,
                     payloads = message.payloads,
@@ -260,11 +260,11 @@ fun ReceivedMessageBubble(
                         },
                         onAddReaction = {
                             showMenu = false
-                            onAddReaction(message.id, ":heart:")
+                            onAddReaction(message.id, "😥")
                         },
                         onDeleteReaction = {
                             showMenu = false
-                            onDeleteReaction(message.id, ":heart:")
+                            onDeleteReaction(message.id, "😥")
                         },
                     )
                 }

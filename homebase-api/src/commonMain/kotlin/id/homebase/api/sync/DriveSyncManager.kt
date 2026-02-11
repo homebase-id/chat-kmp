@@ -54,6 +54,12 @@ class DriveSyncManager(
         snapshot.forEach { it.sync() }
     }
 
+    fun syncDrive(driveId: Uuid) {
+        val d = driveSyncs[driveId] ?: throw Exception("no drive")
+
+        d.sync()
+    }
+
     fun stop() {
         val snapshot = driveSyncs.values.toList()
         snapshot.forEach { it.cancel() }
