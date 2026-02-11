@@ -342,7 +342,7 @@ class OdinWebSocketClient(
     }
 
 
-    private suspend fun handleFileEvent_Old(notification: ClientNotificationPayload) {
+    private suspend fun handleFileEvent_manual(notification: ClientNotificationPayload) {
         val fileNotification =
             OdinSystemSerializer.deserialize<ClientDriveNotification>(notification.data)
 

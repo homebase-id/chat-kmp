@@ -17,8 +17,3 @@ data class InternalDriveFileId(
     val driveId: Uuid,
     val fileId: Uuid
 )
-
-@Serializable
-data class ReactionContent(
-    val emoji: String
-)

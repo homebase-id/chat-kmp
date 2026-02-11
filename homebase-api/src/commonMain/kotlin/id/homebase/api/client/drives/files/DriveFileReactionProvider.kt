@@ -81,7 +81,7 @@ public class DriveFileReactionProvider(
             token = creds.accessToken,
             jsonBody = OdinSystemSerializer.serialize(
                 AddReactionRequest(
-                    reaction
+                    reaction = "{\"emoji\":\"\uD83D\uDE2E\"}"
                 )
             ),
             secret = creds.secret
