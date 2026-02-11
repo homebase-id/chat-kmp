@@ -45,7 +45,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil3.ImageLoader
 import coil3.compose.AsyncImage
+import id.homebase.api.isIos
 import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.gallery.rememberGalleryPermissionState
@@ -57,7 +59,6 @@ import id.homebase.resources.chat_message_attachment_file
 import id.homebase.resources.chat_message_attachment_gallery
 import id.homebase.resources.chat_message_needs_gallery_permission
 import id.homebase.resources.chat_message_needs_gallery_permission_button_text
-import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -84,9 +85,11 @@ fun AttachmentOptionsDisplay(
 
 @Composable
 fun AttachmentGallery(
-    onImageSelected: (PlatformFile) -> Unit,
+    onImageSelected: (GalleryImage) -> Unit,
 ) {
     if (isMobile()) {
+        // Get ImageLoader with HomebaseImageFetcher from Koin DI
+        val imageLoader: ImageLoader = koinInject()
         val scope = rememberCoroutineScope()
         val galleryLoader = koinInject<PlatformGalleryManager>()
         val galleryItems = remember { mutableStateListOf<GalleryImage>() }
@@ -133,19 +136,21 @@ fun AttachmentGallery(
                     ) {
 
                         items(galleryItems.size) { index ->
+                            val galleryImage = galleryItems[index]
                             AsyncImage(
-                                model = galleryItems[index].file.toString(),
+                                imageLoader = imageLoader,
+                                model = galleryImage.file.toString(),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .size(160.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { onImageSelected(galleryItems[index].file) },
+                                    .clickable { onImageSelected(galleryImage) },
                                 contentScale = ContentScale.Crop
                             )
                         }
                     }
                 }
-                if (!galleryPermissionState.hasGalleryPermission && galleryPermissionState.hasPartialGalleryPermission) {
+                if (isIos() || (!galleryPermissionState.hasGalleryPermission && galleryPermissionState.hasPartialGalleryPermission)) {
                     var showMenu by remember { mutableStateOf(false) }
                     Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
                         ElevatedButton(
@@ -158,6 +163,7 @@ fun AttachmentGallery(
                                 Icon(Icons.Default.Settings, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Manage")
+
                             }
                         }
 

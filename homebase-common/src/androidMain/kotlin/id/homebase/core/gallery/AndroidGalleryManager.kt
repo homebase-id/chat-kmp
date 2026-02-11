@@ -15,7 +15,8 @@ class AndroidGalleryManager(val context: Context): PlatformGalleryManager {
             MediaStore.Images.Media.DATA,
             MediaStore.Images.Media.DATE_ADDED,
             MediaStore.Images.Media.MIME_TYPE,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+            MediaStore.Images.Media.DISPLAY_NAME
         )
 
         context.contentResolver.query(
@@ -30,6 +31,7 @@ class AndroidGalleryManager(val context: Context): PlatformGalleryManager {
             val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
             val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
             val bucketColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+            val displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
 
             var count = 0
             while (cursor.moveToNext() && count < limit) {
@@ -42,9 +44,11 @@ class AndroidGalleryManager(val context: Context): PlatformGalleryManager {
                 images.add(GalleryImage(
                     id = id.toString(),
                     file = PlatformFile(uri),
+                    thumbnailUri = uri,
                     dateAdded = cursor.getLong(dateColumn),
                     mimeType = cursor.getString(mimeColumn),
                     galleryName = cursor.getString(bucketColumn),
+                    fileName = cursor.getString(displayNameColumn)
                 ))
                 count++
             }
