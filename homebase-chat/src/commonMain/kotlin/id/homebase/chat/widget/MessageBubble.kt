@@ -198,6 +198,7 @@ fun SentMessageBubble(
                             onAddReaction(message.id, reaction)
                         },
                         onShowAllEmojis = {
+                            showMenu = false
                             showReactionPicker = false
                             showEmojiPicker = true
                         },
@@ -216,7 +217,8 @@ fun SentMessageBubble(
             }
             Box {
                 MessageBubble(
-                    modifier = Modifier.heightIn(min = 48.dp).padding(bottom = if (message.reactionPreview == null) 0.dp else 28.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                        .padding(bottom = if (message.reactionPreview == null) 0.dp else 28.dp),
                     text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = true,
@@ -224,7 +226,10 @@ fun SentMessageBubble(
                     fileId = message.fileId,
                     previewThumbnail = message.previewThumbnail,
                     replyPreview = message.messageAppData.replyPreview,
-                    onLongClick = { showMenu = true },
+                    onLongClick = {
+                        showMenu = true
+                        showReactionPicker = true
+                    },
                     keyHeader = message.keyHeader,
                     onMediaClick = onMediaClick,
                     sharedTransitionScope = sharedTransitionScope,
@@ -234,7 +239,8 @@ fun SentMessageBubble(
                     ReactionList(
                         modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                         reactionSummary = reactionSummary,
-                        onClick = { onShowReactions(reactionSummary) }
+                        onClick = { onAddReaction(message.id, it) },
+                        onLongClick = { onShowReactions(reactionSummary) },
                     )
                 }
             }
@@ -255,7 +261,6 @@ fun SentMessageBubble(
  * @param onDelete Callback invoked when user wants to delete this message.
  * @param onMarkAsRead Callback invoked when user wants to mark this message as read.
  * @param onAddReaction Callback invoked when user wants to add a reaction to this message.
- * @param onDeleteReaction Callback invoked when user wants to remove a reaction from this message.
  * @param onShowReactions Callback invoked when user wants to show a list of reactions.
  * @param onMediaClick Callback invoked when user clicks on media attachment.
  * @param sharedTransitionScope The shared transition scope for animations.
@@ -270,7 +275,6 @@ fun ReceivedMessageBubble(
     onDelete: (messageId: Uuid) -> Unit,
     onMarkAsRead: (messageId: Uuid) -> Unit,
     onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
-    onDeleteReaction: (messageId: Uuid, reaction: String) -> Unit,
     onShowReactions: (ReactionSummary) -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
@@ -292,7 +296,8 @@ fun ReceivedMessageBubble(
         ) {
             Box {
                 MessageBubble(
-                    modifier = Modifier.heightIn(min = 48.dp).padding(bottom = if (message.reactionPreview == null) 0.dp else 28.dp),
+                    modifier = Modifier.heightIn(min = 48.dp)
+                        .padding(bottom = if (message.reactionPreview == null) 0.dp else 28.dp),
                     text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = false,
@@ -301,7 +306,10 @@ fun ReceivedMessageBubble(
                     keyHeader = message.keyHeader,
                     previewThumbnail = message.previewThumbnail,
                     replyPreview = message.messageAppData.replyPreview,
-                    onLongClick = { showMenu = true },
+                    onLongClick = {
+                        showMenu = true
+                        showReactionPicker = true
+                    },
                     onMediaClick = onMediaClick,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
@@ -310,7 +318,8 @@ fun ReceivedMessageBubble(
                     ReactionList(
                         modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp),
                         reactionSummary = reactionSummary,
-                        onClick = { onShowReactions(reactionSummary) }
+                        onClick = { onAddReaction(message.id, it) },
+                        onLongClick = { onShowReactions(reactionSummary) },
                     )
                 }
             }
@@ -334,6 +343,7 @@ fun ReceivedMessageBubble(
                         },
                         onShowAllEmojis = {
                             showReactionPicker = false
+                            showMenu = false
                             showEmojiPicker = true
                         },
                         onDismiss = { showReactionPicker = false }
@@ -394,14 +404,6 @@ fun ReceivedMessageBubble(
                     onMarkAsRead = {
                         showMenu = false
                         onMarkAsRead(message.id)
-                    },
-                    onAddReaction = {
-                        showMenu = false
-                        onAddReaction(message.id, ":heart:")
-                    },
-                    onDeleteReaction = {
-                        showMenu = false
-                        onDeleteReaction(message.id, ":heart:")
                     },
                 )
             }
@@ -502,8 +504,9 @@ fun MessageBubble(
 
     val mediaOnly = !text.hasContent() && hasMedia
     val emojiOnly = text.isEmojiContentOnly() && !hasMedia
-    val backgroundColor = if (emojiOnly) Color.Unspecified else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
-    else MaterialTheme.colorScheme.surfaceContainerHigh
+    val backgroundColor =
+        if (emojiOnly) Color.Unspecified else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+        else MaterialTheme.colorScheme.surfaceContainerHigh
     val contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
     else MaterialTheme.colorScheme.onSurface
 

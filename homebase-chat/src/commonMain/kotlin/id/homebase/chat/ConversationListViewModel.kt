@@ -244,25 +244,15 @@ class ConversationListViewModel(
             is ConversationListUiAction.AddReaction -> {
                 viewModelScope.launch {
                     try {
+                        // TODO - If adding reaction already added to message from me, then remove it
+                        //chatMessageActionService.deleteReaction(action.messageId, action.reaction)
+
+                        println("Adding reaction: ${action.reaction} - Unicode: ${action.reaction.map { it.code }.joinToString(" ") { "U+${it.toString(16).uppercase().padStart(4, '0')}" }}")
                         chatMessageActionService.addReaction(action.messageId, action.reaction)
                     } catch (e: Exception) {
                         sendEvent(
                             ConversationListUiEvent.ShowErrorMessage(
                                 "Failed to add reaction: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
-
-            is ConversationListUiAction.DeleteReaction -> {
-                viewModelScope.launch {
-                    try {
-                        chatMessageActionService.deleteReaction(action.messageId, action.reaction)
-                    } catch (e: Exception) {
-                        sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
-                                "Failed to delete reaction: ${e.message}"
                             )
                         )
                     }

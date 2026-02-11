@@ -1,7 +1,7 @@
 package id.homebase.core.widget
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -37,7 +37,8 @@ import org.jetbrains.compose.resources.stringResource
 fun ReactionList(
     modifier: Modifier = Modifier,
     reactionSummary: ReactionSummary,
-    onClick: () -> Unit
+    onClick: (reaction: String) -> Unit,
+    onLongClick: () -> Unit
 ) {
     LazyRow(
         modifier = modifier
@@ -49,7 +50,8 @@ fun ReactionList(
                 ReactionIcon(
                     emoji = emoji,
                     count = entry.value.count,
-                    onClick = onClick
+                    onClick = { onClick(emoji) },
+                    onLongClick = onLongClick
                 )
             }
         }
@@ -137,13 +139,19 @@ fun ReactionPopup(
  * @param onClick Callback invoked on press for managing the reaction
  */
 @Composable
-fun ReactionIcon(emoji: String, count: Int, onClick: () -> Unit) {
+fun ReactionIcon(
+    emoji: String,
+    count: Int,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     Surface(
         modifier = Modifier
             .padding(2.dp)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(
+            .combinedClickable(
                 onClick = onClick,
+                onLongClick = onLongClick
             ),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),

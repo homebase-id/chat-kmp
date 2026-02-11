@@ -390,16 +390,9 @@ fun ConversationContent(
                                                 )
                                             )
                                         },
-                                        onDeleteReaction = { _, reaction ->
-                                            onUiAction(
-                                                ConversationListUiAction.DeleteReaction(
-                                                    message.id,
-                                                    reaction = reaction
-                                                )
-                                            )
-                                        },
                                         onShowReactions = {
-                                            // TODO
+                                            // TODO - show all reactions overview
+                                            println("Show reactions clicked")
                                         },
                                         onMediaClick = { payload ->
                                             onUiAction(

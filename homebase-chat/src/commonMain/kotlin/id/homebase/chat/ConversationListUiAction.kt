@@ -62,5 +62,4 @@ sealed interface ConversationListUiAction {
 
     data class MarkAsRead(val messageId: Uuid) : ConversationListUiAction
     data class AddReaction(val messageId: Uuid, val reaction: String) : ConversationListUiAction
-    data class DeleteReaction(val messageId: Uuid, val reaction: String) : ConversationListUiAction
 }

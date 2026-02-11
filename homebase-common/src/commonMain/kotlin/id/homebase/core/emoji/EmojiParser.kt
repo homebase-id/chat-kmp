@@ -40,7 +40,7 @@ object EmojiParser {
         val bytes = MR.readBytes("files/emoji_data.json")
         val jsonString = bytes.decodeToString()
         val rawEmojis = json.decodeFromString<List<Emoji>>(jsonString)
-        return rawEmojis
+        return rawEmojis.sortedBy { it.order }
     }
 
     /**
@@ -55,32 +55,50 @@ object EmojiParser {
             EmojiGroup(id = id, name = name)
         }
     }
-}
 
-fun groupEmojis(allEmojis: List<Emoji>, groups: List<EmojiGroup>): Map<String, List<Emoji>> {
-    val groupMap = groups.associate { it.id to it.name }
+    fun groupEmojis(allEmojis: List<Emoji>, groups: List<EmojiGroup>): Map<String, List<Emoji>> {
+        val groupMap = groups.associate { it.id to it.name }
 
-    val grouped = allEmojis
-        .sortedBy { it.order }
-        .groupBy { groupMap[it.group] ?: "unknown" }
+        val grouped = allEmojis
+            .filter { it.group != 2 } // Filter out component group
+            .sortedBy { it.order }
+            .groupBy { groupMap[it.group] ?: "unknown" }
 
-    // Move "Unknown" group to the end if it exists
-    return if (grouped.containsKey("unknown")) {
-        val withoutUnknown = grouped.filterKeys { it != "unknown" }
-        val unknown = grouped["unknown"] ?: emptyList()
-        withoutUnknown + ("unknown" to unknown)
-    } else {
-        grouped
+        // Move "Unknown" group to the end if it exists
+        return if (grouped.containsKey("unknown")) {
+            val withoutUnknown = grouped.filterKeys { it != "unknown" }
+            val unknown = grouped["unknown"] ?: emptyList()
+            withoutUnknown + ("unknown" to unknown)
+        } else {
+            grouped
+        }
+    }
+
+    fun filterEmojis(query: String, allEmojis: List<Emoji>): List<Emoji> {
+        val lowerQuery = query.lowercase()
+        return allEmojis.filter { emoji ->
+            emoji.label.lowercase().contains(lowerQuery) ||
+                    emoji.tags?.any { it.lowercase().contains(lowerQuery) } == true
+        }
+    }
+
+    fun getSectionEmoji(section: String): String {
+        return when (section) {
+            "smileys-emotion" -> "😀"
+            "people-body" -> "👋"
+            "animals-nature" -> "🐶"
+            "food-drink" -> "🍏"
+            "travel-places" -> "🚗"
+            "activities" -> "⚽️"
+            "objects" -> "🧭"
+            "symbols" -> "❓"
+            "flags" -> "🏳️"
+            else -> "#"
+        }
     }
 }
 
-fun filterEmojis(query: String, allEmojis: List<Emoji>): List<Emoji> {
-    val lowerQuery = query.lowercase()
-    return allEmojis.filter { emoji ->
-        emoji.label.lowercase().contains(lowerQuery) ||
-                emoji.tags?.any { it.lowercase().contains(lowerQuery) } == true
-    }
-}
+
 
 
 
