@@ -37,6 +37,7 @@ class AuthConnectionCoordinator(
         wsClient =
             OdinWebSocketClient(
                 credentialsManager = credentialsManager,
+                driveSyncManager = driveSyncManager,
                 scope = ioScope,
                 eventBus = eventBus,
                 databaseManager = DatabaseManager.appDb,

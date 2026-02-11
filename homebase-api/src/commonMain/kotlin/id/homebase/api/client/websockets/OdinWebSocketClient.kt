@@ -12,7 +12,9 @@ import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.SharedSecretEncryptedPayload
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.DriveSyncManager
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
@@ -34,6 +36,7 @@ import kotlin.time.Clock
  */
 class OdinWebSocketClient(
     private val credentialsManager: CredentialsManager,
+    private val driveSyncManager: DriveSyncManager,
     private val scope: CoroutineScope,
     private val eventBus: EventBus,
     private val databaseManager: DatabaseManager,
@@ -186,8 +189,8 @@ class OdinWebSocketClient(
             val text = frame.readText()
 
             val decryptedJson = decryptData(text)
-            val notification =
-                OdinSystemSerializer.deserialize<ClientNotificationPayload>(decryptedJson)
+            val notification = OdinSystemSerializer
+                .deserialize<ClientNotificationPayload>(decryptedJson)
 
             handleNotification(notification)
 
@@ -215,7 +218,6 @@ class OdinWebSocketClient(
     }
 
     private suspend fun dispatchNotification(notification: ClientNotificationPayload) {
-        //        Logger.i("Handling notification type ${notification.notificationType}")
         when (notification.notificationType) {
             ClientNotificationType.deviceHandshakeSuccess -> {
                 onHandshakeSuccess()
@@ -229,34 +231,26 @@ class OdinWebSocketClient(
                 handleAuthError(notification)
             }
 
+            ClientNotificationType.inboxItemReceived -> {
+                handleProcessInbox(notification)
+            }
+
             ClientNotificationType.fileAdded -> {
-                Logger.i { "fileAdded received at ${Clock.System.now()}" }
                 handleFileEvent(notification)
             }
 
             ClientNotificationType.fileDeleted -> {
+                handleFileEvent(notification)
             }
 
             ClientNotificationType.fileModified -> {
-                Logger.i { "fileModified received at ${Clock.System.now()}" }
                 handleFileEvent(notification)
             }
 
             ClientNotificationType.connectionRequestReceived -> {
             }
 
-            ClientNotificationType.deviceConnected -> {
-            }
-
-            ClientNotificationType.deviceDisconnected -> {
-            }
-
             ClientNotificationType.connectionRequestAccepted -> {
-            }
-
-            ClientNotificationType.inboxItemReceived -> {
-//                Logger.i { "Inbox signal received at ${Clock.System.now()}" }
-                handleProcessInbox(notification)
             }
 
             ClientNotificationType.newFollower -> {
@@ -291,6 +285,12 @@ class OdinWebSocketClient(
                 // you're now connected
             }
 
+            ClientNotificationType.deviceConnected -> {
+            }
+
+            ClientNotificationType.deviceDisconnected -> {
+            }
+
             ClientNotificationType.error -> {
                 Logger.e("Notification of type error was sent.")
             }
@@ -321,24 +321,28 @@ class OdinWebSocketClient(
     ) {
         val eventData = OdinSystemSerializer
             .deserialize<ClientReactionNotification>(notification.data)
-
-        val reaction = runCatching {
-            OdinSystemSerializer.deserialize<ReactionContent>(eventData.reactionContent)
-        }.getOrElse {
-            // log + drop reaction
-            null
-        }
-
+        val driveId = eventData.fileId.driveId
+        driveSyncManager.syncDrive(driveId)
 
     }
 
     private suspend fun handleAllReactionsDeletedEvent(notification: ClientNotificationPayload) {
-        val fileId =
+        val file =
             OdinSystemSerializer.deserialize<InternalDriveFileId>(notification.data)
+
+        driveSyncManager.syncDrive(file.driveId)
     }
 
 
     private suspend fun handleFileEvent(notification: ClientNotificationPayload) {
+        val fileNotification =
+            OdinSystemSerializer.deserialize<ClientDriveNotification>(notification.data)
+        val driveId = fileNotification.targetDrive!!.alias
+        driveSyncManager.syncDrive(driveId)
+    }
+
+
+    private suspend fun handleFileEvent_Old(notification: ClientNotificationPayload) {
         val fileNotification =
             OdinSystemSerializer.deserialize<ClientDriveNotification>(notification.data)
 
