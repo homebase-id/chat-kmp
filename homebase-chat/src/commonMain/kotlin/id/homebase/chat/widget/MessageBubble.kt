@@ -70,6 +70,7 @@ import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
+import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.core.widget.ReactionList
 import id.homebase.core.widget.ReactionPopup
 import id.homebase.resources.MR
@@ -93,8 +94,13 @@ import kotlin.uuid.Uuid
  * @param onMessageInfo Callback invoked when user requests message info/details.
  * @param onReply Callback invoked when user wants to reply to this message.
  * @param onStar Callback invoked when user wants to star/favorite this message.
+ * @param onEdit Callback invoked when user wants to edit this message.
  * @param onDelete Callback invoked when user wants to delete this message
  * @param onMediaClick Callback invoked when user clicks on media attachment.
+ * @param onAddReaction Callback invoked when user wants to add a reaction to this message.
+ * @param onShowReactions Callback invoked when user wants to show a list of reactions.
+ * @param sharedTransitionScope The shared transition scope for animations.
+ * @param animatedVisibilityScope The animated visibility scope for animations.
  */
 @Composable
 fun SentMessageBubble(
@@ -112,6 +118,7 @@ fun SentMessageBubble(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showReactionPicker by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
@@ -190,7 +197,20 @@ fun SentMessageBubble(
                             showReactionPicker = false
                             onAddReaction(message.id, reaction)
                         },
+                        onShowAllEmojis = {
+                            showReactionPicker = false
+                            showEmojiPicker = true
+                        },
                         onDismiss = { showReactionPicker = false }
+                    )
+                }
+                if (showEmojiPicker) {
+                    EmojiSelectorDialog(
+                        onDismiss = { showEmojiPicker = false },
+                        onEmojiSelected = {
+                            showEmojiPicker = false
+                            onAddReaction(message.id, it)
+                        }
                     )
                 }
             }
@@ -222,8 +242,6 @@ fun SentMessageBubble(
     }
 }
 
-
-
 /**
  * Displays a message bubble for messages received from other users.
  *
@@ -238,7 +256,10 @@ fun SentMessageBubble(
  * @param onMarkAsRead Callback invoked when user wants to mark this message as read.
  * @param onAddReaction Callback invoked when user wants to add a reaction to this message.
  * @param onDeleteReaction Callback invoked when user wants to remove a reaction from this message.
+ * @param onShowReactions Callback invoked when user wants to show a list of reactions.
  * @param onMediaClick Callback invoked when user clicks on media attachment.
+ * @param sharedTransitionScope The shared transition scope for animations.
+ * @param animatedVisibilityScope The animated visibility scope for animations.
  */
 @Composable
 fun ReceivedMessageBubble(
@@ -257,6 +278,7 @@ fun ReceivedMessageBubble(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showReactionPicker by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
@@ -310,7 +332,20 @@ fun ReceivedMessageBubble(
                             showReactionPicker = false
                             onAddReaction(message.id, reaction)
                         },
+                        onShowAllEmojis = {
+                            showReactionPicker = false
+                            showEmojiPicker = true
+                        },
                         onDismiss = { showReactionPicker = false }
+                    )
+                }
+                if (showEmojiPicker) {
+                    EmojiSelectorDialog(
+                        onDismiss = { showEmojiPicker = false },
+                        onEmojiSelected = {
+                            showEmojiPicker = false
+                            onAddReaction(message.id, it)
+                        }
                     )
                 }
             }
@@ -394,8 +429,12 @@ fun ReceivedMessageBubble(
  * @param payloads Optional list of media/file attachments associated with the message.
  * @param fileId The unique identifier for the message file.
  * @param previewThumbnail Optional embedded thumbnail for media preview.
+ * @param replyPreview Optional reply preview data for the message.
+ * @param keyHeader The key header for the message.
  * @param onLongClick Callback invoked when user performs a long-press on the bubble.
  * @param onMediaClick Callback invoked when user clicks on a media attachment.
+ * @param sharedTransitionScope The shared transition scope for animations.
+ * @param animatedVisibilityScope The animated visibility scope for animations.
  */
 @Composable
 fun MessageBubble(

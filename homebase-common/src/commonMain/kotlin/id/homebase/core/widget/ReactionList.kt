@@ -79,6 +79,7 @@ private fun extractEmoji(reactionContent: String): String? {
 @Composable
 fun ReactionPopup(
     onSelect: (String) -> Unit,
+    onShowAllEmojis: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val reactions = listOf("👍", "❤️", "😂", "😮", "😢")
@@ -114,7 +115,7 @@ fun ReactionPopup(
                     }
                 }
                 IconButton(
-                    onClick = { },
+                    onClick = onShowAllEmojis,
                     modifier = Modifier.size(40.dp)
                 ) {
                     Icon(Icons.Default.MoreHoriz, contentDescription = stringResource(MR.string.chat_message_emoji_options))
