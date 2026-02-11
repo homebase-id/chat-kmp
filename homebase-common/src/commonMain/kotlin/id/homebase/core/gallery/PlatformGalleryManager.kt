@@ -14,5 +14,6 @@ data class GalleryImage(
     val thumbnailUri: String? = null,
     val dateAdded: Long,
     val mimeType: String,
+    val fileName: String,
     val galleryName: String,
 )

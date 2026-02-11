@@ -5,7 +5,11 @@ actual fun getPlatform(): Platform {
 }
 
 actual fun isAndroid(): Boolean {
-    TODO("Not yet implemented")
+    return true
+}
+
+actual fun isIos(): Boolean {
+    return false
 }
 
 actual fun showMessage(title: String, message: String) {

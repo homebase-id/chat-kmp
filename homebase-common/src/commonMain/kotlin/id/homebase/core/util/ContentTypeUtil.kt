@@ -24,5 +24,7 @@ private val commonExtToMime: Map<String, String> = mapOf(
     "bmp" to "image/bmp",
     "ico" to "image/x-icon",
     "avif" to "image/avif",
-    "webm" to "video/webm"
+    "webm" to "video/webm",
+    "heic" to "image/heic",
+    "heif" to "image/heif"
 )

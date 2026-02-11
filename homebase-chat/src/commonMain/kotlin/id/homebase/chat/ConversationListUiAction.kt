@@ -2,6 +2,7 @@ package id.homebase.chat
 
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.gallery.GalleryImage
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
@@ -14,10 +15,14 @@ sealed interface ConversationListUiAction {
     data class SearchQueryChanged(val query: String) : ConversationListUiAction
     data class SendMessage(val conversationId: Uuid) : ConversationListUiAction
     data class SendFile(
-        val conversationId: Uuid, val message: String, val files: List<PlatformFile>
+        val conversationId: Uuid, val message: String, val attachments: List<AttachmentPendingFile>
     ) : ConversationListUiAction
 
-    data class AttachFile(
+    data class AttachGalleryItem(
+        val conversationId: Uuid, val files: List<GalleryImage>,
+    ) : ConversationListUiAction
+
+    data class AttachPlatformFile(
         val conversationId: Uuid, val files: List<PlatformFile>,
     ) : ConversationListUiAction
 
@@ -28,7 +33,7 @@ sealed interface ConversationListUiAction {
     data class ShareMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class DownloadMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
 
-    data class SaveFile(val file: PlatformFile) : ConversationListUiAction
+    data class SaveFile(val file: AttachmentPendingFile) : ConversationListUiAction
 
     data class MediaClicked(val message: MessageUiModel, val payloadKey: String) :
         ConversationListUiAction

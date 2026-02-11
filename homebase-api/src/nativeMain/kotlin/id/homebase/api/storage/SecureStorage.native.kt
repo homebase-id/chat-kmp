@@ -11,8 +11,9 @@ import kotlinx.cinterop.value
 import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFDictionarySetValue
-import platform.CoreFoundation.CFTypeRef
+import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.CFBridgingRelease
@@ -25,7 +26,11 @@ import platform.Foundation.dataUsingEncoding
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
+import platform.Security.SecItemUpdate
+import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
+import platform.Security.kSecAttrAccessible
+import platform.Security.kSecAttrAccessibleAfterFirstUnlock
 import platform.Security.kSecAttrAccount
 import platform.Security.kSecAttrService
 import platform.Security.kSecClass
@@ -46,72 +51,92 @@ import platform.Security.kSecValueData
 actual object SecureStorage {
     private const val SERVICE_NAME = "id.homebase.api.securestorage"
 
-    private fun createBaseQuery(key: String): CFDictionaryRef {
-        val dict =
-            CFDictionaryCreateMutable(
-                null,
-                4,
-                kCFTypeDictionaryKeyCallBacks.ptr,
-                kCFTypeDictionaryValueCallBacks.ptr
-            )
-        CFDictionarySetValue(dict, kSecClass as CFTypeRef?, kSecClassGenericPassword as CFTypeRef?)
-        CFDictionarySetValue(dict, kSecAttrService as CFTypeRef?, CFBridgingRetain(SERVICE_NAME))
-        CFDictionarySetValue(dict, kSecAttrAccount as CFTypeRef?, CFBridgingRetain(key))
-        return dict as CFDictionaryRef
+    private fun createBaseQuery(key: String): CFDictionaryRef? {
+        val dict = CFDictionaryCreateMutable(
+            null, 4, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr
+        ) ?: return null
+
+        // Add class
+        CFDictionarySetValue(dict, kSecClass, kSecClassGenericPassword)
+
+        // Add service
+        val serviceCf = CFBridgingRetain(SERVICE_NAME)
+        CFDictionarySetValue(dict, kSecAttrService, serviceCf)
+        CFRelease(serviceCf)
+
+        // Add account (key)
+        val keyCf = CFBridgingRetain(key)
+        CFDictionarySetValue(dict, kSecAttrAccount, keyCf)
+        CFRelease(keyCf)
+
+        return dict
     }
 
     actual fun put(key: String, value: String) {
         val nsString = NSString.create(string = value)
         val valueData = nsString.dataUsingEncoding(NSUTF8StringEncoding) ?: return
 
-        // Delete existing item first
-        remove(key)
+        val query = createBaseQuery(key) ?: return
 
-        // Create query with value
-        val dict =
-            CFDictionaryCreateMutable(
-                null,
-                5,
-                kCFTypeDictionaryKeyCallBacks.ptr,
-                kCFTypeDictionaryValueCallBacks.ptr
-            )
-        CFDictionarySetValue(dict, kSecClass as CFTypeRef?, kSecClassGenericPassword as CFTypeRef?)
-        CFDictionarySetValue(dict, kSecAttrService as CFTypeRef?, CFBridgingRetain(SERVICE_NAME))
-        CFDictionarySetValue(dict, kSecAttrAccount as CFTypeRef?, CFBridgingRetain(key))
-        CFDictionarySetValue(dict, kSecValueData as CFTypeRef?, CFBridgingRetain(valueData))
+        val attributesToUpdate = CFDictionaryCreateMutable(
+            null, 2, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr
+        )
 
-        SecItemAdd(dict as CFDictionaryRef, null)
+        val valueDataCf = CFBridgingRetain(valueData)
+        CFDictionarySetValue(attributesToUpdate, kSecValueData, valueDataCf)
+
+        CFDictionarySetValue(
+            attributesToUpdate, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock
+        )
+        CFRelease(valueDataCf)
+
+        val status = SecItemUpdate(query, attributesToUpdate)
+
+        CFRelease(attributesToUpdate)
+        CFRelease(query)
+
+        if (status == errSecSuccess) return
+
+        if (status == errSecItemNotFound) {
+            val addDict = createBaseQuery(key) ?: return
+
+            val valueDataCfForAdd = CFBridgingRetain(valueData)
+            CFDictionarySetValue(addDict, kSecValueData, valueDataCfForAdd)
+            CFRelease(valueDataCfForAdd)
+
+            CFDictionarySetValue(addDict, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
+
+            SecItemAdd(addDict, null)
+            CFRelease(addDict)
+        }
     }
 
     actual fun get(key: String): String? {
-        val dict =
-            CFDictionaryCreateMutable(
-                null,
-                5,
-                kCFTypeDictionaryKeyCallBacks.ptr,
-                kCFTypeDictionaryValueCallBacks.ptr
-            )
-        CFDictionarySetValue(dict, kSecClass as CFTypeRef?, kSecClassGenericPassword as CFTypeRef?)
-        CFDictionarySetValue(dict, kSecAttrService as CFTypeRef?, CFBridgingRetain(SERVICE_NAME))
-        CFDictionarySetValue(dict, kSecAttrAccount as CFTypeRef?, CFBridgingRetain(key))
-        CFDictionarySetValue(dict, kSecReturnData as CFTypeRef?, CFBridgingRetain(true))
-        CFDictionarySetValue(dict, kSecMatchLimit as CFTypeRef?, kSecMatchLimitOne as CFTypeRef?)
+        val query = createBaseQuery(key) ?: return null
+
+        CFDictionarySetValue(query, kSecReturnData, kCFBooleanTrue)
+        CFDictionarySetValue(query, kSecMatchLimit, kSecMatchLimitOne)
 
         memScoped {
             val result = alloc<CFTypeRefVar>()
-            val status = SecItemCopyMatching(dict as CFDictionaryRef, result.ptr)
+            val status = SecItemCopyMatching(query, result.ptr)
+
+            CFRelease(query)
 
             if (status == errSecSuccess && result.value != null) {
-                val data = CFBridgingRelease(result.value) as? NSData ?: return null
-                return NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString()
+                val data = CFBridgingRelease(result.value) as? NSData
+                if (data != null) {
+                    return NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString()
+                }
             }
         }
         return null
     }
 
     actual fun remove(key: String) {
-        val query = createBaseQuery(key)
+        val query = createBaseQuery(key) ?: return
         SecItemDelete(query)
+        CFRelease(query)
     }
 
     actual fun contains(key: String): Boolean {
@@ -119,16 +144,17 @@ actual object SecureStorage {
     }
 
     actual fun clear() {
-        val dict =
-            CFDictionaryCreateMutable(
-                null,
-                2,
-                kCFTypeDictionaryKeyCallBacks.ptr,
-                kCFTypeDictionaryValueCallBacks.ptr
-            )
-        CFDictionarySetValue(dict, kSecClass as CFTypeRef?, kSecClassGenericPassword as CFTypeRef?)
-        CFDictionarySetValue(dict, kSecAttrService as CFTypeRef?, CFBridgingRetain(SERVICE_NAME))
+        val dict = CFDictionaryCreateMutable(
+            null, 2, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr
+        ) ?: return
 
-        SecItemDelete(dict as CFDictionaryRef)
+        CFDictionarySetValue(dict, kSecClass, kSecClassGenericPassword)
+
+        val serviceCf = CFBridgingRetain(SERVICE_NAME)
+        CFDictionarySetValue(dict, kSecAttrService, serviceCf)
+        CFRelease(serviceCf)
+
+        SecItemDelete(dict)
+        CFRelease(dict)
     }
 }

@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.AttachmentPendingFile
@@ -49,9 +50,9 @@ import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.menu_back
 import id.homebase.resources.save
-import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,20 +66,21 @@ fun FullScreenAttachmentEditor(
     onSaveFile: (file: AttachmentPendingFile) -> Unit,
     onAddFile: () -> Unit,
     onRemoveFile: (conversationId: Uuid, attachmentId: Uuid) -> Unit,
-    onSendMessage: (conversationId: Uuid, message: String, files: List<PlatformFile>) -> Unit,
+    onSendMessage: (conversationId: Uuid, message: String, files: List<AttachmentPendingFile>) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val imageLoader: ImageLoader = koinInject()
     val pagerState = rememberPagerState(
-        initialPage = currentPage.coerceIn(0, maxOf(0, data.files.size - 1)),
-        pageCount = { data.files.size }
+        initialPage = currentPage.coerceIn(0, maxOf(0, data.attachments.size - 1)),
+        pageCount = { data.attachments.size }
     )
 
     LaunchedEffect(pagerState.currentPage) {
         onPageChanged(pagerState.currentPage)
     }
 
-    LaunchedEffect(data.files.size) {
-        if (currentPage < data.files.size) {
+    LaunchedEffect(data.attachments.size) {
+        if (currentPage < data.attachments.size) {
             pagerState.scrollToPage(currentPage)
         }
     }
@@ -98,9 +100,14 @@ fun FullScreenAttachmentEditor(
                 userScrollEnabled = true,
                 beyondViewportPageCount = 1
             ) { page ->
-                val file = data.files[page]
+                val uri = when (val attachment = data.attachments[page]) {
+                    is AttachmentPendingFile.File -> attachment.file.toString()
+                    is AttachmentPendingFile.Gallery -> attachment.image.thumbnailUri
+
+                }
                 AsyncImage(
-                    model = file.file.toString(),
+                    imageLoader = imageLoader,
+                    model = uri,
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -137,9 +144,9 @@ fun FullScreenAttachmentEditor(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (data.files.size > 1) {
-                    items(data.files) { file ->
-                        val isSelected = data.files[pagerState.currentPage] == file
+                if (data.attachments.size > 1) {
+                    items(data.attachments) { attachment ->
+                        val isSelected = data.attachments[pagerState.currentPage] == attachment
                         Box(
                             modifier = Modifier
                                 .size(60.dp)
@@ -152,12 +159,18 @@ fun FullScreenAttachmentEditor(
                                 .clickable {
                                     // Navigate to this image
                                     scope.launch {
-                                        pagerState.animateScrollToPage(data.files.indexOf(file))
+                                        pagerState.animateScrollToPage(data.attachments.indexOf(attachment))
                                     }
                                 }
                         ) {
+                            val uri = when (attachment) {
+                                is AttachmentPendingFile.File -> attachment.file.toString()
+                                is AttachmentPendingFile.Gallery -> attachment.image.thumbnailUri
+
+                            }
                             AsyncImage(
-                                model = file.file.toString(),
+                                imageLoader = imageLoader,
+                                model = uri,
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
@@ -169,7 +182,7 @@ fun FullScreenAttachmentEditor(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .background(Color.Black.copy(alpha = 0.5f))
-                                        .clickable { onRemoveFile(data.conversationId, file.id) },
+                                        .clickable { onRemoveFile(data.conversationId, attachment.attachmentId) },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
@@ -205,7 +218,7 @@ fun FullScreenAttachmentEditor(
         ) {
             IconButton(
                 onClick = {
-                    onSaveFile(data.files[pagerState.currentPage])
+                    onSaveFile(data.attachments[pagerState.currentPage])
                 },
                 colors = IconButtonDefaults.iconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -229,7 +242,7 @@ fun FullScreenAttachmentEditor(
                 onSendMessage(
                     data.conversationId,
                     textFieldState.toText(),
-                    data.files.map { it.file }
+                    data.attachments
                 )
             }
         )

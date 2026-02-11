@@ -18,7 +18,6 @@ import androidx.compose.runtime.snapshotFlow
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.ConversationListUiAction
-import id.homebase.chat.ConversationListUiAction.AttachFile
 import id.homebase.chat.ConversationListUiAction.CloseFullScreenOverlay
 import id.homebase.chat.ConversationListUiAction.DeleteMessage
 import id.homebase.chat.ConversationListUiAction.DownloadMedia
@@ -61,7 +60,7 @@ fun ConversationMessagesPane(
     val galleryLauncher =
         rememberFilePickerLauncher(type = FileKitType.Image) { file ->
             file?.let {
-                onUiAction(AttachFile(conversation.id, listOf(file)))
+                onUiAction(ConversationListUiAction.AttachPlatformFile(conversation.id, listOf(file)))
             }
         }
 
@@ -236,7 +235,7 @@ fun ConversationMessagesPane(
                             currentPage = currentGalleryPage,
                             onPageChanged = { currentGalleryPage = it },
                             onSaveFile = {
-                                onUiAction(SaveFile(it.file))
+                                onUiAction(SaveFile(it))
                             },
                             onAddFile = { galleryLauncher.launch() },
                             onRemoveFile = { conversationId, attachmentId ->
