@@ -18,20 +18,21 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlin.io.encoding.Base64
+import id.homebase.api.common.OdinId
 
 data class AuthResult(
     val clientAuthToken: String,
     val sharedSecret: String,
-    val identity: String
+    val identity: OdinId
 )
 
 class YouAuthProvider(
     private val httpClient: HttpClient,
-    private val identity: String
+    private val identity: OdinId
 ) {
 
-    private val baseApiUrl: String = identity.toHttpsBaseUrl()
-    private val ownerApiUrl: String = identity.toHttpsBaseUrl()
+    private val baseApiUrl: String = identity.domainName.toHttpsBaseUrl()
+    private val ownerApiUrl: String = identity.domainName.toHttpsBaseUrl()
 
     companion object {
         private const val TAG = "YouAuthProvider"
@@ -109,7 +110,7 @@ class YouAuthProvider(
     }
 
     suspend fun finalizeAuthentication(
-        identity: String,
+        identity: OdinId,
         keyPair: EccKeyPair,
         password: SecureByteArray,
         publicKey: String,

@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.ImmutableList
@@ -50,11 +51,11 @@ sealed interface FullScreenOverlay {
         val selected: Uuid,
         val conversationTitle: String,
         val conversationId: Uuid,
-        val files: List<AttachmentPendingFile>,
+        val attachments: List<AttachmentPendingFile>,
     ) : FullScreenOverlay
 }
 
-data class AttachmentPendingFile(
-    val id: Uuid,
-    val file: PlatformFile,
-)
+sealed class AttachmentPendingFile(val attachmentId: Uuid) {
+    data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
+    data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
+}
