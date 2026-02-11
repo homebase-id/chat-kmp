@@ -8,6 +8,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.lifecycleScope
+import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
+import com.mmk.kmpnotifier.notification.*
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
 import io.github.vinceglb.filekit.FileKit
@@ -22,6 +24,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
 
+        // Notify KMPNotifier of activity create
+        NotifierManager.onCreateOrOnNewIntent(intent)
+
         // Initialize FileKit
         FileKit.manualFileKitCoreInitialization(this)
         FileKit.init(this)
@@ -33,6 +38,9 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent) // Update the activity's intent
         handleIntent(intent)
+
+        // Notify KMPNotifier of new intent
+        NotifierManager.onCreateOrOnNewIntent(intent)
     }
 
     override fun onResume() {

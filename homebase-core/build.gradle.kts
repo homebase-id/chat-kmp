@@ -37,6 +37,7 @@ kotlin {
             freeCompilerArgs += listOf("-Xbinary=bundleId=id.homebase.core")
             // Export homebase-api to make FFmpegKitBridge accessible from Swift
             export(project(":homebase-api"))
+            export(project(":homebase-common"))
         }
     }
 
@@ -48,7 +49,7 @@ kotlin {
         commonMain.dependencies {
             // Use api so it can be exported to Swift
             api(project(":homebase-api"))
-            implementation(project(":homebase-common"))
+            api(project(":homebase-common"))
             implementation(project(":homebase-auth"))
             implementation(project(":homebase-chat"))
 

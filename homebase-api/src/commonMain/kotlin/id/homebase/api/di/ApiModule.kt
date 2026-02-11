@@ -10,6 +10,7 @@ import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
@@ -26,14 +27,9 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
 val apiModule = module {
+    single { DatabaseManager.appDb }
 
-    single {
-        DatabaseManager.appDb
-    }
-
-    single<CoroutineScope> {
-        CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    }
+    single<CoroutineScope> { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
 
     // this creates the HttpClient
     single { HttpClientProvider.create() }
@@ -57,6 +53,8 @@ val apiModule = module {
 
     factoryOf(::SecurityContextProvider)
 
-    single { EventBus() }
+    factoryOf(::SecurityContextProvider)
+    factoryOf(::PushNotificationApi)
 
+    single { EventBus() }
 }

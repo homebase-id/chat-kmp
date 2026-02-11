@@ -4,19 +4,18 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>youauth</string>
-            </array>
-        </dict>
-    </array>
-    <key>NSCameraUsageDescription</key>
-    <string>We need access to your camera to attach picture to chat message</string>
-
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>We need access to your photo library to attach image to chat message</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>youauth</string>
+			</array>
+		</dict>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

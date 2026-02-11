@@ -17,7 +17,9 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
 @Composable
-actual fun createPermissionsManager(onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit): PermissionsManager {
+actual fun createPermissionsManager(
+    onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit
+): PermissionsManager {
     val context = LocalContext.current
     val activity = LocalActivity.current
     val genericPermissionLauncher = rememberLauncherForActivityResult(
@@ -26,13 +28,20 @@ actual fun createPermissionsManager(onPermissionResult: (PermissionType, Permiss
         permissions.forEach { (key, value) ->
             var isPermanentlyDenied = false
             if (!value && activity != null) {
-                isPermanentlyDenied = !ActivityCompat.shouldShowRequestPermissionRationale(activity, key)
+                isPermanentlyDenied =
+                    !ActivityCompat.shouldShowRequestPermissionRationale(activity, key)
             }
 
-            println("Permission: $key status: $value (isPermanentlyDenied: $isPermanentlyDenied)")
+            println(
+                "Permission: $key status: $value (isPermanentlyDenied: $isPermanentlyDenied)"
+            )
 
             key.toPermissionType()?.let {
-                onPermissionResult(it, if (value) PermissionStatus.GRANTED else PermissionStatus.DENIED, isPermanentlyDenied)
+                onPermissionResult(
+                    it,
+                    if (value) PermissionStatus.GRANTED else PermissionStatus.DENIED,
+                    isPermanentlyDenied
+                )
             }
         }
     }
@@ -41,21 +50,19 @@ actual fun createPermissionsManager(onPermissionResult: (PermissionType, Permiss
 }
 
 private fun String.toPermissionType(): PermissionType? {
-    if (this == Manifest.permission.CAMERA)
-        return PermissionType.CAMERA
+    if (this == Manifest.permission.CAMERA) return PermissionType.CAMERA
 
-    if (this == Manifest.permission.READ_MEDIA_IMAGES || this == Manifest.permission.READ_EXTERNAL_STORAGE)
-        return PermissionType.GALLERY
+    if (this == Manifest.permission.READ_MEDIA_IMAGES || this == Manifest.permission.READ_EXTERNAL_STORAGE) return PermissionType.GALLERY
 
-    if (this == Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-        return PermissionType.GALLERY_LIMITED
+    if (this == Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) return PermissionType.GALLERY_LIMITED
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && this == Manifest.permission.POST_NOTIFICATIONS) return PermissionType.NOTIFICATION
 
     return null
 }
 
 class AndroidPermissionsManager(
-    val context: Context,
-    val genericPermissionLauncher: ActivityResultLauncher<Array<String>>
+    val context: Context, val genericPermissionLauncher: ActivityResultLauncher<Array<String>>
 ) : PermissionsManager {
     override fun askPermission(permission: PermissionType) {
         when (permission) {
@@ -74,7 +81,9 @@ class AndroidPermissionsManager(
                 } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     genericPermissionLauncher.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES))
                 } else {
-                    genericPermissionLauncher.launch(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE))
+                    genericPermissionLauncher.launch(
+                        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+                    )
                 }
             }
 
@@ -88,28 +97,33 @@ class AndroidPermissionsManager(
                     )
                 }
             }
+
+            PermissionType.NOTIFICATION -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    genericPermissionLauncher.launch(
+                        arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+                    )
+                }
+            }
         }
     }
 
-    override fun isPermissionGranted(permission: PermissionType): Boolean {
+    override suspend fun isPermissionGranted(permission: PermissionType): Boolean {
         return when (permission) {
             PermissionType.CAMERA -> {
                 ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.CAMERA
+                    context, Manifest.permission.CAMERA
                 ) == PackageManager.PERMISSION_GRANTED
             }
 
             PermissionType.GALLERY -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.READ_MEDIA_IMAGES
+                        context, Manifest.permission.READ_MEDIA_IMAGES
                     ) == PackageManager.PERMISSION_GRANTED
                 } else {
                     ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.READ_EXTERNAL_STORAGE
+                        context, Manifest.permission.READ_EXTERNAL_STORAGE
                     ) == PackageManager.PERMISSION_GRANTED
                 }
             }
@@ -117,11 +131,20 @@ class AndroidPermissionsManager(
             PermissionType.GALLERY_LIMITED -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                        context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
                     ) == PackageManager.PERMISSION_GRANTED
                 } else {
                     false
+                }
+            }
+
+            PermissionType.NOTIFICATION -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+                } else {
+                    true
                 }
             }
         }
@@ -131,8 +154,6 @@ class AndroidPermissionsManager(
         Intent(
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             Uri.fromParts("package", context.packageName, null)
-        ).also {
-            context.startActivity(it)
-        }
+        ).also { context.startActivity(it) }
     }
 }

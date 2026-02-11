@@ -48,6 +48,7 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "homebase-commonKit"
             isStatic = true
+            export(libs.kmpnotifier)
         }
     }
 
@@ -83,6 +84,7 @@ kotlin {
             api(libs.filekit.core)
             api(libs.koin.core)
             api(libs.koin.compose)
+            api(libs.kmpnotifier)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

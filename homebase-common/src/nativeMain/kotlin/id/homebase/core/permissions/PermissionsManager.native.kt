@@ -20,17 +20,30 @@ import platform.Photos.PHPhotoLibrary
 import platform.PhotosUI.presentLimitedLibraryPickerFromViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationOpenSettingsURLString
+import platform.UserNotifications.UNAuthorizationOptionAlert
+import platform.UserNotifications.UNAuthorizationOptionBadge
+import platform.UserNotifications.UNAuthorizationOptionSound
+import platform.UserNotifications.UNAuthorizationStatusAuthorized
+import platform.UserNotifications.UNAuthorizationStatusDenied
+import platform.UserNotifications.UNAuthorizationStatusEphemeral
+import platform.UserNotifications.UNAuthorizationStatusNotDetermined
+import platform.UserNotifications.UNAuthorizationStatusProvisional
+import platform.UserNotifications.UNUserNotificationCenter
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 @Composable
 actual fun createPermissionsManager(onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit): PermissionsManager {
     return IOSPermissionsManager(onPermissionResult)
 }
 
-class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit) : PermissionsManager {
+class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionStatus, Boolean) -> Unit) :
+    PermissionsManager {
     override fun askPermission(permission: PermissionType) {
         when (permission) {
             PermissionType.CAMERA -> {
-                val status: AVAuthorizationStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+                val status: AVAuthorizationStatus =
+                    AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
                 askCameraPermission(status, permission, onPermissionResult)
             }
 
@@ -39,13 +52,27 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                 val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
                 askGalleryPermission(status, permission, onPermissionResult)
             }
+
+            PermissionType.GALLERY_LIMITED -> {
+                // not implemented
+            }
+
+            PermissionType.NOTIFICATION -> {
+                UNUserNotificationCenter.currentNotificationCenter()
+                    .getNotificationSettingsWithCompletionHandler { settings ->
+                        val status =
+                            settings?.authorizationStatus ?: UNAuthorizationStatusNotDetermined
+                        askNotificationPermission(status, permission, onPermissionResult)
+                    }
+            }
         }
     }
 
-    override fun isPermissionGranted(permission: PermissionType): Boolean {
+    override suspend fun isPermissionGranted(permission: PermissionType): Boolean {
         return when (permission) {
             PermissionType.CAMERA -> {
-                val status: AVAuthorizationStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+                val status: AVAuthorizationStatus =
+                    AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
                 status == AVAuthorizationStatusAuthorized
             }
 
@@ -58,6 +85,16 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                 val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
                 status == PHAuthorizationStatusLimited
             }
+
+            PermissionType.NOTIFICATION -> suspendCoroutine { cont ->
+                UNUserNotificationCenter.currentNotificationCenter()
+                    .getNotificationSettingsWithCompletionHandler { settings ->
+                        val status = settings?.authorizationStatus
+                        val granted =
+                            status == UNAuthorizationStatusAuthorized || status == UNAuthorizationStatusProvisional || status == UNAuthorizationStatusEphemeral
+                        cont.resume(granted)
+                    }
+            }
         }
     }
 
@@ -68,7 +105,9 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
     }
 
     private fun askCameraPermission(
-        status: AVAuthorizationStatus, permission: PermissionType, onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
+        status: AVAuthorizationStatus,
+        permission: PermissionType,
+        onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
     ) {
         when (status) {
             AVAuthorizationStatusAuthorized -> {
@@ -94,7 +133,9 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
     }
 
     private fun askGalleryPermission(
-        status: PHAuthorizationStatus, permission: PermissionType, onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
+        status: PHAuthorizationStatus,
+        permission: PermissionType,
+        onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
     ) {
         when (status) {
             PHAuthorizationStatusAuthorized -> {
@@ -123,6 +164,35 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
             }
 
             else -> error("Unknown gallery status $status")
+        }
+    }
+
+    private fun askNotificationPermission(
+        status: Long,
+        permission: PermissionType,
+        onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
+    ) {
+        when (status) {
+            UNAuthorizationStatusAuthorized, UNAuthorizationStatusProvisional, UNAuthorizationStatusEphemeral -> {
+                onPermissionStatus(permission, PermissionStatus.GRANTED, false)
+            }
+
+            UNAuthorizationStatusNotDetermined -> {
+                UNUserNotificationCenter.currentNotificationCenter()
+                    .requestAuthorizationWithOptions(
+                        options = UNAuthorizationOptionAlert or UNAuthorizationOptionBadge or UNAuthorizationOptionSound
+                    ) { granted, _ ->
+                        onPermissionStatus(
+                            permission,
+                            if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED,
+                            false
+                        )
+                    }
+            }
+
+            else -> {
+                onPermissionStatus(permission, PermissionStatus.DENIED, false)
+            }
         }
     }
 }

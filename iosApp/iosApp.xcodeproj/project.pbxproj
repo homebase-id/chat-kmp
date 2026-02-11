@@ -23,6 +23,9 @@
 		43296FC32F3A0C08000B3AFE /* libavdevice.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		43296FC42F3A0C08000B3AFE /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; };
 		43296FC52F3A0C08000B3AFE /* libswresample.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		4332A0A42F3B73DF00F895B5 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4332A0A32F3B73DF00F895B5 /* GoogleService-Info.plist */; };
+		4332A0A72F3B761C00F895B5 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0A62F3B761C00F895B5 /* FirebaseCore */; };
+		4332A0A92F3B761C00F895B5 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0A82F3B761C00F895B5 /* FirebaseMessaging */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -55,6 +58,7 @@
 		43296FB32F3A0C08000B3AFE /* libswscale.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libswscale.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libswscale.xcframework"; sourceTree = "<group>"; };
 		43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libavdevice.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libavdevice.xcframework"; sourceTree = "<group>"; };
 		43296FB52F3A0C08000B3AFE /* libswresample.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libswresample.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libswresample.xcframework"; sourceTree = "<group>"; };
+		4332A0A32F3B73DF00F895B5 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		E036487443061F6060AA1439 /* chat-kmp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "chat-kmp.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -91,11 +95,13 @@
 			files = (
 				43296FC22F3A0C08000B3AFE /* libavdevice.xcframework in Frameworks */,
 				43296FBA2F3A0C08000B3AFE /* libavfilter.xcframework in Frameworks */,
+				4332A0A92F3B761C00F895B5 /* FirebaseMessaging in Frameworks */,
 				43296FC42F3A0C08000B3AFE /* libswresample.xcframework in Frameworks */,
 				43296FBE2F3A0C08000B3AFE /* ffmpegkit.xcframework in Frameworks */,
 				43296FBC2F3A0C08000B3AFE /* libavcodec.xcframework in Frameworks */,
 				43296FB82F3A0C08000B3AFE /* libavutil.xcframework in Frameworks */,
 				43296FC02F3A0C08000B3AFE /* libswscale.xcframework in Frameworks */,
+				4332A0A72F3B761C00F895B5 /* FirebaseCore in Frameworks */,
 				43296FB62F3A0C08000B3AFE /* libavformat.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -133,6 +139,7 @@
 				7BF4AA8D213A61C40E7100C2 /* iosApp */,
 				43296FAD2F3A0C08000B3AFE /* Frameworks */,
 				0FA39D98867DA0943346125E /* Products */,
+				4332A0A32F3B73DF00F895B5 /* GoogleService-Info.plist */,
 			);
 			sourceTree = "<group>";
 		};
@@ -158,6 +165,8 @@
 			);
 			name = iosApp;
 			packageProductDependencies = (
+				4332A0A62F3B761C00F895B5 /* FirebaseCore */,
+				4332A0A82F3B761C00F895B5 /* FirebaseMessaging */,
 			);
 			productName = iosApp;
 			productReference = E036487443061F6060AA1439 /* chat-kmp.app */;
@@ -187,6 +196,9 @@
 			);
 			mainGroup = C518C3BA997C48BC7763149C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0FA39D98867DA0943346125E /* Products */;
 			projectDirPath = "";
@@ -202,6 +214,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4332A0A42F3B73DF00F895B5 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -246,6 +259,7 @@
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
@@ -254,6 +268,8 @@
 				FFMPEG_LIBS_PATH = "$(SRCROOT)/../composeApp/libs/ffmpegkit-bundled.xcframework";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to attach picture to chat message";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -263,6 +279,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.chat;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -334,6 +351,7 @@
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
@@ -342,6 +360,8 @@
 				FFMPEG_LIBS_PATH = "$(SRCROOT)/../composeApp/libs/ffmpegkit-bundled.xcframework";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to attach picture to chat message";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -351,6 +371,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.chat;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -445,6 +466,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4332A0A62F3B761C00F895B5 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		4332A0A82F3B761C00F895B5 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 4E281890246EA5507039EAC8 /* Project object */;
 }
