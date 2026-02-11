@@ -1,0 +1,83 @@
+name: Build Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            name: Android & Desktop
+            build-command: |
+              ./gradlew :androidApp:assembleDebug
+              ./gradlew :desktopApp:createDistributable
+          - os: macos-latest
+            name: iOS
+            build-command: ./gradlew :homebase-common:linkDebugFrameworkIosArm64
+      fail-fast: false
+    name: Build ${{ matrix.name }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Gradle Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Run build command
+        run: ${{ matrix.build-command }}
+
+      - name: Verify Android build artifact
+        if: ${{ matrix.name == 'Android & Desktop' }}
+        run: find androidApp/build/outputs/apk/debug -name "*.apk"
+
+      - name: Upload Android artifact
+        if: ${{ matrix.name == 'Android & Desktop' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: androidApp/build/outputs/apk/debug/*.apk
+
+      - name: Verify Desktop build artifact
+        if: ${{ matrix.name == 'Android & Desktop' }}
+        run: test -d desktopApp/build/compose/binaries/main/app && ls desktopApp/build/compose/binaries/main/app
+
+      - name: Upload Desktop artifact
+        if: ${{ matrix.name == 'Android & Desktop' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-dist
+          path: desktopApp/build/compose/binaries/main/app/
+
+      - name: Verify iOS build artifact
+        if: ${{ matrix.name == 'iOS' }}
+        run: find homebase-common/build/bin/iosArm64/debugFramework -name "*.framework" | grep -q ".framework$"
+
+      - name: Upload iOS artifact
+        if: ${{ matrix.name == 'iOS' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-framework
+          path: homebase-common/build/bin/iosArm64/debugFramework/*.framework
