@@ -4,7 +4,16 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.sqldelight)
-    alias(libs.plugins.kotlinSerialization)
+alias(libs.plugins.kotlinSerialization)
+}
+
+sqldelight {
+    // Necessary to fix Gradle intellij build error => Collection is Empty.
+    databases {
+        create("Dummy") {
+            packageName = "id.homebase.dummy"
+        }
+    }
 }
 
 kotlin {
