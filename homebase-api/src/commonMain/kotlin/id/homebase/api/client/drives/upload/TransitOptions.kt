@@ -2,11 +2,12 @@ package id.homebase.api.client.drives.upload
 
 import id.homebase.api.client.drives.TargetDrive
 import kotlinx.serialization.Serializable
+import id.homebase.api.common.OdinId
 
 /** Base transit options for file transfers. */
 @Serializable
 data class TransitOptions(
-    val recipients: List<String>? = null,
+    val recipients: List<OdinId>? = null,
 
     /** If true, file is removed after it's received by all recipients. */
         val isTransient: Boolean? = null,
@@ -24,7 +25,7 @@ data class TransitOptions(
     companion object {
         /** Create transit options without notifications. */
         fun withoutNotifications(
-            recipients: List<String>,
+            recipients: List<OdinId>,
             isTransient: Boolean = false,
             schedule: ScheduleOptions,
             priority: PriorityOptions,
@@ -44,7 +45,7 @@ data class TransitOptions(
 
         /** Create transit options with notifications. */
         fun withNotifications(
-            recipients: List<String>,
+            recipients: List<OdinId>,
             isTransient: Boolean = false,
             schedule: ScheduleOptions,
             priority: PriorityOptions,

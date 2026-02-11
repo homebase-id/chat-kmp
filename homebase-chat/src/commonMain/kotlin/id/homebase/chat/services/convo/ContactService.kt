@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import id.homebase.api.common.OdinId
 
 
 class ContactService(
@@ -34,7 +35,7 @@ class ContactService(
     private val _contacts = MutableStateFlow<List<ContactUiModel>>(emptyList())
 
     private val contactByOdinId =
-        MutableStateFlow<Map<String, ContactUiModel>>(emptyMap())
+        MutableStateFlow<Map<OdinId, ContactUiModel>>(emptyMap())
 
     val contacts: StateFlow<List<ContactUiModel>> = _contacts.asStateFlow()
 
@@ -57,7 +58,7 @@ class ContactService(
         }
     }
 
-    fun resolveByOdinId(odinId: String): ContactUiModel? {
+    fun resolveByOdinId(odinId: OdinId): ContactUiModel? {
         return contactByOdinId.value[odinId]
     }
 
@@ -122,7 +123,7 @@ class ContactService(
 
 @Serializable
 data class ContactServerFile(
-    val odinId: String?,
+    val odinId: OdinId?,
     val name: ContactName,
     val source: String?, // 'contact' | 'public' | 'user';
 

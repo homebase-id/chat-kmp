@@ -28,6 +28,7 @@ import id.homebase.chat.services.XorIdUtil
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 
 
 class ConversationService(
@@ -41,7 +42,7 @@ class ConversationService(
     private val chatDrive = chatTargetDrive.alias
 
     suspend fun createConversation(
-        recipients: List<String>,
+        recipients: List<OdinId>,
         title: String?,
         payloadBundle: PayloadBundle?
     ): Uuid {
@@ -52,7 +53,7 @@ class ConversationService(
 
         val newConversationId: Uuid =
             if (recipients.size == 1) {
-                XorIdUtil.getNewXorId(domain, recipients.first())
+                XorIdUtil.getNewXorId(domain.domainName, recipients.first().domainName)
             } else {
                 Uuid.random()
             }
@@ -109,7 +110,7 @@ class ConversationService(
 
     suspend fun updateConversationRecipients(
         conversationId: Uuid,
-        recipients: List<String>
+        recipients: List<OdinId>
     ) {
         val conversationFile = getConversationHomebaseFile(conversationId)
             ?: error("No conversation found")
@@ -184,7 +185,7 @@ class ConversationService(
     suspend fun updateConversation(
         conversationId: Uuid,
         title: String?,
-        recipients: List<String>,
+        recipients: List<OdinId>,
         payloadBundle: PayloadBundle
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
@@ -313,12 +314,12 @@ class ConversationService(
 
         val displayNames =
             participants.map { odinId ->
-                contactsByOdinId[odinId]?.name ?: odinId
+                contactsByOdinId[odinId]?.name ?: odinId.domainName
             }
 
         val title =
             if (participants.size == 2) {
-                displayNames.first { it != domain }
+                displayNames.first { it != domain.domainName }
             } else {
                 appDataObj.title ?: displayNames.joinToString(", ")
             }
