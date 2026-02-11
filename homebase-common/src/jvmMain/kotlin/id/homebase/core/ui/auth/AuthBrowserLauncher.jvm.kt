@@ -2,6 +2,7 @@ package id.homebase.core.ui.auth
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import co.touchlab.kermit.Logger
 import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -23,41 +24,46 @@ actual fun rememberAuthBrowserLauncher(): (String) -> Unit {
 }
 
 private fun launchBrowserSafely(url: String) {
-    val uri = try { URI.create(url) } catch (e: Exception) {
-        println("Invalid URL: $url")
-        return
-    }
-
-    // 1. Try the official Desktop API (works on Windows/macOS and some Linux)
-    if (Desktop.isDesktopSupported()) {
-        val desktop = Desktop.getDesktop()
-        if (desktop.isSupported(Desktop.Action.BROWSE)) {
-            try {
-                desktop.browse(uri)
-                return
-            } catch (e: Exception) {
-                // e.g. security exception, or still not really supported
-            }
-        }
-    }
-
-    // 2. Direct system command fallback (most reliable on Linux)
-    val osName = System.getProperty("os.name").lowercase()
-    val runtime = Runtime.getRuntime()
-
     try {
-        when {
-            "mac" in osName   -> runtime.exec(arrayOf("open", url))
-            "nix" in osName || "nux" in osName -> runtime.exec(arrayOf("xdg-open", url))
-            else -> throw UnsupportedOperationException("No known browser launcher for this OS")
-        }
-        return
+        openSystemBrowser(url)
     } catch (e: Exception) {
-        // 3. Last resort: copy URL to clipboard so user can paste it manually
+        // Last resort: copy URL to clipboard so user can paste it manually
         copyUrlToClipboard(url)
         println("Could not open browser automatically. URL copied to clipboard:\n$url")
         // TODO: replace println with a nice Compose dialog / snackbar
         // e.g. showErrorDialog("Browser could not be opened. URL copied to clipboard.")
+    }
+}
+
+private fun openSystemBrowser(url: String) {
+    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)
+    ) {
+        Desktop.getDesktop().browse(URI(url))
+    } else {
+        Logger.i("AuthBrowserLauncher") { "Java AWT Desktop not supported, trying fallback browser launch" }
+        try {
+            val os = System.getProperty("os.name").lowercase()
+            val cmd =
+                when {
+                    os.contains("win") ->
+                        arrayOf("rundll32", "url.dll,FileProtocolHandler", url)
+                    os.contains("mac") -> arrayOf("open", url)
+                    os.contains("nix") || os.contains("nux") -> arrayOf("xdg-open", url)
+                    else ->
+                        throw UnsupportedOperationException(
+                            "Unsupported OS for browser fallback: $os"
+                        )
+                }
+
+            Logger.d("AuthBrowserLauncher") {
+                "Attempting fallback browser launch with: ${cmd.joinToString(" ")}"
+            }
+            Runtime.getRuntime().exec(cmd)
+            Logger.i("AuthBrowserLauncher") { "Fallback browser launch initiated successfully" }
+        } catch (e: Exception) {
+            Logger.e("AuthBrowserLauncher", e) { "Fallback browser launch failed: ${e.message}" }
+            throw e
+        }
     }
 }
 
