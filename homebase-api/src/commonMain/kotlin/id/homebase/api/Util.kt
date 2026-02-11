@@ -21,6 +21,8 @@ expect fun getPlatform(): Platform
 
 expect fun isAndroid(): Boolean
 
+expect fun isIos(): Boolean
+
 expect fun showMessage(title: String, message: String)
 
 // URL encoder compatible with UTF-8 encoding

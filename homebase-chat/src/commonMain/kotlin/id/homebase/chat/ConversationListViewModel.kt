@@ -280,15 +280,27 @@ class ConversationListViewModel(
                             )
                         }
                         val attachments = mutableListOf<AttachmentInput>()
-                        action.files.forEach { file ->
-                            val filePath = file.toString()
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = filePath,
-                                    contentType = detectContentTypeFromExtensionOrHint(file.name),
-                                    displayName = file.name,
-                                )
-                            )
+                        action.attachments.forEach { attachment ->
+                            when (attachment) {
+                                is AttachmentPendingFile.File -> {
+                                    attachments.add(
+                                        AttachmentInput(
+                                            filePath = attachment.file.toString(),
+                                            contentType = detectContentTypeFromExtensionOrHint(attachment.file.name),
+                                            displayName = attachment.file.name,
+                                        )
+                                    )
+                                }
+                                is AttachmentPendingFile.Gallery -> {
+                                    attachments.add(
+                                        AttachmentInput(
+                                            filePath = attachment.image.file.toString(),
+                                            contentType = detectContentTypeFromExtensionOrHint(attachment.image.fileName),
+                                            displayName = attachment.image.fileName,
+                                        )
+                                    )
+                                }
+                            }
                         }
 
                         val bundle = MessageAttachmentBuilder
@@ -301,6 +313,7 @@ class ConversationListViewModel(
                             previousMessageUniqueId = null,
                             payloadBundle = bundle,
                         )
+                        messageState.clear()
                         _uiState.update { it.copy(loadingNewMessage = false) }
                     } catch (e: Exception) {
                         Logger.e("Failed to send file(s)", e)
@@ -309,11 +322,11 @@ class ConversationListViewModel(
                 }
             }
 
-            is ConversationListUiAction.AttachFile -> {
+            is ConversationListUiAction.AttachPlatformFile -> {
                 viewModelScope.launch {
                     try {
                         val newFiles =
-                            action.files.map { AttachmentPendingFile(Uuid.generateV7(), it) }
+                            action.files.map { AttachmentPendingFile.File(Uuid.generateV7(), it) }
                         val conversation =
                             _uiState.value.conversations.find { it.id == action.conversationId }
                         if (newFiles.isEmpty() || conversation == null) return@launch
@@ -321,14 +334,50 @@ class ConversationListViewModel(
                         val overlay = _uiState.value.fullScreenOverlay
                         val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
                             overlay.copy(
-                                files = overlay.files + newFiles,
+                                attachments = overlay.attachments + newFiles,
                             )
                         } else {
                             FullScreenOverlay.AttachmentData(
                                 conversationTitle = conversation.name,
                                 conversationId = action.conversationId,
-                                selected = newFiles.last().id,
-                                files = newFiles,
+                                selected = newFiles.last().attachmentId,
+                                attachments = newFiles,
+                            )
+                        }
+
+                        _uiState.update {
+                            it.copy(
+                                fullScreenOverlay = newOverlay,
+                                loadingNewMessage = false,
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("Failed to attach file(s)", e)
+                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to attach file(s): ${e.message}"))
+                    }
+                }
+            }
+
+            is ConversationListUiAction.AttachGalleryItem -> {
+                viewModelScope.launch {
+                    try {
+                        val newFiles =
+                            action.files.map { AttachmentPendingFile.Gallery(Uuid.generateV7(), it) }
+                        val conversation =
+                            _uiState.value.conversations.find { it.id == action.conversationId }
+                        if (newFiles.isEmpty() || conversation == null) return@launch
+
+                        val overlay = _uiState.value.fullScreenOverlay
+                        val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
+                            overlay.copy(
+                                attachments = overlay.attachments + newFiles,
+                            )
+                        } else {
+                            FullScreenOverlay.AttachmentData(
+                                conversationTitle = conversation.name,
+                                conversationId = action.conversationId,
+                                selected = newFiles.last().attachmentId,
+                                attachments = newFiles,
                             )
                         }
 
@@ -351,10 +400,10 @@ class ConversationListViewModel(
                         val fullScreenOverlay = _uiState.value.fullScreenOverlay
                         if (fullScreenOverlay == null || fullScreenOverlay !is FullScreenOverlay.AttachmentData) return@launch
 
-                        val newFiles = fullScreenOverlay.files.filter { it.id != action.id }
+                        val newFiles = fullScreenOverlay.attachments.filter { it.attachmentId != action.id }
                         _uiState.update {
                             it.copy(
-                                fullScreenOverlay = fullScreenOverlay.copy(files = newFiles),
+                                fullScreenOverlay = fullScreenOverlay.copy(attachments = newFiles),
                             )
                         }
                     } catch (e: Exception) {

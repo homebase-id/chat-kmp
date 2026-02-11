@@ -10,11 +10,14 @@ import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.authorizationStatusForMediaType
 import platform.AVFoundation.requestAccessForMediaType
 import platform.Foundation.NSURL
+import platform.Photos.PHAccessLevelReadWrite
 import platform.Photos.PHAuthorizationStatus
 import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusDenied
+import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHAuthorizationStatusNotDetermined
 import platform.Photos.PHPhotoLibrary
+import platform.PhotosUI.presentLimitedLibraryPickerFromViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationOpenSettingsURLString
 
@@ -31,13 +34,10 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                 askCameraPermission(status, permission, onPermissionResult)
             }
 
-            PermissionType.GALLERY -> {
-                val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatus()
+            PermissionType.GALLERY, PermissionType.GALLERY_LIMITED -> {
+                // Use the new API that properly detects limited access
+                val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
                 askGalleryPermission(status, permission, onPermissionResult)
-            }
-
-            PermissionType.GALLERY_LIMITED -> {
-                // not implemented
             }
         }
     }
@@ -50,19 +50,20 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
             }
 
             PermissionType.GALLERY -> {
-                val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatus()
+                val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
                 status == PHAuthorizationStatusAuthorized
             }
 
             PermissionType.GALLERY_LIMITED  -> {
-                false
+                val status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
+                status == PHAuthorizationStatusLimited
             }
         }
     }
 
     override fun launchSettings() {
         NSURL.URLWithString(UIApplicationOpenSettingsURLString)?.let {
-            UIApplication.sharedApplication.openURL(it)
+            UIApplication.sharedApplication.openURL(it, emptyMap<Any?, String>(), {} )
         }
     }
 
@@ -98,6 +99,17 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
         when (status) {
             PHAuthorizationStatusAuthorized -> {
                 onPermissionStatus(permission, PermissionStatus.GRANTED, false)
+            }
+
+            PHAuthorizationStatusLimited -> {
+                // Show picker to select more photos when already in limited mode
+                if (permission == PermissionType.GALLERY_LIMITED) {
+                    val rootViewController = UIApplication.sharedApplication.keyWindow?.rootViewController
+                    rootViewController?.let {
+                        PHPhotoLibrary.sharedPhotoLibrary().presentLimitedLibraryPickerFromViewController(it)
+                    }
+                }
+                onPermissionStatus(permission, PermissionStatus.GRANTED, true)
             }
 
             PHAuthorizationStatusNotDetermined -> {

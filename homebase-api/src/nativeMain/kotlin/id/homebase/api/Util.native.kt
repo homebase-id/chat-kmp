@@ -1,7 +1,11 @@
 package id.homebase.api
 
 actual fun isAndroid(): Boolean {
-    TODO("Not yet implemented")
+    return false
+}
+
+actual fun isIos(): Boolean {
+    return true
 }
 
 actual fun getPlatform(): Platform {

@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.common.OdinId
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -75,7 +76,6 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
-import id.homebase.api.common.OdinId
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -107,7 +107,7 @@ fun ConversationContent(
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
             onUiAction(
-                ConversationListUiAction.AttachFile(
+                ConversationListUiAction.AttachPlatformFile(
                     conversation.id,
                     listOf(file),
                 )
@@ -117,7 +117,7 @@ fun ConversationContent(
     val fileLauncher = rememberFilePickerLauncher { file ->
         file?.let {
             onUiAction(
-                ConversationListUiAction.AttachFile(
+                ConversationListUiAction.AttachPlatformFile(
                     conversation.id,
                     listOf(file),
                 )
@@ -128,7 +128,7 @@ fun ConversationContent(
         rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
             file?.let {
                 onUiAction(
-                    ConversationListUiAction.AttachFile(
+                    ConversationListUiAction.AttachPlatformFile(
                         conversation.id,
                         listOf(file),
                     )
@@ -487,7 +487,7 @@ fun ConversationContent(
                             onImageSelected = {
                                 showAttachmentSheet = false
                                 onUiAction(
-                                    ConversationListUiAction.AttachFile(
+                                    ConversationListUiAction.AttachGalleryItem(
                                         conversationId = conversation.id,
                                         files = listOf(it)
                                     )
