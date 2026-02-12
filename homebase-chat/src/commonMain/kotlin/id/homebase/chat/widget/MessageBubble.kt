@@ -29,7 +29,9 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.AddReaction
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +63,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.core.config.chatTargetDrive
@@ -223,6 +226,7 @@ fun SentMessageBubble(
                     text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = true,
+                    deliveryStatus = message.messageAppData.deliveryStatus,
                     payloads = message.payloads,
                     fileId = message.fileId,
                     previewThumbnail = message.previewThumbnail,
@@ -302,6 +306,7 @@ fun ReceivedMessageBubble(
                     text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = false,
+                    deliveryStatus = message.messageAppData.deliveryStatus,
                     payloads = message.payloads,
                     fileId = message.fileId,
                     keyHeader = message.keyHeader,
@@ -446,6 +451,7 @@ fun MessageBubble(
     text: String,
     timestamp: String,
     sentByYou: Boolean,
+    deliveryStatus: Int,
     payloads: List<PayloadDescriptor>? = null,
     fileId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
@@ -571,23 +577,33 @@ fun MessageBubble(
                                 )
                             ),
                     ) {
-                        Text(
+                        Row(
                             modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                            text = timestamp,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.7f)
-                        )
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Text(
+                                text = timestamp,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = contentColor.copy(alpha = 0.7f)
+                            )
+                            if (sentByYou) {
+                                Spacer(modifier = Modifier.width(2.dp))
+                                DeliveryStatus(deliveryStatus = deliveryStatus)
+                            }
+                        }
                     }
                 }
             }
         } else Column {
-            // Inline reply preview if this message is a reply
-            replyPreview?.let { reply ->
-                InlineReplyPreview(replyPreview = reply, sentByYou = sentByYou)
-            }
+            // Don't place content for message here, place it in one of the
+            // 2 composables in Layout content so its size can be calculated
             Layout(
                 content = {
                     Column {
+                        // Inline reply preview if this message is a reply
+                        replyPreview?.let { reply ->
+                            InlineReplyPreview(replyPreview = reply, sentByYou = sentByYou)
+                        }
                         if (hasMedia) {
                             MediaMessage(
                                 payloads = filteredPayloads,
@@ -627,14 +643,23 @@ fun MessageBubble(
                             }
                         }
                     }
-                    Text(
-                        modifier = Modifier.padding(
-                            top = 12.dp, bottom = 12.dp, end = 12.dp, start = 12.dp
-                        ),
-                        text = timestamp,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = contentColor.copy(alpha = 0.7f)
-                    )
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        Text(
+                            text = timestamp,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f)
+                        )
+                        if (sentByYou) {
+                            Spacer(modifier = Modifier.width(2.dp))
+                            DeliveryStatus(
+                                deliveryStatus = deliveryStatus
+                            )
+                        }
+                    }
                 }) { measurables, constraints ->
                 val textPlaceable = measurables[0].measure(constraints)
                 val timePlaceable = measurables[1].measure(constraints)
@@ -684,6 +709,51 @@ fun MessageBubble(
                     timePlaceable.placeRelative(timeX, timeY)
                 }
             }
+        }
+    }
+}
+
+val DELIVERY_ICON_SIZE = 14.dp
+
+@Composable
+fun DeliveryStatus(deliveryStatus: Int) {
+    when (deliveryStatus) {
+        ChatDeliveryStatus.Read.value -> {
+            Row {
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(DELIVERY_ICON_SIZE)
+                )
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(DELIVERY_ICON_SIZE)
+                )
+            }
+        }
+
+        ChatDeliveryStatus.Delivered.value -> {
+            Row {
+                Icon(
+                    Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(DELIVERY_ICON_SIZE)
+                )
+                Icon(
+                    Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(DELIVERY_ICON_SIZE)
+                )
+            }
+        }
+
+        ChatDeliveryStatus.Sent.value -> {
+            Icon(
+                Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                modifier = Modifier.size(DELIVERY_ICON_SIZE)
+            )
         }
     }
 }
