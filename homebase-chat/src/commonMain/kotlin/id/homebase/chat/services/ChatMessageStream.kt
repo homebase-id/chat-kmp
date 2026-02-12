@@ -160,7 +160,7 @@ class ChatMessageStream(
             } catch (t: Throwable) {
 
                 Logger.e(t) {
-                    "failed while mapping a message with uniqueId $appData.uniqueId and fileId ${header.fileId}"
+                    "failed while mapping a message with uniqueId ${appData.uniqueId} and fileId ${header.fileId} appData=[${appData.toString()}]"
                 }
 
                 try {
