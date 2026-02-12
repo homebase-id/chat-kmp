@@ -29,10 +29,8 @@ data class QueryBatchResultOptionsRequest(
      * If true, the transfer history with-in the server metadata will be including
      */
     val includeTransferHistory: Boolean = false,
-
-    val ordering: QueryBatchSortOrder? = null,
-
-    val sorting: QueryBatchSortField? = null
+    val ordering: QueryBatchSortOrder = QueryBatchSortOrder.OldestFirst,
+    val sorting: QueryBatchSortField = QueryBatchSortField.AnyChangeDate
 ) {
     fun toQueryBatchResultOptions(): QueryBatchResultOptions {
         return QueryBatchResultOptions(
