@@ -113,9 +113,7 @@ class DriveSync(
                     includeMetadataHeader = true,
                     cursorState = cursor?.toJson(),
                     ordering = QueryBatchSortOrder.OldestFirst,
-                    sorting = QueryBatchSortField.CreatedDate,
-//                    ordering = QueryBatchSortOrder.OldestFirst,
-//                    sorting = QueryBatchSortField.AnyChangeDate
+                    sorting = QueryBatchSortField.AnyChangeDate
                 )
             )
 
