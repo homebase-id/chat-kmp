@@ -278,8 +278,11 @@ fun ConversationContent(
                                 key = { message -> message.id }) { message ->
 
                                 // TODO: currentOdinId is "" - is that supposed to be the case??
-                                val odinId: OdinId? = try { OdinId(currentOdinId) }
-                                    catch (e: Exception) { null }
+                                val odinId: OdinId? = try {
+                                    OdinId(currentOdinId)
+                                } catch (e: Exception) {
+                                    null
+                                }
 
                                 if (message.isCurrentUser(odinId)) {
                                     SentMessageBubble(
@@ -371,6 +374,7 @@ fun ConversationContent(
                                         onAddReaction = { _, reaction ->
                                             onUiAction(
                                                 ConversationListUiAction.AddReaction(
+                                                    message.conversationId,
                                                     message.id,
                                                     reaction = reaction
                                                 )
@@ -379,6 +383,7 @@ fun ConversationContent(
                                         onDeleteReaction = { _, reaction ->
                                             onUiAction(
                                                 ConversationListUiAction.DeleteReaction(
+                                                    message.conversationId,
                                                     message.id,
                                                     reaction = reaction
                                                 )

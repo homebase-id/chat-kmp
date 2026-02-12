@@ -100,6 +100,11 @@ class ConversationService(
         return newConversationId;
     }
 
+    suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
+        return getConversation(conversationId)
+            ?: throw IllegalStateException("No conversation for Id")
+    }
+
     suspend fun getConversation(
         conversationId: Uuid
     ): ConversationUiModel? {

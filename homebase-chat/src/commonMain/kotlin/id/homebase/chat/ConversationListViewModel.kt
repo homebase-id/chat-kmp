@@ -172,7 +172,8 @@ class ConversationListViewModel(
                 val message = _uiState.value.currentConversationMessages.firstOrNull {
                     it.id == action.messageId
                 } ?: return
-                val isCurrentUserMessage = message.originalAuthorOdinId?.domainName == _uiState.value.currentOdinId
+                val isCurrentUserMessage =
+                    message.originalAuthorOdinId?.domainName == _uiState.value.currentOdinId
                 _uiState.update {
                     it.copy(
                         uiDialog = ConversationListUiDialog.DeleteMessage(
@@ -199,7 +200,8 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = true
+                            action.messageId,
+                            deleteForEveryone = true
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -215,7 +217,8 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = false
+                            action.messageId,
+                            deleteForEveryone = false
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -244,7 +247,11 @@ class ConversationListViewModel(
             is ConversationListUiAction.AddReaction -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.addReaction(action.messageId, action.reaction)
+                        chatMessageActionService.addReaction(
+                            action.conversationId,
+                            action.messageId,
+                            action.reaction
+                        )
                     } catch (e: Exception) {
                         sendEvent(
                             ConversationListUiEvent.ShowErrorMessage(
@@ -258,7 +265,11 @@ class ConversationListViewModel(
             is ConversationListUiAction.DeleteReaction -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.deleteReaction(action.messageId, action.reaction)
+                        chatMessageActionService.deleteReaction(
+                            action.conversationId,
+                            action.messageId,
+                            action.reaction
+                        )
                     } catch (e: Exception) {
                         sendEvent(
                             ConversationListUiEvent.ShowErrorMessage(
@@ -286,16 +297,21 @@ class ConversationListViewModel(
                                     attachments.add(
                                         AttachmentInput(
                                             filePath = attachment.file.toString(),
-                                            contentType = detectContentTypeFromExtensionOrHint(attachment.file.name),
+                                            contentType = detectContentTypeFromExtensionOrHint(
+                                                attachment.file.name
+                                            ),
                                             displayName = attachment.file.name,
                                         )
                                     )
                                 }
+
                                 is AttachmentPendingFile.Gallery -> {
                                     attachments.add(
                                         AttachmentInput(
                                             filePath = attachment.image.file.toString(),
-                                            contentType = detectContentTypeFromExtensionOrHint(attachment.image.fileName),
+                                            contentType = detectContentTypeFromExtensionOrHint(
+                                                attachment.image.fileName
+                                            ),
                                             displayName = attachment.image.fileName,
                                         )
                                     )
@@ -362,7 +378,12 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val newFiles =
-                            action.files.map { AttachmentPendingFile.Gallery(Uuid.generateV7(), it) }
+                            action.files.map {
+                                AttachmentPendingFile.Gallery(
+                                    Uuid.generateV7(),
+                                    it
+                                )
+                            }
                         val conversation =
                             _uiState.value.conversations.find { it.id == action.conversationId }
                         if (newFiles.isEmpty() || conversation == null) return@launch
@@ -400,7 +421,8 @@ class ConversationListViewModel(
                         val fullScreenOverlay = _uiState.value.fullScreenOverlay
                         if (fullScreenOverlay == null || fullScreenOverlay !is FullScreenOverlay.AttachmentData) return@launch
 
-                        val newFiles = fullScreenOverlay.attachments.filter { it.attachmentId != action.id }
+                        val newFiles =
+                            fullScreenOverlay.attachments.filter { it.attachmentId != action.id }
                         _uiState.update {
                             it.copy(
                                 fullScreenOverlay = fullScreenOverlay.copy(attachments = newFiles),
@@ -428,7 +450,8 @@ class ConversationListViewModel(
                                     it.copy(
                                         fullScreenOverlay = FullScreenOverlay.ViewMessageData(
                                             messageId = action.message.id,
-                                            title = action.message.originalAuthorOdinId?.domainName ?: "null",
+                                            title = action.message.originalAuthorOdinId?.domainName
+                                                ?: "null",
                                             created = action.message.created,
                                             content = action.message.content,
                                             fileId = action.message.fileId,
