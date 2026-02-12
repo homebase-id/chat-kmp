@@ -203,6 +203,7 @@ fun ChatListUi(
     // Notify parent about detail pane visibility in compact view
     LaunchedEffect(showingOnlyDetail) { onDetailPaneVisibilityChanged(showingOnlyDetail) }
 
+    @Suppress("DEPRECATION")
     BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {
             if (uiState.fullScreenOverlay != null) {

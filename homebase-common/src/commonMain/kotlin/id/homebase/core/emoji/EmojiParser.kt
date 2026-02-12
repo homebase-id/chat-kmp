@@ -86,13 +86,13 @@ object EmojiParser {
         return when (section) {
             "smileys-emotion" -> "😀"
             "people-body" -> "👋"
-            "animals-nature" -> "🐶"
-            "food-drink" -> "🍏"
-            "travel-places" -> "🚗"
+            "animals-nature" -> "🐱"
+            "food-drink" -> "🍎"
+            "travel-places" -> "🏠"
             "activities" -> "⚽️"
-            "objects" -> "🧭"
-            "symbols" -> "❓"
-            "flags" -> "🏳️"
+            "objects" -> "📝"
+            "symbols" -> "⛔️"
+            "flags" -> "️🏁"
             else -> "#"
         }
     }

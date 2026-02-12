@@ -194,6 +194,7 @@ fun SentMessageBubble(
                 if (showReactionPicker) {
                     ReactionPopup(
                         onSelect = { reaction ->
+                            showMenu = false
                             showReactionPicker = false
                             onAddReaction(message.id, reaction)
                         },
@@ -339,6 +340,7 @@ fun ReceivedMessageBubble(
                     ReactionPopup(
                         onSelect = { reaction ->
                             showReactionPicker = false
+                            showMenu = false
                             onAddReaction(message.id, reaction)
                         },
                         onShowAllEmojis = {
@@ -599,22 +601,22 @@ fun MessageBubble(
                                 animatedVisibilityScope = animatedVisibilityScope,
                             )
                         }
-                        SelectionContainer {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                            ) {
-                                if (emojiOnly) {
-                                    // Render emoji-only messages prominently
-                                    val size = if (text.length <= 6) 56.sp else 42.sp
-                                    Text(
-                                        text = text,
-                                        onTextLayout = { textLayoutResult = it },
-                                        fontSize = size,
-                                        style = MaterialTheme.typography.displaySmall,
-                                        color = contentColor
-                                    )
-                                } else {
-                                    // Display normal rich text
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                        ) {
+                            if (emojiOnly) {
+                                // Render emoji-only messages prominently
+                                val size = if (text.length <= 6) 56.sp else 42.sp
+                                Text(
+                                    text = text,
+                                    onTextLayout = { textLayoutResult = it },
+                                    fontSize = size,
+                                    style = MaterialTheme.typography.displaySmall,
+                                    color = contentColor
+                                )
+                            } else {
+                                // Display normal rich text
+                                SelectionContainer {
                                     RichText(
                                         state = textState,
                                         onTextLayout = { textLayoutResult = it },

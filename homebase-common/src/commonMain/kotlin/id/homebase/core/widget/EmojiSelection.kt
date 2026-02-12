@@ -1,5 +1,8 @@
 package id.homebase.core.widget
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,12 +19,15 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import id.homebase.core.emoji.EmojiData
 import id.homebase.core.emoji.EmojiParser
+import id.homebase.core.util.isMobile
 import kotlinx.coroutines.launch
 
 @Composable
@@ -186,19 +193,63 @@ fun EmojiSelection(
 
 @Composable
 fun EmojiSelectorDialog(
+    dismissOnSelect: Boolean = true,
     onDismiss: () -> Unit,
     onEmojiSelected: (String) -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss) {
         DialogCard(
-            modifier = Modifier.height(400.dp),
+            modifier = Modifier.height(500.dp),
             bottomPadding = 0.dp
         ) {
             EmojiSelection(
-                modifier = Modifier.fillMaxWidth().height(380.dp),
+                modifier = Modifier.fillMaxWidth().height(480.dp),
                 onEmojiSelected = {
                     onEmojiSelected(it)
-                    onDismiss()
+                    if (dismissOnSelect) {
+                        onDismiss()
+                    }
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EmojiSelectorSheet(
+    modifier: Modifier = Modifier,
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    onEmojiSelected: (String) -> Unit,
+) {
+    if (isMobile()) {
+        AnimatedVisibility(
+            visible,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it })
+        ) {
+            val listState = rememberScrollState()
+            Column(
+                modifier = modifier
+                    .verticalScroll(state = listState)
+                    .padding(16.dp)
+            ) {
+                EmojiSelection(
+                    modifier = Modifier.fillMaxWidth().height(380.dp),
+                    onEmojiSelected = {
+                        onEmojiSelected(it)
+                    }
+                )
+            }
+        }
+    } else {
+        if (visible) {
+            EmojiSelectorDialog(
+                onDismiss = onDismiss,
+                dismissOnSelect = false,
+                onEmojiSelected = {
+                    onEmojiSelected(it)
                 }
             )
         }
