@@ -27,6 +27,7 @@ import kotlin.collections.mutableListOf
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.atomicfu.atomic
 
 class DriveSync(
     private val identityId: Uuid,
@@ -43,6 +44,7 @@ class DriveSync(
     private var batchSize = 500 // Balanced starting point
     private var fileHeaderProcessor = MainIndexMetaHelpers.HomebaseFileProcessor(databaseManager)
     private var job: Job? = null
+    private val killroy = atomic(false)
 
     //TODO: Consider having a (readable) "last modified" which holds the largest timestamp of last-modified
 
@@ -70,7 +72,7 @@ class DriveSync(
     }
 
     fun cancel() {
-        // If we really really want to cancel in the future... Something like:
+        // If we really want to cancel in the future... Something like:
         // job?.cancel()?
         // we probably want child jobs to be allowed to complete (write to DB)
     }
@@ -80,6 +82,7 @@ class DriveSync(
     // job is running by calling isJobRunning()
     fun sync(): Job? {
         if (!mutex.tryLock()) {
+            killroy.value = true // Atomic
             return null
         }
         job = scope.launch {
@@ -89,6 +92,8 @@ class DriveSync(
                 job = null
                 mutex.unlock()
             }
+            if (killroy.value)
+                sync() // If killroy was here, do it one extra time
         }
 
         return job
@@ -106,7 +111,6 @@ class DriveSync(
             val request = QueryBatchRequest(
                 queryParams = FileQueryParams(
                     // we want deleted too since we resync when the socket gets a file deleted event
-//                    fileState = listOf(FileState.Active) // <-- TODO: We want them all, not just "active"?
                 ),
                 resultOptionsRequest = QueryBatchResultOptionsRequest(
                     maxRecords = batchSize,
@@ -120,10 +124,13 @@ class DriveSync(
             var recordsRead = 0
             val durationMs = measureTimedValue {
                 try {
+                    killroy.value = false // Atomic
                     queryBatchResponse = driveQueryProvider.queryBatch(driveId, request)
 
                     if (queryBatchResponse.cursorState != null)
                         cursor = QueryBatchCursor.fromJson(queryBatchResponse.cursorState)
+
+                    Logger.i("Received ${queryBatchResponse.searchResults.size} records from QueryBatch() on Drive $driveId")
 
                     val searchResults = queryBatchResponse.searchResults
                     if (searchResults.isNotEmpty()) {

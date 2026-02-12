@@ -27,6 +27,28 @@ object OdinIdSerializer : KSerializer<OdinId> {
     override fun deserialize(decoder: Decoder): OdinId =
         OdinId(decoder.decodeString())   // calls your public constructor → validates + hashes
 }
+
+object OdinIdSerializerNullable : KSerializer<OdinId?> {
+    override val descriptor = PrimitiveSerialDescriptor("OdinId", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: OdinId?) {
+        if (value != null) {
+            encoder.encodeString(value.domainName) // Assuming domainName is the string representation
+        } else {
+            encoder.encodeNull()
+        }
+    }
+
+    override fun deserialize(decoder: Decoder): OdinId? {
+        val string = decoder.decodeString()
+        return if (string.isBlank()) {
+            null
+        } else {
+            OdinId(string)
+        }
+    }
+}
+
 /**
  * Holds the identity for an individual using the dotYou platform.
  *
@@ -38,7 +60,6 @@ class OdinId public constructor(
     private val _domainName: AsciiDomainName,
     private val _hash: Uuid
 ) {
-
     /** The domain name (guaranteed trimmed, RFC-compliant, lower-cased). */
     val domainName: String get() = _domainName.domainName
 

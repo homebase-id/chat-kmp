@@ -102,7 +102,7 @@ class OdinWebSocketClient(
                     reconnectDelayMs = 1_000L
 
                 } catch (e: Exception) {
-                    Logger.e(e) { "WebSocket connect failed" }
+                    Logger.e(e) { "WebSocket connect failed ${e.message}" }
                 }
 
                 eventBus.emit(BackendEvent.ConnectionOffline)
