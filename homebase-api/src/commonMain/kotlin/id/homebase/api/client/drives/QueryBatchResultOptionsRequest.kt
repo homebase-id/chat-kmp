@@ -44,10 +44,8 @@ data class QueryBatchResultOptionsRequest(
             maxRecords = maxRecords,
             includeHeaderContent = includeMetadataHeader,
             includeTransferHistory = includeTransferHistory,
-            ordering = ordering
-                ?: QueryBatchSortOrder.Default,
+            ordering = ordering,
             sorting = sorting
-                ?: QueryBatchSortField.CreatedDate
         )
     }
 

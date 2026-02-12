@@ -111,7 +111,6 @@ class DriveSync(
             val request = QueryBatchRequest(
                 queryParams = FileQueryParams(
                     // we want deleted too since we resync when the socket gets a file deleted event
-//                    fileState = listOf(FileState.Active) // <-- TODO: We want them all, not just "active"?
                 ),
                 resultOptionsRequest = QueryBatchResultOptionsRequest(
                     maxRecords = batchSize,
