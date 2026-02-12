@@ -113,7 +113,9 @@ class DriveSync(
                     includeMetadataHeader = true,
                     cursorState = cursor?.toJson(),
                     ordering = QueryBatchSortOrder.OldestFirst,
-                    sorting = QueryBatchSortField.AnyChangeDate
+                    sorting = QueryBatchSortField.CreatedDate,
+//                    ordering = QueryBatchSortOrder.OldestFirst,
+//                    sorting = QueryBatchSortField.AnyChangeDate
                 )
             )
 
@@ -124,6 +126,8 @@ class DriveSync(
 
                     if (queryBatchResponse.cursorState != null)
                         cursor = QueryBatchCursor.fromJson(queryBatchResponse.cursorState)
+
+                    Logger.i("Received ${queryBatchResponse.searchResults.size} records from QueryBatch() on Drive $driveId")
 
                     val searchResults = queryBatchResponse.searchResults
                     if (searchResults.isNotEmpty()) {
