@@ -100,11 +100,10 @@ class ChatMessageActionService(
     private fun isValidEmoji(input: String?): Boolean =
         !input.isNullOrBlank() && input.length <= 8
 
-    suspend fun requireGlobalTransitId(messageId: Uuid): Uuid {
-        val d = fetchFileByUid(listOf(messageId)).firstOrNull()
-            ?: throw Exception("invalid message id")
-        return d.fileMetadata.globalTransitId ?: throw Exception("Missing ")
-    }
+//    private fun getReactions(file: Uuid)
+//    {
+//        reactionProvider.listReactions(chatDrive, fileId)
+//    }
 
     suspend fun requireFileId(messageId: Uuid): Uuid {
         val d = fetchFileByUid(listOf(messageId)).firstOrNull()
