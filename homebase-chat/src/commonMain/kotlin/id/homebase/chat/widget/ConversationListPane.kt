@@ -54,6 +54,7 @@ import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.HomebaseVerticalScrollbar
+import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_filter_by_unread_button
@@ -61,6 +62,7 @@ import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_filter_by_unread_description
 import id.homebase.resources.chat_filter_by_unread_empty_description
 import id.homebase.resources.chat_new_conversation
+import id.homebase.resources.chat_search_placeholder
 import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -131,9 +133,10 @@ fun ConversationListPane(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            MinimalTextField(
+                            MinimalSearchTextField(
                                 textFieldState = searchState,
                                 modifier = Modifier.weight(1f),
+                                placeHolderText = stringResource(MR.string.chat_search_placeholder)
                             )
                             Spacer(modifier = Modifier.width(16.dp))
                             IconButton(

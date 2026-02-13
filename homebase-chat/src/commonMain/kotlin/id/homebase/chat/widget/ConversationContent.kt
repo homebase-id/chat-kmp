@@ -39,11 +39,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -64,6 +64,7 @@ import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.keyboardAsState
+import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.EmojiReaction
@@ -122,16 +123,35 @@ fun ConversationContent(
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
 
-    // Add WindowInsets observer to measure keyboard height
-    LaunchedEffect(imeInsets) {
-        snapshotFlow {
-            imeInsets.getBottom(density)
-        }.collect { imeBottom ->
-            if (imeBottom > 0) {
-                keyboardHeight = with(density) { imeBottom.toDp() }
-            }
+    val imeVisible by remember {
+        derivedStateOf {
+            imeInsets.getBottom(density) > 0
         }
     }
+
+    // Add a LaunchedEffect to listen for keyboard changes
+    LaunchedEffect(imeVisible) {
+        if (imeVisible) {
+            // Keyboard is shown
+            showEmojiSheet = false
+            keyboardHeight = with(density) { imeInsets.getBottom(density).toDp() }
+            // Add any other logic you need when keyboard appears
+        } else {
+            // Keyboard is hidden
+            // Add any logic you need when keyboard disappears
+        }
+    }
+
+    // Add WindowInsets observer to measure keyboard height
+//    LaunchedEffect(imeInsets) {
+//        snapshotFlow {
+//            imeInsets.getBottom(density)
+//        }.collect { imeBottom ->
+//            if (imeBottom > 0) {
+//                keyboardHeight = with(density) { imeBottom.toDp() }
+//            }
+//        }
+//    }
 
     @Suppress("DEPRECATION")
     BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible) {
@@ -438,15 +458,6 @@ fun ConversationContent(
                                                 )
                                             )
                                         },
-//                                        onDeleteReaction = { _, reaction ->
-//                                            onUiAction(
-//                                                ConversationListUiAction.DeleteReaction(
-//                                                    message.conversationId,
-//                                                    message.id,
-//                                                    reaction = reaction
-//                                                )
-//                                            )
-//                                        },
                                         onShowReactions = {
                                             onUiAction(
                                                 ConversationListUiAction.ShowReactionDetails(
@@ -580,7 +591,9 @@ fun ConversationContent(
                     EmojiSelectorSheet(
                         modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
                         visible = showEmojiSheet && !isKeyboardVisible,
-                        onDismiss = { showEmojiSheet = false },
+                        onBackSpace = {
+                            textFieldState.programmaticBackspace()
+                        },
                         onEmojiSelected = { textFieldState.addTextAfterSelection(it) }
                     )
 

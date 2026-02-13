@@ -1,4 +1,4 @@
-package id.homebase.chat.widget
+package id.homebase.core.widget
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.heightIn
@@ -23,27 +23,27 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
-import id.homebase.resources.chat_search_placeholder
+import id.homebase.resources.clear_input
+import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-fun MinimalTextField(
+fun MinimalSearchTextField(
     modifier: Modifier = Modifier,
     textFieldState: TextFieldState,
+    placeHolderText: String,
 ) {
     TextField(
         state = textFieldState,
         modifier = modifier.heightIn(max = 40.dp),
         lineLimits = TextFieldLineLimits.SingleLine,
         placeholder = {
-            Text(
-                stringResource(MR.string.chat_search_placeholder)
-            )
+            Text(placeHolderText)
         },
         leadingIcon = {
             Icon(
                 imageVector = Icons.Default.Search,
-                contentDescription = "Search"
+                contentDescription = stringResource(MR.string.search)
             )
         },
         trailingIcon = {
@@ -51,7 +51,7 @@ fun MinimalTextField(
                 IconButton(onClick = { textFieldState.clearText() }) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Clear search"
+                        contentDescription = stringResource(MR.string.clear_input)
                     )
                 }
             }

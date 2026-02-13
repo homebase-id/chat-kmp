@@ -29,9 +29,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.AddReaction
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -67,6 +65,10 @@ import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.MessageSent
+import id.homebase.core.ui.assets.MessageSentAndDelivered
+import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatMessageTimestamp
@@ -221,8 +223,7 @@ fun SentMessageBubble(
             }
             Box {
                 MessageBubble(
-                    modifier = Modifier.heightIn(min = 48.dp)
-                        .padding(bottom = if (message.reactionPreview == null) 0.dp else 28.dp),
+                    modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
                     text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = true,
@@ -301,8 +302,7 @@ fun ReceivedMessageBubble(
         ) {
             Box {
                 MessageBubble(
-                    modifier = Modifier.heightIn(min = 48.dp)
-                        .padding(bottom = if (message.reactionPreview == null) 0.dp else 28.dp),
+                    modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
                     text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = false,
@@ -515,7 +515,7 @@ fun MessageBubble(
     val backgroundColor =
         if (emojiOnly) Color.Unspecified else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
         else MaterialTheme.colorScheme.surfaceContainerHigh
-    val contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+    val contentColor = if (emojiOnly) MaterialTheme.colorScheme.onSurface else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
     else MaterialTheme.colorScheme.onSurface
 
     val textState = RichTextState()
@@ -587,7 +587,7 @@ fun MessageBubble(
                                 color = contentColor.copy(alpha = 0.7f)
                             )
                             if (sentByYou) {
-                                Spacer(modifier = Modifier.width(2.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 DeliveryStatus(deliveryStatus = deliveryStatus)
                             }
                         }
@@ -618,7 +618,7 @@ fun MessageBubble(
                             )
                         }
                         Row(
-                            modifier = Modifier.padding(12.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         ) {
                             if (emojiOnly) {
                                 // Render emoji-only messages prominently
@@ -644,7 +644,7 @@ fun MessageBubble(
                         }
                     }
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.Bottom,
                         horizontalArrangement = Arrangement.End,
                     ) {
@@ -654,7 +654,7 @@ fun MessageBubble(
                             color = contentColor.copy(alpha = 0.7f)
                         )
                         if (sentByYou) {
-                            Spacer(modifier = Modifier.width(2.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             DeliveryStatus(
                                 deliveryStatus = deliveryStatus
                             )
@@ -719,40 +719,26 @@ val DELIVERY_ICON_SIZE = 14.dp
 fun DeliveryStatus(deliveryStatus: Int) {
     when (deliveryStatus) {
         ChatDeliveryStatus.Read.value -> {
-            Row {
-                Icon(
-                    Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(DELIVERY_ICON_SIZE)
-                )
-                Icon(
-                    Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(DELIVERY_ICON_SIZE)
-                )
-            }
+            Icon(
+                HomebaseIcons.MessageSentAndRead,
+                contentDescription = null,
+                modifier = Modifier.height(DELIVERY_ICON_SIZE)
+            )
         }
 
         ChatDeliveryStatus.Delivered.value -> {
-            Row {
-                Icon(
-                    Icons.Outlined.CheckCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(DELIVERY_ICON_SIZE)
-                )
-                Icon(
-                    Icons.Outlined.CheckCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(DELIVERY_ICON_SIZE)
-                )
-            }
+            Icon(
+                HomebaseIcons.MessageSentAndDelivered,
+                contentDescription = null,
+                modifier = Modifier.height(DELIVERY_ICON_SIZE)
+            )
         }
 
         ChatDeliveryStatus.Sent.value -> {
             Icon(
-                Icons.Outlined.CheckCircle,
+                HomebaseIcons.MessageSent,
                 contentDescription = null,
-                modifier = Modifier.size(DELIVERY_ICON_SIZE)
+                modifier = Modifier.height(DELIVERY_ICON_SIZE)
             )
         }
     }
