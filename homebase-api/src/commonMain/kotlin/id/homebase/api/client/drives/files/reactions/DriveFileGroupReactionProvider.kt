@@ -4,6 +4,7 @@ package id.homebase.api.client.drives.files.reactions
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.ValidationUtil
+import id.homebase.api.client.websockets.InternalDriveFileId
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -44,9 +45,10 @@ data class GetGroupReactionsByIdentityRequest(
 
 @Serializable
 data class GroupReactionItem(
-    val reaction: String,
-    val identity: OdinId,
-    val createdUtc: String
+    val reactionContent: String,
+    val odinId: OdinId,
+    val fileId: InternalDriveFileId,
+    val created: Long
 )
 
 @Serializable
@@ -129,7 +131,8 @@ class DriveFileGroupReactionProvider(
                     reaction = reaction,
                     transitOptions = ReactionTransitOptions(
                         recipients = recipients
-                    ))
+                    )
+                )
             ),
             secret = creds.secret
         )
@@ -152,13 +155,19 @@ class DriveFileGroupReactionProvider(
         val creds = requireCreds()
         val endpoint = "/drives/$driveId/files/$fileId/group-reactions"
 
-        val response = encryptedPostJson(
+        val queryString = buildString {
+            cursor?.let { append("cursor=$it") }
+            maxRecords?.let {
+                if (isNotEmpty()) append("&")
+                append("maxRecords=$it")
+            }
+        }
+
+        val response = encryptedGet(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(
-                GetGroupReactionsRequest(cursor, maxRecords)
-            ),
-            secret = creds.secret
+            secret = creds.secret,
+            queryString = queryString.ifBlank { null }
         )
 
         throwForFailure(response)

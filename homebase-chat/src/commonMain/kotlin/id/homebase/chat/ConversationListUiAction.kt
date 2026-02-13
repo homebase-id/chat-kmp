@@ -66,4 +66,9 @@ sealed interface ConversationListUiAction {
 
     data class DeleteReaction(val conversationId: Uuid, val messageId: Uuid, val reaction: String) :
         ConversationListUiAction
+
+    data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
+
+    data object HideReactionDetails : ConversationListUiAction
+
 }

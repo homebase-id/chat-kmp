@@ -34,6 +34,13 @@ data class AccessControlList(
 
 @Serializable
 data class RecipientTransferHistory(
-    val recipients: List<OdinId>? = null
-    // Add fields as needed
+    val summary: TransferHistorySummary
+)
+
+@Serializable
+data class TransferHistorySummary(
+    val totalInOutbox: Int,
+    val totalFailed: Int,
+    val totalDelivered: Int,
+    val totalReadByRecipient: Int
 )

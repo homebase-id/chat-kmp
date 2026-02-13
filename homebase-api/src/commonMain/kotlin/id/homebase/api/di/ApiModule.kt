@@ -5,7 +5,6 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.reactions.DriveFileReactionProvider
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -49,7 +48,6 @@ val apiModule = module {
     factoryOf(::DriveUploadProvider)
 
     factoryOf(::DriveFileProvider)
-    factoryOf(::DriveFileReactionProvider)
     factoryOf(::DriveFileOperationsProvider)
     factoryOf(::DriveFileGroupReactionProvider)
 

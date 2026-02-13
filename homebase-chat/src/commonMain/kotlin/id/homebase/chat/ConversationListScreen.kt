@@ -279,7 +279,8 @@ fun ChatListUi(
                                     },
                                     onUiAction = onUiAction,
                                     currentOdinId = uiState.currentOdinId,
-                                    replyToMessage = uiState.replyToMessage
+                                    replyToMessage = uiState.replyToMessage,
+                                    messageReactions = uiState.messageReactions
                                 )
                             }
                         } else {
