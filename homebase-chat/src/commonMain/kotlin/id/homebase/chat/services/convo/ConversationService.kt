@@ -58,6 +58,12 @@ class ConversationService(
                 Uuid.random()
             }
 
+
+        val existingConversation = getConversation(newConversationId)
+        if (existingConversation != null) {
+            return newConversationId
+        }
+
         val content = ConversationAppDataJson(
             title = title ?: "",
             recipients = (recipients + domain).distinct(),
