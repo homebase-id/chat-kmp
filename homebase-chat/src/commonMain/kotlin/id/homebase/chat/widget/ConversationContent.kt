@@ -372,6 +372,7 @@ fun ConversationContent(
                                         onAddReaction = { _, reaction ->
                                             onUiAction(
                                                 ConversationListUiAction.AddReaction(
+                                                    message.conversationId,
                                                     message.id,
                                                     reaction = reaction
                                                 )
@@ -424,11 +425,21 @@ fun ConversationContent(
                                         onAddReaction = { _, reaction ->
                                             onUiAction(
                                                 ConversationListUiAction.AddReaction(
+                                                    message.conversationId,
                                                     message.id,
                                                     reaction = reaction
                                                 )
                                             )
                                         },
+//                                        onDeleteReaction = { _, reaction ->
+//                                            onUiAction(
+//                                                ConversationListUiAction.DeleteReaction(
+//                                                    message.conversationId,
+//                                                    message.id,
+//                                                    reaction = reaction
+//                                                )
+//                                            )
+//                                        },
                                         onShowReactions = {
                                             reactionSummaryDialog = it
                                         },

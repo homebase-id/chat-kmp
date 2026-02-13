@@ -1,7 +1,9 @@
-package id.homebase.api.client.drives.files
+package id.homebase.api.client.drives.files.reactions
+
 
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.ValidationUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -12,54 +14,63 @@ import id.homebase.api.common.OdinId
 // ==================== REQUEST / RESPONSE MODELS ====================
 
 @Serializable
-data class AddReactionRequest(
-    val reaction: String
+data class ReactionTransitOptions(
+    val recipients: List<OdinId>
 )
 
 @Serializable
-data class DeleteReactionRequest(
-    val reaction: String
+data class AddGroupReactionRequest(
+    val reaction: String,
+    val transitOptions: ReactionTransitOptions
+)
+
+
+@Serializable
+data class DeleteGroupReactionRequest(
+    val reaction: String,
+    val transitOptions: ReactionTransitOptions
 )
 
 @Serializable
-data class GetReactionsRequest(
+data class GetGroupReactionsRequest(
     val cursor: String? = null,
     val maxRecords: Int? = null
 )
 
 @Serializable
-data class GetReactionsByIdentityRequest(
+data class GetGroupReactionsByIdentityRequest(
     val identity: OdinId
 )
 
 @Serializable
-data class ReactionItem(
+data class GroupReactionItem(
     val reaction: String,
     val identity: OdinId,
     val createdUtc: String
 )
 
 @Serializable
-data class GetReactionsResponse(
-    val reactions: List<ReactionItem>,
+data class GetGroupReactionsResponse(
+    val reactions: List<GroupReactionItem>,
     val cursor: String? = null
 )
 
 @Serializable
-data class GetReactionCountsResponse(
-    val counts: Map<String, Int>
+data class GetGroupReactionCountsResponse(
+    val reactions: Map<String, Int>,
+    val total: Int
 )
 
 // ==================== PROVIDER ====================
 
 @OptIn(ExperimentalEncodingApi::class)
-public class DriveFileReactionProvider(
+class DriveFileGroupReactionProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
 
     companion object {
-        private const val TAG = "DriveFileReactionProvider"
+        private const val TAG = "DriveFileGroupReactionProvider"
     }
 
     // -------------------- ADD --------------------
@@ -67,21 +78,26 @@ public class DriveFileReactionProvider(
     suspend fun addReaction(
         driveId: Uuid,
         fileId: Uuid,
-        reaction: String
+        reaction: String,
+        recipients: List<OdinId>
     ) {
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
-        require(reaction.isNotBlank()) { "reaction must not be blank" }
+        require(reaction.isNotBlank())
 
         val creds = requireCreds()
-        val endpoint = "/drives/$driveId/files/$fileId/reactions/add"
+        val endpoint = "/drives/$driveId/files/$fileId/group-reactions"
 
+        // "{\"emoji\":\"\uD83D\uDE2E\"}"
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
             jsonBody = OdinSystemSerializer.serialize(
-                AddReactionRequest(
-                    reaction = "{\"emoji\":\"\uD83D\uDE2E\"}"
+                AddGroupReactionRequest(
+                    reaction = reaction,
+                    transitOptions = ReactionTransitOptions(
+                        recipients = recipients
+                    )
                 )
             ),
             secret = creds.secret
@@ -90,53 +106,30 @@ public class DriveFileReactionProvider(
         throwForFailure(response)
     }
 
-    // -------------------- DELETE ONE --------------------
+    // -------------------- DELETE --------------------
 
     suspend fun deleteReaction(
         driveId: Uuid,
         fileId: Uuid,
-        reaction: String
+        reaction: String,
+        recipients: List<OdinId>
     ) {
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
-        require(reaction.isNotBlank()) { "reaction must not be blank" }
+        require(reaction.isNotBlank())
 
         val creds = requireCreds()
-        val endpoint = "/drives/$driveId/files/$fileId/reactions/delete"
+        val endpoint = "/drives/$driveId/files/$fileId/group-reactions"
 
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
             jsonBody = OdinSystemSerializer.serialize(
-                DeleteReactionRequest(
-                    reaction
-                )
-            ),
-            secret = creds.secret
-        )
-
-        throwForFailure(response)
-    }
-
-    // -------------------- DELETE ALL --------------------
-
-    suspend fun deleteAllReactions(
-        driveId: Uuid,
-        fileId: Uuid
-    ) {
-        ValidationUtil.requireValidUuid(driveId, "driveId")
-        ValidationUtil.requireValidUuid(fileId, "fileId")
-
-        val creds = requireCreds()
-        val endpoint = "/drives/$driveId/files/$fileId/reactions/deleteall"
-
-        val response = encryptedPostJson(
-            url = apiUrl(creds.domain, endpoint),
-            token = creds.accessToken,
-            jsonBody = OdinSystemSerializer.serialize(
-                DeleteReactionRequest(
-                    reaction = ""
-                )
+                DeleteGroupReactionRequest(
+                    reaction = reaction,
+                    transitOptions = ReactionTransitOptions(
+                        recipients = recipients
+                    ))
             ),
             secret = creds.secret
         )
@@ -151,28 +144,24 @@ public class DriveFileReactionProvider(
         fileId: Uuid,
         cursor: String? = null,
         maxRecords: Int? = null
-    ): GetReactionsResponse {
+    ): GetGroupReactionsResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
 
         val creds = requireCreds()
-        val endpoint = "/drives/$driveId/files/$fileId/reactions/list"
+        val endpoint = "/drives/$driveId/files/$fileId/group-reactions"
 
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
             jsonBody = OdinSystemSerializer.serialize(
-                GetReactionsRequest(
-                    cursor,
-                    maxRecords
-                )
+                GetGroupReactionsRequest(cursor, maxRecords)
             ),
             secret = creds.secret
         )
 
         throwForFailure(response)
-
         return deserialize(response.body)
     }
 
@@ -181,25 +170,24 @@ public class DriveFileReactionProvider(
     suspend fun getReactionSummary(
         driveId: Uuid,
         fileId: Uuid
-    ): GetReactionCountsResponse {
+    ): GetGroupReactionCountsResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
 
         val creds = requireCreds()
-        val endpoint = "/drives/$driveId/files/$fileId/reactions/summary"
+        val endpoint = "/drives/$driveId/files/$fileId/group-reactions/summary"
 
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
             jsonBody = OdinSystemSerializer.serialize(
-                GetReactionsRequest()
+                GetGroupReactionsRequest()
             ),
             secret = creds.secret
         )
 
         throwForFailure(response)
-
         return deserialize(response.body)
     }
 
@@ -213,24 +201,20 @@ public class DriveFileReactionProvider(
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
-        // require(identity.isNotBlank()) { "identity must not be blank" }
 
         val creds = requireCreds()
-        val endpoint = "/drives/$driveId/files/$fileId/reactions/listbyidentity"
+        val endpoint = "/drives/$driveId/files/$fileId/group-reactions/by-identity"
 
         val response = encryptedPostJson(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
             jsonBody = OdinSystemSerializer.serialize(
-                GetReactionsByIdentityRequest(
-                    identity
-                )
+                GetGroupReactionsByIdentityRequest(identity)
             ),
             secret = creds.secret
         )
 
         throwForFailure(response)
-
         return deserialize(response.body)
     }
 }
