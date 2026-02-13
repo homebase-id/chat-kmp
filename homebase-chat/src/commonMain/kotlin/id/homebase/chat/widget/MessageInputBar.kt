@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -87,7 +88,9 @@ fun MessageInputBar(
     modifier: Modifier = Modifier,
     textFieldState: RichTextState,
     focusRequester: FocusRequester,
-    onSmileyClick: () -> Unit = {},
+    showingEmojiSheet: Boolean,
+    onEmojiClick: () -> Unit,
+    onKeyboardClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
     onSendMessage: (String) -> Unit,
@@ -98,7 +101,7 @@ fun MessageInputBar(
 
     fun sendMessage() {
         if (textFieldState.annotatedString.isNotBlank()) {
-            onSendMessage(textFieldState.toHtml())
+            onSendMessage(textFieldState.toMarkdown())
             textFieldState.clear()
         }
     }
@@ -143,7 +146,8 @@ fun MessageInputBar(
                     .padding(bottom = 16.dp)
                     .focusRequester(focusRequester),
                 state = textFieldState,
-                onSmileyClick = onSmileyClick,
+
+                onEmojiClick = onEmojiClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 sendMessage = {
                     showExpanded = false
@@ -158,7 +162,9 @@ fun MessageInputBar(
                     .padding(bottom = 16.dp)
                     .focusRequester(focusRequester),
                 state = textFieldState,
-                onSmileyClick = onSmileyClick,
+                showingEmojiSheet = showingEmojiSheet,
+                onEmojiClick = onEmojiClick,
+                onKeyboardClick = onKeyboardClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 onCameraClick = onCameraClick,
                 onSendMessage = { sendMessage() },
@@ -172,7 +178,7 @@ fun MessageInputBar(
 fun MessageTextFieldExpanded(
     modifier: Modifier = Modifier,
     state: RichTextState,
-    onSmileyClick: () -> Unit,
+    onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     sendMessage: () -> Unit
 ) {
@@ -207,7 +213,7 @@ fun MessageTextFieldExpanded(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
         ) {
-            IconButton(onClick = onSmileyClick) {
+            IconButton(onClick = onEmojiClick) {
                 Icon(
                     imageVector = Icons.Default.EmojiEmotions,
                     contentDescription = "Emoji"
@@ -247,7 +253,9 @@ fun MessageTextFieldExpanded(
 fun MessageTextFieldCompact(
     modifier: Modifier = Modifier,
     state: RichTextState,
-    onSmileyClick: () -> Unit,
+    showingEmojiSheet: Boolean,
+    onEmojiClick: () -> Unit,
+    onKeyboardClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
     onSendMessage: () -> Unit
@@ -282,11 +290,20 @@ fun MessageTextFieldCompact(
                     },
                 placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
                 leadingIcon = {
-                    IconButton(onClick = onSmileyClick) {
-                        Icon(
-                            imageVector = Icons.Default.EmojiEmotions,
-                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                        )
+                    if (!showingEmojiSheet) {
+                        IconButton(onClick = onEmojiClick) {
+                            Icon(
+                                imageVector = Icons.Default.EmojiEmotions,
+                                contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                            )
+                        }
+                    } else {
+                        IconButton(onClick = onKeyboardClick) {
+                            Icon(
+                                imageVector = Icons.Default.Keyboard,
+                                contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                            )
+                        }
                     }
                 },
                 trailingIcon = {

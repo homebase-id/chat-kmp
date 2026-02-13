@@ -61,6 +61,7 @@
     <!-- Conversation message -->
     <string name="chat_message_info">Message info</string>
     <string name="chat_message_reply">Reply</string>
+    <string name="chat_message_reaction">Reaction</string>
     <string name="chat_message_star">Star</string>
     <string name="chat_message_edit">Edit</string>
     <string name="chat_message_delete_for_everyone">Delete for everyone</string>

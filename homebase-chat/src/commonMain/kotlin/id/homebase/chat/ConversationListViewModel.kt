@@ -80,7 +80,7 @@ class ConversationListViewModel(
             messageState.config.listIndent = 0
 
             // TODO - restore any draft message stored for conversation here
-            messageState.setHtml("")
+            messageState.setMarkdown("")
         }
     }
 
@@ -132,7 +132,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.SendMessage -> {
                 val hasMessage = !messageState.annotatedString.isBlank()
                 if (hasMessage) {
-                    val content = messageState.toHtml()
+                    val content = messageState.toMarkdown()
                     val replyTo = _uiState.value.replyToMessage
                     if (replyTo != null) {
                         replyToMessage(
@@ -244,25 +244,15 @@ class ConversationListViewModel(
             is ConversationListUiAction.AddReaction -> {
                 viewModelScope.launch {
                     try {
+                        // TODO - If adding reaction already added to a message from me, then remove it, how to though?
+                        //chatMessageActionService.deleteReaction(action.messageId, action.reaction)
+
+                        println("Adding reaction: ${action.reaction} - Unicode: ${action.reaction.map { it.code }.joinToString(" ") { "U+${it.toString(16).uppercase().padStart(4, '0')}" }}")
                         chatMessageActionService.addReaction(action.messageId, action.reaction)
                     } catch (e: Exception) {
                         sendEvent(
                             ConversationListUiEvent.ShowErrorMessage(
                                 "Failed to add reaction: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
-
-            is ConversationListUiAction.DeleteReaction -> {
-                viewModelScope.launch {
-                    try {
-                        chatMessageActionService.deleteReaction(action.messageId, action.reaction)
-                    } catch (e: Exception) {
-                        sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
-                                "Failed to delete reaction: ${e.message}"
                             )
                         )
                     }

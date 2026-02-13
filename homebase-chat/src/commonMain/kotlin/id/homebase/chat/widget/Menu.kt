@@ -100,8 +100,6 @@ fun ReceivedMessageMenu(
     onStar: () -> Unit,
     onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
-    onAddReaction: () -> Unit,
-    onDeleteReaction: () -> Unit,
 ) {
     DropdownMenu(
         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
@@ -159,26 +157,6 @@ fun ReceivedMessageMenu(
         DropdownMenuItem(
             onClick = onMarkAsRead,
             text = { Text("mark as read") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
-        DropdownMenuItem(
-            onClick = onAddReaction,
-            text = { Text("add reaction") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
-        DropdownMenuItem(
-            onClick = onDeleteReaction,
-            text = { Text(text = "delete reaction") },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Filled.Delete,
