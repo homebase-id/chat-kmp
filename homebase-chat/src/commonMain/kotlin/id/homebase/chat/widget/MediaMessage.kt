@@ -4,15 +4,13 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-
-import id.homebase.api.client.KeyHeader
 import androidx.compose.ui.graphics.Shape
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.ImageSize
@@ -56,7 +54,7 @@ fun MediaMessage(
         1 -> {
             // Single media item - constrain to max 50% width (~210dp), preserve aspect
             // ratio
-            val widthModifier = modifier.widthIn(max = Dimens.Album.totalWidth)
+            val widthModifier = modifier
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             MediaItem(
                 payload = payloads[0],

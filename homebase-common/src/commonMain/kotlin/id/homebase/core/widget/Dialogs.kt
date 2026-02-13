@@ -17,11 +17,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun DialogCard(
     modifier: Modifier = Modifier,
+    bottomPadding: Dp = 16.dp,
     buttons: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -35,7 +37,7 @@ fun DialogCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .padding(top = 16.dp, bottom = 16.dp),
+                .padding(top = 16.dp, bottom = bottomPadding),
         ) {
             Column(
                 modifier = Modifier
