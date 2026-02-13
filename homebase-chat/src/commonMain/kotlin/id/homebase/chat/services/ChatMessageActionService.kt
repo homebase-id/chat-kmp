@@ -8,13 +8,14 @@ import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
-import id.homebase.chat.data.MessageReactionsUiModel
 import id.homebase.chat.data.ReactionContent
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.widget.EmojiReaction
 import kotlin.uuid.Uuid
 
 class ChatMessageActionService(
@@ -85,14 +86,16 @@ class ChatMessageActionService(
         )
     }
 
-    suspend fun getReactions(messageId: Uuid): List<MessageReactionsUiModel> {
+    suspend fun getReactions(messageId: Uuid): List<EmojiReaction> {
         val fileId = requireFileId(messageId)
         val response = reactionProvider.listReactions(chatDrive, fileId)
+
         return response.reactions.map {
-            MessageReactionsUiModel(
+            EmojiReaction(
                 messageId = messageId,
-                senderOdinId = it.identity,
-                reaction = OdinSystemSerializer.deserialize<ReactionContent>(it.reaction)
+                odinId = it.odinId,
+                created = UnixTimeUtc(it.created),
+                emoji = OdinSystemSerializer.deserialize<ReactionContent>(it.reactionContent).emoji
             )
         }
     }

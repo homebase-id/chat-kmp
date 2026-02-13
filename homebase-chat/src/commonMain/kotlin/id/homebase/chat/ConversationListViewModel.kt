@@ -39,7 +39,7 @@ class ConversationListViewModel(
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val conversationWriterService: ConversationService
+    private val conversationWriterService: ConversationService,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConversationListUiState())
@@ -173,7 +173,7 @@ class ConversationListViewModel(
                     it.id == action.messageId
                 } ?: return
                 val isCurrentUserMessage =
-                    message.originalAuthorOdinId?.domainName == _uiState.value.currentOdinId
+                    message.originalAuthor?.domainName == _uiState.value.currentOdinId
                 _uiState.update {
                     it.copy(
                         uiDialog = ConversationListUiDialog.DeleteMessage(
@@ -247,11 +247,19 @@ class ConversationListViewModel(
             is ConversationListUiAction.AddReaction -> {
                 viewModelScope.launch {
                     try {
-                        
+
                         // TODO - If adding reaction already added to a message from me, then remove it, how to though?
                         //chatMessageActionService.deleteReaction(action.messageId, action.reaction)
 
-                        println("Adding reaction: ${action.reaction} - Unicode: ${action.reaction.map { it.code }.joinToString(" ") { "U+${it.toString(16).uppercase().padStart(4, '0')}" }}")
+                        println(
+                            "Adding reaction: ${action.reaction} - Unicode: ${
+                                action.reaction.map { it.code }.joinToString(" ") {
+                                    "U+${
+                                        it.toString(16).uppercase().padStart(4, '0')
+                                    }"
+                                }
+                            }"
+                        )
 
                         chatMessageActionService.addReaction(
                             action.conversationId,
@@ -456,7 +464,7 @@ class ConversationListViewModel(
                                     it.copy(
                                         fullScreenOverlay = FullScreenOverlay.ViewMessageData(
                                             messageId = action.message.id,
-                                            title = action.message.originalAuthorOdinId?.domainName
+                                            title = action.message.originalAuthor?.domainName
                                                 ?: "null",
                                             created = action.message.created,
                                             content = action.message.content,
@@ -504,13 +512,28 @@ class ConversationListViewModel(
                 _uiState.update { it.copy(replyToMessage = action.message) }
             }
 
-            ConversationListUiAction.CancelReplyToMessage -> {
+            is ConversationListUiAction.CancelReplyToMessage -> {
                 _uiState.update { it.copy(replyToMessage = null) }
+            }
+
+            is ConversationListUiAction.ShowReactionDetails -> {
+                loadReactionDetails(action.messageId)
+            }
+
+            is ConversationListUiAction.HideReactionDetails -> {
+                _uiState.update { it.copy(messageReactions = null) }
             }
 
             else -> {
                 println("Unhandled action: $action")
             }
+        }
+    }
+
+    private fun loadReactionDetails(messageId: Uuid) {
+        viewModelScope.launch {
+            val messageReactions = chatMessageActionService.getReactions(messageId)
+            _uiState.update { it.copy(messageReactions = messageReactions) }
         }
     }
 
@@ -583,7 +606,7 @@ class ConversationListViewModel(
             try {
                 val replyPreview = ReplyPreview(
                     replyUniqueId = replyTo.id,
-                    authorOdinId = replyTo.senderOdinId?.domainName ?: "null",
+                    authorOdinId = replyTo.originalAuthor?.domainName ?: "null",
                     message = replyTo.content.truncateToCodePoints(80),
                     previewThumbnail = replyTo.previewThumbnail
                 )

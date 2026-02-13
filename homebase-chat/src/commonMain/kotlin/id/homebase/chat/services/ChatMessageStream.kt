@@ -132,8 +132,7 @@ class ChatMessageStream(
             val transferSummary = header.serverMetadata
                 .transferHistory?.summary ?: return ChatDeliveryStatus.Sent
 
-            if(header.fileMetadata.appData.groupId == ChatProtocol.ConversationWithYourselfId)
-            {
+            if (header.fileMetadata.appData.groupId == ChatProtocol.ConversationWithYourselfId) {
                 return ChatDeliveryStatus.Read
             }
 
@@ -163,9 +162,10 @@ class ChatMessageStream(
                 require(appData.uniqueId != null)
                 require(appData.groupId != null)
 
-                val messageAppDataSource = OdinSystemSerializer.deserialize<MessageAppData>(content)
-                val messageAppData =
-                    messageAppDataSource.copy(deliveryStatus = getDeliveryStatus(header).value)
+                val messageAppDataSource = OdinSystemSerializer
+                    .deserialize<MessageAppData>(content)
+                val messageAppData = messageAppDataSource
+                    .copy(deliveryStatus = getDeliveryStatus(header).value)
 
                 return MessageUiModel(
                     id = appData.uniqueId!!,
@@ -174,8 +174,7 @@ class ChatMessageStream(
                     conversationId = appData.groupId!!,
                     created = metadata.created.toInstant(),
                     modified = metadata.updated.toInstant(),
-                    senderOdinId = metadata.senderOdinId,
-                    originalAuthorOdinId = metadata.originalAuthor,
+                    originalAuthor = metadata.originalAuthor,
                     isRead = false,
                     isEdited = (metadata.created != metadata.updated),
                     content = messageAppData.message,
@@ -199,8 +198,7 @@ class ChatMessageStream(
                         conversationId = appData.groupId!!,
                         created = metadata.created.toInstant(),
                         modified = metadata.updated.toInstant(),
-                        senderOdinId = metadata.senderOdinId,
-                        originalAuthorOdinId = metadata.originalAuthor,
+                        originalAuthor = metadata.originalAuthor,
                         isRead = false,
                         isEdited = (metadata.created != metadata.updated),
                         content = "Failed to parse message from server",

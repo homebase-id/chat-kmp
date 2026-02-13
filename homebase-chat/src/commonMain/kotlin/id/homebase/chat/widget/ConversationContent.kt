@@ -57,7 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.files.reactions.GroupReactionItem
 import id.homebase.api.common.OdinId
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
@@ -66,6 +66,7 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.AvatarImage
+import id.homebase.core.widget.EmojiReaction
 import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
@@ -105,12 +106,12 @@ fun ConversationContent(
     replyToMessage: MessageUiModel?,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    messageReactions: List<EmojiReaction>?,
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
-    var reactionSummaryDialog by remember { mutableStateOf<ReactionSummary?>(null) }
     var showConversationMenu by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val isKeyboardVisible by keyboardAsState()
@@ -171,8 +172,10 @@ fun ConversationContent(
             }
         }
 
-    reactionSummaryDialog?.let {
-        EmojiSummary(it, onDismiss = { reactionSummaryDialog = null })
+    messageReactions?.let {
+        EmojiSummary(it, onDismiss = {
+            onUiAction(ConversationListUiAction.HideReactionDetails)
+        })
     }
 
     Scaffold(
@@ -379,7 +382,11 @@ fun ConversationContent(
                                             )
                                         },
                                         onShowReactions = {
-                                            reactionSummaryDialog = it
+                                            onUiAction(
+                                                ConversationListUiAction.ShowReactionDetails(
+                                                    messageId = message.id
+                                                )
+                                            )
                                         },
                                         animatedVisibilityScope = animatedVisibilityScope,
                                         sharedTransitionScope = sharedTransitionScope,
@@ -441,7 +448,11 @@ fun ConversationContent(
 //                                            )
 //                                        },
                                         onShowReactions = {
-                                            reactionSummaryDialog = it
+                                            onUiAction(
+                                                ConversationListUiAction.ShowReactionDetails(
+                                                    messageId = message.id
+                                                )
+                                            )
                                         },
                                         onMediaClick = { payload ->
                                             onUiAction(

@@ -59,7 +59,7 @@ fun ReactionList(
 }
 
 @Serializable
-private data class ReactionContent(val emoji: String)
+data class ReactionContent(val emoji: String)
 
 private fun extractEmoji(reactionContent: String): String? {
     return try {

@@ -54,7 +54,7 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(MR.string.replying_to, message.senderOdinId?.domainName ?: "null"),
+                    text = stringResource(MR.string.replying_to, message.originalAuthor?.domainName ?: "null"),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
