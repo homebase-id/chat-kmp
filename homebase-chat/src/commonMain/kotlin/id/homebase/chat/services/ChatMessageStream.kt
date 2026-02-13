@@ -126,6 +126,32 @@ class ChatMessageStream(
 
     companion object {
 
+        private fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
+
+            val count = header.serverMetadata.originalRecipientCount
+            val transferSummary = header.serverMetadata
+                .transferHistory?.summary ?: return ChatDeliveryStatus.Sent
+
+            if(header.fileMetadata.appData.groupId == ChatProtocol.ConversationWithYourselfId)
+            {
+                return ChatDeliveryStatus.Read
+            }
+
+            return when {
+                transferSummary.totalFailed > 0 ->
+                    ChatDeliveryStatus.Failed
+
+                transferSummary.totalReadByRecipient >= count ->
+                    ChatDeliveryStatus.Read
+
+                transferSummary.totalDelivered >= count ->
+                    ChatDeliveryStatus.Delivered
+
+                else ->
+                    ChatDeliveryStatus.Sent
+            }
+        }
+
         suspend fun mapToMessageData(header: HomebaseFile): MessageUiModel? {
             val metadata = header.fileMetadata
             val appData = metadata.appData
@@ -137,7 +163,9 @@ class ChatMessageStream(
                 require(appData.uniqueId != null)
                 require(appData.groupId != null)
 
-                val messageAppData = OdinSystemSerializer.deserialize<MessageAppData>(content)
+                val messageAppDataSource = OdinSystemSerializer.deserialize<MessageAppData>(content)
+                val messageAppData =
+                    messageAppDataSource.copy(deliveryStatus = getDeliveryStatus(header).value)
 
                 return MessageUiModel(
                     id = appData.uniqueId!!,
@@ -160,7 +188,7 @@ class ChatMessageStream(
             } catch (t: Throwable) {
 
                 Logger.e(t) {
-                    "failed while mapping a message with uniqueId ${appData.uniqueId} and fileId ${header.fileId} appData=[${appData.toString()}]"
+                    "failed while mapping a message with uniqueId ${appData.uniqueId} and fileId ${header.fileId} appData=[${appData}]"
                 }
 
                 try {
@@ -181,7 +209,7 @@ class ChatMessageStream(
                         previewThumbnail = metadata.appData.previewThumbnail,
                         payloads = metadata.payloads,
                         keyHeader = header.keyHeader
-                        )
+                    )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {
                         "Failed in fallback handling for parsing a message: fileId ${header.fileId}"
