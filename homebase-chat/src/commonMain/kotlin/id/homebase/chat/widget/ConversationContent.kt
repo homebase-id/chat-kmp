@@ -10,11 +10,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -36,20 +38,26 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.client.drives.files.reactions.GroupReactionItem
 import id.homebase.api.common.OdinId
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
@@ -58,6 +66,9 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.AvatarImage
+import id.homebase.core.widget.EmojiReaction
+import id.homebase.core.widget.EmojiSelectorSheet
+import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
 import id.homebase.resources.chat_options
@@ -79,7 +90,7 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ConversationContent(
     conversation: ConversationUiModel,
@@ -95,14 +106,39 @@ fun ConversationContent(
     replyToMessage: MessageUiModel?,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    messageReactions: List<EmojiReaction>?,
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
+    var showEmojiSheet by remember { mutableStateOf(false) }
     var showConversationMenu by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val isKeyboardVisible by keyboardAsState()
     var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
+
+    // Add this state to track keyboard height
+    var keyboardHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+
+    // Add WindowInsets observer to measure keyboard height
+    LaunchedEffect(imeInsets) {
+        snapshotFlow {
+            imeInsets.getBottom(density)
+        }.collect { imeBottom ->
+            if (imeBottom > 0) {
+                keyboardHeight = with(density) { imeBottom.toDp() }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible) {
+        showEmojiSheet = false
+        showAttachmentSheet = false
+        keyboardController?.hide()
+    }
 
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
@@ -135,6 +171,12 @@ fun ConversationContent(
                 )
             }
         }
+
+    messageReactions?.let {
+        EmojiSummary(it, onDismiss = {
+            onUiAction(ConversationListUiAction.HideReactionDetails)
+        })
+    }
 
     Scaffold(
         modifier = Modifier,
@@ -278,8 +320,11 @@ fun ConversationContent(
                                 key = { message -> message.id }) { message ->
 
                                 // TODO: currentOdinId is "" - is that supposed to be the case??
-                                val odinId: OdinId? = try { OdinId(currentOdinId) }
-                                    catch (e: Exception) { null }
+                                val odinId: OdinId? = try {
+                                    OdinId(currentOdinId)
+                                } catch (_: Exception) {
+                                    null
+                                }
 
                                 if (message.isCurrentUser(odinId)) {
                                     SentMessageBubble(
@@ -327,6 +372,22 @@ fun ConversationContent(
                                                 )
                                             )
                                         },
+                                        onAddReaction = { _, reaction ->
+                                            onUiAction(
+                                                ConversationListUiAction.AddReaction(
+                                                    message.conversationId,
+                                                    message.id,
+                                                    reaction = reaction
+                                                )
+                                            )
+                                        },
+                                        onShowReactions = {
+                                            onUiAction(
+                                                ConversationListUiAction.ShowReactionDetails(
+                                                    messageId = message.id
+                                                )
+                                            )
+                                        },
                                         animatedVisibilityScope = animatedVisibilityScope,
                                         sharedTransitionScope = sharedTransitionScope,
                                     )
@@ -371,16 +432,25 @@ fun ConversationContent(
                                         onAddReaction = { _, reaction ->
                                             onUiAction(
                                                 ConversationListUiAction.AddReaction(
+                                                    message.conversationId,
                                                     message.id,
                                                     reaction = reaction
                                                 )
                                             )
                                         },
-                                        onDeleteReaction = { _, reaction ->
+//                                        onDeleteReaction = { _, reaction ->
+//                                            onUiAction(
+//                                                ConversationListUiAction.DeleteReaction(
+//                                                    message.conversationId,
+//                                                    message.id,
+//                                                    reaction = reaction
+//                                                )
+//                                            )
+//                                        },
+                                        onShowReactions = {
                                             onUiAction(
-                                                ConversationListUiAction.DeleteReaction(
-                                                    message.id,
-                                                    reaction = reaction
+                                                ConversationListUiAction.ShowReactionDetails(
+                                                    messageId = message.id
                                                 )
                                             )
                                         },
@@ -450,6 +520,7 @@ fun ConversationContent(
                     MessageInputBar(
                         textFieldState = textFieldState,
                         focusRequester = focusRequester,
+                        showingEmojiSheet = showEmojiSheet,
                         onSendMessage = {
                             if (it.isNotBlank()) {
                                 onUiAction(
@@ -459,7 +530,33 @@ fun ConversationContent(
                                 // is added to UI state
                             }
                         },
+                        onEmojiClick = {
+                            showAttachmentSheet = false
+                            if (showEmojiSheet && !isKeyboardVisible) {
+                                showEmojiSheet = false
+                                if (wasKeyboardVisible) {
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                }
+                            } else {
+                                if (isKeyboardVisible) {
+                                    wasKeyboardVisible = true
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                } else {
+                                    wasKeyboardVisible = false
+                                }
+                                showEmojiSheet = true
+                            }
+                        },
+                        onKeyboardClick = {
+                            showEmojiSheet = false
+                            showAttachmentSheet = false
+                            focusRequester.requestFocus()
+                            keyboardController?.show()
+                        },
                         onAddAttachmentClick = {
+                            showEmojiSheet = false
                             if (showAttachmentSheet && !isKeyboardVisible) {
                                 showAttachmentSheet = false
                                 if (wasKeyboardVisible) {
@@ -480,7 +577,15 @@ fun ConversationContent(
                         onCameraClick = { cameraLauncher.launch() }
                     )
 
+                    EmojiSelectorSheet(
+                        modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
+                        visible = showEmojiSheet && !isKeyboardVisible,
+                        onDismiss = { showEmojiSheet = false },
+                        onEmojiSelected = { textFieldState.addTextAfterSelection(it) }
+                    )
+
                     AttachmentOptionsDisplay(
+                        modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
                         visible = showAttachmentSheet && !isKeyboardVisible,
                     ) {
                         AttachmentGallery(

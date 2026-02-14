@@ -66,6 +66,7 @@ import org.koin.compose.koinInject
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AttachmentOptionsDisplay(
+    modifier: Modifier = Modifier,
     visible: Boolean,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -75,7 +76,7 @@ fun AttachmentOptionsDisplay(
     ) {
         val listState = rememberScrollState()
         Column(
-            modifier = Modifier
+            modifier = modifier
                 .verticalScroll(state = listState)
         ) {
             content()

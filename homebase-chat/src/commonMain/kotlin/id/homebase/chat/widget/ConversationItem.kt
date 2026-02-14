@@ -36,7 +36,7 @@ fun ConversationItem(
 ) {
     val textState = RichTextState()
     textState.config.listIndent = 0
-    textState.setHtml(conversation.lastMessage)
+    textState.setMarkdown(conversation.lastMessage)
     Row(
         modifier = Modifier
             .fillMaxWidth()

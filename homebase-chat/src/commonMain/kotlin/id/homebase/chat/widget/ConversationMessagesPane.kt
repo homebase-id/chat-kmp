@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.client.drives.files.reactions.GroupReactionItem
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.ConversationListUiAction.CloseFullScreenOverlay
 import id.homebase.chat.ConversationListUiAction.DeleteMessage
@@ -31,6 +32,7 @@ import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.ScrollPosition
+import id.homebase.core.widget.EmojiReaction
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.ImmutableList
@@ -55,6 +57,7 @@ fun ConversationMessagesPane(
     onUiAction: (ConversationListUiAction) -> Unit,
     currentOdinId: String,
     replyToMessage: MessageUiModel?,
+    messageReactions: List<EmojiReaction>?,
 ) {
     var currentGalleryPage by remember { mutableStateOf(0) }
     val galleryLauncher =
@@ -213,6 +216,7 @@ fun ConversationMessagesPane(
                     replyToMessage = replyToMessage,
                     animatedVisibilityScope = this@AnimatedContent,
                     sharedTransitionScope = this@SharedTransitionLayout,
+                    messageReactions = messageReactions
                 )
             } else {
                 when (data) {

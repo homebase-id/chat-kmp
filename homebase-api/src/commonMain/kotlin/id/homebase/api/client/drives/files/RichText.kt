@@ -26,6 +26,3 @@ data class CommentReaction(
     val bodyAsRichText: RichText? = null,
     val mediaPayloadKey: String? = null
 )
-
-/** Emoji reaction. */
-typealias EmojiReaction = ReactionBase

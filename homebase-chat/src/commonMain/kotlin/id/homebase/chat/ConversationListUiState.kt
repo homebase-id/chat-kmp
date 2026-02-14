@@ -3,11 +3,13 @@ package id.homebase.chat
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.reactions.GroupReactionItem
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
+import id.homebase.core.widget.EmojiReaction
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -28,6 +30,7 @@ data class ConversationListUiState(
     val replyToMessage: MessageUiModel? = null,
     val loadingNewMessage: Boolean = false,
 
+    val messageReactions: List<EmojiReaction>? = null,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
 )

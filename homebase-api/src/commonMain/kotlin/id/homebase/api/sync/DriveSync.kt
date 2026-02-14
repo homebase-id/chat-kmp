@@ -116,6 +116,7 @@ class DriveSync(
                     maxRecords = batchSize,
                     includeMetadataHeader = true,
                     cursorState = cursor?.toJson(),
+                    includeTransferHistory = true,
                     ordering = QueryBatchSortOrder.OldestFirst,
                     sorting = QueryBatchSortField.AnyChangeDate
                 )

@@ -58,6 +58,12 @@ class ConversationService(
                 Uuid.random()
             }
 
+
+        val existingConversation = getConversation(newConversationId)
+        if (existingConversation != null) {
+            return newConversationId
+        }
+
         val content = ConversationAppDataJson(
             title = title ?: "",
             recipients = (recipients + domain).distinct(),
@@ -98,6 +104,11 @@ class ConversationService(
 
         driveUploadProvider.uploadFile(request)
         return newConversationId;
+    }
+
+    suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
+        return getConversation(conversationId)
+            ?: throw IllegalStateException("No conversation for Id")
     }
 
     suspend fun getConversation(

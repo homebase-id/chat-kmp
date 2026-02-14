@@ -28,7 +28,7 @@ data class ByteApiResponse(
     val headers: Headers,
     val bytes: ByteArray,
     val contentType: String
-){
+) {
     companion object {
         val EMPTY_404 = ByteApiResponse(
             status = 404,
@@ -233,13 +233,29 @@ abstract class OdinApiProviderBase(
     protected suspend fun encryptedGet(
         url: String,
         token: String,
-        secret: SecureByteArray
+        secret: SecureByteArray,
+        queryString: String? = null
     ): ApiResponse {
+
         requireHostInUrl(url)
+
+        val finalUrl =
+            if (queryString.isNullOrBlank()) {
+                url
+            } else {
+                val encrypted = OdinSystemSerializer.serialize(
+                    CryptoHelper.encryptData(
+                        queryString,
+                        secret.unsafeBytes
+                    )
+                )
+
+                "$url?ss=$encrypted"
+            }
 
         return request(
             {
-                httpClient.get(url) {
+                httpClient.get(finalUrl) {
                     bearerAuth(token)
                     accept(ContentType.Application.Json)
                 }

@@ -16,6 +16,9 @@ object XorIdUtil {
         val xorBuffer = xorByteArrays(bufferA, bufferB)
         val finalHash = reduceSha256Hash(xorBuffer)
 
+        finalHash[6] = ((finalHash[6].toInt() and 0x0F) or 0x40).toByte()
+        finalHash[8] = ((finalHash[8].toInt() and 0x3F) or 0x80).toByte()
+
         return Uuid.fromByteArray(finalHash)
     }
 

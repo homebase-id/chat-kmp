@@ -39,7 +39,7 @@ class ConversationListViewModel(
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val conversationWriterService: ConversationService
+    private val conversationWriterService: ConversationService,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConversationListUiState())
@@ -80,7 +80,7 @@ class ConversationListViewModel(
             messageState.config.listIndent = 0
 
             // TODO - restore any draft message stored for conversation here
-            messageState.setHtml("")
+            messageState.setMarkdown("")
         }
     }
 
@@ -132,7 +132,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.SendMessage -> {
                 val hasMessage = !messageState.annotatedString.isBlank()
                 if (hasMessage) {
-                    val content = messageState.toHtml()
+                    val content = messageState.toMarkdown()
                     val replyTo = _uiState.value.replyToMessage
                     if (replyTo != null) {
                         replyToMessage(
@@ -172,7 +172,8 @@ class ConversationListViewModel(
                 val message = _uiState.value.currentConversationMessages.firstOrNull {
                     it.id == action.messageId
                 } ?: return
-                val isCurrentUserMessage = message.originalAuthorOdinId?.domainName == _uiState.value.currentOdinId
+                val isCurrentUserMessage =
+                    message.originalAuthor?.domainName == _uiState.value.currentOdinId
                 _uiState.update {
                     it.copy(
                         uiDialog = ConversationListUiDialog.DeleteMessage(
@@ -199,7 +200,8 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = true
+                            action.messageId,
+                            deleteForEveryone = true
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -215,7 +217,8 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = false
+                            action.messageId,
+                            deleteForEveryone = false
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -244,7 +247,25 @@ class ConversationListViewModel(
             is ConversationListUiAction.AddReaction -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.addReaction(action.messageId, action.reaction)
+
+                        // TODO - If adding reaction already added to a message from me, then remove it, how to though?
+                        //chatMessageActionService.deleteReaction(action.messageId, action.reaction)
+
+                        println(
+                            "Adding reaction: ${action.reaction} - Unicode: ${
+                                action.reaction.map { it.code }.joinToString(" ") {
+                                    "U+${
+                                        it.toString(16).uppercase().padStart(4, '0')
+                                    }"
+                                }
+                            }"
+                        )
+
+                        chatMessageActionService.addReaction(
+                            action.conversationId,
+                            action.messageId,
+                            action.reaction
+                        )
                     } catch (e: Exception) {
                         sendEvent(
                             ConversationListUiEvent.ShowErrorMessage(
@@ -258,7 +279,11 @@ class ConversationListViewModel(
             is ConversationListUiAction.DeleteReaction -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.deleteReaction(action.messageId, action.reaction)
+                        chatMessageActionService.deleteReaction(
+                            action.conversationId,
+                            action.messageId,
+                            action.reaction
+                        )
                     } catch (e: Exception) {
                         sendEvent(
                             ConversationListUiEvent.ShowErrorMessage(
@@ -286,16 +311,21 @@ class ConversationListViewModel(
                                     attachments.add(
                                         AttachmentInput(
                                             filePath = attachment.file.toString(),
-                                            contentType = detectContentTypeFromExtensionOrHint(attachment.file.name),
+                                            contentType = detectContentTypeFromExtensionOrHint(
+                                                attachment.file.name
+                                            ),
                                             displayName = attachment.file.name,
                                         )
                                     )
                                 }
+
                                 is AttachmentPendingFile.Gallery -> {
                                     attachments.add(
                                         AttachmentInput(
                                             filePath = attachment.image.file.toString(),
-                                            contentType = detectContentTypeFromExtensionOrHint(attachment.image.fileName),
+                                            contentType = detectContentTypeFromExtensionOrHint(
+                                                attachment.image.fileName
+                                            ),
                                             displayName = attachment.image.fileName,
                                         )
                                     )
@@ -362,7 +392,12 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val newFiles =
-                            action.files.map { AttachmentPendingFile.Gallery(Uuid.generateV7(), it) }
+                            action.files.map {
+                                AttachmentPendingFile.Gallery(
+                                    Uuid.generateV7(),
+                                    it
+                                )
+                            }
                         val conversation =
                             _uiState.value.conversations.find { it.id == action.conversationId }
                         if (newFiles.isEmpty() || conversation == null) return@launch
@@ -400,7 +435,8 @@ class ConversationListViewModel(
                         val fullScreenOverlay = _uiState.value.fullScreenOverlay
                         if (fullScreenOverlay == null || fullScreenOverlay !is FullScreenOverlay.AttachmentData) return@launch
 
-                        val newFiles = fullScreenOverlay.attachments.filter { it.attachmentId != action.id }
+                        val newFiles =
+                            fullScreenOverlay.attachments.filter { it.attachmentId != action.id }
                         _uiState.update {
                             it.copy(
                                 fullScreenOverlay = fullScreenOverlay.copy(attachments = newFiles),
@@ -428,7 +464,8 @@ class ConversationListViewModel(
                                     it.copy(
                                         fullScreenOverlay = FullScreenOverlay.ViewMessageData(
                                             messageId = action.message.id,
-                                            title = action.message.originalAuthorOdinId?.domainName ?: "null",
+                                            title = action.message.originalAuthor?.domainName
+                                                ?: "null",
                                             created = action.message.created,
                                             content = action.message.content,
                                             fileId = action.message.fileId,
@@ -475,13 +512,28 @@ class ConversationListViewModel(
                 _uiState.update { it.copy(replyToMessage = action.message) }
             }
 
-            ConversationListUiAction.CancelReplyToMessage -> {
+            is ConversationListUiAction.CancelReplyToMessage -> {
                 _uiState.update { it.copy(replyToMessage = null) }
+            }
+
+            is ConversationListUiAction.ShowReactionDetails -> {
+                loadReactionDetails(action.messageId)
+            }
+
+            is ConversationListUiAction.HideReactionDetails -> {
+                _uiState.update { it.copy(messageReactions = null) }
             }
 
             else -> {
                 println("Unhandled action: $action")
             }
+        }
+    }
+
+    private fun loadReactionDetails(messageId: Uuid) {
+        viewModelScope.launch {
+            val messageReactions = chatMessageActionService.getReactions(messageId)
+            _uiState.update { it.copy(messageReactions = messageReactions) }
         }
     }
 
@@ -554,7 +606,7 @@ class ConversationListViewModel(
             try {
                 val replyPreview = ReplyPreview(
                     replyUniqueId = replyTo.id,
-                    authorOdinId = replyTo.senderOdinId?.domainName ?: "null",
+                    authorOdinId = replyTo.originalAuthor?.domainName ?: "null",
                     message = replyTo.content.truncateToCodePoints(80),
                     previewThumbnail = replyTo.previewThumbnail
                 )

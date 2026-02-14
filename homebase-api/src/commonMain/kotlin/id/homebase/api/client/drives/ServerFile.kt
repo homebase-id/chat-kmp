@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.EncryptedKeyHeader
@@ -104,7 +105,8 @@ private suspend fun FileMetadata.decryptAppData(
     val decryptedBytes = try {
         keyHeader.decrypt(encryptedBytes)
     } catch (_: Throwable) {
-        "Decryption Failure".toByteArray(Charsets.UTF_8)
+        Logger.e("Decryption failure")
+        """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}""".toByteArray(Charsets.UTF_8)
     }
 
     return withDecryptedContent(decryptedBytes)

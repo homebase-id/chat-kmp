@@ -4,26 +4,29 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.DriveFileReactionProvider
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
+import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.ReactionContent
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.widget.EmojiReaction
 import kotlin.uuid.Uuid
 
 class ChatMessageActionService(
-    private val reactionProvider: DriveFileReactionProvider,
+    private val conversationService: ConversationService,
+    private val reactionProvider: DriveFileGroupReactionProvider,
     private val credentialsManager: CredentialsManager,
     private val operationsProvider: DriveFileOperationsProvider,
     private val fileProvider: DriveFileProvider,
     private val dbm: DatabaseManager,
 ) {
     private val chatDrive = chatTargetDrive.alias
-
-    // -------------------- READ RECEIPTS --------------------
 
     suspend fun markAsRead(
         messageIds: List<Uuid>
@@ -34,9 +37,8 @@ class ChatMessageActionService(
         )
     }
 
-// -------------------- REACTIONS --------------------
-
     suspend fun addReaction(
+        conversationId: Uuid,
         messageId: Uuid,
         emoji: String
     ) {
@@ -46,11 +48,13 @@ class ChatMessageActionService(
         reactionProvider.addReaction(
             driveId = chatDrive,
             fileId = requireFileId(messageId),
-            reaction = OdinSystemSerializer.serialize(content)
+            reaction = OdinSystemSerializer.serialize(content),
+            recipients = getRecipients(conversationId)
         )
     }
 
     suspend fun deleteReaction(
+        conversationId: Uuid,
         messageId: Uuid,
         emoji: String
     ) {
@@ -61,16 +65,8 @@ class ChatMessageActionService(
         reactionProvider.deleteReaction(
             driveId = chatDrive,
             fileId = requireFileId(messageId),
-            reaction = OdinSystemSerializer.serialize(content)
-        )
-    }
-
-    suspend fun removeAllReactions(
-        messageId: Uuid
-    ) {
-        reactionProvider.deleteAllReactions(
-            driveId = chatDrive,
-            fileId = requireFileId(messageId)
+            reaction = OdinSystemSerializer.serialize(content),
+            recipients = getRecipients(conversationId)
         )
     }
 
@@ -90,8 +86,19 @@ class ChatMessageActionService(
         )
     }
 
-    private fun isValidEmoji(input: String?): Boolean =
-        !input.isNullOrBlank() && input.length <= 8
+    suspend fun getReactions(messageId: Uuid): List<EmojiReaction> {
+        val fileId = requireFileId(messageId)
+        val response = reactionProvider.listReactions(chatDrive, fileId)
+
+        return response.reactions.map {
+            EmojiReaction(
+                messageId = messageId,
+                odinId = it.odinId,
+                created = UnixTimeUtc(it.created),
+                emoji = OdinSystemSerializer.deserialize<ReactionContent>(it.reactionContent).emoji
+            )
+        }
+    }
 
     suspend fun requireFileId(messageId: Uuid): Uuid {
         val d = fetchFileByUid(listOf(messageId)).firstOrNull()
@@ -118,4 +125,16 @@ class ChatMessageActionService(
 
         return result.records
     }
+
+    private fun isValidEmoji(input: String?): Boolean =
+        !input.isNullOrBlank() && input.length <= 8
+
+    private suspend fun getRecipients(conversationId: Uuid): List<OdinId> {
+        val credentials = credentialsManager.requireActiveCredentials();
+        val conversation = conversationService.requireConversation(conversationId)
+        val recipients = conversation
+            .participants.filterNot { odinId -> odinId == credentials.domain }
+        return recipients
+    }
+
 }
