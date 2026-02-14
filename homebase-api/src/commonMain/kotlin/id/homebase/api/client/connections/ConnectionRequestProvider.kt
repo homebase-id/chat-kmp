@@ -13,7 +13,7 @@ import kotlin.uuid.Uuid
 // ==================== MODELS ====================
 
 @Serializable
-data class ConnectionRequestHeaderDto(
+data class ConnectionRequestHeader(
     val id: Uuid,
     val recipient: OdinId,
     val message: String? = null,
@@ -23,7 +23,7 @@ data class ConnectionRequestHeaderDto(
 )
 
 @Serializable
-data class ConnectionRequestResponseDto(
+data class ConnectionRequestResponse(
     val contactData: String? = null,
     val senderOdinId: OdinId,
     val circleIds: List<Uuid>? = null,
@@ -55,7 +55,7 @@ class ConnectionRequestProvider(
         type: String,
         pageNumber: Int,
         pageSize: Int
-    ): PagedResult<ConnectionRequestResponseDto> {
+    ): PagedResult<ConnectionRequestResponse> {
 
         require(type == "incoming" || type == "outgoing") {
             "type must be incoming or outgoing"
@@ -82,7 +82,7 @@ class ConnectionRequestProvider(
 
     suspend fun getIncomingRequest(
         senderId: OdinId
-    ): ConnectionRequestResponseDto {
+    ): ConnectionRequestResponse {
 
         val creds = requireCreds()
 
@@ -105,7 +105,7 @@ class ConnectionRequestProvider(
 
     suspend fun getOutgoingRequest(
         recipientId: OdinId
-    ): ConnectionRequestResponseDto {
+    ): ConnectionRequestResponse {
 
         val creds = requireCreds()
 
@@ -127,7 +127,7 @@ class ConnectionRequestProvider(
     // ------------------------------------------------------------
 
     suspend fun sendConnectionRequest(
-        request: ConnectionRequestHeaderDto
+        request: ConnectionRequestHeader
     ) {
 
         val creds = requireCreds()
