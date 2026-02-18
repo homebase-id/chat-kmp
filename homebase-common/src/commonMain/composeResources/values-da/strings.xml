@@ -12,6 +12,11 @@
     <string name="share">Del</string>
     <string name="ok">Ok</string>
     <string name="cancel">Annullér</string>
+    <string name="replying_to">Svar til %1$s</string>
+    <string name="cancel_reply">Annullér svar</string>
+    <string name="backspace">Backspace</string>
+    <string name="search">Søg</string>
+    <string name="clear_input">Ryd input</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -70,5 +75,9 @@
     <string name="chat_message_add_gallery_image">Fjern billede</string>
     <string name="chat_message_remove_gallery_image">Tilføj billede</string>
     <string name="chat_message_hide_keyboard">Skjul tastatur</string>
+
+    <!-- Emoji -->
+    <string name="emoji_search_placeholder">Søg efter emoji</string>
+    <string name="emoji_none_found">Ingen emojis fundet</string>
 
 </resources>

@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -91,6 +92,7 @@ fun MessageInputBar(
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
+    onFocused: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
     onSendMessage: (String) -> Unit,
@@ -146,7 +148,7 @@ fun MessageInputBar(
                     .padding(bottom = 16.dp)
                     .focusRequester(focusRequester),
                 state = textFieldState,
-
+                onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 sendMessage = {
@@ -163,6 +165,7 @@ fun MessageInputBar(
                     .focusRequester(focusRequester),
                 state = textFieldState,
                 showingEmojiSheet = showingEmojiSheet,
+                onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
                 onKeyboardClick = onKeyboardClick,
                 onAddAttachmentClick = onAddAttachmentClick,
@@ -180,6 +183,7 @@ fun MessageTextFieldExpanded(
     state: RichTextState,
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
+    onFocused: () -> Unit = {},
     sendMessage: () -> Unit
 ) {
     Column(
@@ -191,7 +195,12 @@ fun MessageTextFieldExpanded(
         )
         RichTextEditor(
             state = state,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth()
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        onFocused()
+                    }
+                },
             placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
             shape = RoundedCornerShape(12.dp),
             minLines = 10,
@@ -258,6 +267,7 @@ fun MessageTextFieldCompact(
     onKeyboardClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
+    onFocused: () -> Unit = {},
     onSendMessage: () -> Unit
 ) {
     Column(
@@ -276,6 +286,11 @@ fun MessageTextFieldCompact(
             RichTextEditor(
                 state = state,
                 modifier = Modifier.weight(1f)
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            onFocused()
+                        }
+                    }
                     .onPreviewKeyEvent { keyEvent ->
                         if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
                             if (keyEvent.isCtrlPressed) {

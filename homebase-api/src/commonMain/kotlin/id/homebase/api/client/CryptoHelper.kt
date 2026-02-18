@@ -3,9 +3,8 @@ package id.homebase.api.client
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.encodeUrl
-import id.homebase.api.toBase64
 import id.homebase.api.serialization.OdinSystemSerializer
-import io.ktor.util.encodeBase64
+import id.homebase.api.toBase64
 import kotlin.io.encoding.Base64
 
 /**
@@ -91,8 +90,8 @@ object CryptoHelper {
         val encryptedBytes = AesCbc.encrypt(plainText.encodeToByteArray(), sharedSecret, iv)
 
         return SharedSecretEncryptedPayload(
-            iv = iv.encodeBase64(),
-            data = encryptedBytes.encodeBase64()
+            iv = Base64.encode(iv),
+            data = Base64.encode(encryptedBytes)
         )
     }
 

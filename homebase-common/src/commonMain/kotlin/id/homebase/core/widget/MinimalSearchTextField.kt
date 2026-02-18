@@ -1,4 +1,4 @@
-package id.homebase.chat.widget
+package id.homebase.core.widget
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.heightIn
@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -23,35 +24,47 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
-import id.homebase.resources.chat_search_placeholder
+import id.homebase.resources.clear_input
+import id.homebase.resources.menu_back
+import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-fun MinimalTextField(
+fun MinimalSearchTextField(
     modifier: Modifier = Modifier,
     textFieldState: TextFieldState,
+    showBackButton: Boolean = false,
+    placeHolderText: String,
+    onBackButtonClick: () -> Unit = {}
 ) {
     TextField(
         state = textFieldState,
         modifier = modifier.heightIn(max = 40.dp),
         lineLimits = TextFieldLineLimits.SingleLine,
         placeholder = {
-            Text(
-                stringResource(MR.string.chat_search_placeholder)
-            )
+            Text(placeHolderText)
         },
         leadingIcon = {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = "Search"
-            )
+            if (showBackButton) {
+                IconButton(onClick = onBackButtonClick) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(MR.string.menu_back)
+                    )
+                }
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = stringResource(MR.string.search)
+                )
+            }
         },
         trailingIcon = {
             if (textFieldState.text.isNotEmpty()) {
                 IconButton(onClick = { textFieldState.clearText() }) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Clear search"
+                        contentDescription = stringResource(MR.string.clear_input)
                     )
                 }
             }

@@ -23,6 +23,8 @@ import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +48,7 @@ class ConversationListViewModel(
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
     val messageState = RichTextState()
+    var currentConversationJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -538,7 +541,10 @@ class ConversationListViewModel(
     }
 
     private fun loadMessagesForConversation(conversationId: Uuid) {
-        viewModelScope.launch {
+        // When loading message for newly selected conversation, cancel any previous job to
+        // avoid observing multiple messageStreams
+        currentConversationJob?.cancel()
+        currentConversationJob = viewModelScope.launch {
             try {
                 chatMessageStream.loadConversation(conversationId)
 
@@ -550,6 +556,8 @@ class ConversationListViewModel(
                         conversationScrollPosition = getScrollPosition(conversationId),
                     )
                 }
+            } catch (_: CancellationException) {
+                // ignore
             } catch (e: Exception) {
                 sendEvent(
                     ConversationListUiEvent.ShowErrorMessage(
