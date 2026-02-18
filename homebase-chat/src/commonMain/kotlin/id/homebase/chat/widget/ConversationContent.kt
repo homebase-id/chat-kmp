@@ -57,7 +57,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.api.client.drives.files.reactions.GroupReactionItem
 import id.homebase.api.common.OdinId
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
@@ -133,7 +132,6 @@ fun ConversationContent(
     LaunchedEffect(imeVisible) {
         if (imeVisible) {
             // Keyboard is shown
-            showEmojiSheet = false
             keyboardHeight = with(density) { imeInsets.getBottom(density).toDp() }
             // Add any other logic you need when keyboard appears
         } else {
@@ -141,17 +139,6 @@ fun ConversationContent(
             // Add any logic you need when keyboard disappears
         }
     }
-
-    // Add WindowInsets observer to measure keyboard height
-//    LaunchedEffect(imeInsets) {
-//        snapshotFlow {
-//            imeInsets.getBottom(density)
-//        }.collect { imeBottom ->
-//            if (imeBottom > 0) {
-//                keyboardHeight = with(density) { imeBottom.toDp() }
-//            }
-//        }
-//    }
 
     @Suppress("DEPRECATION")
     BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible) {
@@ -566,6 +553,10 @@ fun ConversationContent(
                             focusRequester.requestFocus()
                             keyboardController?.show()
                         },
+                        onFocused = {
+                            showEmojiSheet = false
+                            showAttachmentSheet = false
+                        },
                         onAddAttachmentClick = {
                             showEmojiSheet = false
                             if (showAttachmentSheet && !isKeyboardVisible) {
@@ -590,7 +581,7 @@ fun ConversationContent(
 
                     EmojiSelectorSheet(
                         modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
-                        visible = showEmojiSheet && !isKeyboardVisible,
+                        visible = showEmojiSheet,
                         onBackSpace = {
                             textFieldState.programmaticBackspace()
                         },

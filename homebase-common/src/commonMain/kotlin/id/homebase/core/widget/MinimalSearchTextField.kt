@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -24,6 +25,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.clear_input
+import id.homebase.resources.menu_back
 import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
 
@@ -31,7 +33,9 @@ import org.jetbrains.compose.resources.stringResource
 fun MinimalSearchTextField(
     modifier: Modifier = Modifier,
     textFieldState: TextFieldState,
+    showBackButton: Boolean = false,
     placeHolderText: String,
+    onBackButtonClick: () -> Unit = {}
 ) {
     TextField(
         state = textFieldState,
@@ -41,10 +45,19 @@ fun MinimalSearchTextField(
             Text(placeHolderText)
         },
         leadingIcon = {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = stringResource(MR.string.search)
-            )
+            if (showBackButton) {
+                IconButton(onClick = onBackButtonClick) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(MR.string.menu_back)
+                    )
+                }
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = stringResource(MR.string.search)
+                )
+            }
         },
         trailingIcon = {
             if (textFieldState.text.isNotEmpty()) {

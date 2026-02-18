@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -52,6 +53,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.style.TextAlign
@@ -64,6 +67,7 @@ import id.homebase.core.emoji.EmojiParser
 import id.homebase.core.emoji.EmojiSkin
 import id.homebase.resources.MR
 import id.homebase.resources.backspace
+import id.homebase.resources.emoji_none_found
 import id.homebase.resources.emoji_search_placeholder
 import id.homebase.resources.search
 import kotlinx.coroutines.launch
@@ -80,6 +84,8 @@ fun EmojiSelection(
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var isSearchActive by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+
 
     LaunchedEffect(Unit) {
         try {
@@ -126,7 +132,7 @@ fun EmojiSelection(
         Column(
             modifier = modifier
         ) {
-            if (!messageInputMode || isSearchActive) {
+            if (!messageInputMode) {
                 MinimalSearchTextField(
                     textFieldState = searchQuery,
                     modifier = Modifier.fillMaxWidth(),
@@ -135,159 +141,173 @@ fun EmojiSelection(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Show only search results in compact mode when in messageInputMode and searching
-            if (messageInputMode && isSearchActive) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
-                    items(filteredEmojis.take(20)) { emoji ->
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clickable {
-                                    onEmojiSelected(emoji.emoji)
-                                    isSearchActive = false
-                                    searchQuery.clearText()
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = emoji.emoji,
-                                fontSize = 24.sp,
-                                textAlign = TextAlign.Center
+            // LazyRow with common emoji sections (max 10) - only show when not searching
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (messageInputMode) {
+                    if (!isSearchActive) {
+                        IconButton(onClick = {
+                            isSearchActive = !isSearchActive
+                            if (!isSearchActive) {
+                                searchQuery.clearText()
+                            }
+                        }) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = stringResource(MR.string.search)
                             )
+                        }
+                        VerticalDivider(modifier = Modifier.height(24.dp).padding(end = 8.dp))
+                    } else {
+                        LaunchedEffect(Unit) {
+                            focusRequester.requestFocus()
+                        }
+                        MinimalSearchTextField(
+                            textFieldState = searchQuery,
+                            modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                            placeHolderText = stringResource(MR.string.emoji_search_placeholder),
+                            showBackButton = true,
+                            onBackButtonClick = {
+                                isSearchActive = false
+                                searchQuery.clearText()
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                }
+                if (!isSearchActive && !isSearching) {
+                    LazyRow(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(groupedEmojis.keys.toList()) { section ->
+                            Surface(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        scope.launch {
+                                            lazyGridState.scrollToItem(0)
+                                        }
+                                        selectedSection = section
+                                    },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (selectedSection == section)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else
+                                    Color.Unspecified,
+                                tonalElevation = if (selectedSection == section) 4.dp else 0.dp
+                            ) {
+                                Text(
+                                    text = EmojiParser.getSectionEmoji(section),
+                                    fontSize = 24.sp,
+                                    modifier = Modifier.padding(4.dp)
+                                )
+                            }
                         }
                     }
                 }
-            } else {
-                // LazyRow with common emoji sections (max 10) - only show when not searching
-                if (!isSearching || !messageInputMode) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (messageInputMode) {
-                            IconButton(onClick = {
-                                isSearchActive = !isSearchActive
-                                if (!isSearchActive) {
-                                    searchQuery.clearText()
+                if (messageInputMode) {
+                    VerticalDivider(modifier = Modifier.height(24.dp).padding(start = 8.dp))
+                    IconButton(onClick = onBackSpace) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Backspace,
+                            contentDescription = stringResource(MR.string.backspace)
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider()
+            if (filteredEmojis.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+
+                ) {
+                    Text(stringResource(MR.string.emoji_none_found), modifier = Modifier.align(Alignment.Center))
+                }
+            }
+            LazyVerticalGrid(
+                state = lazyGridState,
+                columns = GridCells.Adaptive(32.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(bottom = 16.dp, top = 8.dp)
+            ) {
+
+                items(filteredEmojis) { emoji ->
+                    var skins by remember { mutableStateOf<List<EmojiSkin>?>(null) }
+                    Box(
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .clickable {
+                                if (emoji.skins != null) {
+                                    skins = emoji.skins
+                                } else {
+                                    onEmojiSelected(emoji.emoji)
                                 }
-                            }) {
-                                Icon(
-                                    Icons.Default.Search,
-                                    contentDescription = stringResource(MR.string.search)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = emoji.emoji,
+                            autoSize = TextAutoSize.StepBased(14.sp, 24.sp),
+                            textAlign = TextAlign.Center
+                        )
+                        if (emoji.skins != null) {
+                            Canvas(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(8.dp)
+                            ) {
+                                val trianglePath = Path().apply {
+                                    moveTo(size.width, 0f)
+                                    lineTo(size.width, size.height)
+                                    lineTo(0f, size.height)
+                                    close()
+                                }
+                                drawPath(
+                                    path = trianglePath,
+                                    color = Color.Gray
                                 )
                             }
-                            VerticalDivider(modifier = Modifier.height(24.dp).padding(end = 8.dp))
                         }
-                        LazyRow(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            items(groupedEmojis.keys.toList()) { section ->
+                        skins?.let { skinEmojis ->
+                            Popup(
+                                onDismissRequest = { skins = null }
+                            ) {
                                 Surface(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable {
-                                            scope.launch {
-                                                lazyGridState.scrollToItem(0)
-                                            }
-                                            selectedSection = section
-                                        },
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (selectedSection == section)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else
-                                        Color.Unspecified,
-                                    tonalElevation = if (selectedSection == section) 4.dp else 0.dp
+                                        .wrapContentWidth()
+                                        .padding(top = 4.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shadowElevation = 4.dp,
+                                    tonalElevation = 2.dp
                                 ) {
-                                    Text(
-                                        text = EmojiParser.getSectionEmoji(section),
-                                        fontSize = 24.sp,
-                                        modifier = Modifier.padding(4.dp)
-                                    )
-                                }
-                            }
-                        }
-                        if (messageInputMode) {
-                            VerticalDivider(modifier = Modifier.height(24.dp).padding(start = 8.dp))
-                            IconButton(onClick = onBackSpace) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Backspace,
-                                    contentDescription = stringResource(MR.string.backspace)
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    HorizontalDivider()
-                }
-
-                LazyVerticalGrid(
-                    state = lazyGridState,
-                    columns = GridCells.Adaptive(32.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(bottom = 16.dp, top = 8.dp)
-                ) {
-                    items(filteredEmojis) { emoji ->
-                        var skins by remember { mutableStateOf<List<EmojiSkin>?>(null) }
-                        Box(
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .clickable {
-                                    if (emoji.skins != null) {
-                                        skins = emoji.skins
-                                    } else {
-                                        onEmojiSelected(emoji.emoji)
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = emoji.emoji,
-                                autoSize = TextAutoSize.StepBased(14.sp, 24.sp),
-                                textAlign = TextAlign.Center
-                            )
-                            if (emoji.skins != null) {
-                                Canvas(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .size(8.dp)
-                                ) {
-                                    val trianglePath = Path().apply {
-                                        moveTo(size.width, 0f)
-                                        lineTo(size.width, size.height)
-                                        lineTo(0f, size.height)
-                                        close()
-                                    }
-                                    drawPath(
-                                        path = trianglePath,
-                                        color = Color.Gray
-                                    )
-                                }
-                            }
-                            skins?.let { skinEmojis ->
-                                Popup(
-                                    onDismissRequest = { skins = null }
-                                ) {
-                                    Surface(
+                                    Row(
                                         modifier = Modifier
-                                            .wrapContentWidth()
-                                            .padding(top = 4.dp),
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        shadowElevation = 4.dp,
-                                        tonalElevation = 2.dp
+                                            .horizontalScroll(rememberScrollState())
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .horizontalScroll(rememberScrollState())
-                                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        IconButton(
+                                            onClick = {
+                                                skins = null
+                                                onEmojiSelected(emoji.emoji)
+                                            },
+                                            modifier = Modifier.size(40.dp)
                                         ) {
+                                            Text(
+                                                text = emoji.emoji,
+                                                fontSize = 20.sp
+                                            )
+                                        }
+                                        skinEmojis.forEach { emoji ->
                                             IconButton(
                                                 onClick = {
                                                     skins = null
@@ -299,20 +319,6 @@ fun EmojiSelection(
                                                     text = emoji.emoji,
                                                     fontSize = 20.sp
                                                 )
-                                            }
-                                            skinEmojis.forEach { emoji ->
-                                                IconButton(
-                                                    onClick = {
-                                                        skins = null
-                                                        onEmojiSelected(emoji.emoji)
-                                                    },
-                                                    modifier = Modifier.size(40.dp)
-                                                ) {
-                                                    Text(
-                                                        text = emoji.emoji,
-                                                        fontSize = 20.sp
-                                                    )
-                                                }
                                             }
                                         }
                                     }

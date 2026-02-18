@@ -87,5 +87,6 @@
 
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Search emoji</string>
+    <string name="emoji_none_found">No emojis found</string>
 
 </resources>
