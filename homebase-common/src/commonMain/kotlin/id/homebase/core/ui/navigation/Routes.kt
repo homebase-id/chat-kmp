@@ -19,16 +19,20 @@ sealed class Route {
     data object Settings : Route()
 
     @Serializable
+    @SerialName("new-conversation")
+    data object NewConversation : Route()
+
+    @Serializable
+    @SerialName("message")
+    data class MessageInfo(val conversationId: String, val messageId: String, val fileId: String) : Route()
+
+    @Serializable
+    @SerialName("contact")
+    data class ContactInfo(val odinId: String) : Route()
+
+    @Serializable
     @SerialName("chat")
     data object ChatList : Route()
-
-    @Serializable
-    @SerialName("chat-message-details")
-    data class ChatMessageDetail(val driveId: String, val fileId: String) : Route()
-
-    @Serializable
-    @SerialName("chat-messages")
-    data class ChatMessages(val conversationId: String) : Route()
 
     @Serializable
     @SerialName("notification-settings")

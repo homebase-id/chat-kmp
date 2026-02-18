@@ -32,6 +32,7 @@ import id.homebase.core.widget.AvatarImage
 fun ConversationItem(
     conversation: ConversationUiModel,
     onClick: () -> Unit,
+    onContactClick: (odinId: String) -> Unit,
     isSelected: Boolean = false,
 ) {
     val textState = RichTextState()
@@ -53,6 +54,7 @@ fun ConversationItem(
         AvatarImage(
             avatarUrl = conversation.avatarUrl,
             avatarInitials = conversation.avatarInitials,
+            onClick = { onContactClick(conversation.participants.first().domainName) }
         )
 
         Spacer(modifier = Modifier.width(12.dp))

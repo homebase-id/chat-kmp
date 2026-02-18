@@ -58,7 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.common.OdinId
-import id.homebase.chat.ConversationListUiAction
+import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.theme.Dimens
@@ -196,6 +196,11 @@ fun ConversationContent(
                             avatarInitials = conversation.avatarInitials,
                             size = 32.dp,
                             fontSize = 12.sp,
+                            onClick = {
+                                onUiAction(
+                                    ConversationListUiAction.ShowContactInfo(conversation.participants.first().domainName)
+                                )
+                            }
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
@@ -338,9 +343,7 @@ fun ConversationContent(
                                         message = message,
                                         onMessageInfo = {
                                             onUiAction(
-                                                ConversationListUiAction.ShowMessageInfo(
-                                                    message.id
-                                                )
+                                                ConversationListUiAction.ShowMessageInfo(message)
                                             )
                                         },
                                         onReply = {
@@ -403,9 +406,7 @@ fun ConversationContent(
                                         message = message,
                                         onMessageInfo = {
                                             onUiAction(
-                                                ConversationListUiAction.ShowMessageInfo(
-                                                    message.id
-                                                )
+                                                ConversationListUiAction.ShowMessageInfo(message)
                                             )
                                         },
                                         onReply = {

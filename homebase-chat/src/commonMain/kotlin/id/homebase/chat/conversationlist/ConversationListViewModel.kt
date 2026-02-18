@@ -1,4 +1,4 @@
-package id.homebase.chat
+package id.homebase.chat.conversationlist
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -105,27 +105,8 @@ class ConversationListViewModel(
                 sendEvent(ConversationListUiEvent.NavigateBack)
             }
 
-            ConversationListUiAction.NewChatClicked -> {
-                _uiState.value = _uiState.value.copy(showingNewChatPane = true, searchQuery = "")
-            }
-
-            ConversationListUiAction.BackToListClicked -> {
-                _uiState.value = _uiState.value.copy(showingNewChatPane = false, searchQuery = "")
-            }
-
-            is ConversationListUiAction.ContactClicked -> {
-                viewModelScope.launch {
-                    val conversationId = conversationWriterService.createConversation(
-                        recipients = listOf(action.contact.odinId),
-                        title = "",
-                        payloadBundle = null,
-                    )
-
-                    _uiState.value =
-                        _uiState.value.copy(showingNewChatPane = false, searchQuery = "")
-
-                    loadMessagesForConversation(conversationId)
-                }
+            ConversationListUiAction.NewConversationClicked -> {
+                _uiState.value = _uiState.value.copy(uiEvent = ConversationListUiEvent.NavigateToNewConversation)
             }
 
             is ConversationListUiAction.SearchQueryChanged -> {
@@ -525,6 +506,14 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.HideReactionDetails -> {
                 _uiState.update { it.copy(messageReactions = null) }
+            }
+
+            is ConversationListUiAction.ShowContactInfo -> {
+                _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToContactInfo((action.odinId))) }
+            }
+
+            is ConversationListUiAction.ShowMessageInfo -> {
+                _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToMessageInfo((action.message))) }
             }
 
             else -> {

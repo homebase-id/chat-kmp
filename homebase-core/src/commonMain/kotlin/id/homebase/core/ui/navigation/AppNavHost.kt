@@ -26,21 +26,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.savedstate.SavedState
+import androidx.savedstate.read
+import androidx.savedstate.write
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
 import id.homebase.auth.login.LoginViewModel
-import id.homebase.chat.ConversationListScreen
+import id.homebase.chat.contactinfo.ContactInfoScreen
+import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.messageinfo.MessageInfoScreen
+import id.homebase.chat.newconversation.NewConversationScreen
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.json.Json
 import org.koin.compose.viewmodel.koinViewModel
 
 sealed class TopLevelRoute(
@@ -67,9 +75,16 @@ fun AppNavHost(
     val currentDestination = navBackStackEntry?.destination
     val topLevelRoutes = remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Home) }
 
-    // Track if we are in a screen where bottom menu should be hidden
-    var shouldHideBottomMenu by remember { mutableStateOf(false) }
-    val shouldShowBottomNav = isAuthenticated && !useNavigationRail && !shouldHideBottomMenu
+    // Track if we're showing only the detail pane (list hidden) in a top level screen
+    var showingOnlyDetailPane by remember { mutableStateOf(false) }
+
+    // Check if current destination is a top-level route
+    val isTopLevelRoute = topLevelRoutes.any { topLevelRoute ->
+        currentDestination?.hasRoute(topLevelRoute.route::class) == true
+    }
+
+    // Only show bottom nav if on a top-level route AND not showing only detail pane
+    val shouldShowBottomNav = isAuthenticated && !useNavigationRail && isTopLevelRoute && !showingOnlyDetailPane
 
     Scaffold(
         bottomBar = {
@@ -161,7 +176,61 @@ fun AppNavHost(
                             onNavigateToSettingsScreen = {
                                 navController.navigate(Route.Settings)
                             },
-                            onDetailPaneVisibilityChanged = { shouldHideBottomMenu = it })
+                            onNavigateToNewConversation = {
+                                navController.navigate(Route.NewConversation)
+                            },
+                            onNavigateToContactInfo = {
+                                navController.navigate(Route.ContactInfo(it))
+                            },
+                            onNavigateToMessageInfo = { conversationId, messageId, fileId ->
+                                navController.navigate(Route.MessageInfo(conversationId.toString(), messageId.toString(), fileId.toString()))
+                            },
+                            onDetailPaneVisibilityChanged = { showingOnlyDetailPane = it }
+                        )
+                    }
+                }
+
+                composable<Route.NewConversation> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        NewConversationScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                        )
+                    }
+                }
+
+                composable<Route.ContactInfo> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        ContactInfoScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                        )
+                    }
+                }
+
+                composable<Route.MessageInfo>(
+                    //typeMap = mapOf(typeOf<Uuid>() to serializableType<Uuid>())
+                ) {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        MessageInfoScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                        )
                     }
                 }
 
@@ -198,49 +267,23 @@ fun AppNavHost(
     }
 }
 
-//        // ChatMessages route (shows messages for a conversation)
-//        composable<Route.ChatMessages> { backStackEntry ->
-//            val conversationId =
-//                    backStackEntry.arguments?.read { getString("conversationId") }
-//                            ?: error("conversationId missing")
-//
-//            AuthenticatedRouteWithFlowManager(
-//                    authState = youAuthFlowManager.authState,
-//                    onUnauthenticated = {
-//                        navController.navigate(Route.Login) { popUpTo(0) { inclusive = true } }
-//                    }
-//            ) {
-//                ChatMessagesPage(
-//                        conversationId = conversationId,
-//                        youAuthFlowManager = youAuthFlowManager,
-//                        onNavigateBack = { navController.popBackStack() },
-//                        onNavigateToMessageDetail = { driveId, fileId ->
-//                            navController.navigate(Route.ChatMessageDetail(driveId, fileId))
-//                        }
-//                )
-//            }
-//        }
-//
-//        // ChatMessageDetail route
-//        composable<Route.ChatMessageDetail> { backStackEntry ->
-//            val driveId =
-//                    backStackEntry.arguments?.read { getString("driveId") }
-//                            ?: error("driveId missing")
-//
-//            val fileId =
-//                    backStackEntry.arguments?.read { getString("fileId") }
-//                            ?: error("fileId missing")
-//
-//            val viewModel =
-//                    koinViewModel<ChatMessageDetailViewModel>(
-//                            parameters = { parametersOf(Uuid.parse(driveId), Uuid.parse(fileId)) }
-//                    )
-//
-//            ChatMessageDetailPage(
-//                    viewModel = viewModel,
-//                    onNavigateBack = { navController.popBackStack() }
-//            )
-//        }
+inline fun <reified T : Any> serializableType(
+    isNullableAllowed: Boolean = false,
+    json: Json = Json,
+) = object : NavType<T>(isNullableAllowed = isNullableAllowed) {
+
+    override fun put(bundle: SavedState, key: String, value: T) {
+        bundle.write { putString(key, json.encodeToString(value)) }
+    }
+
+    override fun get(bundle: SavedState, key: String): T? {
+        return json.decodeFromString<T?>(bundle.read { getString(key) })
+    }
+
+    override fun parseValue(value: String): T = json.decodeFromString(value)
+
+    override fun serializeAsValue(value: T): String = json.encodeToString(value)
+}
 
 /** Wrapper for routes that require authentication using YouAuthFlowManager. */
 @Composable

@@ -5,13 +5,13 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.OdinId
 import id.homebase.chat.services.MessageAppData
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
-import id.homebase.api.common.OdinId
 
 @Immutable
-data class MessageUiModel(
+data class  MessageUiModel(
 
     val id: Uuid, // uniqueId
     /** GlobalTransitId of the payload - same across all recipients */

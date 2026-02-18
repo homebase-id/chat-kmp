@@ -56,7 +56,7 @@ import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
-import id.homebase.chat.FullScreenOverlay
+import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.util.formatTimestamp
@@ -212,7 +212,8 @@ fun FullScreenMediaViewer(
                         )
                     }
 
-                }, navigationIcon = {
+                },
+                navigationIcon = {
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
@@ -220,7 +221,8 @@ fun FullScreenMediaViewer(
                         )
                     }
 
-                }, actions = {
+                },
+                actions = {
                     Box {
                         IconButton(onClick = {
                             showMenu = true
@@ -243,9 +245,10 @@ fun FullScreenMediaViewer(
                             }
                         )
                     }
-                }, colors = TopAppBarDefaults.topAppBarColors(
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                )
+                ),
             )
         }
 

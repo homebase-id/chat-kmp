@@ -48,7 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.window.core.layout.WindowSizeClass
-import id.homebase.chat.ConversationListUiAction
+import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -163,7 +163,7 @@ fun ConversationListPane(
                         ) {
                             Spacer(modifier = Modifier.height(16.dp))
                             IconButton(onClick = {
-                                onUiAction(ConversationListUiAction.NewChatClicked)
+                                onUiAction(ConversationListUiAction.NewConversationClicked)
                             }) {
                                 Icon(
                                     imageVector = FeatherEdit,
@@ -178,7 +178,7 @@ fun ConversationListPane(
             floatingActionButton = {
                 if (!iconOnlyMode) {
                     FloatingActionButton(onClick = {
-                        onUiAction(ConversationListUiAction.NewChatClicked)
+                        onUiAction(ConversationListUiAction.NewConversationClicked)
                     }) {
                         Icon(
                             imageVector = FeatherEdit,
@@ -216,12 +216,17 @@ fun ConversationListPane(
                             )
                         } else {
                             ConversationItem(
-                                conversation = conversation, onClick = {
+                                conversation = conversation,
+                                onClick = {
                                     if (filterByUnread) {
                                         selectedFilterConversationId = conversation.id
                                     }
                                     onConversationClick(conversation.id)
-                                }, isSelected = conversation.id == selectedConversationId
+                                },
+                                onContactClick = { odinId ->
+                                    onUiAction(ConversationListUiAction.ShowContactInfo(odinId))
+                                },
+                                isSelected = conversation.id == selectedConversationId,
                             )
                         }
                     }

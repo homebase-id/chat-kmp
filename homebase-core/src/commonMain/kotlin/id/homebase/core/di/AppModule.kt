@@ -2,7 +2,10 @@ package id.homebase.core.di
 
 import id.homebase.api.di.apiModule
 import id.homebase.auth.login.LoginViewModel
-import id.homebase.chat.ConversationListViewModel
+import id.homebase.chat.contactinfo.ContactInfoViewModel
+import id.homebase.chat.conversationlist.ConversationListViewModel
+import id.homebase.chat.messageinfo.MessageInfoViewModel
+import id.homebase.chat.newconversation.NewConversationViewModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
@@ -40,6 +43,9 @@ val appModule = module {
 
     viewModelOf(::HomeViewModel)
     viewModelOf(::ConversationListViewModel)
+    viewModelOf(::NewConversationViewModel)
+    viewModelOf(::MessageInfoViewModel)
+    viewModelOf(::ContactInfoViewModel)
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::LoginViewModel)

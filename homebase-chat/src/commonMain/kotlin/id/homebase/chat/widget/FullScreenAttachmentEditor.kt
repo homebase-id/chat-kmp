@@ -43,8 +43,8 @@ import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.chat.AttachmentPendingFile
-import id.homebase.chat.FullScreenOverlay
+import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_message_remove_gallery_image
