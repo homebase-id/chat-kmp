@@ -112,6 +112,7 @@ fun ConversationListPane(
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    Spacer(modifier = Modifier.width(20.dp))
                                     AvatarImage(
                                         avatarUrl = null,
                                         avatarInitials = "CH",
@@ -127,6 +128,9 @@ fun ConversationListPane(
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
+                            },
+                            actions = {
+
                             }
                         )
                         Row(

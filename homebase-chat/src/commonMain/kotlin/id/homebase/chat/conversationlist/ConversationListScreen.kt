@@ -223,6 +223,28 @@ fun ChatListUi(
     // Notify parent about detail pane visibility in compact view
     LaunchedEffect(showingOnlyDetail) { onDetailPaneVisibilityChanged(showingOnlyDetail) }
 
+    // Clear selectedConversationId when user navigates back to list in compact mode
+    // This ensures that when returning to the screen, it shows the list instead of detail
+    LaunchedEffect(isListPaneHidden, isDetailPaneVisible) {
+        if (scaffoldDirective.maxHorizontalPartitions == 1 &&
+            !isListPaneHidden &&
+            !isDetailPaneVisible &&
+            uiState.selectedConversationId != null) {
+            // User is back on list in compact mode, clear the selection
+            onUiAction(ConversationListUiAction.ClearSelection)
+        }
+    }
+
+    // Restore detail pane when returning to this screen ONLY if we have a selected conversation
+    LaunchedEffect(Unit) {
+        val selectedId = uiState.selectedConversationId
+        // Only restore if we have a selected conversation AND we're in compact mode
+        if (selectedId != null && scaffoldDirective.maxHorizontalPartitions == 1) {
+            // Re-navigate to ensure the detail is properly loaded
+            scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, selectedId)
+        }
+    }
+
     @Suppress("DEPRECATION")
     BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {

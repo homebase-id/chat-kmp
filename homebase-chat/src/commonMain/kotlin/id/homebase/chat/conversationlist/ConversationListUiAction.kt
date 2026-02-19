@@ -9,6 +9,7 @@ sealed interface ConversationListUiAction {
     data class ConversationClicked(val conversationId: Uuid) : ConversationListUiAction
     data object BackClicked : ConversationListUiAction
     data object NewConversationClicked : ConversationListUiAction
+    data object ClearSelection : ConversationListUiAction
 
     data class SearchQueryChanged(val query: String) : ConversationListUiAction
     data class SendMessage(val conversationId: Uuid) : ConversationListUiAction

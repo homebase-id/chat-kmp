@@ -109,6 +109,11 @@ class ConversationListViewModel(
                 _uiState.value = _uiState.value.copy(uiEvent = ConversationListUiEvent.NavigateToNewConversation)
             }
 
+            ConversationListUiAction.ClearSelection -> {
+                // Clear the selected conversation when user navigates back to list
+                _uiState.update { it.copy(selectedConversationId = null) }
+            }
+
             is ConversationListUiAction.SearchQueryChanged -> {
                 _uiState.value = _uiState.value.copy(searchQuery = action.query)
             }
