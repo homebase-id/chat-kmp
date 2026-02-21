@@ -23,21 +23,29 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
-import id.homebase.chat.data.ConversationUiModel
+import id.homebase.api.common.OdinId
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.widget.AvatarImage
+import kotlin.time.Instant
 
 @Composable
 fun ConversationItem(
-    conversation: ConversationUiModel,
+    //conversation: ConversationUiModel,
+    groupName: String,
+    message: String,
+    unreadCount: Int,
+    avatarUrl: String,
+    avatarInitials: String,
+    contactOdinId: OdinId?,
+    timestamp: Instant,
     onClick: () -> Unit,
-    onContactClick: (odinId: String) -> Unit,
+    onContactClick: (odinId: OdinId) -> Unit,
     isSelected: Boolean = false,
 ) {
     val textState = RichTextState()
     textState.config.listIndent = 0
-    textState.setMarkdown(conversation.lastMessage)
+    textState.setMarkdown(message)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -52,9 +60,13 @@ fun ConversationItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         AvatarImage(
-            avatarUrl = conversation.avatarUrl,
-            avatarInitials = conversation.avatarInitials,
-            onClick = { onContactClick(conversation.participants.first().domainName) }
+            avatarUrl = avatarUrl,
+            avatarInitials = avatarInitials,
+            onClick = {
+                contactOdinId?.let {
+                    onContactClick(it)
+                }
+            }
         )
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -69,9 +81,9 @@ fun ConversationItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = conversation.name,
+                    text = groupName,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                    fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -80,13 +92,13 @@ fun ConversationItem(
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Text(
-                    text = formatTimestamp(conversation.timestamp),
+                    text = formatTimestamp(timestamp),
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (conversation.unreadCount > 0)
+                    color = if (unreadCount > 0)
                         MaterialTheme.colorScheme.primary
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (conversation.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
+                    fontWeight = if (unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
                 )
             }
 
@@ -106,7 +118,7 @@ fun ConversationItem(
                     modifier = Modifier.weight(1f)
                 )
 
-                if (conversation.unreadCount > 0) {
+                if (unreadCount > 0) {
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Badge(
@@ -115,7 +127,7 @@ fun ConversationItem(
                     ) {
                         Text(
                             modifier = Modifier.padding(2.dp),
-                            text = conversation.unreadCount.toString(),
+                            text = unreadCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -128,7 +140,8 @@ fun ConversationItem(
 
 @Composable
 fun ConversationAvatarItem(
-    conversation: ConversationUiModel,
+    avatarUrl: String,
+    avatarInitials: String,
     onClick: () -> Unit,
     isSelected: Boolean = false,
 ) {
@@ -147,8 +160,8 @@ fun ConversationAvatarItem(
     ) {
         AvatarImage(
             modifier = Modifier.padding(8.dp),
-            avatarUrl = conversation.avatarUrl,
-            avatarInitials = conversation.avatarInitials,
+            avatarUrl = avatarUrl,
+            avatarInitials = avatarInitials,
         )
     }
 }

@@ -2,6 +2,7 @@ package id.homebase.chat.conversationlist
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -146,7 +147,8 @@ fun ConversationListScreen(
     ChatListUi(
         snackbarHostState = snackbarHostState,
         uiState = uiState,
-        textFieldState = viewModel.messageState,
+        conversationSearchTextFieldState = viewModel.conversationSearchTextState,
+        messageInputTextFieldState = viewModel.messageInputTextState,
         onUiAction = viewModel::onAction,
         onNavigateToSettingsScreen = onNavigateToSettingsScreen,
         onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
@@ -158,7 +160,8 @@ fun ConversationListScreen(
 fun ChatListUi(
     snackbarHostState: SnackbarHostState,
     uiState: ConversationListUiState,
-    textFieldState: RichTextState,
+    conversationSearchTextFieldState: TextFieldState,
+    messageInputTextFieldState: RichTextState,
     onUiAction: (ConversationListUiAction) -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
@@ -280,13 +283,14 @@ fun ChatListUi(
 //                            })
 
                     ConversationListPane(
-                        conversations = uiState.conversations,
+                        listContent = uiState.conversationsContent,
                         selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                        onConversationClick = { conversationId ->
+                        filterByUnread = uiState.filterByUnread,
+                        isSearchActive = uiState.isSearchActive,
+                        searchTextState = conversationSearchTextFieldState,
+                        onConversationClick = { conversationId, messageId ->
                             onUiAction(
-                                ConversationListUiAction.ConversationClicked(
-                                    conversationId
-                                )
+                                ConversationListUiAction.ConversationClicked(conversationId, messageId)
                             )
                             scope.launch {
                                 scaffoldNavigator.navigateTo(
@@ -302,12 +306,12 @@ fun ChatListUi(
             detailPane = {
                 AnimatedPane {
                     uiState.selectedConversationId?.let { conversationId ->
-                        val conversation = uiState.conversations.find { it.id == conversationId }
+                        val conversation = uiState.activeConversations.find { it.id == conversationId }
                         if (conversation != null) {
                             key(conversation.id) {
                                 ConversationMessagesPane(
                                     conversation = conversation,
-                                    textFieldState = textFieldState,
+                                    textFieldState = messageInputTextFieldState,
                                     messages = uiState.currentConversationMessages,
                                     isLoadingNewMessage = uiState.loadingNewMessage,
                                     fullScreenOverlay = uiState.fullScreenOverlay,
@@ -372,7 +376,8 @@ fun ChatListUiPreview() {
         ChatListUi(
             snackbarHostState = SnackbarHostState(),
             uiState = ConversationListUiState(),
-            textFieldState = RichTextState(),
+            conversationSearchTextFieldState = TextFieldState(),
+            messageInputTextFieldState = RichTextState(),
             onUiAction = {},
             onNavigateToSettingsScreen = {},
         )

@@ -57,8 +57,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.theme.Dimens
@@ -88,7 +88,6 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Clock
-import kotlin.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -98,7 +97,7 @@ fun ConversationContent(
     listState: LazyListState,
     isLoadingNewMessage: Boolean,
     isScrollPositionReady: Boolean,
-    groupedMessages: ImmutableList<MessageSectionItem>,
+    messages: ImmutableList<MessageListContentModel>,
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
@@ -279,7 +278,7 @@ fun ConversationContent(
                     .imePadding()
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
-            if (isScrollPositionReady && groupedMessages.isNotEmpty()) {
+            if (isScrollPositionReady && messages.isNotEmpty()) {
                 Box(
                     modifier = Modifier.weight(1f),
                 ) {
@@ -314,155 +313,21 @@ fun ConversationContent(
                                 }
                             }
                         }
-
-                        groupedMessages.forEach { section ->
-                            item(key = "date_${section.date}") {
-                                Box(
-                                    modifier =
-                                        Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
+                        items(messages, key = { message -> message.id }) { messageItem ->
+                            when (messageItem) {
+                                is MessageListContentModel.Section -> {
                                     MessagesSection(
-                                        text = getDateSectionLabel(section.firstMessageTime)
+                                        text = getDateSectionLabel(messageItem.date)
                                     )
                                 }
-                            }
-                            items(
-                                items = section.messages,
-                                key = { message -> message.id }) { message ->
 
-                                // TODO: currentOdinId is "" - is that supposed to be the case??
-                                val odinId: OdinId? = try {
-                                    OdinId(currentOdinId)
-                                } catch (_: Exception) {
-                                    null
-                                }
-
-                                if (message.isCurrentUser(odinId)) {
-                                    SentMessageBubble(
-                                        message = message,
-                                        onMessageInfo = {
-                                            onUiAction(
-                                                ConversationListUiAction.ShowMessageInfo(message)
-                                            )
-                                        },
-                                        onReply = {
-                                            onUiAction(
-                                                ConversationListUiAction.ReplyToMessage(
-                                                    message
-                                                )
-                                            )
-                                        },
-                                        onStar = {
-                                            onUiAction(
-                                                ConversationListUiAction.StarMessage(
-                                                    message.id
-                                                )
-                                            )
-                                        },
-                                        onEdit = {
-                                            onUiAction(
-                                                ConversationListUiAction.EditMessage(
-                                                    message.id
-                                                )
-                                            )
-                                        },
-                                        onDelete = {
-                                            onUiAction(
-                                                ConversationListUiAction.DeleteMessage(
-                                                    message.id
-                                                )
-                                            )
-                                        },
-                                        onMediaClick = { payload ->
-                                            onUiAction(
-                                                ConversationListUiAction.MediaClicked(
-                                                    message,
-                                                    payload.key,
-                                                )
-                                            )
-                                        },
-                                        onAddReaction = { _, reaction ->
-                                            onUiAction(
-                                                ConversationListUiAction.AddReaction(
-                                                    message.conversationId,
-                                                    message.id,
-                                                    reaction = reaction
-                                                )
-                                            )
-                                        },
-                                        onShowReactions = {
-                                            onUiAction(
-                                                ConversationListUiAction.ShowReactionDetails(
-                                                    messageId = message.id
-                                                )
-                                            )
-                                        },
+                                is MessageListContentModel.Message -> {
+                                    MessageItem(
+                                        message = messageItem.message,
+                                        currentOdinId = currentOdinId,
                                         animatedVisibilityScope = animatedVisibilityScope,
                                         sharedTransitionScope = sharedTransitionScope,
-                                    )
-                                } else {
-                                    ReceivedMessageBubble(
-                                        message = message,
-                                        onMessageInfo = {
-                                            onUiAction(
-                                                ConversationListUiAction.ShowMessageInfo(message)
-                                            )
-                                        },
-                                        onReply = {
-                                            onUiAction(
-                                                ConversationListUiAction.ReplyToMessage(
-                                                    message
-                                                )
-                                            )
-                                        },
-                                        onStar = {
-                                            onUiAction(
-                                                ConversationListUiAction.StarMessage(
-                                                    message.id
-                                                )
-                                            )
-                                        },
-                                        onDelete = {
-                                            onUiAction(
-                                                ConversationListUiAction.DeleteMessage(
-                                                    message.id
-                                                )
-                                            )
-                                        },
-                                        onMarkAsRead = {
-                                            onUiAction(
-                                                ConversationListUiAction.MarkAsRead(
-                                                    message.id
-                                                )
-                                            )
-                                        },
-                                        onAddReaction = { _, reaction ->
-                                            onUiAction(
-                                                ConversationListUiAction.AddReaction(
-                                                    message.conversationId,
-                                                    message.id,
-                                                    reaction = reaction
-                                                )
-                                            )
-                                        },
-                                        onShowReactions = {
-                                            onUiAction(
-                                                ConversationListUiAction.ShowReactionDetails(
-                                                    messageId = message.id
-                                                )
-                                            )
-                                        },
-                                        onMediaClick = { payload ->
-                                            onUiAction(
-                                                ConversationListUiAction.MediaClicked(
-                                                    message,
-                                                    payload.key,
-                                                )
-                                            )
-                                        },
-                                        animatedVisibilityScope = animatedVisibilityScope,
-                                        sharedTransitionScope = sharedTransitionScope,
+                                        onUiAction = onUiAction
                                     )
                                 }
                             }
@@ -631,9 +496,8 @@ fun ConversationContent(
 }
 
 @Composable
-private fun getDateSectionLabel(timestamp: Instant): String {
+private fun getDateSectionLabel(messageDate: LocalDate): String {
     val timezone = TimeZone.currentSystemDefault()
-    val messageDate = timestamp.toLocalDateTime(timezone).date
     val today = Clock.System.now().toLocalDateTime(timezone).date
     val yesterday = today.minus(1, DateTimeUnit.DAY)
 

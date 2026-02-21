@@ -45,11 +45,15 @@
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
     <string name="chat_filter_by_unread_clear_button">Ryd filter</string>
     <string name="chat_filter_by_unread_description">Filtreret på ulæste</string>
-    <string name="chat_filter_by_unread_empty_description">Ingen ulæste samtaler</string>
+    <string name="chat_search_empty_description">Ingen ulæste samtaler</string>
     <string name="chat_select_a_conversation">Vælg en samtale</string>
     <string name="chat_select_a_conversation_subtitle">Vælg en samtale fra listen for at se beskederne</string>
     <string name="chat_new_conversation">Ny samtale</string>
     <string name="chat_search_placeholder">Søg</string>
+    <string name="chat_mark_all_as_read">Markér alle som læste</string>
+    <string name="chat_search_result_conversations">Samtaler</string>
+    <string name="chat_search_result_messages">Beskeder</string>
+    <string name="chat_search_result_empty">Ingen resultater fundet for '%1$s'</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>

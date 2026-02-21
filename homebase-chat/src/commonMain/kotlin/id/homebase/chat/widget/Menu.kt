@@ -21,13 +21,17 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
 import id.homebase.resources.chat_clear
 import id.homebase.resources.chat_delete
+import id.homebase.resources.chat_filter_by_unread_button
+import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_info
+import id.homebase.resources.chat_mark_all_as_read
 import id.homebase.resources.chat_message_edit
 import id.homebase.resources.chat_message_info
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_message_star
 import id.homebase.resources.delete
 import id.homebase.resources.save
+import id.homebase.resources.settings
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -270,6 +274,43 @@ fun FullScreenMediaMenu(
                     contentDescription = null
                 )
             }
+        )
+    }
+}
+
+@Composable
+fun ConversationListMenu(
+    showMenu: Boolean,
+    isFilteringUnread: Boolean,
+    dismissMenu: () -> Unit,
+    onMarkAllAsRead: () -> Unit,
+    onFilterUnread: () -> Unit,
+    onClearFilterUnread: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    DropdownMenu(
+        shape = RoundedCornerShape(Dimens.Message.cornerRadius),
+        expanded = showMenu,
+        onDismissRequest = dismissMenu
+    ) {
+        DropdownMenuItem(
+            onClick = onMarkAllAsRead,
+            text = { Text(text = stringResource(MR.string.chat_mark_all_as_read)) },
+        )
+        if (isFilteringUnread) {
+            DropdownMenuItem(
+                onClick = onClearFilterUnread,
+                text = { Text(text = stringResource(MR.string.chat_filter_by_unread_clear_button)) },
+            )
+        } else {
+            DropdownMenuItem(
+                onClick = onFilterUnread,
+                text = { Text(text = stringResource(MR.string.chat_filter_by_unread_button)) },
+            )
+        }
+        DropdownMenuItem(
+            onClick = onSettings,
+            text = { Text(text = stringResource(MR.string.settings)) },
         )
     }
 }

@@ -47,11 +47,15 @@
     <string name="chat_filter_by_unread_button">Filter by unread</string>
     <string name="chat_filter_by_unread_clear_button">Clear filter</string>
     <string name="chat_filter_by_unread_description">Filtered by unread</string>
-    <string name="chat_filter_by_unread_empty_description">No unread conversations</string>
+    <string name="chat_search_empty_description">No unread conversations</string>
     <string name="chat_select_a_conversation">Select a conversation</string>
     <string name="chat_select_a_conversation_subtitle">Choose a conversation from the list to view messages</string>
     <string name="chat_new_conversation">New conversation</string>
     <string name="chat_search_placeholder">Search</string>
+    <string name="chat_mark_all_as_read">Mark all as read</string>
+    <string name="chat_search_result_conversations">Conversations</string>
+    <string name="chat_search_result_messages">Messages</string>
+    <string name="chat_search_result_empty">No results found for '%1$s'</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>

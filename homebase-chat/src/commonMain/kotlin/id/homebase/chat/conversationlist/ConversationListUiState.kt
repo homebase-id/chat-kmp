@@ -3,7 +3,6 @@ package id.homebase.chat.conversationlist
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage
@@ -12,26 +11,50 @@ import id.homebase.core.widget.EmojiReaction
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.datetime.LocalDate
+import org.jetbrains.compose.resources.StringResource
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 @Immutable
 data class ConversationListUiState(
-    val conversations: ImmutableList<ConversationUiModel> = persistentListOf(),
+    val activeConversations: ImmutableList<ConversationUiModel> = persistentListOf(),
+    val conversationsContent: ConversationListContentState = ConversationListContentState.Loading,
     val selectedConversationId: Uuid? = null,
-    val contacts: ImmutableList<ContactUiModel> = persistentListOf(),
-    val searchQuery: String = "",
-    val currentConversationMessages: ImmutableList<MessageUiModel> = persistentListOf(),
+    val currentConversationMessages: ImmutableList<MessageListContentModel> = persistentListOf(),
     val conversationScrollPosition: ScrollPosition? = null,
     val currentOdinId: String = "",
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
     val loadingNewMessage: Boolean = false,
+    val filterByUnread: Boolean = false,
+    val isSearchActive: Boolean = false,
 
     val messageReactions: List<EmojiReaction>? = null,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
 )
+
+@Immutable
+sealed interface ConversationListContentState {
+    data object Loading : ConversationListContentState
+    data object Empty : ConversationListContentState
+    data class EmptySearch(val query: String) : ConversationListContentState
+    data class Items(val list: ImmutableList<ConversationListContentModel>) : ConversationListContentState
+}
+
+@Immutable
+sealed interface ConversationListContentModel {
+    data class Conversation(val conversation: ConversationUiModel) : ConversationListContentModel
+    data class Message(val message: MessageUiModel) : ConversationListContentModel
+    data class Header(val resource: StringResource) : ConversationListContentModel
+}
+
+@Immutable
+sealed class MessageListContentModel(val id: String) {
+    data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
+    data class Message(val message: MessageUiModel) : MessageListContentModel(message.id.toString())
+}
 
 @Immutable
 sealed interface FullScreenOverlay {

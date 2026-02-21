@@ -6,12 +6,14 @@ import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
 sealed interface ConversationListUiAction {
-    data class ConversationClicked(val conversationId: Uuid) : ConversationListUiAction
+    data class ConversationClicked(val conversationId: Uuid, val messageId: Uuid?) : ConversationListUiAction
     data object BackClicked : ConversationListUiAction
+    data object SearchClicked : ConversationListUiAction
+    data object SearchBackClicked : ConversationListUiAction
     data object NewConversationClicked : ConversationListUiAction
     data object ClearSelection : ConversationListUiAction
-
-    data class SearchQueryChanged(val query: String) : ConversationListUiAction
+    data object FilterByUnreadClicked : ConversationListUiAction
+    data object ClearFilterByUnreadClicked : ConversationListUiAction
     data class SendMessage(val conversationId: Uuid) : ConversationListUiAction
     data class SendFile(
         val conversationId: Uuid, val message: String, val attachments: List<AttachmentPendingFile>

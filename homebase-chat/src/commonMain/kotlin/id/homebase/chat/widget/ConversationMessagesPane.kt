@@ -27,6 +27,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.SendFile
 import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.HomebaseConstants
@@ -35,19 +36,16 @@ import id.homebase.core.widget.EmojiReaction
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun ConversationMessagesPane(
     conversation: ConversationUiModel,
     textFieldState: RichTextState,
-    messages: ImmutableList<MessageUiModel>,
+    messages: ImmutableList<MessageListContentModel>,
     isLoadingNewMessage: Boolean,
     savedScrollPosition: ScrollPosition?,
     fullScreenOverlay: FullScreenOverlay?,
@@ -65,19 +63,6 @@ fun ConversationMessagesPane(
                 onUiAction(ConversationListUiAction.AttachPlatformFile(conversation.id, listOf(file)))
             }
         }
-
-    // Group messages within day sections
-    val groupedMessages = remember(conversation.id, messages) {
-        val timezone = TimeZone.currentSystemDefault()
-        messages.groupBy { message ->
-            val date = message.created.toLocalDateTime(timezone).date
-            date
-        }.map { (date, msgs) ->
-            MessageSectionItem(
-                firstMessageTime = msgs.first().created, messages = msgs, date = date
-            )
-        }.sortedBy { it.date }.toImmutableList()
-    }
 
     val listState = remember(conversation.id) {
         val conversationId = conversation.id
@@ -99,8 +84,8 @@ fun ConversationMessagesPane(
     }
 
     // Restore scroll position after groupedMessages are ready
-    LaunchedEffect(conversation.id, groupedMessages) {
-        val totalItems = groupedMessages.sumOf { it.messages.size + 1 } + 2
+    LaunchedEffect(conversation.id, messages) {
+        val totalItems = messages.size + 1 // +1 for header item
         val conversationId = conversation.id
         val currentIndex = listState.firstVisibleItemIndex
 
@@ -207,7 +192,7 @@ fun ConversationMessagesPane(
                     listState = listState,
                     isLoadingNewMessage = isLoadingNewMessage,
                     isScrollPositionReady = true,
-                    groupedMessages = groupedMessages,
+                    messages = messages,
                     showBackButton = showBackButton,
                     onBackClick = onBackClick,
                     onUiAction = onUiAction,
