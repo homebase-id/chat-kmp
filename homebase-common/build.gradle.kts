@@ -77,6 +77,7 @@ kotlin {
             implementation(libs.ktor.logging)
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
+            implementation(libs.richeditor.compose)
             api(libs.coil3)
             api(libs.coil3.compose)
             api(libs.coil3.network)

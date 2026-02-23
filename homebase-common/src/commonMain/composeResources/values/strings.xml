@@ -14,7 +14,11 @@
     <string name="share">Share</string>
     <string name="ok">Ok</string>
     <string name="cancel">Cancel</string>
-
+    <string name="replying_to">Replying to %1$s</string>
+    <string name="cancel_reply">Cancel reply</string>
+    <string name="backspace">Backspace</string>
+    <string name="search">Search</string>
+    <string name="clear_input">Clear input</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -81,7 +85,8 @@
     <string name="chat_message_remove_gallery_image">Remove image</string>
     <string name="chat_message_hide_keyboard">Hide keyboard</string>
 
-    <string name="replying_to">Replying to %1$s</string>
-    <string name="cancel_reply">Cancel reply</string>
+    <!-- Emoji -->
+    <string name="emoji_search_placeholder">Search emoji</string>
+    <string name="emoji_none_found">No emojis found</string>
 
 </resources>
