@@ -1,6 +1,7 @@
 package id.homebase.chat
 
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage
 import io.github.vinceglb.filekit.PlatformFile
@@ -70,5 +71,8 @@ sealed interface ConversationListUiAction {
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
 
     data object HideReactionDetails : ConversationListUiAction
+
+    data class IncomingConnectionRequestClicked(val request: IncomingConnectionRequestUiModel) :
+        ConversationListUiAction
 
 }

@@ -30,10 +30,31 @@ data class ConnectionRequestResponse(
     val message: String? = null,
     val introducerOdinId: OdinId? = null,
     val receivedTimestampMilliseconds: Long,
-    val connectionRequestOrigin: String,
+    val connectionRequestOrigin: String, // ConnectionRequestOrigin
     val recipient: OdinId,
-    val direction: String
+    val direction: String // incoming  or outgoing
 )
+//
+//enum class ConnectionRequestDirection {
+//    Incoming,
+//    Outgoing
+//}
+
+// TODO
+//public enum ConnectionRequestOrigin
+//{
+//    None = 0,
+//
+//    /// <summary>
+//    /// Indicates the connection request was sent by the identity owner
+//    /// </summary>
+//    IdentityOwner = 1,
+//
+//    /// <summary>
+//    /// Indicates the connection request came because another identity introduce you to the recipient
+//    /// </summary>
+//    Introduction = 2
+//}
 
 // ==================== PROVIDER ====================
 

@@ -3,7 +3,7 @@ package id.homebase.chat
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.reactions.GroupReactionItem
+import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -22,6 +22,7 @@ data class ConversationListUiState(
     val selectedConversationId: Uuid? = null,
     val showingNewChatPane: Boolean = false,
     val contacts: ImmutableList<ContactUiModel> = persistentListOf(),
+    val incomingConnectionRequests: ImmutableList<IncomingConnectionRequestUiModel> = persistentListOf(),
     val searchQuery: String = "",
     val currentConversationMessages: ImmutableList<MessageUiModel> = persistentListOf(),
     val conversationScrollPosition: ScrollPosition? = null,

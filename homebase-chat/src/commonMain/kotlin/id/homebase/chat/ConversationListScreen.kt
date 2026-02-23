@@ -27,8 +27,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
@@ -40,6 +42,8 @@ import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.NewConversationPane
+import id.homebase.chat.widget.requests.ConnectionRequestBanner
+import id.homebase.chat.widget.requests.ConnectionRequestListPane
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -181,6 +185,7 @@ fun ChatListUi(
     val isDetailPaneVisible =
         scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
     val showingOnlyDetail = isListPaneHidden && isDetailPaneVisible
+    var showingConnectionRequests by remember { mutableStateOf(false) }
 
     LaunchedEffect(isExpanded) {
         if (!isExpanded && scaffoldNavigator.currentDestination?.pane == ListDetailPaneScaffoldRole.Detail) {
@@ -221,40 +226,62 @@ fun ChatListUi(
             scaffoldState = scaffoldNavigator.scaffoldState,
             listPane = {
                 AnimatedPane(modifier = Modifier) {
-                    if (uiState.showingNewChatPane) {
-                        NewConversationPane(
-                            contacts = uiState.contacts,
-                            searchQuery = uiState.searchQuery,
-                            onBackClick = {
-                                onUiAction(ConversationListUiAction.BackToListClicked)
-                            },
-                            onContactClick = { contact ->
-                                onUiAction(ConversationListUiAction.ContactClicked(contact))
-                            },
-                            onSearchQueryChanged = { query ->
-                                onUiAction(
-                                    ConversationListUiAction.SearchQueryChanged(query)
-                                )
-                            })
-                    } else {
-                        ConversationListPane(
-                            conversations = uiState.conversations,
-                            selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                            onConversationClick = { conversationId ->
-                                onUiAction(
-                                    ConversationListUiAction.ConversationClicked(
-                                        conversationId
+
+                    ConnectionRequestBanner(
+                        hasRequests = uiState.incomingConnectionRequests.isNotEmpty(),
+                        onClick = { showingConnectionRequests = true }
+                    )
+
+                    when {
+                        showingConnectionRequests -> {
+                            ConnectionRequestListPane(
+                                incomingRequests = uiState.incomingConnectionRequests,
+                                onBackClick = { showingConnectionRequests = false },
+                                onIncomingRequestClick = { request ->
+                                    onUiAction(
+                                        ConversationListUiAction.IncomingConnectionRequestClicked(request)
                                     )
-                                )
-                                scope.launch {
-                                    scaffoldNavigator.navigateTo(
-                                        ListDetailPaneScaffoldRole.Detail, conversationId
+                                    showingConnectionRequests = false
+                                },
+                            )
+                        }
+
+                        uiState.showingNewChatPane -> {
+                            NewConversationPane(
+                                contacts = uiState.contacts,
+                                searchQuery = uiState.searchQuery,
+                                onBackClick = {
+                                    onUiAction(ConversationListUiAction.BackToListClicked)
+                                },
+                                onContactClick = { contact ->
+                                    onUiAction(ConversationListUiAction.ContactClicked(contact))
+                                },
+                                onSearchQueryChanged = { query ->
+                                    onUiAction(
+                                        ConversationListUiAction.SearchQueryChanged(query)
                                     )
-                                }
-                            },
-                            onProfileClick = onNavigateToSettingsScreen,
-                            onUiAction = onUiAction,
-                        )
+                                })
+                        }
+                        else -> {
+                            ConversationListPane(
+                                conversations = uiState.conversations,
+                                selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
+                                onConversationClick = { conversationId ->
+                                    onUiAction(
+                                        ConversationListUiAction.ConversationClicked(
+                                            conversationId
+                                        )
+                                    )
+                                    scope.launch {
+                                        scaffoldNavigator.navigateTo(
+                                            ListDetailPaneScaffoldRole.Detail, conversationId
+                                        )
+                                    }
+                                },
+                                onProfileClick = onNavigateToSettingsScreen,
+                                onUiAction = onUiAction,
+                            )
+                        }
                     }
                 }
             },
