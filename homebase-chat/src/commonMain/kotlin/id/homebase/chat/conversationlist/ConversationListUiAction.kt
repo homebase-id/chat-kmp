@@ -56,7 +56,6 @@ sealed interface ConversationListUiAction {
     data class ShowMessageInfo(val message: MessageUiModel) : ConversationListUiAction
     data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction
     data object CancelReplyToMessage : ConversationListUiAction
-    data class StarMessage(val messageId: Uuid) : ConversationListUiAction
     data class EditMessage(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessage(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForMe(val messageId: Uuid) : ConversationListUiAction

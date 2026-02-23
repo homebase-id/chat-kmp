@@ -71,6 +71,7 @@ import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
+import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import id.homebase.resources.time_today
@@ -364,7 +365,10 @@ fun ConversationContent(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator()
+                    Text(
+                        text = stringResource(MR.string.chat_no_messages),
+                        modifier = Modifier.padding(24.dp),
+                    )
                 }
             }
             Surface(

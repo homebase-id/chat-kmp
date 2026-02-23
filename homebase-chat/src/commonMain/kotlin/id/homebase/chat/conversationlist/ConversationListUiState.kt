@@ -19,7 +19,7 @@ import kotlin.uuid.Uuid
 @Immutable
 data class ConversationListUiState(
     val activeConversations: ImmutableList<ConversationUiModel> = persistentListOf(),
-    val conversationsContent: ConversationListContentState = ConversationListContentState.Loading,
+    val conversationsContent: ConversationListContentState = ConversationListContentState.Empty,
     val selectedConversationId: Uuid? = null,
     val currentConversationMessages: ImmutableList<MessageListContentModel> = persistentListOf(),
     val conversationScrollPosition: ScrollPosition? = null,
@@ -37,7 +37,6 @@ data class ConversationListUiState(
 
 @Immutable
 sealed interface ConversationListContentState {
-    data object Loading : ConversationListContentState
     data object Empty : ConversationListContentState
     data class EmptySearch(val query: String) : ConversationListContentState
     data class Items(val list: ImmutableList<ConversationListContentModel>) : ConversationListContentState

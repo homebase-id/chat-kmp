@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -87,7 +86,6 @@ fun ConversationListPane(
     isSearchActive: Boolean,
     searchTextState: TextFieldState,
     onProfileClick: () -> Unit,
-    onConversationClick: (conversationId: Uuid, messageId: Uuid?) -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit
 ) {
     val adaptiveInfo = currentWindowAdaptiveInfo()
@@ -294,16 +292,6 @@ fun ConversationListPane(
                         }
                     }
                     when (listContent) {
-                        is ConversationListContentState.Loading -> {
-                            item {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                ) {
-                                    CircularProgressIndicator()
-                                }
-                            }
-                        }
 
                         is ConversationListContentState.Empty -> {
                             item {
@@ -341,7 +329,6 @@ fun ConversationListPane(
                                     listItem = listItem,
                                     selectedConversationId = selectedConversationId,
                                     iconOnlyMode = iconOnlyMode,
-                                    onConversationClick = onConversationClick,
                                     onUiAction = onUiAction
                                 )
                             }
@@ -386,7 +373,6 @@ fun ConversationLisContentItem(
     listItem: ConversationListContentModel,
     selectedConversationId: Uuid?,
     iconOnlyMode: Boolean,
-    onConversationClick: (conversationId: Uuid, messageId: Uuid?) -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
 ) {
     when (listItem) {
@@ -399,7 +385,14 @@ fun ConversationLisContentItem(
                 ConversationAvatarItem(
                     avatarUrl = listItem.conversation.avatarUrl,
                     avatarInitials = listItem.conversation.avatarInitials,
-                    onClick = { onConversationClick(listItem.conversation.id, null) },
+                    onClick = {
+                        onUiAction(
+                            ConversationListUiAction.ConversationClicked(
+                                listItem.conversation.id,
+                                null
+                            )
+                        )
+                    },
                     isSelected = listItem.conversation.id == selectedConversationId,
                 )
             } else {
@@ -411,7 +404,14 @@ fun ConversationLisContentItem(
                     avatarInitials = listItem.conversation.avatarInitials,
                     contactOdinId = listItem.conversation.participants.firstOrNull(),
                     timestamp = listItem.conversation.timestamp,
-                    onClick = { onConversationClick(listItem.conversation.id, null) },
+                    onClick = {
+                        onUiAction(
+                            ConversationListUiAction.ConversationClicked(
+                                listItem.conversation.id,
+                                null
+                            )
+                        )
+                    },
                     onContactClick = { odinId ->
                         onUiAction(ConversationListUiAction.ShowContactInfo(odinId.domainName))
                     },
@@ -430,7 +430,14 @@ fun ConversationLisContentItem(
                 avatarInitials = "MS",
                 contactOdinId = listItem.message.originalAuthor,
                 timestamp = listItem.message.created,
-                onClick = { onConversationClick(listItem.message.conversationId, listItem.message.id) },
+                onClick = {
+                    onUiAction(
+                        ConversationListUiAction.ConversationClicked(
+                            listItem.message.conversationId,
+                            listItem.message.id
+                        )
+                    )
+                },
                 onContactClick = { odinId ->
                     onUiAction(ConversationListUiAction.ShowContactInfo(odinId.domainName))
                 },

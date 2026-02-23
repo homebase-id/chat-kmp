@@ -41,6 +41,17 @@
     <string name="day_saturday">Lørdag</string>
     <string name="day_sunday">Søndag</string>
 
+    <!-- Login screen -->
+    <string name="login_title">Velkommen til Homebase</string>
+    <string name="login_sub_title">Log ind med dit Homebase ID</string>
+    <string name="login_id_label">Homebase ID</string>
+    <string name="login_id_placeholder">your.identity.id</string>
+    <string name="login_sign_in_button">Log ind</string>
+    <string name="login_try_again_button">Prøv igen</string>
+    <string name="login_create_account_button">Opret konto</string>
+    <string name="login_authenticating">Authentikerer…</string>
+    <string name="login_successful">Login lykkedes</string>
+
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
     <string name="chat_filter_by_unread_clear_button">Ryd filter</string>
@@ -48,12 +59,16 @@
     <string name="chat_search_empty_description">Ingen ulæste samtaler</string>
     <string name="chat_select_a_conversation">Vælg en samtale</string>
     <string name="chat_select_a_conversation_subtitle">Vælg en samtale fra listen for at se beskederne</string>
-    <string name="chat_new_conversation">Ny samtale</string>
     <string name="chat_search_placeholder">Søg</string>
     <string name="chat_mark_all_as_read">Markér alle som læste</string>
     <string name="chat_search_result_conversations">Samtaler</string>
     <string name="chat_search_result_messages">Beskeder</string>
     <string name="chat_search_result_empty">Ingen resultater fundet for '%1$s'</string>
+
+    <!-- Conversation new -->
+    <string name="chat_new_conversation">Ny samtale</string>
+    <string name="chat_new_conversation_search_placeholder">Søg kontakter</string>
+    <string name="chat_new_conversation_new_group">Ny gruppe</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>
@@ -63,12 +78,12 @@
     <string name="chat_archive">Arkivér</string>
     <string name="chat_clear">Ryd</string>
     <string name="chat_options">Samtale menu</string>
+    <string name="chat_no_messages">Ingen beskeder endnu</string>
 
     <!-- Conversation message -->
     <string name="chat_message_info">Besked info</string>
     <string name="chat_message_reply">Svar</string>
     <string name="chat_message_reaction">Reaktion'</string>
-    <string name="chat_message_star">Stjerne</string>
     <string name="chat_message_edit">Redigér</string>
     <string name="chat_message_delete_for_everyone">Slet for alle</string>
     <string name="chat_message_delete_for_me">Slet for mig</string>

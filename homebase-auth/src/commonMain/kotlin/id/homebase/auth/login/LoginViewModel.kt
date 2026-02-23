@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.PlatformType
+import id.homebase.api.common.OdinId
 import id.homebase.api.getPlatform
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -20,7 +21,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import id.homebase.api.common.OdinId
 
 class LoginViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
@@ -52,20 +52,12 @@ class LoginViewModel(
 
     fun onAction(action: LoginUiAction) {
         when (action) {
+            is LoginUiAction.CreateAccount -> {
+                _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenUrl("https://homebase.id/sign-up")) }
+            }
             is LoginUiAction.LoginClicked -> {
                 startLogin(action.homebaseId)
             }
-
-            is LoginUiAction.RetryClicked -> {
-                _uiState.update {
-                    it.copy(
-                        errorMessage = null,
-                        isLoading = false
-                    )
-                }
-                startLogin(action.homebaseId)
-            }
-
             LoginUiAction.AppResumed -> {
                 // Auth flow may have completed or been cancelled
                 observeAuthState()
@@ -92,7 +84,7 @@ class LoginViewModel(
 
         val homebaseId = try {
             OdinId(homebaseIdValue)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             _uiState.update {
                 it.copy(errorMessage = "Valid Homebase ID is required")
             }
@@ -131,7 +123,7 @@ class LoginViewModel(
                     circles =
                         listOf(CONFIRMED_CONNECTIONS_CIRCLE_ID, AUTO_CONNECTIONS_CIRCLE_ID)
                 )
-                _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenUrl(authUrl)) }
+                _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenAuthUrl(authUrl)) }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, errorMessage = e.message ?: "Login failed")

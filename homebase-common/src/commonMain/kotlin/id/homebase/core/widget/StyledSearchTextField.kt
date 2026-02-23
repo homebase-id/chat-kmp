@@ -30,33 +30,36 @@ import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-fun MinimalSearchTextField(
+fun StyledSearchTextField(
     modifier: Modifier = Modifier,
     textFieldState: TextFieldState,
+    showSearchIcon: Boolean = true,
     showBackButton: Boolean = false,
     placeHolderText: String,
     onBackButtonClick: () -> Unit = {}
 ) {
     TextField(
         state = textFieldState,
-        modifier = modifier.heightIn(max = 40.dp),
+        modifier = modifier,
         lineLimits = TextFieldLineLimits.SingleLine,
         placeholder = {
             Text(placeHolderText)
         },
-        leadingIcon = {
-            if (showBackButton) {
-                IconButton(onClick = onBackButtonClick) {
+        leadingIcon = if (!showBackButton && !showSearchIcon) null else {
+            {
+                if (showBackButton) {
+                    IconButton(onClick = onBackButtonClick) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(MR.string.menu_back)
+                        )
+                    }
+                } else if (showSearchIcon) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(MR.string.menu_back)
+                        imageVector = Icons.Default.Search,
+                        contentDescription = stringResource(MR.string.search)
                     )
                 }
-            } else {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = stringResource(MR.string.search)
-                )
             }
         },
         trailingIcon = {
@@ -83,5 +86,22 @@ fun MinimalSearchTextField(
             capitalization = KeyboardCapitalization.Sentences,
             imeAction = ImeAction.Default
         )
+    )
+}
+
+@Composable
+fun MinimalSearchTextField(
+    modifier: Modifier = Modifier,
+    textFieldState: TextFieldState,
+    showBackButton: Boolean = false,
+    placeHolderText: String,
+    onBackButtonClick: () -> Unit = {}
+) {
+    StyledSearchTextField(
+        modifier = modifier.heightIn(max = 40.dp),
+        textFieldState = textFieldState,
+        showBackButton = showBackButton,
+        placeHolderText = placeHolderText,
+        onBackButtonClick = onBackButtonClick
     )
 }

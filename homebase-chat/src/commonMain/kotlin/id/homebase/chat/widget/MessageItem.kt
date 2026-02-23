@@ -37,13 +37,6 @@ fun MessageItem(
                     )
                 )
             },
-            onStar = {
-                onUiAction(
-                    ConversationListUiAction.StarMessage(
-                        message.id
-                    )
-                )
-            },
             onEdit = {
                 onUiAction(
                     ConversationListUiAction.EditMessage(
@@ -97,13 +90,6 @@ fun MessageItem(
                 onUiAction(
                     ConversationListUiAction.ReplyToMessage(
                         message
-                    )
-                )
-            },
-            onStar = {
-                onUiAction(
-                    ConversationListUiAction.StarMessage(
-                        message.id
                     )
                 )
             },

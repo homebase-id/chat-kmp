@@ -98,7 +98,6 @@ import kotlin.uuid.Uuid
  * @param message The message data to display.
  * @param onMessageInfo Callback invoked when user requests message info/details.
  * @param onReply Callback invoked when user wants to reply to this message.
- * @param onStar Callback invoked when user wants to star/favorite this message.
  * @param onEdit Callback invoked when user wants to edit this message.
  * @param onDelete Callback invoked when user wants to delete this message
  * @param onMediaClick Callback invoked when user clicks on media attachment.
@@ -112,7 +111,6 @@ fun SentMessageBubble(
     message: MessageUiModel,
     onMessageInfo: (messageId: Uuid) -> Unit,
     onReply: (messageId: Uuid) -> Unit,
-    onStar: (messageId: Uuid) -> Unit,
     onEdit: (messageId: Uuid) -> Unit,
     onDelete: (messageId: Uuid) -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
@@ -158,10 +156,6 @@ fun SentMessageBubble(
                     onReply = {
                         showMenu = false
                         onReply(message.id)
-                    },
-                    onStar = {
-                        showMenu = false
-                        onStar(message.id)
                     },
                     onEdit = {
                         showMenu = false
@@ -263,7 +257,6 @@ fun SentMessageBubble(
  * @param message The message data to display.
  * @param onMessageInfo Callback invoked when user requests message info/details.
  * @param onReply Callback invoked when user wants to reply to this message.
- * @param onStar Callback invoked when user wants to star/favorite this message.
  * @param onDelete Callback invoked when user wants to delete this message.
  * @param onMarkAsRead Callback invoked when user wants to mark this message as read.
  * @param onAddReaction Callback invoked when user wants to add a reaction to this message.
@@ -277,7 +270,6 @@ fun ReceivedMessageBubble(
     message: MessageUiModel,
     onMessageInfo: (messageId: Uuid) -> Unit,
     onReply: (messageId: Uuid) -> Unit,
-    onStar: (messageId: Uuid) -> Unit,
     onDelete: (messageId: Uuid) -> Unit,
     onMarkAsRead: (messageId: Uuid) -> Unit,
     onAddReaction: (messageId: Uuid, reaction: String) -> Unit,
@@ -399,10 +391,6 @@ fun ReceivedMessageBubble(
                     onReply = {
                         showMenu = false
                         onReply(message.id)
-                    },
-                    onStar = {
-                        showMenu = false
-                        onStar(message.id)
                     },
                     onDelete = {
                         showMenu = false

@@ -89,6 +89,7 @@ fun ConversationListScreen(
                 viewModel.eventConsumed()
                 onNavigateToContactInfo(event.odinId)
             }
+
             is ConversationListUiEvent.NavigateToMessageInfo -> {
                 viewModel.eventConsumed()
                 onNavigateToMessageInfo(
@@ -232,7 +233,8 @@ fun ChatListUi(
         if (scaffoldDirective.maxHorizontalPartitions == 1 &&
             !isListPaneHidden &&
             !isDetailPaneVisible &&
-            uiState.selectedConversationId != null) {
+            uiState.selectedConversationId != null
+        ) {
             // User is back on list in compact mode, clear the selection
             onUiAction(ConversationListUiAction.ClearSelection)
         }
@@ -245,6 +247,17 @@ fun ChatListUi(
         if (selectedId != null && scaffoldDirective.maxHorizontalPartitions == 1) {
             // Re-navigate to ensure the detail is properly loaded
             scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, selectedId)
+        }
+    }
+
+    // When selected conversation changes, navigate to detail
+    LaunchedEffect(uiState.selectedConversationId) {
+        uiState.selectedConversationId?.let {
+            scope.launch {
+                scaffoldNavigator.navigateTo(
+                    ListDetailPaneScaffoldRole.Detail, it
+                )
+            }
         }
     }
 
@@ -266,38 +279,12 @@ fun ChatListUi(
             scaffoldState = scaffoldNavigator.scaffoldState,
             listPane = {
                 AnimatedPane(modifier = Modifier) {
-
-//                        NewConversationPane(
-//                            contacts = uiState.contacts,
-//                            searchQuery = uiState.searchQuery,
-//                            onBackClick = {
-//                                onUiAction(ConversationListUiAction.BackToListClicked)
-//                            },
-//                            onContactClick = { contact ->
-//                                onUiAction(ConversationListUiAction.ContactClicked(contact))
-//                            },
-//                            onSearchQueryChanged = { query ->
-//                                onUiAction(
-//                                    ConversationListUiAction.SearchQueryChanged(query)
-//                                )
-//                            })
-
                     ConversationListPane(
                         listContent = uiState.conversationsContent,
                         selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
                         filterByUnread = uiState.filterByUnread,
                         isSearchActive = uiState.isSearchActive,
                         searchTextState = conversationSearchTextFieldState,
-                        onConversationClick = { conversationId, messageId ->
-                            onUiAction(
-                                ConversationListUiAction.ConversationClicked(conversationId, messageId)
-                            )
-                            scope.launch {
-                                scaffoldNavigator.navigateTo(
-                                    ListDetailPaneScaffoldRole.Detail, conversationId
-                                )
-                            }
-                        },
                         onProfileClick = onNavigateToSettingsScreen,
                         onUiAction = onUiAction,
                     )
@@ -306,7 +293,8 @@ fun ChatListUi(
             detailPane = {
                 AnimatedPane {
                     uiState.selectedConversationId?.let { conversationId ->
-                        val conversation = uiState.activeConversations.find { it.id == conversationId }
+                        val conversation =
+                            uiState.activeConversations.find { it.id == conversationId }
                         if (conversation != null) {
                             key(conversation.id) {
                                 ConversationMessagesPane(

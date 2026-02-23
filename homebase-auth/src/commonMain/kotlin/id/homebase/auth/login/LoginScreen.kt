@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,11 +49,22 @@ import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
+import id.homebase.resources.MR
+import id.homebase.resources.login_authenticating
+import id.homebase.resources.login_create_account_button
+import id.homebase.resources.login_id_label
+import id.homebase.resources.login_id_placeholder
+import id.homebase.resources.login_sign_in_button
+import id.homebase.resources.login_sub_title
+import id.homebase.resources.login_successful
+import id.homebase.resources.login_title
+import id.homebase.resources.login_try_again_button
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun LoginScreen(
-        viewModel: LoginViewModel,
-        onNavigateHome: () -> Unit,
+    viewModel: LoginViewModel,
+    onNavigateHome: () -> Unit,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val uiState by viewModel.uiState.collectAsState()
@@ -76,57 +88,65 @@ fun LoginScreen(
                 viewModel.eventConsumed()
                 onNavigateHome()
             }
+
             is LoginUiEvent.ShowError -> {
                 viewModel.eventConsumed()
 
                 // TODO: Show snackbar
             }
+
             is LoginUiEvent.OpenUrl -> {
+                viewModel.eventConsumed()
+                launchAuthBrowser(uiEvent.url)
+            }
+
+            is LoginUiEvent.OpenAuthUrl -> {
                 viewModel.eventConsumed()
                 // Launch browser via Compose context (platform-specific)
                 launchAuthBrowser(uiEvent.url)
                 // Notify BrowserLauncher for callback setup (JVM needs server, iOS launches here)
                 BrowserLauncher.onAuthBrowserOpened(uiEvent.url, viewModel.viewModelScope)
             }
+
             null -> {}
         }
     }
 
     Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.surfaceContainerLowest
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surfaceContainerLowest
     ) {
         Column(
-                modifier =
-                        Modifier.fillMaxSize()
-                                .padding(horizontal = 24.dp)
-                                .verticalScroll(rememberScrollState())
-                                .imePadding(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+            modifier =
+                Modifier.fillMaxSize()
+                    .padding(horizontal = 24.dp)
+                    .verticalScroll(rememberScrollState())
+                    .imePadding(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                    imageVector = HomebaseIcons.Homebase,
-                    contentDescription = "Homebase Logo",
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(72.dp)
+                imageVector = HomebaseIcons.Homebase,
+                contentDescription = "Homebase Logo",
+                tint = Color.Unspecified,
+                modifier = Modifier.size(72.dp)
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                    text = "Welcome to Homebase",
-                    style = MaterialTheme.typography.headlineLarge,
-                    textAlign = TextAlign.Center
+                text = stringResource(MR.string.login_title),
+                style = MaterialTheme.typography.headlineLarge,
+                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                    text = "Sign in with your Homebase ID",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
+                text = stringResource(MR.string.login_sub_title),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(48.dp))
@@ -135,19 +155,27 @@ fun LoginScreen(
                 uiState.isLoading -> LoginLoading()
                 uiState.isAuthenticated -> LoginSuccess()
                 uiState.errorMessage != null ->
-                        LoginError(
-                                message = uiState.errorMessage ?: "",
-                                homebaseId = uiState.homebaseId,
-                                onRetryClick = {
-                                    viewModel.onAction(LoginUiAction.RetryClicked(it))
-                                }
-                        )
+                    LoginForm(
+                        errorMessage = uiState.errorMessage ?: "",
+                        homebaseId = uiState.homebaseId,
+                        onLoginClick = {
+                            viewModel.onAction(LoginUiAction.LoginClicked(it))
+                        },
+                        onCreateAccountClick = {
+                            viewModel.onAction(LoginUiAction.CreateAccount)
+                        },
+                    )
+
                 else ->
-                        LoginForm(
-                                onLoginClick = {
-                                    viewModel.onAction(LoginUiAction.LoginClicked(it))
-                                }
-                        )
+                    LoginForm(
+                        homebaseId = uiState.homebaseId,
+                        onLoginClick = {
+                            viewModel.onAction(LoginUiAction.LoginClicked(it))
+                        },
+                        onCreateAccountClick = {
+                            viewModel.onAction(LoginUiAction.CreateAccount)
+                        },
+                    )
             }
         }
     }
@@ -161,9 +189,9 @@ private fun LoginLoading() {
         CircularProgressIndicator()
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-                text = "Authenticating…",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+            text = stringResource(MR.string.login_authenticating),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -171,9 +199,9 @@ private fun LoginLoading() {
 @Composable
 private fun LoginSuccess() {
     Text(
-            text = "Login successful",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.primary
+        text = stringResource(MR.string.login_successful),
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.primary
     )
 }
 
@@ -181,34 +209,10 @@ private fun LoginSuccess() {
 
 @Composable
 private fun LoginForm(
-        onLoginClick: (homebaseId: String) -> Unit,
-) {
-    val focusRequester = remember { FocusRequester() }
-    var homebaseId by remember { mutableStateOf("") }
-
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
-
-    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        HomebaseIdField(
-                value = homebaseId,
-                onValueChange = { homebaseId = it.cleanDomain() },
-                focusRequester = focusRequester,
-                onDone = { onLoginClick(homebaseId) }
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(onClick = { onLoginClick(homebaseId) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Sign In")
-        }
-    }
-}
-
-@Composable
-private fun LoginError(
-        message: String,
-        homebaseId: String,
-        onRetryClick: (homebaseId: String) -> Unit,
+    errorMessage: String? = null,
+    homebaseId: String,
+    onLoginClick: (homebaseId: String) -> Unit,
+    onCreateAccountClick: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
     var homebaseId by remember { mutableStateOf(homebaseId) }
@@ -216,26 +220,32 @@ private fun LoginError(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-                text = message,
+        errorMessage?.let {
+            Text(
+                text = it,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
                 textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
         HomebaseIdField(
-                value = homebaseId,
-                onValueChange = { homebaseId = it },
-                focusRequester = focusRequester,
-                onDone = { onRetryClick(homebaseId) }
+            value = homebaseId,
+            onValueChange = { homebaseId = it.cleanDomain() },
+            focusRequester = focusRequester,
+            onDone = { onLoginClick(homebaseId.cleanDomain(preserveTrailingDot = false)) }
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Button(onClick = { onRetryClick(homebaseId) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Try Again")
+        Button(onClick = { onLoginClick(homebaseId.cleanDomain(preserveTrailingDot = false)) }, modifier = Modifier.fillMaxWidth()) {
+            if (errorMessage != null) Text(stringResource(MR.string.login_try_again_button)) else Text(stringResource(MR.string.login_sign_in_button))
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        TextButton(
+            onClick = onCreateAccountClick
+        ) {
+            Text(stringResource(MR.string.login_create_account_button))
         }
     }
 }
@@ -244,25 +254,25 @@ private fun LoginError(
 
 @Composable
 private fun HomebaseIdField(
-        value: String,
-        onValueChange: (String) -> Unit,
-        focusRequester: FocusRequester,
-        onDone: () -> Unit,
+    value: String,
+    onValueChange: (String) -> Unit,
+    focusRequester: FocusRequester,
+    onDone: () -> Unit,
 ) {
     OutlinedTextField(
-            value = value,
-            onValueChange = { onValueChange(it) },
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-            placeholder = { Text("your.identity.id") },
-            label = { Text("Homebase ID") },
-            singleLine = true,
-            shape = RoundedCornerShape(24.dp),
-            keyboardOptions =
-                    KeyboardOptions(
-                            keyboardType = KeyboardType.Uri,
-                            capitalization = KeyboardCapitalization.None,
-                            imeAction = ImeAction.Done,
-                    ),
-            keyboardActions = KeyboardActions(onDone = { onDone() })
+        value = value,
+        onValueChange = { onValueChange(it) },
+        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+        placeholder = { Text(stringResource(MR.string.login_id_placeholder)) },
+        label = { Text(stringResource(MR.string.login_id_label)) },
+        singleLine = true,
+        shape = RoundedCornerShape(24.dp),
+        keyboardOptions =
+            KeyboardOptions(
+                keyboardType = KeyboardType.Uri,
+                capitalization = KeyboardCapitalization.None,
+                imeAction = ImeAction.Done,
+            ),
+        keyboardActions = KeyboardActions(onDone = { onDone() })
     )
 }

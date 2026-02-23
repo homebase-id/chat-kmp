@@ -26,14 +26,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.savedstate.SavedState
-import androidx.savedstate.read
-import androidx.savedstate.write
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
@@ -48,13 +44,12 @@ import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.serialization.json.Json
 import org.koin.compose.viewmodel.koinViewModel
 
 sealed class TopLevelRoute(
     val route: Route, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
-    data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
+    data object Chat : TopLevelRoute(Route.ChatList(), "Chats", BootstrapChat)
     data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
 }
 
@@ -84,7 +79,8 @@ fun AppNavHost(
     }
 
     // Only show bottom nav if on a top-level route AND not showing only detail pane
-    val shouldShowBottomNav = isAuthenticated && !useNavigationRail && isTopLevelRoute && !showingOnlyDetailPane
+    val shouldShowBottomNav =
+        isAuthenticated && !useNavigationRail && isTopLevelRoute && !showingOnlyDetailPane
 
     Scaffold(
         bottomBar = {
@@ -104,7 +100,7 @@ fun AppNavHost(
                             ) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList) { saveState = true }
+                                    popUpTo(Route.ChatList()) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -126,7 +122,7 @@ fun AppNavHost(
                             selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList) { saveState = true }
+                                    popUpTo(Route.ChatList()) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -137,14 +133,14 @@ fun AppNavHost(
 
             NavHost(
                 navController = navController,
-                startDestination = if (isAuthenticated) Route.ChatList else Route.Login,
+                startDestination = if (isAuthenticated) Route.ChatList() else Route.Login,
                 modifier = Modifier.weight(1f)
             ) {
                 composable<Route.Login> {
                     val vm = koinViewModel<LoginViewModel>()
                     LoginScreen(
                         viewModel = vm, onNavigateHome = {
-                            navController.navigate(Route.ChatList) {
+                            navController.navigate(Route.ChatList()) {
                                 popUpTo(Route.Login) { inclusive = true }
                             }
                         })
@@ -159,17 +155,19 @@ fun AppNavHost(
                         }) {
                         HomeScreen(
                             viewModel = koinViewModel(),
-                            onNavigateToChatList = { navController.navigate(Route.ChatList) })
+                            onNavigateToChatList = { navController.navigate(Route.ChatList()) })
                     }
                 }
 
                 composable<Route.ChatList> {
                     AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                        authState = youAuthFlowManager.authState,
+                        onUnauthenticated = {
                             navController.navigate(Route.Login) {
                                 popUpTo(0) { inclusive = true }
                             }
-                        }) {
+                        },
+                    ) {
                         ConversationListScreen(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
@@ -183,7 +181,13 @@ fun AppNavHost(
                                 navController.navigate(Route.ContactInfo(it))
                             },
                             onNavigateToMessageInfo = { conversationId, messageId, fileId ->
-                                navController.navigate(Route.MessageInfo(conversationId.toString(), messageId.toString(), fileId.toString()))
+                                navController.navigate(
+                                    Route.MessageInfo(
+                                        conversationId = conversationId.toString(),
+                                        messageId = messageId.toString(),
+                                        fileId = fileId.toString()
+                                    )
+                                )
                             },
                             onDetailPaneVisibilityChanged = { showingOnlyDetailPane = it }
                         )
@@ -200,6 +204,14 @@ fun AppNavHost(
                         NewConversationScreen(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
+                            onShowConversation = { conversationId ->
+                                navController.navigate(Route.ChatList(conversationId.toString())) {
+                                    popUpTo(Route.NewConversation) { inclusive = true }
+                                }
+                            },
+                            onShowCreateGroup = {
+                                navController.navigate(Route.NewGroup)
+                            }
                         )
                     }
                 }
@@ -218,9 +230,7 @@ fun AppNavHost(
                     }
                 }
 
-                composable<Route.MessageInfo>(
-                    //typeMap = mapOf(typeOf<Uuid>() to serializableType<Uuid>())
-                ) {
+                composable<Route.MessageInfo> {
                     AuthenticatedRouteWithFlowManager(
                         authState = youAuthFlowManager.authState, onUnauthenticated = {
                             navController.navigate(Route.Login) {
@@ -265,24 +275,6 @@ fun AppNavHost(
             }
         }
     }
-}
-
-inline fun <reified T : Any> serializableType(
-    isNullableAllowed: Boolean = false,
-    json: Json = Json,
-) = object : NavType<T>(isNullableAllowed = isNullableAllowed) {
-
-    override fun put(bundle: SavedState, key: String, value: T) {
-        bundle.write { putString(key, json.encodeToString(value)) }
-    }
-
-    override fun get(bundle: SavedState, key: String): T? {
-        return json.decodeFromString<T?>(bundle.read { getString(key) })
-    }
-
-    override fun parseValue(value: String): T = json.decodeFromString(value)
-
-    override fun serializeAsValue(value: T): String = json.encodeToString(value)
 }
 
 /** Wrapper for routes that require authentication using YouAuthFlowManager. */

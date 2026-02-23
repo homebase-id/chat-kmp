@@ -23,6 +23,10 @@ sealed class Route {
     data object NewConversation : Route()
 
     @Serializable
+    @SerialName("new-group")
+    data object NewGroup : Route()
+
+    @Serializable
     @SerialName("message")
     data class MessageInfo(val conversationId: String, val messageId: String, val fileId: String) : Route()
 
@@ -32,7 +36,7 @@ sealed class Route {
 
     @Serializable
     @SerialName("chat")
-    data object ChatList : Route()
+    data class ChatList(val conversationId: String? = null) : Route()
 
     @Serializable
     @SerialName("notification-settings")

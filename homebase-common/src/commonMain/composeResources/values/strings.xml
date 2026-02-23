@@ -43,6 +43,17 @@
     <string name="day_saturday">Saturday</string>
     <string name="day_sunday">Sunday</string>
 
+    <!-- Login screen -->
+    <string name="login_title">Welcome to Homebase</string>
+    <string name="login_sub_title">Sign in with your Homebase ID</string>
+    <string name="login_id_label">Homebase ID</string>
+    <string name="login_id_placeholder">your.identity.id</string>
+    <string name="login_sign_in_button">Sign in</string>
+    <string name="login_try_again_button">Try again</string>
+    <string name="login_create_account_button">Create account</string>
+    <string name="login_authenticating">Authenticating…</string>
+    <string name="login_successful">Login successful</string>
+
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filter by unread</string>
     <string name="chat_filter_by_unread_clear_button">Clear filter</string>
@@ -50,12 +61,16 @@
     <string name="chat_search_empty_description">No unread conversations</string>
     <string name="chat_select_a_conversation">Select a conversation</string>
     <string name="chat_select_a_conversation_subtitle">Choose a conversation from the list to view messages</string>
-    <string name="chat_new_conversation">New conversation</string>
     <string name="chat_search_placeholder">Search</string>
     <string name="chat_mark_all_as_read">Mark all as read</string>
     <string name="chat_search_result_conversations">Conversations</string>
     <string name="chat_search_result_messages">Messages</string>
     <string name="chat_search_result_empty">No results found for '%1$s'</string>
+
+    <!-- Conversation new -->
+    <string name="chat_new_conversation">New conversation</string>
+    <string name="chat_new_conversation_search_placeholder">Search contacts</string>
+    <string name="chat_new_conversation_new_group">New group</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>
@@ -65,12 +80,12 @@
     <string name="chat_archive">Archive</string>
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
+    <string name="chat_no_messages">No messages yet</string>
 
     <!-- Conversation message -->
     <string name="chat_message_info">Message info</string>
     <string name="chat_message_reply">Reply</string>
     <string name="chat_message_reaction">Reaction</string>
-    <string name="chat_message_star">Star</string>
     <string name="chat_message_edit">Edit</string>
     <string name="chat_message_delete_for_everyone">Delete for everyone</string>
     <string name="chat_message_delete_for_me">Delete for me</string>

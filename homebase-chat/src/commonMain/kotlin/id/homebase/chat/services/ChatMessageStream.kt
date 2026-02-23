@@ -145,9 +145,11 @@ class ChatMessageStream(
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
             )
 
-        // TODO - remove simple content search filter when actualy query does filtering
+        // TODO - remove simple content search filter when actual query does filtering
         return BatchResult(
-            records = result.records.filter { it.fileMetadata.appData.content?.contains(searchQuery) == true }.mapNotNull { mapToMessageData(it) },
+            records = result.records
+                .filter { it.fileMetadata.appData.content?.contains(searchQuery, ignoreCase = true) == true }
+                .mapNotNull { mapToMessageData(it) },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )

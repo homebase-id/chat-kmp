@@ -2,8 +2,10 @@ package id.homebase.chat.conversationlist
 
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.snapshotFlow
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.auth.CredentialsManager
@@ -16,11 +18,10 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
-import id.homebase.chat.services.convo.ContactService
-import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.resources.MR
@@ -41,16 +42,17 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.uuid.Uuid
 
 class ConversationListViewModel(
+    savedStateHandle: SavedStateHandle,
     private val credentialsManager: CredentialsManager,
-    private val contactService: ContactService,
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val conversationWriterService: ConversationService,
 ) : ViewModel() {
+
+    val chatListRoute = savedStateHandle.toRoute<Route.ChatList>()
 
     private val _uiState = MutableStateFlow(ConversationListUiState())
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
@@ -60,15 +62,6 @@ class ConversationListViewModel(
     var currentConversationJob: Job? = null
 
     init {
-//        viewModelScope.launch {
-//            contactService.start()
-//            contactService.contacts.collect { contacts ->
-//                _uiState.value = _uiState.value.copy(
-//                    contacts = contacts.toPersistentList()
-//                )
-//            }
-//        }
-
         viewModelScope.launch {
             val domain = credentialsManager.requireActiveCredentials().domain.domainName
             _uiState.update { it.copy(currentOdinId = domain) }
@@ -94,6 +87,13 @@ class ConversationListViewModel(
 
             // TODO - restore any draft message stored for conversation here
             messageInputTextState.setMarkdown("")
+        }
+
+        // Load initial message if conversation is set
+        viewModelScope.launch {
+            chatListRoute.conversationId?.let {
+                loadMessagesForConversation(Uuid.parse(it), null)
+            }
         }
 
         // Listen for search query changes
@@ -192,20 +192,20 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.DeleteMessage -> {
-                // TODO
-//                val message = _uiState.value.currentConversationMessages.firstOrNull {
-//                    it.id == action.messageId
-//                } ?: return
-//                val isCurrentUserMessage =
-//                    message.originalAuthor?.domainName == _uiState.value.currentOdinId
-//                _uiState.update {
-//                    it.copy(
-//                        uiDialog = ConversationListUiDialog.DeleteMessage(
-//                            messageId = action.messageId,
-//                            allowDeleteForEveryone = isCurrentUserMessage
-//                        )
-//                    )
-//                }
+                val messages = uiState.value.currentConversationMessages.mapNotNull { if (it is MessageListContentModel.Message) it.message else null }
+                val message = messages.firstOrNull {
+                    it.id == action.messageId
+                } ?: return
+                val isCurrentUserMessage =
+                    message.originalAuthor?.domainName == _uiState.value.currentOdinId
+                _uiState.update {
+                    it.copy(
+                        uiDialog = ConversationListUiDialog.DeleteMessage(
+                            messageId = action.messageId,
+                            allowDeleteForEveryone = isCurrentUserMessage
+                        )
+                    )
+                }
             }
 
             is ConversationListUiAction.ShareMedia -> {
