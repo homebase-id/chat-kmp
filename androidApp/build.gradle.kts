@@ -27,13 +27,43 @@ android {
         }
     }
 
+    signingConfigs {
+        val keystorePass = System.getenv("HOMEBASE_KEYSTORE_PASS")
+        getByName("debug") {
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+            storeFile = file("../buildsystem/debug.keystore")
+            storePassword = "android"
+        }
+        create("release") {
+            keyAlias = "homebase"
+            keyPassword = keystorePass
+            storeFile = file("../buildsystem/keystore")
+            storePassword = keystorePass
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Enables code shrinking, obfuscation, and optimization for only
+            // your project's release build type.
+            isMinifyEnabled = true
+
+            // Enables resource shrinking, which is performed by the
+            // Android Gradle plugin.
+            isShrinkResources = true
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+
+            signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
+            //applicationIdSuffix = ".debug" // TODO - support .debug package in google-services.json
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
