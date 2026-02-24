@@ -9,7 +9,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -21,13 +20,16 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
 import id.homebase.resources.chat_clear
 import id.homebase.resources.chat_delete
+import id.homebase.resources.chat_filter_by_unread_button
+import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_info
+import id.homebase.resources.chat_mark_all_as_read
 import id.homebase.resources.chat_message_edit
 import id.homebase.resources.chat_message_info
 import id.homebase.resources.chat_message_reply
-import id.homebase.resources.chat_message_star
 import id.homebase.resources.delete
 import id.homebase.resources.save
+import id.homebase.resources.settings
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -97,7 +99,6 @@ fun ReceivedMessageMenu(
     dismissMenu: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
-    onStar: () -> Unit,
     onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
 ) {
@@ -126,16 +127,6 @@ fun ReceivedMessageMenu(
             leadingIcon = {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Reply,
-                    contentDescription = null
-                )
-            }
-        )
-        DropdownMenuItem(
-            onClick = onStar,
-            text = { Text(text = stringResource(MR.string.chat_message_star)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Star,
                     contentDescription = null
                 )
             }
@@ -173,7 +164,6 @@ fun SentMessageMenu(
     dismissMenu: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
-    onStar: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -202,16 +192,6 @@ fun SentMessageMenu(
             leadingIcon = {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Reply,
-                    contentDescription = null
-                )
-            }
-        )
-        DropdownMenuItem(
-            onClick = onStar,
-            text = { Text(text = stringResource(MR.string.chat_message_star)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Star,
                     contentDescription = null
                 )
             }
@@ -270,6 +250,43 @@ fun FullScreenMediaMenu(
                     contentDescription = null
                 )
             }
+        )
+    }
+}
+
+@Composable
+fun ConversationListMenu(
+    showMenu: Boolean,
+    isFilteringUnread: Boolean,
+    dismissMenu: () -> Unit,
+    onMarkAllAsRead: () -> Unit,
+    onFilterUnread: () -> Unit,
+    onClearFilterUnread: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    DropdownMenu(
+        shape = RoundedCornerShape(Dimens.Message.cornerRadius),
+        expanded = showMenu,
+        onDismissRequest = dismissMenu
+    ) {
+        DropdownMenuItem(
+            onClick = onMarkAllAsRead,
+            text = { Text(text = stringResource(MR.string.chat_mark_all_as_read)) },
+        )
+        if (isFilteringUnread) {
+            DropdownMenuItem(
+                onClick = onClearFilterUnread,
+                text = { Text(text = stringResource(MR.string.chat_filter_by_unread_clear_button)) },
+            )
+        } else {
+            DropdownMenuItem(
+                onClick = onFilterUnread,
+                text = { Text(text = stringResource(MR.string.chat_filter_by_unread_button)) },
+            )
+        }
+        DropdownMenuItem(
+            onClick = onSettings,
+            text = { Text(text = stringResource(MR.string.settings)) },
         )
     }
 }

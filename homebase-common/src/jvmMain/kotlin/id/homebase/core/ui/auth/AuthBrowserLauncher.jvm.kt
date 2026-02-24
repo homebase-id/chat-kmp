@@ -12,7 +12,7 @@ import id.homebase.core.util.BrowserUtils
  * crash that happens on many Linux setups (KDE, flatpak, WSL, etc.).
  */
 @Composable
-actual fun rememberAuthBrowserLauncher(): (String) -> Unit {
+actual fun rememberAuthBrowserLauncher(): (url: String) -> Unit {
     return remember {
         { url -> 
             BrowserUtils.openSystemBrowser(url, enableClipboardFallback = true)

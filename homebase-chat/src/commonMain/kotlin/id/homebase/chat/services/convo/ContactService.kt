@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.BatchResult
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
@@ -21,7 +22,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import id.homebase.api.common.OdinId
 
 
 class ContactService(
@@ -113,7 +113,7 @@ class ContactService(
             id = uid,
             odinId = parsedContact.odinId
                 ?: throw IllegalStateException("why is the odin id missing?"),
-            name = parsedContact.name.displayName,
+            name = parsedContact.name.displayName ?: parsedContact.odinId.domainName,
             avatarInitials = parsedContact.name.initials()
         )
     }
@@ -134,7 +134,7 @@ data class ContactServerFile(
 
 @Serializable
 data class ContactName(
-    val displayName: String,
+    val displayName: String?,
     val givenName: String?,
     val additionalName: String?,
     val surname: String?
@@ -158,6 +158,10 @@ data class ContactName(
         }
 
         // Fallback: try display name tokens
+        if (displayName == null) {
+            return "?"
+        }
+
         val tokens =
             displayName
                 .trim()

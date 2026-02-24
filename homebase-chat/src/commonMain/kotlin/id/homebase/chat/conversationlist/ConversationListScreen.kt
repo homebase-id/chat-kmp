@@ -1,7 +1,8 @@
-package id.homebase.chat
+package id.homebase.chat.conversationlist
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -39,7 +40,6 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
-import id.homebase.chat.widget.NewConversationPane
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -59,6 +59,9 @@ fun ConversationListScreen(
     viewModel: ConversationListViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
+    onNavigateToNewConversation: () -> Unit,
+    onNavigateToContactInfo: (odinId: String) -> Unit,
+    onNavigateToMessageInfo: (conversationId: Uuid, messageId: Uuid, fileId: Uuid) -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -75,6 +78,25 @@ fun ConversationListScreen(
             is ConversationListUiEvent.ShowErrorMessage -> {
                 viewModel.eventConsumed()
                 scope.launch { snackbarHostState.showSnackbar(message = event.message) }
+            }
+
+            is ConversationListUiEvent.NavigateToNewConversation -> {
+                viewModel.eventConsumed()
+                onNavigateToNewConversation()
+            }
+
+            is ConversationListUiEvent.NavigateToContactInfo -> {
+                viewModel.eventConsumed()
+                onNavigateToContactInfo(event.odinId)
+            }
+
+            is ConversationListUiEvent.NavigateToMessageInfo -> {
+                viewModel.eventConsumed()
+                onNavigateToMessageInfo(
+                    event.message.conversationId,
+                    event.message.id,
+                    event.message.fileId,
+                )
             }
 
             null -> {}
@@ -126,7 +148,8 @@ fun ConversationListScreen(
     ChatListUi(
         snackbarHostState = snackbarHostState,
         uiState = uiState,
-        textFieldState = viewModel.messageState,
+        conversationSearchTextFieldState = viewModel.conversationSearchTextState,
+        messageInputTextFieldState = viewModel.messageInputTextState,
         onUiAction = viewModel::onAction,
         onNavigateToSettingsScreen = onNavigateToSettingsScreen,
         onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
@@ -138,7 +161,8 @@ fun ConversationListScreen(
 fun ChatListUi(
     snackbarHostState: SnackbarHostState,
     uiState: ConversationListUiState,
-    textFieldState: RichTextState,
+    conversationSearchTextFieldState: TextFieldState,
+    messageInputTextFieldState: RichTextState,
     onUiAction: (ConversationListUiAction) -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
@@ -203,6 +227,40 @@ fun ChatListUi(
     // Notify parent about detail pane visibility in compact view
     LaunchedEffect(showingOnlyDetail) { onDetailPaneVisibilityChanged(showingOnlyDetail) }
 
+    // Clear selectedConversationId when user navigates back to list in compact mode
+    // This ensures that when returning to the screen, it shows the list instead of detail
+    LaunchedEffect(isListPaneHidden, isDetailPaneVisible) {
+        if (scaffoldDirective.maxHorizontalPartitions == 1 &&
+            !isListPaneHidden &&
+            !isDetailPaneVisible &&
+            uiState.selectedConversationId != null
+        ) {
+            // User is back on list in compact mode, clear the selection
+            onUiAction(ConversationListUiAction.ClearSelection)
+        }
+    }
+
+    // Restore detail pane when returning to this screen ONLY if we have a selected conversation
+    LaunchedEffect(Unit) {
+        val selectedId = uiState.selectedConversationId
+        // Only restore if we have a selected conversation AND we're in compact mode
+        if (selectedId != null && scaffoldDirective.maxHorizontalPartitions == 1) {
+            // Re-navigate to ensure the detail is properly loaded
+            scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, selectedId)
+        }
+    }
+
+    // When selected conversation changes, navigate to detail
+    LaunchedEffect(uiState.selectedConversationId) {
+        uiState.selectedConversationId?.let {
+            scope.launch {
+                scaffoldNavigator.navigateTo(
+                    ListDetailPaneScaffoldRole.Detail, it
+                )
+            }
+        }
+    }
+
     @Suppress("DEPRECATION")
     BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {
@@ -221,52 +279,27 @@ fun ChatListUi(
             scaffoldState = scaffoldNavigator.scaffoldState,
             listPane = {
                 AnimatedPane(modifier = Modifier) {
-                    if (uiState.showingNewChatPane) {
-                        NewConversationPane(
-                            contacts = uiState.contacts,
-                            searchQuery = uiState.searchQuery,
-                            onBackClick = {
-                                onUiAction(ConversationListUiAction.BackToListClicked)
-                            },
-                            onContactClick = { contact ->
-                                onUiAction(ConversationListUiAction.ContactClicked(contact))
-                            },
-                            onSearchQueryChanged = { query ->
-                                onUiAction(
-                                    ConversationListUiAction.SearchQueryChanged(query)
-                                )
-                            })
-                    } else {
-                        ConversationListPane(
-                            conversations = uiState.conversations,
-                            selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                            onConversationClick = { conversationId ->
-                                onUiAction(
-                                    ConversationListUiAction.ConversationClicked(
-                                        conversationId
-                                    )
-                                )
-                                scope.launch {
-                                    scaffoldNavigator.navigateTo(
-                                        ListDetailPaneScaffoldRole.Detail, conversationId
-                                    )
-                                }
-                            },
-                            onProfileClick = onNavigateToSettingsScreen,
-                            onUiAction = onUiAction,
-                        )
-                    }
+                    ConversationListPane(
+                        listContent = uiState.conversationsContent,
+                        selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
+                        filterByUnread = uiState.filterByUnread,
+                        isSearchActive = uiState.isSearchActive,
+                        searchTextState = conversationSearchTextFieldState,
+                        onProfileClick = onNavigateToSettingsScreen,
+                        onUiAction = onUiAction,
+                    )
                 }
             },
             detailPane = {
                 AnimatedPane {
                     uiState.selectedConversationId?.let { conversationId ->
-                        val conversation = uiState.conversations.find { it.id == conversationId }
+                        val conversation =
+                            uiState.activeConversations.find { it.id == conversationId }
                         if (conversation != null) {
                             key(conversation.id) {
                                 ConversationMessagesPane(
                                     conversation = conversation,
-                                    textFieldState = textFieldState,
+                                    textFieldState = messageInputTextFieldState,
                                     messages = uiState.currentConversationMessages,
                                     isLoadingNewMessage = uiState.loadingNewMessage,
                                     fullScreenOverlay = uiState.fullScreenOverlay,
@@ -331,7 +364,8 @@ fun ChatListUiPreview() {
         ChatListUi(
             snackbarHostState = SnackbarHostState(),
             uiState = ConversationListUiState(),
-            textFieldState = RichTextState(),
+            conversationSearchTextFieldState = TextFieldState(),
+            messageInputTextFieldState = RichTextState(),
             onUiAction = {},
             onNavigateToSettingsScreen = {},
         )

@@ -14,13 +14,13 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.config.chatTargetDrive
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
 class ChatMessageStream(
     private val credentialsManager: CredentialsManager,
@@ -119,6 +119,37 @@ class ChatMessageStream(
 
         return BatchResult(
             records = result.records.mapNotNull { mapToMessageData(it) },
+            hasMoreRows = result.hasMoreRows,
+            cursor = result.cursor
+        )
+    }
+
+    suspend fun searchMessages(
+        searchQuery: String,
+        limit: Int = 1000,
+        cursor: QueryBatchCursor? = null
+    ): BatchResult<MessageUiModel> {
+
+        val c = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(c.getIdentityId())
+
+        // TODO - inject searchQuery into actual db query
+        val result = queryBatch.queryBatchAsync(
+                dbm = dbm,
+                driveId = chatDrive,
+                noOfItems = limit,
+                cursor = cursor,
+                sortOrder = QueryBatchSortOrder.NewestFirst,
+                sortField = QueryBatchSortField.CreatedDate,
+                fileSystemType = 0,
+                filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+            )
+
+        // TODO - remove simple content search filter when actual query does filtering
+        return BatchResult(
+            records = result.records
+                .filter { it.fileMetadata.appData.content?.contains(searchQuery, ignoreCase = true) == true }
+                .mapNotNull { mapToMessageData(it) },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )

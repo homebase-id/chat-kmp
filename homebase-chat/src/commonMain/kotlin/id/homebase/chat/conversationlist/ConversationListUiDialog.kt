@@ -1,4 +1,4 @@
-package id.homebase.chat
+package id.homebase.chat.conversationlist
 
 import kotlin.uuid.Uuid
 

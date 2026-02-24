@@ -14,6 +14,7 @@ import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -28,7 +29,6 @@ import id.homebase.chat.services.XorIdUtil
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.Uuid
-import id.homebase.api.common.OdinId
 
 
 class ConversationService(
@@ -103,7 +103,7 @@ class ConversationService(
             )
 
         driveUploadProvider.uploadFile(request)
-        return newConversationId;
+        return newConversationId
     }
 
     suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
@@ -289,7 +289,7 @@ class ConversationService(
             )
 
         val file = result.records.firstOrNull()
-        return file;
+        return file
     }
 
     suspend fun mapToConversationUi(

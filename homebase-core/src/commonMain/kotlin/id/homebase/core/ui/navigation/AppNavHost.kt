@@ -35,7 +35,10 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
 import id.homebase.auth.login.LoginViewModel
-import id.homebase.chat.ConversationListScreen
+import id.homebase.chat.contactinfo.ContactInfoScreen
+import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.messageinfo.MessageInfoScreen
+import id.homebase.chat.newconversation.NewConversationScreen
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
@@ -46,7 +49,7 @@ import org.koin.compose.viewmodel.koinViewModel
 sealed class TopLevelRoute(
     val route: Route, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
-    data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
+    data object Chat : TopLevelRoute(Route.ChatList(), "Chats", BootstrapChat)
     data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
 }
 
@@ -67,9 +70,17 @@ fun AppNavHost(
     val currentDestination = navBackStackEntry?.destination
     val topLevelRoutes = remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Home) }
 
-    // Track if we are in a screen where bottom menu should be hidden
-    var shouldHideBottomMenu by remember { mutableStateOf(false) }
-    val shouldShowBottomNav = isAuthenticated && !useNavigationRail && !shouldHideBottomMenu
+    // Track if we're showing only the detail pane (list hidden) in a top level screen
+    var showingOnlyDetailPane by remember { mutableStateOf(false) }
+
+    // Check if current destination is a top-level route
+    val isTopLevelRoute = topLevelRoutes.any { topLevelRoute ->
+        currentDestination?.hasRoute(topLevelRoute.route::class) == true
+    }
+
+    // Only show bottom nav if on a top-level route AND not showing only detail pane
+    val shouldShowBottomNav =
+        isAuthenticated && !useNavigationRail && isTopLevelRoute && !showingOnlyDetailPane
 
     Scaffold(
         bottomBar = {
@@ -89,7 +100,7 @@ fun AppNavHost(
                             ) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList) { saveState = true }
+                                    popUpTo(Route.ChatList()) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -111,7 +122,7 @@ fun AppNavHost(
                             selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList) { saveState = true }
+                                    popUpTo(Route.ChatList()) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -122,14 +133,14 @@ fun AppNavHost(
 
             NavHost(
                 navController = navController,
-                startDestination = if (isAuthenticated) Route.ChatList else Route.Login,
+                startDestination = if (isAuthenticated) Route.ChatList() else Route.Login,
                 modifier = Modifier.weight(1f)
             ) {
                 composable<Route.Login> {
                     val vm = koinViewModel<LoginViewModel>()
                     LoginScreen(
                         viewModel = vm, onNavigateHome = {
-                            navController.navigate(Route.ChatList) {
+                            navController.navigate(Route.ChatList()) {
                                 popUpTo(Route.Login) { inclusive = true }
                             }
                         })
@@ -144,24 +155,92 @@ fun AppNavHost(
                         }) {
                         HomeScreen(
                             viewModel = koinViewModel(),
-                            onNavigateToChatList = { navController.navigate(Route.ChatList) })
+                            onNavigateToChatList = { navController.navigate(Route.ChatList()) })
                     }
                 }
 
                 composable<Route.ChatList> {
                     AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                        authState = youAuthFlowManager.authState,
+                        onUnauthenticated = {
                             navController.navigate(Route.Login) {
                                 popUpTo(0) { inclusive = true }
                             }
-                        }) {
+                        },
+                    ) {
                         ConversationListScreen(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
                             onNavigateToSettingsScreen = {
                                 navController.navigate(Route.Settings)
                             },
-                            onDetailPaneVisibilityChanged = { shouldHideBottomMenu = it })
+                            onNavigateToNewConversation = {
+                                navController.navigate(Route.NewConversation)
+                            },
+                            onNavigateToContactInfo = {
+                                navController.navigate(Route.ContactInfo(it))
+                            },
+                            onNavigateToMessageInfo = { conversationId, messageId, fileId ->
+                                navController.navigate(
+                                    Route.MessageInfo(
+                                        conversationId = conversationId.toString(),
+                                        messageId = messageId.toString(),
+                                        fileId = fileId.toString()
+                                    )
+                                )
+                            },
+                            onDetailPaneVisibilityChanged = { showingOnlyDetailPane = it }
+                        )
+                    }
+                }
+
+                composable<Route.NewConversation> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        NewConversationScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                            onShowConversation = { conversationId ->
+                                navController.navigate(Route.ChatList(conversationId.toString())) {
+                                    popUpTo(Route.NewConversation) { inclusive = true }
+                                }
+                            },
+                            onShowCreateGroup = {
+                                navController.navigate(Route.NewGroup)
+                            }
+                        )
+                    }
+                }
+
+                composable<Route.ContactInfo> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        ContactInfoScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                        )
+                    }
+                }
+
+                composable<Route.MessageInfo> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        MessageInfoScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                        )
                     }
                 }
 
@@ -197,50 +276,6 @@ fun AppNavHost(
         }
     }
 }
-
-//        // ChatMessages route (shows messages for a conversation)
-//        composable<Route.ChatMessages> { backStackEntry ->
-//            val conversationId =
-//                    backStackEntry.arguments?.read { getString("conversationId") }
-//                            ?: error("conversationId missing")
-//
-//            AuthenticatedRouteWithFlowManager(
-//                    authState = youAuthFlowManager.authState,
-//                    onUnauthenticated = {
-//                        navController.navigate(Route.Login) { popUpTo(0) { inclusive = true } }
-//                    }
-//            ) {
-//                ChatMessagesPage(
-//                        conversationId = conversationId,
-//                        youAuthFlowManager = youAuthFlowManager,
-//                        onNavigateBack = { navController.popBackStack() },
-//                        onNavigateToMessageDetail = { driveId, fileId ->
-//                            navController.navigate(Route.ChatMessageDetail(driveId, fileId))
-//                        }
-//                )
-//            }
-//        }
-//
-//        // ChatMessageDetail route
-//        composable<Route.ChatMessageDetail> { backStackEntry ->
-//            val driveId =
-//                    backStackEntry.arguments?.read { getString("driveId") }
-//                            ?: error("driveId missing")
-//
-//            val fileId =
-//                    backStackEntry.arguments?.read { getString("fileId") }
-//                            ?: error("fileId missing")
-//
-//            val viewModel =
-//                    koinViewModel<ChatMessageDetailViewModel>(
-//                            parameters = { parametersOf(Uuid.parse(driveId), Uuid.parse(fileId)) }
-//                    )
-//
-//            ChatMessageDetailPage(
-//                    viewModel = viewModel,
-//                    onNavigateBack = { navController.popBackStack() }
-//            )
-//        }
 
 /** Wrapper for routes that require authentication using YouAuthFlowManager. */
 @Composable

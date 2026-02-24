@@ -1,7 +1,11 @@
-package id.homebase.chat
+package id.homebase.chat.conversationlist
 
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.runtime.snapshotFlow
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.auth.CredentialsManager
@@ -14,13 +18,15 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
-import id.homebase.chat.services.convo.ContactService
-import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.resources.MR
+import id.homebase.resources.chat_search_result_conversations
+import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
@@ -28,38 +34,34 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import kotlin.uuid.Uuid
 
 class ConversationListViewModel(
+    savedStateHandle: SavedStateHandle,
     private val credentialsManager: CredentialsManager,
-    private val contactService: ContactService,
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val conversationWriterService: ConversationService,
 ) : ViewModel() {
+
+    val chatListRoute = savedStateHandle.toRoute<Route.ChatList>()
 
     private val _uiState = MutableStateFlow(ConversationListUiState())
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
-    val messageState = RichTextState()
+    val conversationSearchTextState = TextFieldState()
+    val messageInputTextState = RichTextState()
     var currentConversationJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            contactService.start()
-            contactService.contacts.collect { contacts ->
-                _uiState.value = _uiState.value.copy(
-                    contacts = contacts.toPersistentList()
-                )
-            }
-        }
-
         viewModelScope.launch {
             val domain = credentialsManager.requireActiveCredentials().domain.domainName
             _uiState.update { it.copy(currentOdinId = domain) }
@@ -68,8 +70,9 @@ class ConversationListViewModel(
         viewModelScope.launch {
             conversationStream.start()
             conversationStream.conversations.collect { conversations ->
-                val sorted = conversations.sortedByDescending { it.timestamp }
-                _uiState.value = _uiState.value.copy(conversations = sorted.toPersistentList())
+                val sorted = conversations.sortedByDescending { it.timestamp }.toPersistentList()
+                _uiState.value = _uiState.value.copy(activeConversations = sorted)
+                updateListContent()
             }
         }
 
@@ -80,10 +83,24 @@ class ConversationListViewModel(
             //textFieldState.config.codeSpanColor = Color.Blue
             //textFieldState.config.codeSpanBackgroundColor = Color.Magenta
             //textFieldState.config.codeSpanStrokeColor = Color.Yellow
-            messageState.config.listIndent = 0
+            messageInputTextState.config.listIndent = 0
 
             // TODO - restore any draft message stored for conversation here
-            messageState.setMarkdown("")
+            messageInputTextState.setMarkdown("")
+        }
+
+        // Load initial message if conversation is set
+        viewModelScope.launch {
+            chatListRoute.conversationId?.let {
+                loadMessagesForConversation(Uuid.parse(it), null)
+            }
+        }
+
+        // Listen for search query changes
+        viewModelScope.launch {
+            snapshotFlow { conversationSearchTextState.text.toString() }.collectLatest {
+                updateListContent()
+            }
         }
     }
 
@@ -98,44 +115,45 @@ class ConversationListViewModel(
     fun onAction(action: ConversationListUiAction) {
         when (action) {
             is ConversationListUiAction.ConversationClicked -> {
-                loadMessagesForConversation(action.conversationId)
+                loadMessagesForConversation(action.conversationId, action.messageId)
             }
 
             ConversationListUiAction.BackClicked -> {
                 sendEvent(ConversationListUiEvent.NavigateBack)
             }
 
-            ConversationListUiAction.NewChatClicked -> {
-                _uiState.value = _uiState.value.copy(showingNewChatPane = true, searchQuery = "")
+            ConversationListUiAction.SearchClicked -> {
+                _uiState.update { it.copy(isSearchActive = true) }
             }
 
-            ConversationListUiAction.BackToListClicked -> {
-                _uiState.value = _uiState.value.copy(showingNewChatPane = false, searchQuery = "")
+            ConversationListUiAction.SearchBackClicked -> {
+                _uiState.update { it.copy(isSearchActive = false) }
             }
 
-            is ConversationListUiAction.ContactClicked -> {
-                viewModelScope.launch {
-                    val conversationId = conversationWriterService.createConversation(
-                        recipients = listOf(action.contact.odinId),
-                        title = "",
-                        payloadBundle = null,
-                    )
-
-                    _uiState.value =
-                        _uiState.value.copy(showingNewChatPane = false, searchQuery = "")
-
-                    loadMessagesForConversation(conversationId)
-                }
+            ConversationListUiAction.NewConversationClicked -> {
+                _uiState.value =
+                    _uiState.value.copy(uiEvent = ConversationListUiEvent.NavigateToNewConversation)
             }
 
-            is ConversationListUiAction.SearchQueryChanged -> {
-                _uiState.value = _uiState.value.copy(searchQuery = action.query)
+            ConversationListUiAction.ClearSelection -> {
+                // Clear the selected conversation when user navigates back to list
+                _uiState.update { it.copy(selectedConversationId = null) }
+            }
+
+            ConversationListUiAction.FilterByUnreadClicked -> {
+                _uiState.update { it.copy(filterByUnread = true) }
+                updateListContent()
+            }
+
+            ConversationListUiAction.ClearFilterByUnreadClicked -> {
+                _uiState.update { it.copy(filterByUnread = false) }
+                updateListContent()
             }
 
             is ConversationListUiAction.SendMessage -> {
-                val hasMessage = !messageState.annotatedString.isBlank()
+                val hasMessage = !messageInputTextState.annotatedString.isBlank()
                 if (hasMessage) {
-                    val content = messageState.toMarkdown()
+                    val content = messageInputTextState.toMarkdown()
                     val replyTo = _uiState.value.replyToMessage
                     if (replyTo != null) {
                         replyToMessage(
@@ -147,16 +165,18 @@ class ConversationListViewModel(
                     } else {
                         addMessage(conversationId = action.conversationId, content = content)
                     }
-                    messageState.clear()
+                    messageInputTextState.clear()
                 }
             }
 
             is ConversationListUiAction.SaveScrollPosition -> {
                 _uiState.update {
                     it.copy(
-                        conversationScrollPosition = ScrollPosition(
-                            action.firstVisibleItemIndex, action.firstVisibleItemScrollOffset
-                        )
+                        conversationScrollPosition =
+                            ScrollPosition(
+                                firstVisibleItemIndex = action.firstVisibleItemIndex,
+                                firstVisibleItemScrollOffset = action.firstVisibleItemScrollOffset,
+                            )
                     )
                 }
 
@@ -172,7 +192,8 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.DeleteMessage -> {
-                val message = _uiState.value.currentConversationMessages.firstOrNull {
+                val messages = uiState.value.currentConversationMessages.mapNotNull { if (it is MessageListContentModel.Message) it.message else null }
+                val message = messages.firstOrNull {
                     it.id == action.messageId
                 } ?: return
                 val isCurrentUserMessage =
@@ -346,7 +367,7 @@ class ConversationListViewModel(
                             previousMessageUniqueId = null,
                             payloadBundle = bundle,
                         )
-                        messageState.clear()
+                        messageInputTextState.clear()
                         _uiState.update { it.copy(loadingNewMessage = false) }
                     } catch (e: Exception) {
                         Logger.e("Failed to send file(s)", e)
@@ -361,7 +382,7 @@ class ConversationListViewModel(
                         val newFiles =
                             action.files.map { AttachmentPendingFile.File(Uuid.generateV7(), it) }
                         val conversation =
-                            _uiState.value.conversations.find { it.id == action.conversationId }
+                            _uiState.value.activeConversations.find { it.id == action.conversationId }
                         if (newFiles.isEmpty() || conversation == null) return@launch
 
                         val overlay = _uiState.value.fullScreenOverlay
@@ -402,7 +423,7 @@ class ConversationListViewModel(
                                 )
                             }
                         val conversation =
-                            _uiState.value.conversations.find { it.id == action.conversationId }
+                            _uiState.value.activeConversations.find { it.id == action.conversationId }
                         if (newFiles.isEmpty() || conversation == null) return@launch
 
                         val overlay = _uiState.value.fullScreenOverlay
@@ -527,8 +548,77 @@ class ConversationListViewModel(
                 _uiState.update { it.copy(messageReactions = null) }
             }
 
+            is ConversationListUiAction.ShowContactInfo -> {
+                _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToContactInfo((action.odinId))) }
+            }
+
+            is ConversationListUiAction.ShowMessageInfo -> {
+                _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToMessageInfo((action.message))) }
+            }
+
             else -> {
                 println("Unhandled action: $action")
+            }
+        }
+    }
+
+    private fun updateListContent() {
+        viewModelScope.launch {
+            try {
+                val searchQuery = conversationSearchTextState.text.toString()
+                val filterByUnread = uiState.value.filterByUnread
+                val conversationsPool =
+                    if (filterByUnread) uiState.value.activeConversations.filter { it.unreadCount > 0 || it.id == uiState.value.selectedConversationId } else uiState.value.activeConversations
+
+                if (searchQuery.isEmpty()) {
+                    _uiState.update {
+                        it.copy(
+                            conversationsContent = if (conversationsPool.isEmpty()) ConversationListContentState.Empty else ConversationListContentState.Items(
+                                conversationsPool.map { conv ->
+                                    ConversationListContentModel.Conversation(conv)
+                                }.toPersistentList()
+                            )
+                        )
+                    }
+                } else {
+                    val result = mutableListOf<ConversationListContentModel>()
+
+                    val conversations = conversationsPool.filter { conversation ->
+                        conversation.name.contains(searchQuery, ignoreCase = true)
+                    }.toPersistentList()
+                    if (conversations.isNotEmpty()) {
+                        result.add(ConversationListContentModel.Header(MR.string.chat_search_result_conversations))
+                        result.addAll(conversations.map {
+                            ConversationListContentModel.Conversation(
+                                it
+                            )
+                        })
+                    }
+
+                    // Only search for message if filter by unread conversations filter is not enabled
+                    if (!filterByUnread) {
+                        val messages = chatMessageStream.searchMessages(searchQuery).records
+                        if (messages.isNotEmpty()) {
+                            result.add(ConversationListContentModel.Header(MR.string.chat_search_result_messages))
+                            result.addAll(messages.map { ConversationListContentModel.Message(it) })
+                        }
+                    }
+
+                    _uiState.update {
+                        it.copy(
+                            conversationsContent = if (result.isEmpty())
+                                ConversationListContentState.EmptySearch(searchQuery)
+                            else
+                                ConversationListContentState.Items(result.toPersistentList())
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                sendEvent(
+                    ConversationListUiEvent.ShowErrorMessage(
+                        "Failed to load conversations: ${e.message}"
+                    )
+                )
             }
         }
     }
@@ -540,20 +630,36 @@ class ConversationListViewModel(
         }
     }
 
-    private fun loadMessagesForConversation(conversationId: Uuid) {
+    private fun loadMessagesForConversation(conversationId: Uuid, messageId: Uuid?) {
         // When loading message for newly selected conversation, cancel any previous job to
         // avoid observing multiple messageStreams
         currentConversationJob?.cancel()
         currentConversationJob = viewModelScope.launch {
             try {
                 chatMessageStream.loadConversation(conversationId)
-
                 chatMessageStream.observeMessages(conversationId).collect { messages ->
-                    val sorted = messages.sortedBy { it.created }
+
+                    // Group messages within day sections
+                    val timezone = TimeZone.currentSystemDefault()
+                    val groupedMessages = messages.sortedBy { it.created }.groupBy { message ->
+                        val date = message.created.toLocalDateTime(timezone).date
+                        date
+                    }
+                     val messages: List<MessageListContentModel> = groupedMessages.flatMap { (date, messages) ->
+                        listOf(MessageListContentModel.Section(date)) + messages.map { MessageListContentModel.Message(it) }
+                    }
+
+                    val indexOfMessageForScroll = if (messageId == null) null else messages.indexOfLast { it is MessageListContentModel.Message && it.message.id == messageId } + 1 // +1 for header
+
                     _uiState.value = _uiState.value.copy(
                         selectedConversationId = conversationId,
-                        currentConversationMessages = sorted.toPersistentList(),
-                        conversationScrollPosition = getScrollPosition(conversationId),
+                        currentConversationMessages = messages.toPersistentList(),
+                        conversationScrollPosition =
+                            if (indexOfMessageForScroll == null) {
+                                getScrollPosition(conversationId)
+                            } else {
+                                ScrollPosition(indexOfMessageForScroll, 0)
+                            },
                     )
                 }
             } catch (_: CancellationException) {
