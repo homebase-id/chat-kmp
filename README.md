@@ -26,3 +26,10 @@ With hot reload:
 ```
 ./gradlew webApp:wasmJsBrowserDevelopmentRun --no-configuration-cache
 ```
+
+## Build
+
+### Android
+```
+./gradlew androidApp:assembleRelease
+```
