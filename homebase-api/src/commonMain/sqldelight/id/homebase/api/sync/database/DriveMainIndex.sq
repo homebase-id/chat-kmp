@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 1
    modified INTEGER NOT NULL,
    fileSystemType INTEGER NOT NULL,
    jsonHeader TEXT NOT NULL,
-   CHECK (fileId IS NOT NULL OR uniqueId IS NOT NULL OR globalTransitId IS NOT NULL),
+   -- CHECK (fileId IS NOT NULL OR uniqueId IS NOT NULL OR globalTransitId IS NOT NULL),
 
    UNIQUE(identityId,driveId,fileId),
    UNIQUE(identityId,driveId,uniqueId),
@@ -43,16 +43,40 @@ VALUES (
    ?,?,?,?,?,
    ?,?,?,?,?,?,?,
    ?,?,?,?)
+
+-- Prefer uniqueId when it is supplied (first clause never fires for NULL)
+ON CONFLICT (identityId, driveId, uniqueId) DO UPDATE
+SET
+    fileId           = excluded.fileId,          -- important: allow fileId to be updated when we matched on uniqueId
+    globalTransitId  = excluded.globalTransitId,
+    groupId          = excluded.groupId,
+    senderId         = excluded.senderId,
+    fileType         = excluded.fileType,
+    dataType         = excluded.dataType,
+    archivalStatus   = excluded.archivalStatus,
+    historyStatus    = excluded.historyStatus,
+    userDate         = excluded.userDate,
+    created          = excluded.created,
+    modified         = excluded.modified,
+    fileSystemType   = excluded.fileSystemType,
+    jsonHeader       = excluded.jsonHeader
+WHERE excluded.modified > DriveMainIndex.modified -- Only update if the row is newer. Host guarantees it.
+
+-- Fallback to fileId (also catches the case where uniqueId is NULL)
 ON CONFLICT (identityId,driveId,fileId) DO UPDATE
-SET uniqueId = excluded.uniqueId,
+SET uniqueId        = excluded.uniqueId,
     globalTransitId = excluded.globalTransitId,
-    groupId = excluded.groupId,
-    senderId = excluded.senderId,
-    fileType = excluded.fileType,dataType = excluded.dataType,
-    archivalStatus = excluded.archivalStatus,historyStatus = excluded.historyStatus,
-    userDate = excluded.userDate,created = excluded.created,modified = excluded.modified,
-    fileSystemType = excluded.fileSystemType,
-    jsonHeader = excluded.jsonHeader
+    groupId         = excluded.groupId,
+    senderId        = excluded.senderId,
+    fileType        = excluded.fileType,
+    dataType        = excluded.dataType,
+    archivalStatus  = excluded.archivalStatus,
+    historyStatus   = excluded.historyStatus,
+    userDate        = excluded.userDate,
+    created         = excluded.created,
+    modified        = excluded.modified,
+    fileSystemType  = excluded.fileSystemType,
+    jsonHeader      = excluded.jsonHeader
 WHERE excluded.modified > DriveMainIndex.modified; -- Only update if the row is newer. Host guarantees it.
 
 -- Select by identity and drive and file (get single row)
