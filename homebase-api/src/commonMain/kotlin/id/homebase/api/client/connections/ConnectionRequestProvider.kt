@@ -7,6 +7,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
@@ -23,7 +24,14 @@ data class ConnectionRequestHeader(
 )
 
 @Serializable
-data class ConnectionRequestResponse(
+data class IncomingConnectionRequestResponse(
+    val senderOdinId: OdinId,
+    val receivedTimestampMilliseconds: Long,
+    val eccEncryptedPayload: JsonElement? = null
+)
+
+@Serializable
+data class OutgoingConnectionRequestResponse(
     val contactData: String? = null,
     val senderOdinId: OdinId,
     val circleIds: List<Uuid>? = null,
@@ -68,29 +76,40 @@ class ConnectionRequestProvider(
         private const val TAG = "ConnectionRequestProvider"
     }
 
-    // ------------------------------------------------------------
-    // LIST (incoming | outgoing)
-    // ------------------------------------------------------------
-
-    suspend fun getRequests(
-        type: String,
+    suspend fun getIncomingRequests(
         pageNumber: Int,
         pageSize: Int
-    ): PagedResult<ConnectionRequestResponse> {
-
-        require(type == "incoming" || type == "outgoing") {
-            "type must be incoming or outgoing"
-        }
+    ): PagedResult<IncomingConnectionRequestResponse> {
 
         val creds = requireCreds()
 
-        val endpoint =
-            "/connections/requests?type=$type&pageNumber=$pageNumber&pageSize=$pageSize"
+        val endpoint = "/connections/requests"
 
         val response = encryptedGet(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
-            secret = creds.secret
+            secret = creds.secret,
+            queryString = "type=incoming&pageNumber=$pageNumber&pageSize=$pageSize"
+        )
+
+        throwForFailure(response)
+        return deserialize(response.body)
+    }
+
+    suspend fun getOutgoingRequests(
+        pageNumber: Int,
+        pageSize: Int
+    ): PagedResult<OutgoingConnectionRequestResponse> {
+
+        val creds = requireCreds()
+
+        val endpoint = "/connections/requests"
+
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, endpoint),
+            token = creds.accessToken,
+            secret = creds.secret,
+            queryString = "type=outgoing&pageNumber=$pageNumber&pageSize=$pageSize"
         )
 
         throwForFailure(response)
@@ -103,7 +122,7 @@ class ConnectionRequestProvider(
 
     suspend fun getIncomingRequest(
         senderId: OdinId
-    ): ConnectionRequestResponse {
+    ): IncomingConnectionRequestResponse {
 
         val creds = requireCreds()
 
@@ -126,7 +145,7 @@ class ConnectionRequestProvider(
 
     suspend fun getOutgoingRequest(
         recipientId: OdinId
-    ): ConnectionRequestResponse {
+    ): OutgoingConnectionRequestResponse {
 
         val creds = requireCreds()
 

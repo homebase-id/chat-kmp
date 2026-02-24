@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.sp
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.chat.ConversationListUiAction
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.data.IncomingConnectionRequestUiModel
+import id.homebase.chat.widget.requests.ConnectionRequestBanner
 import id.homebase.core.ui.assets.FeatherEdit
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.AvatarImage
@@ -74,7 +76,9 @@ fun ConversationListPane(
     selectedConversationId: Uuid? = null,
     onProfileClick: () -> Unit,
     onConversationClick: (Uuid) -> Unit,
-    onUiAction: (ConversationListUiAction) -> Unit
+    onConnectionRequestsClick: () -> Unit,
+    onUiAction: (ConversationListUiAction) -> Unit,
+    incomingRequests: List<IncomingConnectionRequestUiModel>
 ) {
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val twoPaneWindow =
@@ -128,6 +132,11 @@ fun ConversationListPane(
                                     )
                                 }
                             }
+                        )
+
+                        ConnectionRequestBanner(
+                            incomingRequests = incomingRequests,
+                            onClick = onConnectionRequestsClick
                         )
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

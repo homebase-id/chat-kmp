@@ -6,6 +6,7 @@ import id.homebase.api.encodeUrl
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.toBase64
 import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Helper utilities for Odin cryptography operations
@@ -85,13 +86,22 @@ object CryptoHelper {
         return "$path?ss=$encodedPayload"
     }
 
-    suspend fun encryptData(plainText: String, sharedSecret: ByteArray): SharedSecretEncryptedPayload {
+    @OptIn(ExperimentalEncodingApi::class)
+    suspend fun encryptData(
+        plainText: String,
+        sharedSecret: ByteArray
+    ): SharedSecretEncryptedPayload {
+
         val iv = generateIv()
-        val encryptedBytes = AesCbc.encrypt(plainText.encodeToByteArray(), sharedSecret, iv)
+        val encryptedBytes = AesCbc.encrypt(
+            plainText.encodeToByteArray(),
+            sharedSecret,
+            iv
+        )
 
         return SharedSecretEncryptedPayload(
-            iv = Base64.encode(iv),
-            data = Base64.encode(encryptedBytes)
+            iv = Base64.Default.encode(iv),
+            data = Base64.Default.encode(encryptedBytes)
         )
     }
 

@@ -22,6 +22,9 @@ import io.ktor.http.content.TextContent
 import io.ktor.http.contentType
 import id.homebase.api.common.OdinId
 import io.ktor.client.request.delete
+import io.ktor.client.request.parameter
+import io.ktor.utils.io.charsets.Charsets
+import io.ktor.utils.io.charsets.name
 
 data class ByteApiResponse(
     val status: Int,
@@ -239,25 +242,22 @@ abstract class OdinApiProviderBase(
 
         requireHostInUrl(url)
 
-        val finalUrl =
-            if (queryString.isNullOrBlank()) {
-                url
-            } else {
-                val encrypted = OdinSystemSerializer.serialize(
-                    CryptoHelper.encryptData(
-                        queryString,
-                        secret.unsafeBytes
-                    )
-                )
-
-                "$url?ss=$encrypted"
-            }
-
         return request(
             {
-                httpClient.get(finalUrl) {
+                httpClient.get(url) {
                     bearerAuth(token)
                     accept(ContentType.Application.Json)
+
+                    if (!queryString.isNullOrBlank()) {
+                        val encrypted = OdinSystemSerializer.serialize(
+                            CryptoHelper.encryptData(
+                                queryString,
+                                secret.unsafeBytes
+                            )
+                        )
+
+                        parameter("ss", encrypted)
+                    }
                 }
             },
             secret = secret

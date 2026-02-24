@@ -1,7 +1,10 @@
 package id.homebase.chat
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -37,6 +40,7 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewModelScope
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
@@ -44,6 +48,8 @@ import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.NewConversationPane
 import id.homebase.chat.widget.requests.ConnectionRequestBanner
 import id.homebase.chat.widget.requests.ConnectionRequestListPane
+import id.homebase.core.auth.BrowserLauncher
+import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -68,6 +74,7 @@ fun ConversationListScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val launchAuthBrowser = rememberAuthBrowserLauncher()
 
     LaunchedEffect(uiState.uiEvent) {
         when (val event = uiState.uiEvent) {
@@ -79,6 +86,13 @@ fun ConversationListScreen(
             is ConversationListUiEvent.ShowErrorMessage -> {
                 viewModel.eventConsumed()
                 scope.launch { snackbarHostState.showSnackbar(message = event.message) }
+            }
+
+            is ConversationListUiEvent.OpenUrl -> {
+                viewModel.eventConsumed()
+                launchAuthBrowser(event.url)
+                // Notify BrowserLauncher for callback setup (JVM needs server, iOS launches here)
+                BrowserLauncher.onAuthBrowserOpened(event.url, viewModel.viewModelScope)
             }
 
             null -> {}
@@ -226,61 +240,72 @@ fun ChatListUi(
             scaffoldState = scaffoldNavigator.scaffoldState,
             listPane = {
                 AnimatedPane(modifier = Modifier) {
-
-                    ConnectionRequestBanner(
-                        hasRequests = uiState.incomingConnectionRequests.isNotEmpty(),
-                        onClick = { showingConnectionRequests = true }
-                    )
-
-                    when {
-                        showingConnectionRequests -> {
-                            ConnectionRequestListPane(
-                                incomingRequests = uiState.incomingConnectionRequests,
-                                onBackClick = { showingConnectionRequests = false },
-                                onIncomingRequestClick = { request ->
-                                    onUiAction(
-                                        ConversationListUiAction.IncomingConnectionRequestClicked(request)
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            when {
+                                showingConnectionRequests -> {
+                                    ConnectionRequestListPane(
+                                        incomingRequests = uiState.incomingConnectionRequests,
+                                        onBackClick = { showingConnectionRequests = false },
+                                        onIncomingRequestClick = { request ->
+                                            onUiAction(
+                                                ConversationListUiAction.IncomingConnectionRequestClicked(request)
+                                            )
+                                            showingConnectionRequests = false
+                                        },
                                     )
-                                    showingConnectionRequests = false
-                                },
-                            )
-                        }
+                                }
 
-                        uiState.showingNewChatPane -> {
-                            NewConversationPane(
-                                contacts = uiState.contacts,
-                                searchQuery = uiState.searchQuery,
-                                onBackClick = {
-                                    onUiAction(ConversationListUiAction.BackToListClicked)
-                                },
-                                onContactClick = { contact ->
-                                    onUiAction(ConversationListUiAction.ContactClicked(contact))
-                                },
-                                onSearchQueryChanged = { query ->
-                                    onUiAction(
-                                        ConversationListUiAction.SearchQueryChanged(query)
+                                uiState.showingNewChatPane -> {
+                                    NewConversationPane(
+                                        contacts = uiState.contacts,
+                                        searchQuery = uiState.searchQuery,
+                                        onBackClick = {
+                                            onUiAction(ConversationListUiAction.BackToListClicked)
+                                        },
+                                        onContactClick = { contact ->
+                                            onUiAction(
+                                                ConversationListUiAction.ContactClicked(contact)
+                                            )
+                                        },
+                                        onSearchQueryChanged = { query ->
+                                            onUiAction(
+                                                ConversationListUiAction.SearchQueryChanged(query)
+                                            )
+                                        }
                                     )
-                                })
-                        }
-                        else -> {
-                            ConversationListPane(
-                                conversations = uiState.conversations,
-                                selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                                onConversationClick = { conversationId ->
-                                    onUiAction(
-                                        ConversationListUiAction.ConversationClicked(
-                                            conversationId
-                                        )
+                                }
+
+                                else -> {
+                                    ConversationListPane(
+                                        conversations = uiState.conversations,
+                                        selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
+                                        onConversationClick = { conversationId ->
+                                            onUiAction(
+                                                ConversationListUiAction.ConversationClicked(
+                                                    conversationId
+                                                )
+                                            )
+                                            scope.launch {
+                                                scaffoldNavigator.navigateTo(
+                                                    ListDetailPaneScaffoldRole.Detail,
+                                                    conversationId
+                                                )
+                                            }
+                                        },
+                                        onProfileClick = onNavigateToSettingsScreen,
+                                        onConnectionRequestsClick = {
+                                            showingConnectionRequests = true
+                                        },
+                                        onUiAction = onUiAction,
+                                        incomingRequests = uiState.incomingConnectionRequests
                                     )
-                                    scope.launch {
-                                        scaffoldNavigator.navigateTo(
-                                            ListDetailPaneScaffoldRole.Detail, conversationId
-                                        )
-                                    }
-                                },
-                                onProfileClick = onNavigateToSettingsScreen,
-                                onUiAction = onUiAction,
-                            )
+                                }
+                            }
                         }
                     }
                 }

@@ -60,6 +60,8 @@ class ConversationListViewModel(
                     contacts = contacts.toPersistentList()
                 )
             }
+        }
+        viewModelScope.launch {
 
             connectionRequestService.start()
             connectionRequestService.incomingRequests.collect { requests ->
@@ -540,6 +542,18 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.HideReactionDetails -> {
                 _uiState.update { it.copy(messageReactions = null) }
+            }
+
+            is ConversationListUiAction.IncomingConnectionRequestClicked -> {
+                viewModelScope.launch {
+
+                    val domain = credentialsManager.requireActiveCredentials().domain
+                    val url = "https://$domain/owner/connections/${action.request.senderOdinId}"
+
+                    _uiState.update {
+                        it.copy(uiEvent = ConversationListUiEvent.OpenUrl(url))
+                    }
+                }
             }
 
             else -> {

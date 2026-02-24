@@ -17,8 +17,6 @@ data class IncomingConnectionRequestUiModel(
 //    val connectionRequestOrigin: String,
 )
 
-
-
 @Immutable
 data class OutgoingConnectionRequestUiModel(
     val message: String? = null,
