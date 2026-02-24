@@ -1,35 +1,47 @@
 # Homebase Chat
 
-## How to run
+## Running
 
-### Android
+**Android**
 ```
 ./gradlew androidApp:installDebug
 ```
 
-### iOS
+**iOS**
 ```
 Run from Xcode
 ```
-
-### Desktop
+**Desktop**
 ```
 ./gradlew desktopApp:run
 ```
 
-With hot reload:
+**Desktop with hot reload**
 ```
 ./gradlew desktopApp:hotRunJvm --auto
 ```
 
-### Wasm
+**Wasm**
 ```
 ./gradlew webApp:wasmJsBrowserDevelopmentRun --no-configuration-cache
 ```
 
-## Build
+## Release build
 
-### Android
+**Android**
+Add signing key password to environment variable `HOMEBASE_KEYSTORE_PASS` first.
 ```
 ./gradlew androidApp:assembleRelease
+```
+
+## Test
+
+**Run all tests (JVM)**
+Currently only tests found in common and api module.
+```
+./gradlew ./gradlew homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
+```
+To add to IDE, click "Edit configurations" in Run/debug menu, add gradle task, name it "AllTests" and paste below into run field:
+```
+homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
 ```
