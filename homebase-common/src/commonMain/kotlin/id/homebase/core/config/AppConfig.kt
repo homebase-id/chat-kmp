@@ -111,14 +111,7 @@ val circleDriveTargetRequest: List<TargetDriveAccessRequest> = listOf(
         name = "Chat Drive",
         description = "Drive which contains all the chat messages",
         permissions = listOf(DrivePermissionType.Write, DrivePermissionType.React)
-    ),
-    TargetDriveAccessRequest(
-        alias = feedTargetDrive.alias.toString(),
-        type = feedTargetDrive.type.toString(),
-        name = "Feed Drive",
-        description = " ",
-        permissions = listOf(DrivePermissionType.Read, DrivePermissionType.Write)
-    ),
+    )
 )
 
 
