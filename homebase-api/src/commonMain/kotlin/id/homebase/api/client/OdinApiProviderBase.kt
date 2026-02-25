@@ -1,6 +1,5 @@
 package id.homebase.api.client
 
-import androidx.collection.ObjectList
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -22,6 +21,10 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.content.TextContent
 import io.ktor.http.contentType
 import id.homebase.api.common.OdinId
+import io.ktor.client.request.delete
+import io.ktor.client.request.parameter
+import io.ktor.utils.io.charsets.Charsets
+import io.ktor.utils.io.charsets.name
 
 data class ByteApiResponse(
     val status: Int,
@@ -239,30 +242,94 @@ abstract class OdinApiProviderBase(
 
         requireHostInUrl(url)
 
-        val finalUrl =
-            if (queryString.isNullOrBlank()) {
-                url
-            } else {
-                val encrypted = OdinSystemSerializer.serialize(
-                    CryptoHelper.encryptData(
-                        queryString,
-                        secret.unsafeBytes
-                    )
-                )
-
-                "$url?ss=$encrypted"
-            }
-
         return request(
             {
-                httpClient.get(finalUrl) {
+                httpClient.get(url) {
                     bearerAuth(token)
                     accept(ContentType.Application.Json)
+
+                    if (!queryString.isNullOrBlank()) {
+                        val encrypted = OdinSystemSerializer.serialize(
+                            CryptoHelper.encryptData(
+                                queryString,
+                                secret.unsafeBytes
+                            )
+                        )
+
+                        parameter("ss", encrypted)
+                    }
                 }
             },
             secret = secret
         )
     }
+
+    protected suspend fun encryptedPutJson(
+        url: String,
+        token: String,
+        jsonBody: String,
+        secret: SecureByteArray
+    ): ApiResponse {
+        requireHostInUrl(url)
+
+        return request(
+            {
+                httpClient.put(url) {
+                    bearerAuth(token)
+                    contentType(ContentType.Application.Json)
+                    accept(ContentType.Application.Json)
+                    setBody(
+                        TextContent(
+                            OdinSystemSerializer.serialize(
+                                CryptoHelper.encryptData(
+                                    jsonBody,
+                                    secret.unsafeBytes
+                                )
+                            ),
+                            ContentType.Application.Json
+                        )
+                    )
+                }
+            },
+            secret = secret
+        )
+    }
+
+
+    protected suspend fun encryptedDelete(
+        url: String,
+        token: String,
+        secret: SecureByteArray,
+        jsonBody: String? = null
+    ): ApiResponse {
+        requireHostInUrl(url)
+
+        return request(
+            {
+                httpClient.delete(url) {
+                    bearerAuth(token)
+                    accept(ContentType.Application.Json)
+
+                    if (jsonBody != null) {
+                        contentType(ContentType.Application.Json)
+                        setBody(
+                            TextContent(
+                                OdinSystemSerializer.serialize(
+                                    CryptoHelper.encryptData(
+                                        jsonBody,
+                                        secret.unsafeBytes
+                                    )
+                                ),
+                                ContentType.Application.Json
+                            )
+                        )
+                    }
+                }
+            },
+            secret = secret
+        )
+    }
+
 
     protected suspend fun encryptedPostJson(
         url: String,

@@ -114,7 +114,8 @@ class ContactService(
             odinId = parsedContact.odinId
                 ?: throw IllegalStateException("why is the odin id missing?"),
             name = parsedContact.name.displayName ?: parsedContact.odinId.domainName,
-            avatarInitials = parsedContact.name.initials()
+            avatarInitials = parsedContact.name.initials(),
+            avatarUrl = "https://${parsedContact.odinId}/pub/image"
         )
     }
 }
