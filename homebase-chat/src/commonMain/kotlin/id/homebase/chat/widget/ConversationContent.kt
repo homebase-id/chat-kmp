@@ -78,7 +78,6 @@ import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import kotlin.time.Clock
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -89,6 +88,7 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -265,7 +265,7 @@ fun ConversationContent(
                 .consumeWindowInsets(innerPadding).imePadding()
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
-            if (isScrollPositionReady && messages.isNotEmpty()) {
+            if (isScrollPositionReady) {
                 Box(
                     modifier = Modifier.weight(1f),
                 ) {
@@ -295,6 +295,20 @@ fun ConversationContent(
                                     Text(
                                         text = conversation.name,
                                         style = MaterialTheme.typography.headlineSmall,
+                                    )
+                                }
+                            }
+                        }
+                        if (messages.isEmpty()) {
+                            item {
+
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = stringResource(MR.string.chat_no_messages),
+                                        modifier = Modifier.padding(24.dp),
                                     )
                                 }
                             }
@@ -344,16 +358,6 @@ fun ConversationContent(
                     HomebaseVerticalScrollbar(
                         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                         state = listState
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(MR.string.chat_no_messages),
-                        modifier = Modifier.padding(24.dp),
                     )
                 }
             }

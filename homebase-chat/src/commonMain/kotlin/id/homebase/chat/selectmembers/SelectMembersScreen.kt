@@ -1,5 +1,6 @@
 package id.homebase.chat.selectmembers
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -138,7 +139,7 @@ fun SelectMembersUi(
         },
         floatingActionButton = {
             Button(
-                onClick = {  onUiAction(SelectMembersUiAction.NextClicked) },
+                onClick = { onUiAction(SelectMembersUiAction.NextClicked) },
                 modifier = Modifier.defaultMinSize(minWidth = 56.dp, minHeight = 56.dp),
                 enabled = uiState.selectedContacts.size >= 2,
                 shape = CircleShape
@@ -226,14 +227,17 @@ fun SelectMembersUi(
                 }
                 uiState.displayItems.forEach { item ->
                     stickyHeader {
-                        Text(
-                            modifier = Modifier.padding(
-                                horizontal = 16.dp,
-                                vertical = 8.dp
-                            ),
-                            text = item.initial,
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = item.initial,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
                     }
                     items(item.contacts) { contact ->
                         ContactItem(

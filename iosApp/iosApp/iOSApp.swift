@@ -30,7 +30,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didReceiveRemoteNotification userInfo: [AnyHashable : Any],
                    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-      NotifierManager.shared.onApplicationDidReceiveRemoteNotification,(userInfo: userInfo)
+      NotifierManager.shared.onApplicationDidReceiveRemoteNotification(userInfo: userInfo)
       completionHandler(.newData)
   }
     

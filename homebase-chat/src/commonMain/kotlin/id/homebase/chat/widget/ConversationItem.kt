@@ -25,6 +25,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.common.OdinId
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.widget.AvatarImage
 import kotlin.time.Instant
@@ -43,8 +44,7 @@ fun ConversationItem(
     onContactClick: (odinId: OdinId) -> Unit,
     isSelected: Boolean = false,
 ) {
-    val textState = RichTextState()
-    textState.config.listIndent = 0
+    val textState = RichTextState().applyDefaultStyling()
     textState.setMarkdown(message)
     Row(
         modifier = Modifier
@@ -102,7 +102,7 @@ fun ConversationItem(
                 )
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -126,7 +126,7 @@ fun ConversationItem(
                         contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     ) {
                         Text(
-                            modifier = Modifier.padding(2.dp),
+                            modifier = Modifier.padding(4.dp),
                             text = unreadCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold

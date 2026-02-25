@@ -1,5 +1,6 @@
 package id.homebase.chat.createconversation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -179,14 +180,17 @@ fun CreateConversationUi(
                             }
                             item.contactGroups.forEach { contactGroup ->
                                 stickyHeader {
-                                    Text(
-                                        modifier = Modifier.padding(
-                                            horizontal = 16.dp,
-                                            vertical = 8.dp
-                                        ),
-                                        text = contactGroup.initial,
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(MaterialTheme.colorScheme.surface)
+                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = contactGroup.initial,
+                                            style = MaterialTheme.typography.titleMedium
+                                        )
+                                    }
                                 }
                                 items(contactGroup.contacts) { contact ->
                                     ContactItem(

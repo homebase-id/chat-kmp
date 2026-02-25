@@ -70,8 +70,11 @@ import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
 import id.homebase.core.ui.assets.MessageSentAndRead
+import id.homebase.core.ui.theme.DarkColors
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.ui.theme.LightColors
+import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.getOdinIdColor
 import id.homebase.core.util.ifTrue
@@ -84,12 +87,12 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
-import kotlin.io.encoding.Base64
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
+import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 
 /**
  * Displays a message bubble for messages sent to other users.
@@ -535,8 +538,7 @@ fun MessageBubble(
     else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
     else MaterialTheme.colorScheme.onSurface
 
-    val textState = RichTextState()
-    textState.config.listIndent = 0
+    val textState = RichTextState().applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
     textState.setMarkdown(text)
 
     val shape = RoundedCornerShape(
