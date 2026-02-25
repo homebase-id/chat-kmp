@@ -78,6 +78,7 @@ import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlin.time.Clock
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -88,7 +89,6 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Clock
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -122,11 +122,7 @@ fun ConversationContent(
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
 
-    val imeVisible by remember {
-        derivedStateOf {
-            imeInsets.getBottom(density) > 0
-        }
-    }
+    val imeVisible by remember { derivedStateOf { imeInsets.getBottom(density) > 0 } }
 
     // Add a LaunchedEffect to listen for keyboard changes
     LaunchedEffect(imeVisible) {
@@ -140,8 +136,7 @@ fun ConversationContent(
         }
     }
 
-    @Suppress("DEPRECATION")
-    BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible) {
+    @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible) {
         showEmojiSheet = false
         showAttachmentSheet = false
         keyboardController?.hide()
@@ -167,22 +162,19 @@ fun ConversationContent(
             )
         }
     }
-    val galleryLauncher =
-        rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
-            file?.let {
-                onUiAction(
-                    ConversationListUiAction.AttachPlatformFile(
-                        conversation.id,
-                        listOf(file),
-                    )
+    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
+        file?.let {
+            onUiAction(
+                ConversationListUiAction.AttachPlatformFile(
+                    conversation.id,
+                    listOf(file),
                 )
-            }
+            )
         }
+    }
 
     messageReactions?.let {
-        EmojiSummary(it, onDismiss = {
-            onUiAction(ConversationListUiAction.HideReactionDetails)
-        })
+        EmojiSummary(it, onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) })
     }
 
     Scaffold(
@@ -198,10 +190,11 @@ fun ConversationContent(
                             fontSize = 12.sp,
                             onClick = {
                                 onUiAction(
-                                    ConversationListUiAction.ShowContactInfo(conversation.participants.first().domainName)
+                                    ConversationListUiAction.ShowContactInfo(
+                                        conversation.participants.first().domainName
+                                    )
                                 )
-                            }
-                        )
+                            })
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
                             text = conversation.name,
@@ -209,8 +202,7 @@ fun ConversationContent(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                },
-                navigationIcon = {
+                }, navigationIcon = {
                     if (showBackButton) {
                         IconButton(onClick = onBackClick) {
                             Icon(
@@ -219,8 +211,7 @@ fun ConversationContent(
                             )
                         }
                     }
-                },
-                actions = {
+                }, actions = {
                     IconButton(onClick = { showConversationMenu = true }) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
@@ -263,21 +254,16 @@ fun ConversationContent(
                             )
                         },
                     )
-                },
-                colors =
-                    TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    )
+                }, colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                )
             )
         },
     ) { innerPadding ->
         Column(
-            modifier =
-                Modifier.fillMaxSize()
-                    .padding(innerPadding)
-                    .consumeWindowInsets(innerPadding)
-                    .imePadding()
-                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            modifier = Modifier.fillMaxSize().padding(innerPadding)
+                .consumeWindowInsets(innerPadding).imePadding()
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
             if (isScrollPositionReady && messages.isNotEmpty()) {
                 Box(
@@ -294,8 +280,7 @@ fun ConversationContent(
                     ) {
                         item {
                             Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                                     .padding(bottom = 24.dp),
                                 horizontalArrangement = Arrangement.Center
                             ) {
@@ -317,15 +302,14 @@ fun ConversationContent(
                         items(messages, key = { message -> message.id }) { messageItem ->
                             when (messageItem) {
                                 is MessageListContentModel.Section -> {
-                                    MessagesSection(
-                                        text = getDateSectionLabel(messageItem.date)
-                                    )
+                                    MessagesSection(text = getDateSectionLabel(messageItem.date))
                                 }
 
                                 is MessageListContentModel.Message -> {
                                     MessageItem(
                                         message = messageItem.message,
                                         currentOdinId = currentOdinId,
+                                        renderAuthorName = conversation.isGroupConversation,
                                         animatedVisibilityScope = animatedVisibilityScope,
                                         sharedTransitionScope = sharedTransitionScope,
                                         onUiAction = onUiAction
@@ -341,11 +325,13 @@ fun ConversationContent(
                                     horizontalArrangement = Arrangement.End,
                                 ) {
                                     Box(
-                                        modifier = Modifier
-                                            .width(140.dp)
-                                            .clip(RoundedCornerShape(Dimens.Message.cornerRadius))
-                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                            .padding(16.dp)
+                                        modifier = Modifier.width(140.dp).clip(
+                                            RoundedCornerShape(
+                                                Dimens.Message.cornerRadius
+                                            )
+                                        ).background(
+                                            MaterialTheme.colorScheme.surfaceContainerHigh
+                                        ).padding(16.dp)
                                     ) {
                                         CircularProgressIndicator(
                                             modifier = Modifier.align(Alignment.Center)
@@ -371,19 +357,13 @@ fun ConversationContent(
                     )
                 }
             }
-            Surface(
-                shadowElevation = 8.dp, tonalElevation = 0.dp
-            ) {
-                Column(
-                    modifier = Modifier.animateContentSize()
-                ) {
+            Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
+                Column(modifier = Modifier.animateContentSize()) {
                     replyToMessage?.let { msg ->
                         ReplyPreviewBar(
-                            message = msg,
-                            onDismiss = {
+                            message = msg, onDismiss = {
                                 onUiAction(ConversationListUiAction.CancelReplyToMessage)
-                            }
-                        )
+                            })
                     }
                     MessageInputBar(
                         textFieldState = textFieldState,
@@ -446,17 +426,13 @@ fun ConversationContent(
                                 showAttachmentSheet = true
                             }
                         },
-                        onCameraClick = { cameraLauncher.launch() }
-                    )
+                        onCameraClick = { cameraLauncher.launch() })
 
                     EmojiSelectorSheet(
                         modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
                         visible = showEmojiSheet,
-                        onBackSpace = {
-                            textFieldState.programmaticBackspace()
-                        },
-                        onEmojiSelected = { textFieldState.addTextAfterSelection(it) }
-                    )
+                        onBackSpace = { textFieldState.programmaticBackspace() },
+                        onEmojiSelected = { textFieldState.addTextAfterSelection(it) })
 
                     AttachmentOptionsDisplay(
                         modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
@@ -467,31 +443,25 @@ fun ConversationContent(
                                 showAttachmentSheet = false
                                 onUiAction(
                                     ConversationListUiAction.AttachGalleryItem(
-                                        conversationId = conversation.id,
-                                        files = listOf(it)
+                                        conversationId = conversation.id, files = listOf(it)
                                     )
                                 )
                                 // Handle image selection
                             },
                         )
-                        AttachmentOptions(
-                            onGalleryClick = {
-                                showAttachmentSheet = false
-                                galleryLauncher.launch()
-                            },
-                            onFileClick = {
-                                showAttachmentSheet = false
-                                fileLauncher.launch()
-                            },
-                            onContactClick = {
-                                showAttachmentSheet = false
-                                // Handle camera
-                            },
-                            onLocationClick = {
-                                showAttachmentSheet = false
-                                // Handle location
-                            }
-                        )
+                        AttachmentOptions(onGalleryClick = {
+                            showAttachmentSheet = false
+                            galleryLauncher.launch()
+                        }, onFileClick = {
+                            showAttachmentSheet = false
+                            fileLauncher.launch()
+                        }, onContactClick = {
+                            showAttachmentSheet = false
+                            // Handle camera
+                        }, onLocationClick = {
+                            showAttachmentSheet = false
+                            // Handle location
+                        })
                     }
                 }
             }
@@ -509,12 +479,11 @@ private fun getDateSectionLabel(messageDate: LocalDate): String {
         today -> stringResource(MR.string.time_today)
         yesterday -> stringResource(MR.string.time_yesterday)
         else -> {
-            val format =
-                LocalDate.Format {
-                    monthName(MonthNames.ENGLISH_ABBREVIATED)
-                    char(' ')
-                    day()
-                }
+            val format = LocalDate.Format {
+                monthName(MonthNames.ENGLISH_ABBREVIATED)
+                char(' ')
+                day()
+            }
             messageDate.format(format)
         }
     }

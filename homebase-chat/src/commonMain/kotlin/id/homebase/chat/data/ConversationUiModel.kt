@@ -8,7 +8,7 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 @Immutable
-data class ConversationUiModel(  // TODO: Move the data objects / classes into Conversation.kt ?
+data class ConversationUiModel( // TODO: Move the data objects / classes into Conversation.kt ?
     val id: Uuid,
     val name: String,
     var lastMessage: String,
@@ -21,6 +21,10 @@ data class ConversationUiModel(  // TODO: Move the data objects / classes into C
     val isPinned: Boolean = false,
     val lastRead: Instant
 ) {
+    /** True when there are multiple participants (i.e., a group conversation). */
+    val isGroupConversation: Boolean
+        get() = participants.size > 2
+
     fun updateWithLatestMessage(msg: MessageUiModel) {
         // TODO: Should we also increase unread count here if it's a new message?
         if (msg.created >= timestamp) {
