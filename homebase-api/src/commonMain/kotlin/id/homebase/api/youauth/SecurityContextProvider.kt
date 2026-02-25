@@ -39,9 +39,12 @@ class SecurityContextProvider(
     suspend fun getSecurityContext(): SecurityContext? {
         return try {
 
+            val creds = requireCreds();
+            val url = apiUrl(creds.domain, "/security/context")
+
             val credentials = requireCreds()
             val response: ApiResponse = plainGet(
-                url = "security/context",
+                url = url,
                 token = credentials.accessToken
             )
 

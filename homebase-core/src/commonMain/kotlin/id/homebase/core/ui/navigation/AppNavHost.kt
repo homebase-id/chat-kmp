@@ -170,6 +170,7 @@ fun AppNavHost(
                     ) {
                         ConversationListScreen(
                             viewModel = koinViewModel(),
+                            extendPermissionViewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
                             onNavigateToSettingsScreen = {
                                 navController.navigate(Route.Settings)
@@ -189,8 +190,7 @@ fun AppNavHost(
                                     )
                                 )
                             },
-                            onDetailPaneVisibilityChanged = { showingOnlyDetailPane = it }
-                        )
+                            onDetailPaneVisibilityChanged = { })
                     }
                 }
 
@@ -205,14 +205,11 @@ fun AppNavHost(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
                             onShowConversation = { conversationId ->
-                                navController.navigate(Route.ChatList(conversationId.toString())) {
-                                    popUpTo(Route.NewConversation) { inclusive = true }
-                                }
+                                navController.navigate(
+                                    Route.ChatList(conversationId.toString())
+                                ) { popUpTo(Route.NewConversation) { inclusive = true } }
                             },
-                            onShowCreateGroup = {
-                                navController.navigate(Route.NewGroup)
-                            }
-                        )
+                            onShowCreateGroup = { navController.navigate(Route.NewGroup) })
                     }
                 }
 
