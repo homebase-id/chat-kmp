@@ -2,6 +2,7 @@ package id.homebase.chat.conversationlist
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
@@ -137,8 +138,9 @@ fun ConversationListScreen(
                             onTertiaryClick = { viewModel.dialogClosed() })
                     }) {
                     Text(
+                        modifier = Modifier.padding(16.dp),
                         text = stringResource(MR.string.chat_message_delete_dialog_title),
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
             }

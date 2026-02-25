@@ -37,8 +37,10 @@ import id.homebase.auth.login.LoginScreen
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.createconversation.CreateConversationScreen
+import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
 import id.homebase.chat.messageinfo.MessageInfoScreen
-import id.homebase.chat.newconversation.NewConversationScreen
+import id.homebase.chat.selectmembers.SelectMembersScreen
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
@@ -175,7 +177,7 @@ fun AppNavHost(
                                 navController.navigate(Route.Settings)
                             },
                             onNavigateToNewConversation = {
-                                navController.navigate(Route.NewConversation)
+                                navController.navigate(Route.CreateConversation)
                             },
                             onNavigateToContactInfo = {
                                 navController.navigate(Route.ContactInfo(it))
@@ -194,24 +196,60 @@ fun AppNavHost(
                     }
                 }
 
-                composable<Route.NewConversation> {
+                composable<Route.CreateConversation> {
                     AuthenticatedRouteWithFlowManager(
                         authState = youAuthFlowManager.authState, onUnauthenticated = {
                             navController.navigate(Route.Login) {
                                 popUpTo(0) { inclusive = true }
                             }
                         }) {
-                        NewConversationScreen(
+                        CreateConversationScreen(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
                             onShowConversation = { conversationId ->
                                 navController.navigate(Route.ChatList(conversationId.toString())) {
-                                    popUpTo(Route.NewConversation) { inclusive = true }
+                                    popUpTo(Route.CreateConversation) { inclusive = true }
                                 }
                             },
                             onShowCreateGroup = {
-                                navController.navigate(Route.NewGroup)
+                                navController.navigate(Route.CreateConversationSelectMembers)
                             }
+                        )
+                    }
+                }
+
+                composable<Route.CreateConversationSelectMembers> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        SelectMembersScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                            onMembersSelected = { ids ->
+                                navController.navigate(Route.CreateConversationGroup(ids))
+                            }
+                        )
+                    }
+                }
+
+                composable<Route.CreateConversationGroup> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        CreateConversationGroupScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                            onShowConversation = { conversationId ->
+                                navController.navigate(Route.ChatList(conversationId.toString())) {
+                                    popUpTo(Route.CreateConversation) { inclusive = true }
+                                }
+                            },
                         )
                     }
                 }
