@@ -11,6 +11,7 @@ import id.homebase.chat.data.MessageUiModel
 fun MessageItem(
     message: MessageUiModel,
     currentOdinId: String,
+    renderAuthorName: Boolean = false,
     animatedVisibilityScope: AnimatedVisibilityScope,
     sharedTransitionScope: SharedTransitionScope,
     onUiAction: (ConversationListUiAction) -> Unit
@@ -25,32 +26,10 @@ fun MessageItem(
     if (message.isCurrentUser(odinId)) {
         SentMessageBubble(
             message = message,
-            onMessageInfo = {
-                onUiAction(
-                    ConversationListUiAction.ShowMessageInfo(message)
-                )
-            },
-            onReply = {
-                onUiAction(
-                    ConversationListUiAction.ReplyToMessage(
-                        message
-                    )
-                )
-            },
-            onEdit = {
-                onUiAction(
-                    ConversationListUiAction.EditMessage(
-                        message.id
-                    )
-                )
-            },
-            onDelete = {
-                onUiAction(
-                    ConversationListUiAction.DeleteMessage(
-                        message.id
-                    )
-                )
-            },
+            onMessageInfo = { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) },
+            onReply = { onUiAction(ConversationListUiAction.ReplyToMessage(message)) },
+            onEdit = { onUiAction(ConversationListUiAction.EditMessage(message.id)) },
+            onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) },
             onMediaClick = { payload ->
                 onUiAction(
                     ConversationListUiAction.MediaClicked(
@@ -62,18 +41,12 @@ fun MessageItem(
             onAddReaction = { _, reaction ->
                 onUiAction(
                     ConversationListUiAction.AddReaction(
-                        message.conversationId,
-                        message.id,
-                        reaction = reaction
+                        message.conversationId, message.id, reaction = reaction
                     )
                 )
             },
             onShowReactions = {
-                onUiAction(
-                    ConversationListUiAction.ShowReactionDetails(
-                        messageId = message.id
-                    )
-                )
+                onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id))
             },
             animatedVisibilityScope = animatedVisibilityScope,
             sharedTransitionScope = sharedTransitionScope,
@@ -81,47 +54,20 @@ fun MessageItem(
     } else {
         ReceivedMessageBubble(
             message = message,
-            onMessageInfo = {
-                onUiAction(
-                    ConversationListUiAction.ShowMessageInfo(message)
-                )
-            },
-            onReply = {
-                onUiAction(
-                    ConversationListUiAction.ReplyToMessage(
-                        message
-                    )
-                )
-            },
-            onDelete = {
-                onUiAction(
-                    ConversationListUiAction.DeleteMessage(
-                        message.id
-                    )
-                )
-            },
-            onMarkAsRead = {
-                onUiAction(
-                    ConversationListUiAction.MarkAsRead(
-                        message.id
-                    )
-                )
-            },
+            renderAuthorName = renderAuthorName,
+            onMessageInfo = { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) },
+            onReply = { onUiAction(ConversationListUiAction.ReplyToMessage(message)) },
+            onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) },
+            onMarkAsRead = { onUiAction(ConversationListUiAction.MarkAsRead(message.id)) },
             onAddReaction = { _, reaction ->
                 onUiAction(
                     ConversationListUiAction.AddReaction(
-                        message.conversationId,
-                        message.id,
-                        reaction = reaction
+                        message.conversationId, message.id, reaction = reaction
                     )
                 )
             },
             onShowReactions = {
-                onUiAction(
-                    ConversationListUiAction.ShowReactionDetails(
-                        messageId = message.id
-                    )
-                )
+                onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id))
             },
             onMediaClick = { payload ->
                 onUiAction(

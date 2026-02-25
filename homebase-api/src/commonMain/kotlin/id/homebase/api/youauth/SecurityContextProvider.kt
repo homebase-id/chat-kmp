@@ -16,13 +16,9 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-/**
- * Provider for fetching security context from the API.
- */
-class SecurityContextProvider(
-    httpClient: HttpClient,
-    credentialsManager: CredentialsManager
-) : OdinApiProviderBase(httpClient, credentialsManager) {
+/** Provider for fetching security context from the API. */
+class SecurityContextProvider(httpClient: HttpClient, credentialsManager: CredentialsManager) :
+    OdinApiProviderBase(httpClient, credentialsManager) {
 
     companion object {
         private const val TAG = "SecurityContextProvider"
@@ -39,15 +35,14 @@ class SecurityContextProvider(
     suspend fun getSecurityContext(): SecurityContext? {
         return try {
 
+            val creds = requireCreds()
+            val url = apiUrl(creds.domain, "/auth/context")
+
             val credentials = requireCreds()
-            val response: ApiResponse = plainGet(
-                url = "security/context",
-                token = credentials.accessToken
-            )
+            val response: ApiResponse = plainGet(url = url, token = credentials.accessToken)
 
             throwForFailure(response)
             parseSecurityContext(response.body)
-
         } catch (e: Exception) {
             Logger.e(TAG, e) { "Error fetching security context: ${e.message}" }
             null
