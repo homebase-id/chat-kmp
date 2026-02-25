@@ -12,6 +12,7 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -72,6 +73,7 @@ import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatMessageTimestamp
+import id.homebase.core.util.getOdinIdColor
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
@@ -191,33 +193,28 @@ fun SentMessageBubble(
                     )
                 }
                 if (showReactionPicker) {
-                    ReactionPopup(
-                        onSelect = { reaction ->
-                            showMenu = false
-                            showReactionPicker = false
-                            onAddReaction(message.id, reaction)
-                        },
-                        onShowAllEmojis = {
-                            showMenu = false
-                            showReactionPicker = false
-                            showEmojiPicker = true
-                        },
-                        onDismiss = { showReactionPicker = false }
-                    )
+                    ReactionPopup(onSelect = { reaction ->
+                        showMenu = false
+                        showReactionPicker = false
+                        onAddReaction(message.id, reaction)
+                    }, onShowAllEmojis = {
+                        showMenu = false
+                        showReactionPicker = false
+                        showEmojiPicker = true
+                    }, onDismiss = { showReactionPicker = false })
                 }
                 if (showEmojiPicker) {
-                    EmojiSelectorDialog(
-                        onDismiss = { showEmojiPicker = false },
-                        onEmojiSelected = {
-                            showEmojiPicker = false
-                            onAddReaction(message.id, it)
-                        }
-                    )
+                    EmojiSelectorDialog(onDismiss = { showEmojiPicker = false }, onEmojiSelected = {
+                        showEmojiPicker = false
+                        onAddReaction(message.id, it)
+                    })
                 }
             }
             Box {
                 MessageBubble(
-                    modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
+                    modifier = Modifier.padding(
+                        bottom = if (message.reactionPreview == null) 0.dp else 26.dp
+                    ),
                     text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = true,
@@ -268,6 +265,7 @@ fun SentMessageBubble(
 @Composable
 fun ReceivedMessageBubble(
     message: MessageUiModel,
+    renderAuthorName: Boolean = false,
     onMessageInfo: (messageId: Uuid) -> Unit,
     onReply: (messageId: Uuid) -> Unit,
     onDelete: (messageId: Uuid) -> Unit,
@@ -292,33 +290,50 @@ fun ReceivedMessageBubble(
             horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box {
-                MessageBubble(
-                    modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
-                    text = message.content,
-                    timestamp = formatMessageTimestamp(message.created),
-                    sentByYou = false,
-                    deliveryStatus = message.messageAppData.deliveryStatus,
-                    payloads = message.payloads,
-                    fileId = message.fileId,
-                    keyHeader = message.keyHeader,
-                    previewThumbnail = message.previewThumbnail,
-                    replyPreview = message.messageAppData.replyPreview,
-                    onLongClick = {
-                        showMenu = true
-                        showReactionPicker = true
-                    },
-                    onMediaClick = onMediaClick,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                )
-                message.reactionPreview?.let { reactionSummary ->
-                    ReactionList(
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp),
-                        reactionSummary = reactionSummary,
-                        onClick = { onAddReaction(message.id, it) },
-                        onLongClick = { onShowReactions(reactionSummary) },
+            Column {
+                if (renderAuthorName) {
+                    val authorName = message.originalAuthor?.domainName ?: ""
+                    val authorColor = getOdinIdColor(authorName)
+                    val isDark = isSystemInDarkTheme()
+                    Text(
+                        text = authorName,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isDark) authorColor.darkTheme else authorColor.lightTheme,
+                        modifier = Modifier.padding(start = 12.dp, bottom = 2.dp),
+                        maxLines = 1,
                     )
+                }
+                Box {
+                    MessageBubble(
+                        modifier = Modifier.padding(
+                            bottom = if (message.reactionPreview == null) 0.dp
+                            else 26.dp
+                        ),
+                        text = message.content,
+                        timestamp = formatMessageTimestamp(message.created),
+                        sentByYou = false,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        payloads = message.payloads,
+                        fileId = message.fileId,
+                        keyHeader = message.keyHeader,
+                        previewThumbnail = message.previewThumbnail,
+                        replyPreview = message.messageAppData.replyPreview,
+                        onLongClick = {
+                            showMenu = true
+                            showReactionPicker = true
+                        },
+                        onMediaClick = onMediaClick,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                    )
+                    message.reactionPreview?.let { reactionSummary ->
+                        ReactionList(
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp),
+                            reactionSummary = reactionSummary,
+                            onClick = { onAddReaction(message.id, it) },
+                            onLongClick = { onShowReactions(reactionSummary) },
+                        )
+                    }
                 }
             }
             Column {
@@ -334,28 +349,21 @@ fun ReceivedMessageBubble(
                     )
                 }
                 if (showReactionPicker) {
-                    ReactionPopup(
-                        onSelect = { reaction ->
-                            showReactionPicker = false
-                            showMenu = false
-                            onAddReaction(message.id, reaction)
-                        },
-                        onShowAllEmojis = {
-                            showReactionPicker = false
-                            showMenu = false
-                            showEmojiPicker = true
-                        },
-                        onDismiss = { showReactionPicker = false }
-                    )
+                    ReactionPopup(onSelect = { reaction ->
+                        showReactionPicker = false
+                        showMenu = false
+                        onAddReaction(message.id, reaction)
+                    }, onShowAllEmojis = {
+                        showReactionPicker = false
+                        showMenu = false
+                        showEmojiPicker = true
+                    }, onDismiss = { showReactionPicker = false })
                 }
                 if (showEmojiPicker) {
-                    EmojiSelectorDialog(
-                        onDismiss = { showEmojiPicker = false },
-                        onEmojiSelected = {
-                            showEmojiPicker = false
-                            onAddReaction(message.id, it)
-                        }
-                    )
+                    EmojiSelectorDialog(onDismiss = { showEmojiPicker = false }, onEmojiSelected = {
+                        showEmojiPicker = false
+                        onAddReaction(message.id, it)
+                    })
                 }
             }
             IconButton(
@@ -500,10 +508,11 @@ fun MessageBubble(
 
     val mediaOnly = !text.hasContent() && hasMedia
     val emojiOnly = text.isEmojiContentOnly() && !hasMedia
-    val backgroundColor =
-        if (emojiOnly) Color.Unspecified else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
-        else MaterialTheme.colorScheme.surfaceContainerHigh
-    val contentColor = if (emojiOnly) MaterialTheme.colorScheme.onSurface else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+    val backgroundColor = if (emojiOnly) Color.Unspecified
+    else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+    else MaterialTheme.colorScheme.surfaceContainerHigh
+    val contentColor = if (emojiOnly) MaterialTheme.colorScheme.onSurface
+    else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
     else MaterialTheme.colorScheme.onSurface
 
     val textState = RichTextState()
@@ -546,21 +555,16 @@ fun MessageBubble(
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .align(Alignment.BottomStart)
-                ) {
+                Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
                     Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(40.dp)
-                            .align(Alignment.BottomStart)
-                            .background(
+                        modifier = Modifier.fillMaxWidth().height(40.dp)
+                            .align(Alignment.BottomStart).background(
                                 brush = Brush.verticalGradient(
                                     colors = listOf(
                                         Color.Transparent,
-                                        Color.Black.copy(alpha = 0.6f),
+                                        Color.Black.copy(
+                                            alpha = 0.6f
+                                        ),
                                     )
                                 )
                             ),
@@ -590,7 +594,9 @@ fun MessageBubble(
                     Column {
                         // Inline reply preview if this message is a reply
                         replyPreview?.let { reply ->
-                            InlineReplyPreview(replyPreview = reply, sentByYou = sentByYou)
+                            InlineReplyPreview(
+                                replyPreview = reply, sentByYou = sentByYou
+                            )
                         }
                         if (hasMedia) {
                             MediaMessage(
@@ -606,7 +612,9 @@ fun MessageBubble(
                             )
                         }
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(
+                                horizontal = 12.dp, vertical = 8.dp
+                            ),
                         ) {
                             if (emojiOnly) {
                                 // Render emoji-only messages prominently
@@ -632,7 +640,9 @@ fun MessageBubble(
                         }
                     }
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(
+                            horizontal = 12.dp, vertical = 8.dp
+                        ),
                         verticalAlignment = Alignment.Bottom,
                         horizontalArrangement = Arrangement.End,
                     ) {
@@ -643,9 +653,7 @@ fun MessageBubble(
                         )
                         if (sentByYou) {
                             Spacer(modifier = Modifier.width(4.dp))
-                            DeliveryStatus(
-                                deliveryStatus = deliveryStatus
-                            )
+                            DeliveryStatus(deliveryStatus = deliveryStatus)
                         }
                     }
                 }) { measurables, constraints ->
