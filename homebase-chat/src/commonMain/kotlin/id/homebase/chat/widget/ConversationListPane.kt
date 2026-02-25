@@ -57,11 +57,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.window.core.layout.WindowSizeClass
+import id.homebase.api.client.auth.OwnerSession
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
 import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.ui.assets.FeatherEdit
-import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
@@ -86,7 +88,8 @@ fun ConversationListPane(
     isSearchActive: Boolean,
     searchTextState: TextFieldState,
     onProfileClick: () -> Unit,
-    onUiAction: (ConversationListUiAction) -> Unit
+    onUiAction: (ConversationListUiAction) -> Unit,
+    ownerSession: OwnerSession?
 ) {
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val twoPaneWindow =
@@ -135,15 +138,23 @@ fun ConversationListPane(
                                         exit = fadeOut(animationSpec = tween(150))
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            AvatarImage(
-                                                avatarUrl = null,
-                                                avatarInitials = "CH",
-                                                size = 32.dp,
-                                                fontSize = 12.sp,
-                                                onClick = {
-                                                    onProfileClick()
-                                                })
+                                            ownerSession?.let { session ->
+                                                OwnerAvatar(
+                                                    odinId = session.odinId,
+                                                    profileImageData = null,
+                                                    initials = "xx",
+                                                    options = AvatarOptions(
+                                                        size = 32.dp,
+                                                        initialsFontSize = 12.sp,
+                                                        onClick = { onProfileClick() }
+                                                    ),
+                                                    animatedVisibilityScope = this@AnimatedVisibility,
+                                                    sharedTransitionScope = null
+                                                )
+                                            }
+
                                             Spacer(modifier = Modifier.width(16.dp))
+
                                             Text(
                                                 text = stringResource(MR.string.app_name),
                                                 style = MaterialTheme.typography.titleLarge,

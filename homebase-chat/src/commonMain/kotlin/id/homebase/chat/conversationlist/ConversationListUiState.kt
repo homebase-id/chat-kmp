@@ -2,6 +2,7 @@ package id.homebase.chat.conversationlist
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -29,7 +30,7 @@ data class ConversationListUiState(
     val loadingNewMessage: Boolean = false,
     val filterByUnread: Boolean = false,
     val isSearchActive: Boolean = false,
-
+    val ownerSession: OwnerSession? = null,
     val messageReactions: List<EmojiReaction>? = null,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,

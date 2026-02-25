@@ -1,6 +1,7 @@
 package id.homebase.core.auth
 
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.websockets.OdinWebSocketClient
 import id.homebase.api.sync.DriveSyncManager
@@ -12,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 
 class AuthConnectionCoordinator(
     private val credentialsManager: CredentialsManager,
+    private val userSessionRepository: OwnerSessionRepository,
     private val driveSyncManager: DriveSyncManager,
     private val eventBus: EventBus
 ) {
@@ -20,9 +22,19 @@ class AuthConnectionCoordinator(
 
     suspend fun onAuthStateChanged(state: YouAuthState) {
         when (state) {
-            is YouAuthState.Authenticated -> connect()
+            is YouAuthState.Authenticated -> {
+                connect()
+                loadProfile()
+            }
+
             else -> disconnect()
         }
+    }
+
+    private suspend fun loadProfile()
+    {
+        val odinId = credentialsManager.requireActiveCredentials().domain
+        userSessionRepository.load(odinId)
     }
 
     private suspend fun connect() {

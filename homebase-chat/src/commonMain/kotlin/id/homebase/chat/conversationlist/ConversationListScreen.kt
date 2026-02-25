@@ -71,6 +71,7 @@ fun ConversationListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    val ownerSession by viewModel.ownerSession.collectAsState()
     // Check for missing permissions and show dialog if needed
     ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
@@ -307,6 +308,7 @@ fun ChatListUi(
                         searchTextState = conversationSearchTextFieldState,
                         onProfileClick = onNavigateToSettingsScreen,
                         onUiAction = onUiAction,
+                        ownerSession = uiState.ownerSession
                     )
                 }
             },
