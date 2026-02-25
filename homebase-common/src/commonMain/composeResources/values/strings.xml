@@ -11,6 +11,7 @@
     <string name="collapse">Collapse</string>
     <string name="delete">Delete</string>
     <string name="save">Save</string>
+    <string name="create">Create</string>
     <string name="share">Share</string>
     <string name="ok">Ok</string>
     <string name="cancel">Cancel</string>
@@ -19,6 +20,11 @@
     <string name="backspace">Backspace</string>
     <string name="search">Search</string>
     <string name="clear_input">Clear input</string>
+    <string name="skip">Skip</string>
+    <string name="next">Next</string>
+    <string name="contacts">Contacts</string>
+    <string name="members">Members</string>
+    <string name="remove">Remove</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -71,6 +77,14 @@
     <string name="chat_new_conversation">New conversation</string>
     <string name="chat_new_conversation_search_placeholder">Search contacts</string>
     <string name="chat_new_conversation_new_group">New group</string>
+    <string name="chat_no_contacts_found">No contacts found</string>
+    <string name="chat_group_select_members">Select members</string>
+
+    <!-- Group new -->
+    <string name="chat_group_name_screen_title">Name this group</string>
+    <string name="chat_group_name_placeholder">Group name (required)</string>
+    <string name="chat_group_remove_member">Remove %1$s from this group?</string>
+    <string name="chat_group_remove_member_warning">You cannot remove member. A group must have at least 2 members other than yourself.</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>

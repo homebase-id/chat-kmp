@@ -23,29 +23,34 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.widget.AvatarImage
+import id.homebase.resources.MR
+import id.homebase.resources.chat_no_messages
+import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 
 @Composable
 fun ConversationItem(
-    //conversation: ConversationUiModel,
     groupName: String,
     message: String,
     unreadCount: Int,
     avatarUrl: String,
     avatarInitials: String,
+    avatarTiny: EmbeddedThumb?,
+    isGroup: Boolean,
     contactOdinId: OdinId?,
     timestamp: Instant,
     onClick: () -> Unit,
     onContactClick: (odinId: OdinId) -> Unit,
     isSelected: Boolean = false,
 ) {
-    val textState = RichTextState()
-    textState.config.listIndent = 0
-    textState.setMarkdown(message)
+    val textState = RichTextState().applyDefaultStyling()
+    textState.setMarkdown(message.ifBlank { stringResource(MR.string.chat_no_messages) })
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -62,6 +67,8 @@ fun ConversationItem(
         AvatarImage(
             avatarUrl = avatarUrl,
             avatarInitials = avatarInitials,
+            avatarTiny = avatarTiny,
+            isGroup = isGroup,
             onClick = {
                 contactOdinId?.let {
                     onContactClick(it)
@@ -102,7 +109,7 @@ fun ConversationItem(
                 )
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -126,7 +133,7 @@ fun ConversationItem(
                         contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     ) {
                         Text(
-                            modifier = Modifier.padding(2.dp),
+                            modifier = Modifier.padding(4.dp),
                             text = unreadCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold

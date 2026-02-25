@@ -63,7 +63,7 @@ kotlin {
             implementation(libs.multiplatform.settings)
             implementation(libs.koin.core)
             implementation(libs.filekit.core)
-
+            implementation(libs.kmpnotifier)
         }
 
         jvmMain.dependencies {
@@ -105,7 +105,11 @@ compose.desktop {
         )
 
         buildTypes.release.proguard {
-            configurationFiles.from("compose-desktop.pro")
+            version.set("7.6.1")
+            configurationFiles.from(project.file("compose-desktop.pro"))
+            obfuscate.set(true)
+            optimize.set(false)
+            isEnabled.set(true)
         }
 
         nativeDistributions {

@@ -19,12 +19,16 @@ sealed class Route {
     data object Settings : Route()
 
     @Serializable
-    @SerialName("new-conversation")
-    data object NewConversation : Route()
+    @SerialName("create-conversation")
+    data object CreateConversation : Route()
 
     @Serializable
-    @SerialName("new-group")
-    data object NewGroup : Route()
+    @SerialName("create-conversation-select-members")
+    data object CreateConversationSelectMembers : Route()
+
+    @Serializable
+    @SerialName("create-conversation-group")
+    data class CreateConversationGroup(val contactIds: List<String>) : Route()
 
     @Serializable
     @SerialName("message")

@@ -1,24 +1,25 @@
-package id.homebase.chat.newconversation
+package id.homebase.chat.createconversation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,24 +40,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import id.homebase.api.common.OdinId
 import id.homebase.core.widget.AvatarImage
+import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_new_conversation
 import id.homebase.resources.chat_new_conversation_new_group
 import id.homebase.resources.chat_new_conversation_search_placeholder
+import id.homebase.resources.chat_no_contacts_found
+import id.homebase.resources.chat_search_result_empty
+import id.homebase.resources.contacts
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
 @Composable
-fun NewConversationScreen(
-    viewModel: NewConversationViewModel,
+fun CreateConversationScreen(
+    viewModel: CreateConversationViewModel,
     onNavigateBack: () -> Unit,
     onShowConversation: (conversationId: Uuid) -> Unit,
     onShowCreateGroup: () -> Unit,
@@ -65,30 +68,32 @@ fun NewConversationScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    when (val event = uiState.uiEvent) {
-        null -> {}
-        is NewConversationUiEvent.Back -> {
-            viewModel.eventConsumed()
-            onNavigateBack()
-        }
+    LaunchedEffect(uiState.uiEvent) {
+        when (val event = uiState.uiEvent) {
+            null -> {}
+            is CreateConversationUiEvent.Back -> {
+                viewModel.eventConsumed()
+                onNavigateBack()
+            }
 
-        is NewConversationUiEvent.ShowErrorMessage -> {
-            viewModel.eventConsumed()
-            scope.launch { snackbarHostState.showSnackbar(message = event.message) }
-        }
+            is CreateConversationUiEvent.ShowErrorMessage -> {
+                viewModel.eventConsumed()
+                scope.launch { snackbarHostState.showSnackbar(message = event.message) }
+            }
 
-        is NewConversationUiEvent.LoadConversation -> {
-            viewModel.eventConsumed()
-            onShowConversation(event.conversationId)
-        }
+            is CreateConversationUiEvent.LoadConversation -> {
+                viewModel.eventConsumed()
+                onShowConversation(event.conversationId)
+            }
 
-        NewConversationUiEvent.ShowCreateGroupScreen -> {
-            viewModel.eventConsumed()
-            onShowCreateGroup()
+            CreateConversationUiEvent.ShowCreateGroupScreen -> {
+                viewModel.eventConsumed()
+                onShowCreateGroup()
+            }
         }
     }
 
-    ContactInfoUi(
+    CreateConversationUi(
         snackbarHostState = snackbarHostState,
         uiState = uiState,
         searchTextState = viewModel.searchTextState,
@@ -98,11 +103,11 @@ fun NewConversationScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactInfoUi(
+fun CreateConversationUi(
     snackbarHostState: SnackbarHostState,
-    uiState: NewConversationUiState,
+    uiState: CreateConversationUiState,
     searchTextState: TextFieldState,
-    onUiAction: (NewConversationUiAction) -> Unit,
+    onUiAction: (CreateConversationUiAction) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -118,7 +123,7 @@ fun ContactInfoUi(
                     Text(stringResource(MR.string.chat_new_conversation))
                 },
                 navigationIcon = {
-                    IconButton(onClick = { onUiAction(NewConversationUiAction.BackClicked) }) {
+                    IconButton(onClick = { onUiAction(CreateConversationUiAction.BackClicked) }) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
                             contentDescription = stringResource(MR.string.menu_back)
@@ -126,13 +131,14 @@ fun ContactInfoUi(
                     }
                 },
             )
-        }
+        },
     ) { paddingValues ->
         Column(
             modifier = Modifier.padding(paddingValues)
         ) {
             StyledSearchTextField(
-                modifier = Modifier.padding(16.dp).fillMaxWidth().focusRequester(focusRequester),
+                modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+                    .focusRequester(focusRequester),
                 textFieldState = searchTextState,
                 showSearchIcon = false,
                 placeHolderText = stringResource(MR.string.chat_new_conversation_search_placeholder),
@@ -141,42 +147,73 @@ fun ContactInfoUi(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(16.dp),
             ) {
-                uiState.items.forEach { item ->
+                uiState.displayItems.forEach { item ->
                     when (item) {
-                        is NewConversationListItem.Contacts -> {
+                        is CreateConversationListItem.Contacts -> {
+                            if (item.contactGroups.isEmpty()) {
+                                item {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                    ) {
+                                        if (searchTextState.text.isNotEmpty()) {
+                                            Text(
+                                                text = stringResource(
+                                                    MR.string.chat_search_result_empty,
+                                                    searchTextState.text.toString()
+                                                )
+                                            )
+                                        } else {
+                                            Text(text = stringResource(MR.string.chat_no_contacts_found))
+                                        }
+                                    }
+                                }
+                            } else if (searchTextState.text.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        modifier = Modifier.padding(horizontal = 24.dp)
+                                            .padding(top = 16.dp),
+                                        text = stringResource(MR.string.contacts),
+                                        style = MaterialTheme.typography.titleLarge
+                                    )
+                                }
+                            }
                             item.contactGroups.forEach { contactGroup ->
                                 stickyHeader {
-                                    Text(
-                                        modifier = Modifier.padding(
-                                            horizontal = 16.dp,
-                                            vertical = 8.dp
-                                        ),
-                                        text = contactGroup.initial,
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(MaterialTheme.colorScheme.surface)
+                                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = contactGroup.initial,
+                                            style = MaterialTheme.typography.titleMedium
+                                        )
+                                    }
                                 }
                                 items(contactGroup.contacts) { contact ->
                                     ContactItem(
                                         name = contact.name,
+                                        subTitle = contact.odinId.domainName,
                                         avatarUrl = contact.avatarUrl,
                                         avatarInitials = contact.avatarInitials,
-                                        contactOdinId = contact.odinId,
                                         onContactClick = {
                                             onUiAction(
-                                                NewConversationUiAction.CreateConversation(it)
+                                                CreateConversationUiAction.ContactClicked(contact)
                                             )
-                                        }
+                                        },
                                     )
                                 }
                             }
                         }
 
-                        is NewConversationListItem.NewGroup -> {
+                        is CreateConversationListItem.NewGroup -> {
                             item {
                                 ListItemAction(
                                     imageVector = Icons.Default.Group,
                                     text = stringResource(MR.string.chat_new_conversation_new_group),
-                                    onClick = { onUiAction(NewConversationUiAction.CreateNewGroup) }
+                                    onClick = { onUiAction(CreateConversationUiAction.CreateNewGroup) }
                                 )
                             }
                         }
@@ -188,57 +225,21 @@ fun ContactInfoUi(
 }
 
 @Composable
-fun ListItemAction(
-    imageVector: ImageVector,
-    text: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(48.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer)   ,
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = imageVector,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
 fun ContactItem(
     name: String,
+    subTitle: String? = null,
+    selectionMode: Boolean = false,
+    isSelected: Boolean = false,
     avatarUrl: String,
     avatarInitials: String,
-    contactOdinId: OdinId,
-    onContactClick: (odinId: OdinId) -> Unit,
+    onContactClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = {
-                onContactClick(contactOdinId)
+                onContactClick()
             })
             .padding(horizontal = 12.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -248,12 +249,29 @@ fun ContactItem(
             avatarInitials = avatarInitials,
         )
         Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = name,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            subTitle?.let {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = subTitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (selectionMode) {
+            if (isSelected) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null)
+            } else {
+                Icon(Icons.Outlined.Circle, contentDescription = null)
+            }
+        }
     }
 }

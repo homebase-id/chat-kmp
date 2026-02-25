@@ -47,6 +47,7 @@ kotlin {
             // Export homebase-api to make FFmpegKitBridge accessible from Swift
             export(project(":homebase-api"))
             export(project(":homebase-common"))
+            export(libs.kmpnotifier)
         }
     }
 

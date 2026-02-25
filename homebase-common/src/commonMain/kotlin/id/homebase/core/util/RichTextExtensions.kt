@@ -1,7 +1,11 @@
 package id.homebase.core.util
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.style.TextDecoration
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.core.ui.theme.LightColors
 
 fun RichTextState.programmaticBackspace() {
     val selection = this.selection
@@ -38,6 +42,17 @@ fun RichTextState.programmaticBackspace() {
     }
 
     removeTextRange(TextRange(start = start, end = end))
+}
+
+@Composable
+fun RichTextState.applyDefaultStyling(
+    linkColor: Color = LightColors.Primary,
+): RichTextState {
+    return this.apply {
+        config.listIndent = 0
+        config.linkColor = linkColor
+        config.linkTextDecoration = TextDecoration.Underline
+    }
 }
 
 private fun findPrecedingCharacterStart(text: String, offset: Int): Int {
