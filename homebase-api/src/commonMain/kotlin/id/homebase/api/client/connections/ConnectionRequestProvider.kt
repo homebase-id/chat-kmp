@@ -6,47 +6,8 @@ import id.homebase.api.client.drives.query.PagedResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.uuid.Uuid
 
-// ==================== MODELS ====================
-
-@Serializable
-data class ConnectionRequestHeader(
-    val id: Uuid,
-    val recipient: OdinId,
-    val message: String? = null,
-    val circleIds: List<Uuid>? = null,
-    val introducerOdinId: OdinId? = null,
-    val connectionRequestOrigin: String? = null
-)
-
-@Serializable
-data class IncomingConnectionRequestResponse(
-    val senderOdinId: OdinId,
-    val receivedTimestampMilliseconds: Long,
-    val eccEncryptedPayload: JsonElement? = null
-)
-
-@Serializable
-data class OutgoingConnectionRequestResponse(
-    val contactData: String? = null,
-    val senderOdinId: OdinId,
-    val circleIds: List<Uuid>? = null,
-    val message: String? = null,
-    val introducerOdinId: OdinId? = null,
-    val receivedTimestampMilliseconds: Long,
-    val connectionRequestOrigin: String, // ConnectionRequestOrigin
-    val recipient: OdinId,
-    val direction: String // incoming  or outgoing
-)
-//
-//enum class ConnectionRequestDirection {
-//    Incoming,
-//    Outgoing
-//}
 
 // TODO
 //public enum ConnectionRequestOrigin
@@ -63,8 +24,6 @@ data class OutgoingConnectionRequestResponse(
 //    /// </summary>
 //    Introduction = 2
 //}
-
-// ==================== PROVIDER ====================
 
 @OptIn(ExperimentalEncodingApi::class)
 class ConnectionRequestProvider(

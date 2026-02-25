@@ -2,25 +2,9 @@ package id.homebase.api.client.connections
 
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
-import kotlinx.serialization.Serializable
 import kotlin.io.encoding.ExperimentalEncodingApi
-
-// ==================== MODELS ====================
-
-@Serializable
-data class IntroductionGroup(
-    val recipients: List<OdinId>,
-    val message: String? = null
-)
-
-@Serializable
-data class IntroductionResponse(
-    val recipient: OdinId,
-    val status: String
-)
 
 // ==================== PROVIDER ====================
 

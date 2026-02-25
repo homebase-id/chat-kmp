@@ -353,6 +353,23 @@ class ConversationService(
                 }
             }
 
+        val avatarUrl =
+            when {
+                // 1:1 conversation
+                participants.size == 2 -> {
+                    val other = participants.first { it != domain }
+                    "https://${contactsByOdinId[other]}/pub/image"
+                }
+
+                // Group conversation (no image)
+                else -> {
+                    participants
+                        .firstOrNull { it != domain }
+                        ?.let { contactsByOdinId[it]?.avatarInitials }
+                        ?: "?"
+                }
+            }
+
         val ui =
             ConversationUiModel(
                 id = appData.uniqueId ?: error("Missing uniqueId"),
@@ -362,7 +379,7 @@ class ConversationService(
                 unreadCount = 0,
                 avatarTiny = appData.previewThumbnail,
                 avatarInitials = avatarInitials,
-                avatarUrl = "",
+                avatarUrl = avatarUrl,
                 participants = participants,
                 lastRead =
                     localAppData?.lastReadTime?.toInstant()
