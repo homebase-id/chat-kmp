@@ -20,6 +20,7 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
@@ -54,6 +55,7 @@ val appModule = module {
     viewModelOf(::ExtendPermissionViewModel)
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
+    viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::LoginViewModel)
 }
 

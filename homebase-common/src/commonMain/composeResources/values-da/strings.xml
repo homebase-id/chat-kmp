@@ -31,6 +31,12 @@
     <string name="language_english_gb">Engelsk (Storbritannien)</string>
     <string name="language_danish">Dansk</string>
 
+    <!-- Theme options -->
+    <string name="theme">Tema</string>
+    <string name="theme_system">System</string>
+    <string name="theme_dark">Mørk</string>
+    <string name="theme_light">Lys</string>
+
     <!-- Time formatting -->
     <string name="time_just_now">Lige nu</string>
     <string name="time_minutes_ago">%1$sm siden</string>
@@ -58,6 +64,15 @@
     <string name="login_authenticating">Authentikerer…</string>
     <string name="login_successful">Login lykkedes</string>
 
+    <!-- Settings screen -->
+    <string name="settings_appearance">Udseende</string>
+    <string name="settings_notifications">Notifikationer</string>
+    <string name="settings_logout">Log ud</string>
+    <string name="settings_delete_account">Slet min konto</string>
+    <string name="settings_delete_account_dialog_title">Slet din konto?</string>
+    <string name="settings_delete_account_dialog_text">Din konto er meget mere end bare denne app. Hvis du vil slette din konto kan du gøre det i ejer konsollen.</string>
+    <string name="settings_open_owner_console">Åben ejer konsol</string>
+
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
     <string name="chat_filter_by_unread_clear_button">Ryd filter</string>
@@ -82,7 +97,7 @@
     <string name="chat_group_name_screen_title">Navngiv gruppe</string>
     <string name="chat_group_name_placeholder">Gruppenavn (påkrævet)</string>
     <string name="chat_group_remove_member">Fjern %1$s fra denne gruppe?</string>
-    <string name="chat_group_remove_member_warning">Du kan ikke fjerne medlem. En grupp skal bestå af mindst 2 yderligere medlemmer end dig selv..</string>
+    <string name="chat_group_remove_member_warning">Du kan ikke fjerne medlem. En gruppe skal bestå af mindst 2 yderligere medlemmer end dig selv..</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>

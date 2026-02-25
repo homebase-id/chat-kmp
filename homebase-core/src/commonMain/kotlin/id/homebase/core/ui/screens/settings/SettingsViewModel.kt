@@ -4,8 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.youauth.YouAuthFlowManager
-import id.homebase.core.settings.Language
-import id.homebase.core.settings.UserPreferences
+import id.homebase.core.util.PlatformInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,12 +12,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(
-    private val userPreferences: UserPreferences,
     private val youAuthFlowManager: YouAuthFlowManager,
-    private val credentialsManager: CredentialsManager
-): ViewModel() {
+    private val credentialsManager: CredentialsManager,
+    platformInfo: PlatformInfo,
+) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState(loggedInDomain = ""))
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(
+            loggedInDomain = "",
+            appVersion = platformInfo.versionName,
+        )
+    )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
@@ -28,27 +32,27 @@ class SettingsViewModel(
     }
 
     private suspend fun loadSettings() {
-        val savedLanguageCode = userPreferences.language
-        val selectedLanguage = Language.fromCode(savedLanguageCode)
         val credentials = credentialsManager.requireActiveCredentials()
-
         _uiState.value = _uiState.value.copy(
-            selectedLanguage = selectedLanguage,
-            loggedInDomain = credentials.domain.domainName)
+            loggedInDomain = credentials.domain.domainName
+        )
     }
 
-    /** Single entry point for all UI actions. */
     fun onAction(action: SettingsUiAction) {
         when (action) {
-            is SettingsUiAction.LanguageSelected -> {
-                saveLanguage(action.language)
-            }
-
             is SettingsUiAction.LogoutClicked -> {
                 viewModelScope.launch {
                     youAuthFlowManager.logout()
                     sendEvent(SettingsUiEvent.LoggedOut)
                 }
+            }
+
+            SettingsUiAction.OpenOwnerConsoleClicked -> {
+                sendEvent(SettingsUiEvent.OpenUrl("https://${uiState.value.loggedInDomain}/owner/settings/delete"))
+            }
+
+            SettingsUiAction.DeleteAccount -> {
+                _uiState.update { it.copy(uiDialog = SettingsUiDialog.DeleteAccount) }
             }
         }
     }
@@ -59,13 +63,11 @@ class SettingsViewModel(
         }
     }
 
-    private fun saveLanguage(language: Language) {
-        userPreferences.language = language.code
-        sendEvent(SettingsUiEvent.SetLanguage(language.code))
-        _uiState.value = _uiState.value.copy(selectedLanguage = language)
+    fun dialogClosed() {
+        _uiState.update { it.copy(uiDialog = null) }
     }
 
     private fun sendEvent(event: SettingsUiEvent) {
-        _uiState.update {  it.copy(uiEvent = event) }
+        _uiState.update { it.copy(uiEvent = event) }
     }
 }

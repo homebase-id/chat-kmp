@@ -33,6 +33,12 @@
     <string name="language_english_gb">English (Great Britain)</string>
     <string name="language_danish">Danish</string>
 
+    <!-- Theme options -->
+    <string name="theme">Theme</string>
+    <string name="theme_system">System</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_light">Light</string>
+
     <!-- Time formatting -->
     <string name="time_just_now">Just now</string>
     <string name="time_minutes_ago">%1$sm ago</string>
@@ -59,6 +65,15 @@
     <string name="login_create_account_button">Create account</string>
     <string name="login_authenticating">Authenticating…</string>
     <string name="login_successful">Login successful</string>
+
+    <!-- Settings screen -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_logout">Log out</string>
+    <string name="settings_delete_account">Delete my account</string>
+    <string name="settings_delete_account_dialog_title">Delete your account?</string>
+    <string name="settings_delete_account_dialog_text">Your account is much more than only this app. If you want to remove your account, you can do so in the owner console.</string>
+    <string name="settings_open_owner_console">Open owner console</string>
 
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filter by unread</string>

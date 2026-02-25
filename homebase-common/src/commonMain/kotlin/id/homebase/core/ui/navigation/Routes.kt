@@ -43,6 +43,14 @@ sealed class Route {
     data class ChatList(val conversationId: String? = null) : Route()
 
     @Serializable
+    @SerialName("examples")
+    data object Examples : Route()
+
+    @Serializable
     @SerialName("notification-settings")
     data object NotificationSettings : Route()
+
+    @Serializable
+    @SerialName("appearance-settings")
+    data object AppearanceSettings : Route()
 }
