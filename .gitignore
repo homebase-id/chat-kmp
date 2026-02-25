@@ -3,7 +3,8 @@ desktopApp/odin.db
 .kotlin
 .gradle
 **/build/
-xcuserdata
+bin/
+userdata
 !src/**/build/
 local.properties
 .idea
