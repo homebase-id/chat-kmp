@@ -84,12 +84,12 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
+import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
-import kotlin.io.encoding.Base64
-import kotlin.uuid.Uuid
 
 /**
  * Displays a message bubble for messages sent to other users.
@@ -281,6 +281,17 @@ fun ReceivedMessageBubble(
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+    val filteredPayloads = message.payloads?.filter {
+        !listOf(
+            ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
+            ChatProtocol.DEFAULT_PAYLOAD_KEY,
+            ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
+        ).contains(it.key)
+    }
+    val hasMedia = !filteredPayloads.isNullOrEmpty()
+    val mediaOnly = !message.content.hasContent() && hasMedia
+    val emojiOnly = message.content.isEmojiContentOnly() && !hasMedia
+    val hasVisibleBackground = !mediaOnly && !emojiOnly
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
@@ -291,14 +302,17 @@ fun ReceivedMessageBubble(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
-                if (renderAuthorName) {
-                    val authorName = message.originalAuthor?.domainName ?: ""
-                    val authorColor = getOdinIdColor(authorName)
-                    val isDark = isSystemInDarkTheme()
+                val authorNameTxt = message.originalAuthor?.domainName ?: ""
+                val authorOdinColor = getOdinIdColor(authorNameTxt)
+                val isDark = isSystemInDarkTheme()
+                val finalAuthorColor =
+                    if (isDark) authorOdinColor.darkTheme else authorOdinColor.lightTheme
+
+                if (renderAuthorName && !hasVisibleBackground) {
                     Text(
-                        text = authorName,
+                        text = authorNameTxt,
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (isDark) authorColor.darkTheme else authorColor.lightTheme,
+                        color = finalAuthorColor,
                         modifier = Modifier.padding(start = 12.dp, bottom = 2.dp),
                         maxLines = 1,
                     )
@@ -318,6 +332,10 @@ fun ReceivedMessageBubble(
                         keyHeader = message.keyHeader,
                         previewThumbnail = message.previewThumbnail,
                         replyPreview = message.messageAppData.replyPreview,
+                        authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
+                        else null,
+                        authorColor = if (renderAuthorName && hasVisibleBackground) finalAuthorColor
+                        else null,
                         onLongClick = {
                             showMenu = true
                             showReactionPicker = true
@@ -453,6 +471,8 @@ fun MessageBubble(
     previewThumbnail: EmbeddedThumb? = null,
     replyPreview: ReplyPreview? = null,
     keyHeader: KeyHeader,
+    authorName: String? = null,
+    authorColor: Color? = null,
     onLongClick: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
@@ -592,6 +612,17 @@ fun MessageBubble(
             Layout(
                 content = {
                     Column {
+                        authorName?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = authorColor ?: contentColor,
+                                modifier = Modifier.padding(
+                                    start = 12.dp, top = 8.dp, end = 12.dp
+                                ),
+                                maxLines = 1,
+                            )
+                        }
                         // Inline reply preview if this message is a reply
                         replyPreview?.let { reply ->
                             InlineReplyPreview(
