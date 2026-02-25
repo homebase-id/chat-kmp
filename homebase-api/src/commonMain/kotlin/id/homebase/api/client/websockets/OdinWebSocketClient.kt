@@ -12,7 +12,6 @@ import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.SharedSecretEncryptedPayload
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.DriveSyncManager
 import io.ktor.client.HttpClient
@@ -29,7 +28,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.io.encoding.Base64
-import kotlin.time.Clock
 
 /**
  * WebSocket client for connecting to Odin notify/ws endpoint
@@ -247,15 +245,6 @@ class OdinWebSocketClient(
                 handleFileEvent(notification)
             }
 
-            ClientNotificationType.connectionRequestReceived -> {
-            }
-
-            ClientNotificationType.connectionRequestAccepted -> {
-            }
-
-            ClientNotificationType.newFollower -> {
-            }
-
             ClientNotificationType.statisticsChanged -> {
                 handleFileEvent(notification)
             }
@@ -272,23 +261,91 @@ class OdinWebSocketClient(
                 handleAllReactionsDeletedEvent(notification)
             }
 
-            ClientNotificationType.appNotificationAdded -> {
-            }
-
             ClientNotificationType.introductionsReceived -> {
+                val d = OdinSystemSerializer.deserialize<IntroductionReceivedNotification>(
+                    notification.data
+                )
+                eventBus.emit(
+                    BackendEvent.CircleNetworkEvent.IntroductionsReceived(
+                        introducerOdinId = d.introducerOdinId,
+                        introduction = d.introduction
+                    )
+                )
             }
 
             ClientNotificationType.introductionAccepted -> {
+                val d = OdinSystemSerializer.deserialize<IntroductionAcceptedNotification>(
+                    notification.data
+                )
+
+                eventBus.emit(
+                    BackendEvent.CircleNetworkEvent.IntroductionAccepted(
+                        introducerOdinId = d.introducerOdinId,
+                        recipient = d.recipient
+                    )
+                )
+            }
+
+            ClientNotificationType.connectionRequestReceived -> {
+                val d = OdinSystemSerializer.deserialize<ConnectionRequestReceivedNotification>(
+                    notification.data
+                )
+
+                eventBus.emit(
+                    BackendEvent.CircleNetworkEvent.ConnectionRequestReceived(
+                        sender = d.sender
+                    )
+                )
+            }
+
+            ClientNotificationType.connectionRequestAccepted -> {
+                val d = OdinSystemSerializer.deserialize<ConnectionRequestAcceptedNotification>(
+                    notification.data
+                )
+
+                eventBus.emit(
+                    BackendEvent.CircleNetworkEvent.ConnectionRequestAccepted(
+                        acceptedBy = d.sender
+                    )
+                )
             }
 
             ClientNotificationType.connectionFinalized -> {
-                // you're now connected
+
+                val d = OdinSystemSerializer.deserialize<ConnectionRequestFinalizedNotification>(
+                    notification.data
+                )
+
+                eventBus.emit(
+                    BackendEvent.CircleNetworkEvent.ConnectionRequestFinalized(
+                        identity = d.identity
+                    )
+                )
             }
 
+            ClientNotificationType.newFollower -> {
+                val d = OdinSystemSerializer.deserialize<NewFollowerNotification>(
+                    notification.data
+                )
+
+                eventBus.emit(
+                    BackendEvent.CircleNetworkEvent.NewFollower(
+                        identity = d.sender
+                    )
+                )
+            }
+
+
+            ClientNotificationType.appNotificationAdded -> {
+            }
+
+
             ClientNotificationType.deviceConnected -> {
+                // just means another device was connected
             }
 
             ClientNotificationType.deviceDisconnected -> {
+                // just means another device was disconnected
             }
 
             ClientNotificationType.error -> {

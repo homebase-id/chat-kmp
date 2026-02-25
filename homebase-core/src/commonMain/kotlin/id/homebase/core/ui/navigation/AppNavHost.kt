@@ -172,6 +172,7 @@ fun AppNavHost(
                     ) {
                         ConversationListScreen(
                             viewModel = koinViewModel(),
+                            extendPermissionViewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
                             onNavigateToSettingsScreen = {
                                 navController.navigate(Route.Settings)
@@ -191,8 +192,7 @@ fun AppNavHost(
                                     )
                                 )
                             },
-                            onDetailPaneVisibilityChanged = { showingOnlyDetailPane = it }
-                        )
+                            onDetailPaneVisibilityChanged = { })
                     }
                 }
 

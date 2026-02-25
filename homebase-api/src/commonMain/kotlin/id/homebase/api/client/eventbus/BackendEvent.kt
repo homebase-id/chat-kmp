@@ -2,6 +2,8 @@ package id.homebase.api.client.eventbus
 
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.websockets.Introduction
+import id.homebase.api.common.OdinId
 import id.homebase.api.video.VideoProcessingPhase
 import kotlin.uuid.Uuid
 
@@ -9,6 +11,27 @@ sealed interface BackendEvent {
     enum class SyncSource {
         DriveSync,
         WebSocket
+    }
+
+    sealed interface CircleNetworkEvent : BackendEvent {
+
+        data class ConnectionRequestReceived(val sender: OdinId) : CircleNetworkEvent
+
+        data class ConnectionRequestAccepted(val acceptedBy: OdinId) : CircleNetworkEvent
+        data class ConnectionRequestFinalized(val identity: OdinId) : CircleNetworkEvent
+        data class NewFollower(val identity: OdinId) : CircleNetworkEvent
+
+        data class IntroductionAccepted(
+            val introducerOdinId: OdinId,
+            val recipient: OdinId
+        ) : CircleNetworkEvent
+
+
+        data class IntroductionsReceived(
+            val introducerOdinId: OdinId,
+            val introduction: Introduction
+        ) : CircleNetworkEvent
+
     }
 
     // A DriveEvent event happens on a drive when either sync() has received a batch of data
@@ -78,7 +101,6 @@ sealed interface BackendEvent {
     // Add sealed interface UploadUpdate for Outbox / upload status
     // Add sealed interface VideoUpdate (or WorkUpdate) compression & segmentation & encryption
 
-
     sealed interface PayloadBundlingEvent : BackendEvent {
 
         /* ---------- VIDEO ---------- */
@@ -116,7 +138,6 @@ sealed interface BackendEvent {
             ) : Video
         }
     }
-
 
     // We go online / offline when the websocket listener is connected / disconnected
     data object Connecting : BackendEvent
