@@ -35,11 +35,13 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
 import id.homebase.auth.login.LoginViewModel
+import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
 import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
+import id.homebase.chat.editconversationgroup.EditConversationGroupScreen
 import id.homebase.chat.groupsettings.GroupSettingsScreen
 import id.homebase.chat.messageinfo.MessageInfoScreen
 import id.homebase.chat.selectmembers.SelectMembersScreen
@@ -304,6 +306,9 @@ fun AppNavHost(
                         ConversationSettingsScreen(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
+                            onShowContactInfo = {
+                                navController.navigate(Route.ContactInfo(it))
+                            },
                         )
                     }
                 }
@@ -316,6 +321,43 @@ fun AppNavHost(
                             }
                         }) {
                         GroupSettingsScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                            onShowContactInfo = {
+                                navController.navigate(Route.ContactInfo(it))
+                            },
+                            onAddMembers = {
+                                navController.navigate(Route.GroupAddMembers(it))
+                            },
+                            onEditGroup = {
+                                navController.navigate(Route.GroupEdit(it))
+                            },
+                        )
+                    }
+                }
+
+                composable<Route.GroupAddMembers> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        AddGroupMembersScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                        )
+                    }
+                }
+
+                composable<Route.GroupEdit> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        EditConversationGroupScreen(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
                         )

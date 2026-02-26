@@ -1,14 +1,18 @@
 package id.homebase.chat.conversationsettings
 
 import androidx.compose.runtime.Immutable
+import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.data.ConversationUiModel
 
 @Immutable
 data class ConversationSettingsUiState(
-    val text: String,
-
+    val isLoading: Boolean = true,
+    val conversation: ConversationUiModel? = null,
+    val contact: ContactUiModel? = null,
     val uiEvent: ConversationSettingsUiEvent? = null,
 )
 
 sealed interface ConversationSettingsUiEvent {
-    object Back : ConversationSettingsUiEvent
+    data object Back : ConversationSettingsUiEvent
+    data class ShowContactInfo(val odinId: String) : ConversationSettingsUiEvent
 }

@@ -51,6 +51,14 @@ sealed class Route {
     data class GroupSettings(val conversationId: String) : Route()
 
     @Serializable
+    @SerialName("group-add-members")
+    data class GroupAddMembers(val conversationId: String) : Route()
+
+    @Serializable
+    @SerialName("group-edit")
+    data class GroupEdit(val conversationId: String) : Route()
+
+    @Serializable
     @SerialName("examples")
     data object Examples : Route()
 

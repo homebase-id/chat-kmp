@@ -30,7 +30,7 @@ fun RoundedIcon(
     Box(
         modifier = modifier.size(size)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .clickable {
                 onClick()
             },

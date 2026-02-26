@@ -1,6 +1,7 @@
 package id.homebase.chat.conversationsettings
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -8,12 +9,16 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import id.homebase.chat.widget.AvatarNameDisplay
+import id.homebase.chat.widget.ErrorInfoItem
+import id.homebase.chat.widget.LoadingListItem
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
@@ -22,15 +27,24 @@ import org.jetbrains.compose.resources.stringResource
 fun ConversationSettingsScreen(
     viewModel: ConversationSettingsViewModel,
     onNavigateBack: () -> Unit,
+    onShowContactInfo: (odinId: String) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    when (uiState.uiEvent) {
-        is ConversationSettingsUiEvent.Back -> {
-            viewModel.eventConsumed()
-            onNavigateBack()
+    LaunchedEffect(uiState.uiEvent) {
+        when (val event = uiState.uiEvent) {
+            is ConversationSettingsUiEvent.Back -> {
+                viewModel.eventConsumed()
+                onNavigateBack()
+            }
+
+            is ConversationSettingsUiEvent.ShowContactInfo -> {
+                viewModel.eventConsumed()
+                onShowContactInfo(event.odinId)
+            }
+
+            null -> {}
         }
-        null -> {}
     }
 
     ConversationSettingsUi(
@@ -59,12 +73,31 @@ fun ConversationSettingsUi(
                 },
             )
         }
-    ) { parameters ->
+    ) { padding ->
         Column(
-            modifier = Modifier.padding(parameters)
+            modifier = Modifier.padding(padding)
         ) {
-            Text("Conversation settings")
-            Text(uiState.text)
+            if (uiState.conversation == null) {
+                if (uiState.isLoading) {
+                    LoadingListItem()
+                } else {
+                    ErrorInfoItem("No group could be loaded")
+                }
+            }
+
+            uiState.contact?.let { contact ->
+                AvatarNameDisplay(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 16.dp),
+                    displayName = contact.name,
+                    avatarUrl = contact.avatarUrl,
+                    avatarInitials = contact.avatarInitials,
+                    isGroupConversation = false,
+                    onClick = { onUiAction(ConversationSettingsUiAction.ShowContactInfo(contact)) }
+                )
+            }
         }
     }
 }

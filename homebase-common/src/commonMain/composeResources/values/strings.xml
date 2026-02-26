@@ -10,7 +10,9 @@
     <string name="expand">Expand</string>
     <string name="collapse">Collapse</string>
     <string name="delete">Delete</string>
+    <string name="edit">Edit</string>
     <string name="save">Save</string>
+    <string name="done">Done</string>
     <string name="create">Create</string>
     <string name="share">Share</string>
     <string name="ok">Ok</string>
@@ -25,6 +27,8 @@
     <string name="contacts">Contacts</string>
     <string name="members">Members</string>
     <string name="remove">Remove</string>
+    <string name="details">Details</string>
+    <string name="you">You</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -95,11 +99,13 @@
     <string name="chat_no_contacts_found">No contacts found</string>
     <string name="chat_group_select_members">Select members</string>
 
-    <!-- Group new -->
+    <!-- Group -->
     <string name="chat_group_name_screen_title">Name this group</string>
     <string name="chat_group_name_placeholder">Group name (required)</string>
     <string name="chat_group_remove_member">Remove %1$s from this group?</string>
     <string name="chat_group_remove_member_warning">You cannot remove member. A group must have at least 2 members other than yourself.</string>
+    <string name="chat_group_edit">Edit group</string>
+    <string name="chat_group_add_members">Add members</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>

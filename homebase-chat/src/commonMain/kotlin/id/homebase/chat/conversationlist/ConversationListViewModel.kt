@@ -560,6 +560,8 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ShowContactInfo -> {
+                // ignore if click on own contact
+                if (action.odinId == uiState.value.currentOdinId) return
                 _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToContactInfo((action.odinId))) }
             }
 
@@ -570,7 +572,7 @@ class ConversationListViewModel(
                     }
                 } else {
                     _uiState.update {
-                        it.copy(uiEvent = ConversationListUiEvent.NavigateToConversationSettings((action.conversation.participants.first().domainName)))
+                        it.copy(uiEvent = ConversationListUiEvent.NavigateToConversationSettings((action.conversation.id.toString())))
                     }
                 }
             }

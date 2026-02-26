@@ -27,13 +27,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.outlined.People
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -56,7 +54,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
@@ -294,74 +291,32 @@ fun ConversationContent(
                         )
                     ) {
                         item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                            AvatarNameDisplay(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
                                     .padding(bottom = 16.dp),
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    ConversationAvatar(
-                                        avatarModel = conversation.avatarModel,
-                                        options = AvatarOptions(
-                                            size = 72.dp,
-                                            fontSize = 24.sp,
-                                            onClick = {
-                                                onUiAction(
-                                                    ConversationListUiAction.ShowContactInfo(
-                                                        conversation.participants.first().domainName
-                                                    )
-                                                )
-                                            }
-                                        )
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(
-                                        text = conversation.name,
-                                        style = MaterialTheme.typography.headlineSmall,
-                                    )
-                                }
-                            }
+                                displayName = conversation.name,
+                                avatarUrl = conversation.avatarUrl,
+                                avatarInitials = conversation.avatarInitials,
+                                avatarTiny = conversation.avatarTiny,
+                                isGroupConversation = conversation.isGroupConversation,
+                            )
                         }
                         if (conversation.isGroupConversation) {
                             item {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                                GroupMemberNamesCard(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
                                         .padding(bottom = 16.dp),
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    OutlinedCard(
-                                        shape = RoundedCornerShape(16.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(
-                                                horizontal = 16.dp,
-                                                vertical = 8.dp
-                                            ), verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Outlined.People, contentDescription = null)
-                                            Spacer(modifier = Modifier.width(16.dp))
-                                            Text(
-                                                text = conversation.participants.joinToString { it.domainName },
-                                                style = MaterialTheme.typography.labelMedium,
-                                                textAlign = TextAlign.Center,
-                                            )
-                                        }
-                                    }
-                                }
+                                    participantsString = conversation.participants.joinToString { it.domainName },
+                                )
                             }
                         }
                         if (messages.isEmpty()) {
                             item {
-
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = stringResource(MR.string.chat_no_messages),
-                                        modifier = Modifier.padding(24.dp),
-                                    )
-                                }
+                                EmptyListItem(stringResource(MR.string.chat_no_messages))
                             }
                         }
                         items(messages, key = { message -> message.id }) { messageItem ->

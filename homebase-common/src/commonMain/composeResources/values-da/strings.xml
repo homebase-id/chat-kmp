@@ -8,7 +8,9 @@
     <string name="expand">Udvid</string>
     <string name="collapse">Gør mindre</string>
     <string name="delete">Slet</string>
+    <string name="edit">Redigér</string>
     <string name="save">Gem</string>
+    <string name="done">Færdig</string>
     <string name="create">Opret</string>
     <string name="share">Del</string>
     <string name="ok">Ok</string>
@@ -23,6 +25,8 @@
     <string name="contacts">Kontakter</string>
     <string name="members">Medlemmer</string>
     <string name="remove">Fjern</string>
+    <string name="details">Detaljer</string>
+    <string name="you">Dig</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -91,13 +95,15 @@
     <string name="chat_new_conversation_search_placeholder">Søg kontakter</string>
     <string name="chat_new_conversation_new_group">Ny gruppe</string>
     <string name="chat_no_contacts_found">Ingen kontakter fundet</string>
-    <string name="chat_group_select_members">Vælg medlemmer</string>
 
-    <!-- Group new -->
+    <!-- Group -->
+    <string name="chat_group_select_members">Vælg medlemmer</string>
     <string name="chat_group_name_screen_title">Navngiv gruppe</string>
     <string name="chat_group_name_placeholder">Gruppenavn (påkrævet)</string>
     <string name="chat_group_remove_member">Fjern %1$s fra denne gruppe?</string>
     <string name="chat_group_remove_member_warning">Du kan ikke fjerne medlem. En gruppe skal bestå af mindst 2 yderligere medlemmer end dig selv..</string>
+    <string name="chat_group_edit">Redigér gruppe</string>
+    <string name="chat_group_add_members">Tilføj medlemmer</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>
