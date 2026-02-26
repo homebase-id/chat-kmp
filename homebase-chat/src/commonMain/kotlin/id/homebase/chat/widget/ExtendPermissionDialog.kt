@@ -36,7 +36,10 @@ fun ExtendPermissionDialog(viewModel: ExtendPermissionViewModel) {
                     )
                 },
                 confirmButton = {
-                    TextButton(onClick = { uriHandler.openUrl(state.extendPermissionUrl) }) {
+                    TextButton(onClick = {
+                        uriHandler.openUrl(state.extendPermissionUrl)
+                        viewModel.dismissDialog()
+                    }) {
                         Text("Extend Permissions")
                     }
                 },

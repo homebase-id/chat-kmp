@@ -1,6 +1,7 @@
 package id.homebase.api.youauth
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.util.compareStringUuId
 
 /** Configuration for checking missing permissions. */
 data class PermissionExtensionConfig(
@@ -150,6 +151,14 @@ class PermissionExtensionManager(
         return "https://$host/owner/appupdate?${params.toQueryString()}"
     }
 
+    /** Check if two drives are equal by comparing alias and type. */
+    private fun drivesEqual(drive: DriveReference, request: TargetDriveAccessRequest): Boolean {
+        return compareStringUuId(drive.alias, request.alias) && compareStringUuId(
+            drive.type,
+            request.type
+        )
+    }
+
     companion object {
         private const val TAG = "PermissionExtensionManager"
 
@@ -168,7 +177,4 @@ class PermissionExtensionManager(
     }
 }
 
-/** Check if two drives are equal by comparing alias and type. */
-fun drivesEqual(drive: DriveReference, request: TargetDriveAccessRequest): Boolean {
-    return drive.alias == request.alias && drive.type == request.type
-}
+
