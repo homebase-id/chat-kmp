@@ -7,6 +7,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.core.config.getPermissionExtensionConfig
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +33,9 @@ class ExtendPermissionViewModel(
     }
 
     private suspend fun checkPermissions() {
+        // Wait for initial composition and auth state to stabilize,
+        // preventing the dialog from flickering during screen transitions
+        delay(1000)
         try {
             val domain = credentialsManager.requireActiveCredentials().domain.domainName
             val manager = PermissionExtensionManager.create(securityContextProvider, domain)
@@ -42,9 +46,11 @@ class ExtendPermissionViewModel(
                 Logger.i(TAG) {
                     "Missing permissions detected: drives=${result.missingDrives.size}, permissions=${result.missingPermissions.size}, allConnected=${result.missingAllConnectedCircle}"
                 }
-                _uiState.value = ExtendPermissionUiState.ShowDialog(
-                    extendPermissionUrl = result.extendPermissionUrl, appName = config.appName
-                )
+                _uiState.value =
+                    ExtendPermissionUiState.ShowDialog(
+                        extendPermissionUrl = result.extendPermissionUrl,
+                        appName = config.appName
+                    )
             } else {
                 Logger.d(TAG) { "All permissions are granted" }
             }
