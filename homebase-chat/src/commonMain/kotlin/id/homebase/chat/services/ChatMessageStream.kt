@@ -189,7 +189,6 @@ class ChatMessageStream(
             .resolveByOdinId(author)
             ?.name
             ?: author.domainName
-            ?: ""
     }
 
     companion object {
