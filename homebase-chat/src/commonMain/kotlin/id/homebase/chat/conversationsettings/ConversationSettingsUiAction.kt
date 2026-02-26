@@ -1,8 +1,8 @@
 package id.homebase.chat.conversationsettings
 
-import id.homebase.chat.data.ContactUiModel
+import id.homebase.api.common.OdinId
 
 sealed interface ConversationSettingsUiAction {
     data object BackClicked : ConversationSettingsUiAction
-    data class ShowContactInfo(val contact: ContactUiModel) : ConversationSettingsUiAction
+    data class ShowContactInfo(val odinId: OdinId) : ConversationSettingsUiAction
 }

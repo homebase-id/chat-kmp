@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
@@ -17,8 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.core.widget.AvatarImage
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.resources.MR
 import id.homebase.resources.details
 import org.jetbrains.compose.resources.stringResource
@@ -27,10 +29,7 @@ import org.jetbrains.compose.resources.stringResource
 fun AvatarNameDisplay(
     modifier: Modifier = Modifier,
     displayName: String,
-    avatarUrl: String?,
-    avatarInitials: String,
-    avatarTiny: EmbeddedThumb? = null,
-    isGroupConversation: Boolean = false,
+    avatarModel: ConversationAvatarModel,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
@@ -38,13 +37,13 @@ fun AvatarNameDisplay(
         horizontalArrangement = Arrangement.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            AvatarImage(
-                avatarUrl = avatarUrl,
-                avatarInitials = avatarInitials,
-                avatarTiny = avatarTiny,
-                isGroup = isGroupConversation,
-                size = 72.dp,
-                fontSize = 24.sp,
+            ConversationAvatar(
+                avatarModel = avatarModel,
+                modifier = Modifier.padding(8.dp),
+                options = AvatarOptions(
+                    size = 72.dp,
+                    fontSize = 24.sp,
+                )
             )
             Spacer(modifier = Modifier.height(16.dp))
             Row(

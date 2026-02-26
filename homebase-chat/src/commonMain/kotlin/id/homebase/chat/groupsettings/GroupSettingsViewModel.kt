@@ -65,7 +65,7 @@ class GroupSettingsViewModel(
                     val contacts = conversation.participants.mapNotNull { odinId ->
                         contactService.resolveByOdinId(odinId)
                     }
-                    val domain = credentialsManager.requireActiveCredentials().domain.domainName
+                    val domain = credentialsManager.requireActiveCredentials().domain
                     _uiState.update {
                         it.copy(
                             conversation = conversation,

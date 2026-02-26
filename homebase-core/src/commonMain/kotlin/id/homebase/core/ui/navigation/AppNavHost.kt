@@ -206,7 +206,12 @@ fun AppNavHost(
                                     )
                                 )
                             },
-                            onDetailPaneVisibilityChanged = { })
+                            onDetailPaneVisibilityChanged = {
+                                // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
+                                @Suppress("AssignedValueIsNeverRead")
+                                showingOnlyDetailPane = it
+                            },
+                        )
                     }
                 }
 

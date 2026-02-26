@@ -85,17 +85,19 @@ fun ConversationSettingsUi(
                 }
             }
 
-            uiState.contact?.let { contact ->
+            uiState.conversation?.let { conversation ->
                 AvatarNameDisplay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                         .padding(bottom = 16.dp),
-                    displayName = contact.name,
-                    avatarUrl = contact.avatarUrl,
-                    avatarInitials = contact.avatarInitials,
-                    isGroupConversation = false,
-                    onClick = { onUiAction(ConversationSettingsUiAction.ShowContactInfo(contact)) }
+                    displayName = conversation.name,
+                    avatarModel = conversation.avatarModel,
+                    onClick = {
+                        conversation.participants.firstOrNull()?.let {
+                            onUiAction(ConversationSettingsUiAction.ShowContactInfo(it))
+                        }
+                    }
                 )
             }
         }

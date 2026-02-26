@@ -1,10 +1,12 @@
 package id.homebase.core.ui.screens.settings
 
+import id.homebase.api.client.auth.OwnerSession
+
 data class SettingsUiState(
     val isLoading: Boolean = false,
     val appName: String = "Homebase Chat",
     val appVersion: String,
-    val loggedInDomain: String,
+    val ownerSession: OwnerSession? = null,
 
     val uiEvent: SettingsUiEvent? = null,
     val uiDialog: SettingsUiDialog? = null,

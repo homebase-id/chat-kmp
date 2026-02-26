@@ -1,13 +1,14 @@
 package id.homebase.chat.groupsettings
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 
 @Immutable
 data class GroupSettingsUiState(
     val isLoading: Boolean = true,
-    val currentOdinId: String = "",
+    val currentOdinId: OdinId? = null,
     val conversation: ConversationUiModel? = null,
     val contacts: List<ContactUiModel> = listOf(),
     val uiEvent: GroupSettingsUiEvent? = null,

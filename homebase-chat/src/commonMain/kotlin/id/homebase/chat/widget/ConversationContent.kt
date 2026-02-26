@@ -67,7 +67,6 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
-import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.EmojiReaction
 import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
@@ -297,10 +296,7 @@ fun ConversationContent(
                                     .padding(horizontal = 16.dp)
                                     .padding(bottom = 16.dp),
                                 displayName = conversation.name,
-                                avatarUrl = conversation.avatarUrl,
-                                avatarInitials = conversation.avatarInitials,
-                                avatarTiny = conversation.avatarTiny,
-                                isGroupConversation = conversation.isGroupConversation,
+                                avatarModel = conversation.avatarModel,
                             )
                         }
                         if (conversation.isGroupConversation) {

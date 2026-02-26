@@ -2,7 +2,7 @@ package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.util.PlatformInfo
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,29 +13,23 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
-    private val credentialsManager: CredentialsManager,
+    private val ownerSessionRepository: OwnerSessionRepository,
     platformInfo: PlatformInfo,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(
-        SettingsUiState(
-            loggedInDomain = "",
-            appVersion = platformInfo.versionName,
-        )
-    )
+    private val _uiState = MutableStateFlow(SettingsUiState(appVersion = platformInfo.versionName))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            loadSettings()
-        }
+        loadSettings()
     }
 
-    private suspend fun loadSettings() {
-        val credentials = credentialsManager.requireActiveCredentials()
-        _uiState.value = _uiState.value.copy(
-            loggedInDomain = credentials.domain.domainName
-        )
+    private fun loadSettings() {
+        viewModelScope.launch {
+            ownerSessionRepository.user.collect { session ->
+                _uiState.update { it.copy(ownerSession = session) }
+            }
+        }
     }
 
     fun onAction(action: SettingsUiAction) {
@@ -48,7 +42,9 @@ class SettingsViewModel(
             }
 
             SettingsUiAction.OpenOwnerConsoleClicked -> {
-                sendEvent(SettingsUiEvent.OpenUrl("https://${uiState.value.loggedInDomain}/owner/settings/delete"))
+                uiState.value.ownerSession?.let {
+                    sendEvent(SettingsUiEvent.OpenUrl("https://${it.odinId.domainName}/owner/settings/delete"))
+                }
             }
 
             SettingsUiAction.DeleteAccount -> {

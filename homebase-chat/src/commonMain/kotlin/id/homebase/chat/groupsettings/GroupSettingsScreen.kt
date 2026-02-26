@@ -125,10 +125,7 @@ fun GroupSettingsUi(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                     displayName = conversation.name,
-                    avatarUrl = conversation.avatarUrl,
-                    avatarInitials = conversation.avatarInitials,
-                    avatarTiny = conversation.avatarTiny,
-                    isGroupConversation = true,
+                    avatarModel = conversation.avatarModel,
                 )
                 Spacer(modifier = Modifier.height(32.dp))
                 HorizontalDivider()
@@ -154,21 +151,23 @@ fun GroupSettingsUi(
                             }
                         )
                     }
-                    item {
-                        ContactItem(
-                            name = stringResource(MR.string.you),
-                            subTitle = uiState.currentOdinId,
-                            avatarUrl = "",
-                            avatarInitials = "HU",
-                            onContactClick = {},
-                        )
+                    uiState.currentOdinId?.let { odinId ->
+                        item {
+                            ContactItem(
+                                name = stringResource(MR.string.you),
+                                subTitle = odinId.domainName,
+                                odinId = odinId,
+                                avatarInitials = "HU",
+                                onContactClick = {},
+                            )
+                        }
                     }
                     items(uiState.contacts) { contact ->
                         ContactItem(
                             name = contact.name,
                             subTitle = contact.odinId.domainName,
-                            avatarUrl = contact.avatarUrl,
                             avatarInitials = contact.avatarInitials,
+                            odinId = contact.odinId,
                             onContactClick = {
                                 onUiAction(
                                     GroupSettingsUiAction.ShowContactInfo(contact)

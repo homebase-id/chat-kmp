@@ -36,11 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import id.homebase.api.client.auth.initials
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
-import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.SettingsItemAction
@@ -161,24 +162,29 @@ fun SettingsUi(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                AvatarImage(
-                    avatarUrl = null,
-                    avatarInitials = "HU",
-                    size = 96.dp,
-                    fontSize = 32.sp,
-                    onClick = {}
-                )
-                Spacer(modifier = Modifier.width(24.dp))
-                Column {
-                    Text(
-                        text = "Homebase User",
-                        style = MaterialTheme.typography.titleLarge
+                uiState.ownerSession?.let { ownerSession ->
+                    ContactAvatar(
+                        odinId = ownerSession.odinId,
+                        profileImageData = null,
+                        initials = ownerSession.initials(),
+                        options = AvatarOptions(
+                            size = 96.dp,
+                        ),
+                        sharedTransitionScope = null,
+                        animatedVisibilityScope = null
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = uiState.loggedInDomain,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    Spacer(modifier = Modifier.width(24.dp))
+                    Column {
+                        Text(
+                            text = ownerSession.displayName ?: "",
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = ownerSession.odinId.domainName,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -228,7 +234,7 @@ fun SettingsUi(
 fun SettingsUiPreview() {
     HomebaseTheme {
         SettingsUi(
-            uiState = SettingsUiState(loggedInDomain = "your.identity.id", appVersion = "1.0.0"),
+            uiState = SettingsUiState(appVersion = "1.0.0"),
             onAction = {},
             onBackClick = {},
             onNavigateToNotifications = {},
