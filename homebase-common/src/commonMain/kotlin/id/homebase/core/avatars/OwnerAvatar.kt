@@ -19,7 +19,7 @@ fun OwnerAvatar(
     options: AvatarOptions,
     modifier: Modifier = Modifier,
     sharedTransitionScope: SharedTransitionScope?,
-    animatedVisibilityScope: AnimatedVisibilityScope
+    animatedVisibilityScope: AnimatedVisibilityScope?
 ) {
     if (profileImageData != null) {
         HomebaseImage(

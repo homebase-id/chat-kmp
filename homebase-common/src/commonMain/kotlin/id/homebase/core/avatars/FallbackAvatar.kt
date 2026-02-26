@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
@@ -21,9 +22,10 @@ import androidx.compose.ui.unit.sp
 fun FallbackAvatar(
     initials: String?,
     options: AvatarOptions,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    imageVector: ImageVector = Icons.Default.Person
 ) {
-    val fontSize = options.initialsFontSize ?: (options.size.value * 0.4f).sp
+    val fontSize = options.fontSize ?: (options.size.value * 0.4f).sp
 
     val clickableModifier =
         if (options.onClick != null) {
@@ -50,7 +52,7 @@ fun FallbackAvatar(
             )
         } else {
             Icon(
-                imageVector = Icons.Default.Person,
+                imageVector = imageVector,
                 contentDescription = "Default Avatar",
                 tint = Color.White
             )

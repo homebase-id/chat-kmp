@@ -7,7 +7,7 @@ import androidx.compose.ui.unit.dp
 
 data class AvatarOptions(
     val size: Dp = 48.dp,
-    val initialsFontSize: TextUnit? = null,
+    val fontSize: TextUnit? = null,
     val onClick: (() -> Unit)? = null,
     val contentScale: ContentScale = ContentScale.Crop
 )

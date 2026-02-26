@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.sp
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
-import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_select_members
@@ -183,7 +182,7 @@ fun SelectMembersUi(
                                 initials = contact.avatarInitials,
                                 options = AvatarOptions(
                                     size = 28.dp,
-                                    initialsFontSize = 12.sp,
+                                    fontSize = 12.sp,
                                 ),
                                 sharedTransitionScope = null,
                                 animatedVisibilityScope = null

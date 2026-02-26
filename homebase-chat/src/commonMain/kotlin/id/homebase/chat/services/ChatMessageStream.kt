@@ -198,6 +198,7 @@ class ChatMessageStream(
                 val messageAppData = messageAppDataSource
                     .copy(deliveryStatus = getDeliveryStatus(header).value)
 
+
                 return MessageUiModel(
                     id = appData.uniqueId!!,
                     globalTransitId = metadata.globalTransitId,

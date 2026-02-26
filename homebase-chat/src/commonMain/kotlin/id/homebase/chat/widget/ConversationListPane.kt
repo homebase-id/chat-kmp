@@ -146,7 +146,7 @@ fun ConversationListPane(
                                                     initials = session.initials(),
                                                     options = AvatarOptions(
                                                         size = 32.dp,
-                                                        initialsFontSize = 12.sp,
+                                                        fontSize = 12.sp,
                                                         onClick = { onProfileClick() }
                                                     ),
                                                     animatedVisibilityScope = this@AnimatedVisibility,
@@ -395,8 +395,7 @@ fun ConversationLisContentItem(
         is ConversationListContentModel.Conversation -> {
             if (iconOnlyMode) {
                 ConversationAvatarItem(
-                    avatarUrl = listItem.conversation.avatarUrl,
-                    avatarInitials = listItem.conversation.avatarInitials,
+                    conversation = listItem.conversation,
                     onClick = {
                         onUiAction(
                             ConversationListUiAction.ConversationClicked(
@@ -409,6 +408,7 @@ fun ConversationLisContentItem(
                 )
             } else {
                 ConversationItem(
+                    avatarModel = listItem.conversation.avatarModel,
                     groupName = listItem.conversation.name,
                     message = listItem.conversation.lastMessage,
                     unreadCount = listItem.conversation.unreadCount,
@@ -434,31 +434,33 @@ fun ConversationLisContentItem(
             }
         }
 
-        is ConversationListContentModel.Message -> {
-            // TODO - get message info for display
-            ConversationItem(
-                groupName = "how to get name from message",
-                message = listItem.message.content,
-                unreadCount = 0,
-                avatarUrl = "",
-                avatarInitials = "MS",
-                avatarTiny = null,
-                isGroup = false,
-                contactOdinId = listItem.message.originalAuthor,
-                timestamp = listItem.message.created,
-                onClick = {
-                    onUiAction(
-                        ConversationListUiAction.ConversationClicked(
-                            listItem.message.conversationId,
-                            listItem.message.id
-                        )
-                    )
-                },
-                onContactClick = { odinId ->
-                    onUiAction(ConversationListUiAction.ShowContactInfo(odinId.domainName))
-                },
-                isSelected = false,
-            )
-        }
+        is ConversationListContentModel.Message -> {}
+
+//        is ConversationListContentModel.Message -> {
+//            // TODO - get message info for display
+//            ConversationItem(
+//                groupName = "how to get name from message",
+//                message = listItem.message.content,
+//                unreadCount = 0,
+//                avatarUrl = "",
+//                avatarInitials = "MS",
+//                avatarTiny = null,
+//                isGroup = false,
+//                contactOdinId = listItem.message.originalAuthor,
+//                timestamp = listItem.message.created,
+//                onClick = {
+//                    onUiAction(
+//                        ConversationListUiAction.ConversationClicked(
+//                            listItem.message.conversationId,
+//                            listItem.message.id
+//                        )
+//                    )
+//                },
+//                onContactClick = { odinId ->
+//                    onUiAction(ConversationListUiAction.ShowContactInfo(odinId.domainName))
+//                },
+//                avatarModel = listItem.message.
+//            )
+//        }
     }
 }

@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.sp
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
-import id.homebase.core.widget.AvatarImage
 
 @Composable
 fun ContactItem(
@@ -40,7 +39,7 @@ fun ContactItem(
             initials = contact.avatarInitials,
             options = AvatarOptions(
                 size = 28.dp,
-                initialsFontSize = 12.sp,
+                fontSize = 12.sp,
             ),
             sharedTransitionScope = null,
             animatedVisibilityScope = null

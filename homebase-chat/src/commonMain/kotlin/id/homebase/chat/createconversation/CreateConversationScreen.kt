@@ -46,7 +46,6 @@ import androidx.compose.ui.unit.sp
 import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
-import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
@@ -254,7 +253,7 @@ fun ContactItem(
             initials = avatarInitials,
             options = AvatarOptions(
                 size = 28.dp,
-                initialsFontSize = 12.sp,
+                fontSize = 12.sp,
             ),
             sharedTransitionScope = null,
             animatedVisibilityScope = null

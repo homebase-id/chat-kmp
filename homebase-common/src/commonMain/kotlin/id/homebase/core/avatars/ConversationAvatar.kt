@@ -2,55 +2,83 @@ package id.homebase.core.avatars
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import id.homebase.api.common.OdinId
 import id.homebase.core.image.HomebaseImage
-import id.homebase.core.image.HomebaseImageData
 
 @Composable
 fun ConversationAvatar(
-    odinId: OdinId,
-    profileImageData: HomebaseImageData?,
-    initials: String?,
-    options: AvatarOptions,
+    avatarModel: ConversationAvatarModel,
     modifier: Modifier = Modifier,
-    sharedTransitionScope: SharedTransitionScope?,
-    animatedVisibilityScope: AnimatedVisibilityScope?
+    options: AvatarOptions? = null,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null
 ) {
-    if (profileImageData != null) {
 
-        if (animatedVisibilityScope == null) {
-            throw IllegalArgumentException("animatedVisibilityScope cannot be null when profile image specified")
+    val opts = options ?: AvatarOptions()
+
+    when (avatarModel.type) {
+
+        ConversationAvatarModel.Type.ConversationImage -> {
+
+            val imageData = avatarModel.imageData ?: return
+                ?: throw IllegalArgumentException(
+                    "animatedVisibilityScope required for ConversationImage"
+                )
+
+            HomebaseImage(
+                imageData = imageData,
+                modifier = modifier
+                    .size(opts.size)
+                    .clip(CircleShape),
+                contentDescription = "Conversation Avatar",
+                contentScale = opts.contentScale,
+                onClick = opts.onClick,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope
+            )
         }
 
-        HomebaseImage(
-            imageData = profileImageData,
-            modifier = modifier
-                .size(options.size)
-                .clip(CircleShape)
-                .let {
-                    if (options.onClick != null) {
-                        it.clickable { options.onClick.invoke() }
-                    } else it
-                },
-            contentDescription = "Owner Avatar",
-            contentScale = options.contentScale,
-            onClick = options.onClick,
-            sharedTransitionScope = sharedTransitionScope,
-            animatedVisibilityScope = animatedVisibilityScope
-        )
 
-    } else {
-        PublicAvatar(
-            odinId = odinId,
-            initials = initials,
-            options = options,
-            modifier = modifier
-        )
+
+        ConversationAvatarModel.Type.Connection -> {
+            avatarModel.odinId?.let {
+                PublicAvatar(
+                    odinId = it,
+                    initials = avatarModel.initials,
+                    options = opts,
+                    modifier = modifier
+                )
+            }
+        }
+
+        ConversationAvatarModel.Type.Owner -> {
+            avatarModel.odinId?.let {
+                OwnerAvatar(
+                    odinId = it,
+                    profileImageData = avatarModel.imageData,
+                    initials = avatarModel.initials,
+                    options = opts,
+                    modifier = modifier,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope
+                )
+            }
+        }
+
+        ConversationAvatarModel.Type.GroupFallback -> {
+            FallbackAvatar(
+                initials = avatarModel.initials,
+                options = opts,
+                modifier = modifier,
+                imageVector = Icons.Default.People
+            )
+        }
     }
 }
