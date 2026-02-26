@@ -55,7 +55,7 @@ class DriveSyncManager(
     }
 
     fun syncDrive(driveId: Uuid) {
-        val d = driveSyncs[driveId] ?: throw Exception("no drive")
+        val d = driveSyncs[driveId] ?: throw Exception("syncDrive() invalid driveId: $driveId")
 
         d.sync()
     }
