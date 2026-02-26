@@ -9,6 +9,7 @@ import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
@@ -50,7 +51,11 @@ class ConversationListViewModel(
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
+    private val ownerSessionRepository: OwnerSessionRepository
+
 ) : ViewModel() {
+
+    val ownerSession = ownerSessionRepository.user
 
     val chatListRoute = savedStateHandle.toRoute<Route.ChatList>()
 
@@ -65,6 +70,12 @@ class ConversationListViewModel(
         viewModelScope.launch {
             val domain = credentialsManager.requireActiveCredentials().domain.domainName
             _uiState.update { it.copy(currentOdinId = domain) }
+        }
+
+        viewModelScope.launch {
+            ownerSessionRepository.user.collect { session ->
+                _uiState.update { it.copy(ownerSession = session) }
+            }
         }
 
         viewModelScope.launch {

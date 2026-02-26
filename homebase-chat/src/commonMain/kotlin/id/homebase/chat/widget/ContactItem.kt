@@ -16,8 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import id.homebase.chat.data.ContactUiModel
-import id.homebase.core.widget.AvatarImage
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ContactAvatar
 
 @Composable
 fun ContactItem(
@@ -31,9 +33,16 @@ fun ContactItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AvatarImage(
-            avatarUrl = contact.avatarUrl,
-            avatarInitials = contact.avatarInitials,
+        ContactAvatar(
+            odinId = contact.odinId,
+            profileImageData = null,
+            initials = contact.avatarInitials,
+            options = AvatarOptions(
+                size = 28.dp,
+                fontSize = 12.sp,
+            ),
+            sharedTransitionScope = null,
+            animatedVisibilityScope = null
         )
 
         Spacer(modifier = Modifier.width(12.dp))

@@ -61,6 +61,8 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
@@ -183,18 +185,21 @@ fun ConversationContent(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        AvatarImage(
-                            avatarUrl = conversation.avatarUrl,
-                            avatarInitials = conversation.avatarInitials,
-                            size = 32.dp,
-                            fontSize = 12.sp,
-                            onClick = {
-                                onUiAction(
-                                    ConversationListUiAction.ShowContactInfo(
-                                        conversation.participants.first().domainName
+                        ConversationAvatar(
+                            avatarModel = conversation.avatarModel,
+                            options = AvatarOptions(
+                                size = 32.dp,
+                                fontSize = 12.sp,
+                                onClick = {
+                                    onUiAction(
+                                        ConversationListUiAction.ShowContactInfo(
+                                            conversation.participants.first().domainName
+                                        )
                                     )
-                                )
-                            })
+                                }
+                            )
+                        )
+
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
                             text = conversation.name,
@@ -285,11 +290,19 @@ fun ConversationContent(
                                 horizontalArrangement = Arrangement.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    AvatarImage(
-                                        avatarUrl = conversation.avatarUrl,
-                                        avatarInitials = conversation.avatarInitials,
-                                        size = 72.dp,
-                                        fontSize = 24.sp,
+                                    ConversationAvatar(
+                                        avatarModel = conversation.avatarModel,
+                                        options = AvatarOptions(
+                                            size = 72.dp,
+                                            fontSize = 24.sp,
+                                            onClick = {
+                                                onUiAction(
+                                                    ConversationListUiAction.ShowContactInfo(
+                                                        conversation.participants.first().domainName
+                                                    )
+                                                )
+                                            }
+                                        )
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Text(
