@@ -426,8 +426,8 @@ fun ConversationLisContentItem(
                             )
                         )
                     },
-                    onContactClick = { odinId ->
-                        onUiAction(ConversationListUiAction.ShowContactInfo(odinId.domainName))
+                    onContactClick = {
+                        onUiAction(ConversationListUiAction.ShowConversationSettings(listItem.conversation))
                     },
                     isSelected = listItem.conversation.id == selectedConversationId,
                 )

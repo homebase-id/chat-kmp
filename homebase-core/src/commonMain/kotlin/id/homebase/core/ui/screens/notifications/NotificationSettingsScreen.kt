@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -35,6 +37,10 @@ import id.homebase.core.notifications.rememberOpenSystemNotificationSettings
 import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
+import id.homebase.resources.MR
+import id.homebase.resources.menu_back
+import id.homebase.resources.settings_notifications
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun NotificationSettingsScreen(
@@ -74,19 +80,25 @@ fun NotificationSettingsUi(
     onBackClick: () -> Unit,
     onOpenSystemSettings: () -> Unit,
 ) {
+    val scrollState = rememberScrollState()
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Notifications") }, navigationIcon = {
+            TopAppBar(title = { Text(stringResource(MR.string.settings_notifications)) }, navigationIcon = {
                 IconButton(onClick = onBackClick) {
                     Icon(
-                        imageVector = Icons.Default.ChevronLeft, contentDescription = "Back"
+                        imageVector = Icons.Default.ChevronLeft, contentDescription = stringResource(MR.string.menu_back)
                     )
                 }
             })
         }) { innerPadding ->
         Column(
-            modifier = Modifier.fillMaxSize().consumeWindowInsets(innerPadding)
-                .padding(innerPadding).padding(horizontal = 16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(innerPadding)
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp)
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // ── Permission Section ──
@@ -207,8 +219,6 @@ fun NotificationSettingsUi(
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }

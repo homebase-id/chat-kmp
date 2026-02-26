@@ -89,12 +89,17 @@ fun AvatarImage(
                     SubcomposeAsyncImageContent()
                 } else {
                     // Fallback composable on error and loading
-                    Text(
-                        text = avatarInitials,
-                        style = MaterialTheme.typography.titleMedium.copy(fontSize = fontSize),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    if (isGroup) {
+                        // Show group icon
+                        Icon(Icons.Default.People, contentDescription = null)
+                    } else {
+                        Text(
+                            text = avatarInitials,
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = fontSize),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         } else if (isGroup) {

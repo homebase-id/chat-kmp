@@ -52,6 +52,7 @@ fun FallbackAvatar(
             )
         } else {
             Icon(
+                modifier = Modifier.size(options.size / 2),
                 imageVector = imageVector,
                 contentDescription = "Default Avatar",
                 tint = Color.White

@@ -43,14 +43,14 @@ fun MessageInfoScreen(
 @Composable
 fun MessageInfoUi(
     uiState: MessageInfoUiState,
-    onUiAction: (MessageInfo) -> Unit,
+    onUiAction: (MessageInfoUiAction) -> Unit,
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    IconButton(onClick = { onUiAction(MessageInfo.BackClicked)  }) {
+                    IconButton(onClick = { onUiAction(MessageInfoUiAction.BackClicked)  }) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
                             contentDescription = stringResource(MR.string.menu_back)
@@ -59,9 +59,9 @@ fun MessageInfoUi(
                 },
             )
         }
-    ) { parameters ->
+    ) { padding ->
         Column(
-            modifier = Modifier.padding(parameters)
+            modifier = Modifier.padding(padding)
         ) {
             Text("Message info")
             Text(uiState.text)

@@ -5,6 +5,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
@@ -19,7 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
-import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.ConversationAvatarModel
 
 class ConversationStream(
@@ -233,9 +233,7 @@ class ConversationStream(
     }
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {
-        return _conversations.value.firstOrNull { it.id == conversationId }?.let {
-            return it
-        }
+        return _conversations.value.firstOrNull { it.id == conversationId }
     }
 
     suspend fun getRecipients(conversationId: Uuid): List<OdinId> {

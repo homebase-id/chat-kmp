@@ -28,6 +28,9 @@ class HomeViewModel(): ViewModel() {
             is HomeUiAction.ChatListClicked -> {
                 sendEvent(HomeUiEvent.NavigateToChatList)
             }
+            is HomeUiAction.ExamplesClicked -> {
+                sendEvent(HomeUiEvent.NavigateToExample)
+            }
         }
     }
 

@@ -35,16 +35,22 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
 import id.homebase.auth.login.LoginViewModel
+import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
 import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
+import id.homebase.chat.editconversationgroup.EditConversationGroupScreen
+import id.homebase.chat.groupsettings.GroupSettingsScreen
 import id.homebase.chat.messageinfo.MessageInfoScreen
 import id.homebase.chat.selectmembers.SelectMembersScreen
 import id.homebase.core.ui.assets.BootstrapChat
+import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
+import id.homebase.core.ui.screens.widget.RichTextExample
 import kotlinx.coroutines.flow.StateFlow
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -97,16 +103,15 @@ fun AppNavHost(
                                 )
                             },
                             label = { Text(topLevelRoute.label) },
-                            selected = currentDestination?.hasRoute(
-                                topLevelRoute.route::class
-                            ) == true,
+                            selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
                                     popUpTo(Route.ChatList()) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
-                            })
+                            },
+                        )
                     }
                 }
             }
@@ -157,7 +162,10 @@ fun AppNavHost(
                         }) {
                         HomeScreen(
                             viewModel = koinViewModel(),
-                            onNavigateToChatList = { navController.navigate(Route.ChatList()) })
+                            onNavigateToChatList = { navController.navigate(Route.ChatList()) },
+                            onNavigateToExamples = { navController.navigate(Route.Examples) }
+                        )
+
                     }
                 }
 
@@ -183,6 +191,12 @@ fun AppNavHost(
                             onNavigateToContactInfo = {
                                 navController.navigate(Route.ContactInfo(it))
                             },
+                            onNavigateToConversationSettings = {
+                                navController.navigate(Route.ConversationSettings(it))
+                            },
+                            onNavigateToGroupSettings = {
+                                navController.navigate(Route.GroupSettings(it))
+                            },
                             onNavigateToMessageInfo = { conversationId, messageId, fileId ->
                                 navController.navigate(
                                     Route.MessageInfo(
@@ -192,7 +206,12 @@ fun AppNavHost(
                                     )
                                 )
                             },
-                            onDetailPaneVisibilityChanged = { })
+                            onDetailPaneVisibilityChanged = {
+                                // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
+                                @Suppress("AssignedValueIsNeverRead")
+                                showingOnlyDetailPane = it
+                            },
+                        )
                     }
                 }
 
@@ -282,6 +301,85 @@ fun AppNavHost(
                     }
                 }
 
+                composable<Route.ConversationSettings> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        ConversationSettingsScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                            onShowContactInfo = {
+                                navController.navigate(Route.ContactInfo(it))
+                            },
+                        )
+                    }
+                }
+
+                composable<Route.GroupSettings> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        GroupSettingsScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                            onShowContactInfo = {
+                                navController.navigate(Route.ContactInfo(it))
+                            },
+                            onAddMembers = {
+                                navController.navigate(Route.GroupAddMembers(it))
+                            },
+                            onEditGroup = {
+                                navController.navigate(Route.GroupEdit(it))
+                            },
+                        )
+                    }
+                }
+
+                composable<Route.GroupAddMembers> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        AddGroupMembersScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                        )
+                    }
+                }
+
+                composable<Route.GroupEdit> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        EditConversationGroupScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                        )
+                    }
+                }
+
+                composable<Route.Examples> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        RichTextExample()
+                    }
+                }
+
                 composable<Route.Settings> {
                     AuthenticatedRouteWithFlowManager(
                         authState = youAuthFlowManager.authState, onUnauthenticated = {
@@ -294,7 +392,11 @@ fun AppNavHost(
                             onBackClick = { navController.popBackStack() },
                             onNavigateToNotifications = {
                                 navController.navigate(Route.NotificationSettings)
-                            })
+                            },
+                            onNavigateToAppearance = {
+                                navController.navigate(Route.AppearanceSettings)
+                            },
+                        )
                     }
                 }
 
@@ -306,6 +408,19 @@ fun AppNavHost(
                             }
                         }) {
                         NotificationSettingsScreen(
+                            viewModel = koinViewModel(),
+                            onBackClick = { navController.popBackStack() })
+                    }
+                }
+
+                composable<Route.AppearanceSettings> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        AppearanceSettingsScreen(
                             viewModel = koinViewModel(),
                             onBackClick = { navController.popBackStack() })
                     }
