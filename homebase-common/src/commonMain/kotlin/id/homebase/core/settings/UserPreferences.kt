@@ -1,11 +1,30 @@
 package id.homebase.core.settings
 
 import com.russhwolf.settings.Settings
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 class UserPreferences(private val settings: Settings) {
+    private val _preferenceState = MutableStateFlow(
+        PreferenceState(
+            theme = theme,
+        )
+    )
+    val preferenceState: StateFlow<PreferenceState> = _preferenceState
+
     var language: String
         get() = settings.getString("language", "system")
         set(value) = settings.putString("language", value)
+
+    var theme: ThemeState
+        get() {
+            val theme = settings.getString("theme", "System")
+            return ThemeState.valueOf(theme)
+        }
+        set(value) {
+            settings.putString("theme", value.name)
+            _preferenceState.value = _preferenceState.value.copy(theme = value)
+        }
 
     // Notification preferences
     var playWhileAppOpen: Boolean
@@ -39,6 +58,16 @@ class UserPreferences(private val settings: Settings) {
     fun setConversationScrollOffset(conversationId: String, position: Int) {
         settings.putInt("conversationScrollOffset-$conversationId", position)
     }
+}
+
+data class PreferenceState(
+    val theme: ThemeState,
+)
+
+enum class ThemeState {
+    System,
+    Dark,
+    Light,
 }
 
 expect fun createSettings(): Settings

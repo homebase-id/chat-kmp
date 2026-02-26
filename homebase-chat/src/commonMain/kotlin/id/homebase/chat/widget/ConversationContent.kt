@@ -67,7 +67,6 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
-import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.EmojiReaction
 import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
@@ -201,11 +200,19 @@ fun ConversationContent(
                         )
 
                         Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            text = conversation.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Column {
+                            Text(
+                                text = conversation.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+//                            if (conversation.isGroupConversation) {
+//                                Text(
+//                                    text = conversation.participants.joinToString { it.domainName },
+//                                    style = MaterialTheme.typography.labelSmall,
+//                                )
+//                            }
+                        }
                     }
                 }, navigationIcon = {
                     if (showBackButton) {
@@ -226,12 +233,11 @@ fun ConversationContent(
                     ConversationMenu(
                         showMenu = showConversationMenu,
                         dismissMenu = { showConversationMenu = false },
+                        isGroup = conversation.isGroupConversation,
                         onConversationInfo = {
                             showConversationMenu = false
                             onUiAction(
-                                ConversationListUiAction.ShowConversationInfo(
-                                    conversation.id
-                                )
+                                ConversationListUiAction.ShowConversationSettings(conversation)
                             )
                         },
                         onDelete = {
@@ -284,46 +290,29 @@ fun ConversationContent(
                         )
                     ) {
                         item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                                    .padding(bottom = 24.dp),
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    ConversationAvatar(
-                                        avatarModel = conversation.avatarModel,
-                                        options = AvatarOptions(
-                                            size = 72.dp,
-                                            fontSize = 24.sp,
-                                            onClick = {
-                                                onUiAction(
-                                                    ConversationListUiAction.ShowContactInfo(
-                                                        conversation.participants.first().domainName
-                                                    )
-                                                )
-                                            }
-                                        )
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(
-                                        text = conversation.name,
-                                        style = MaterialTheme.typography.headlineSmall,
-                                    )
-                                }
+                            AvatarNameDisplay(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 16.dp),
+                                displayName = conversation.name,
+                                avatarModel = conversation.avatarModel,
+                            )
+                        }
+                        if (conversation.isGroupConversation) {
+                            item {
+                                GroupMemberNamesCard(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                        .padding(bottom = 16.dp),
+                                    participantsString = conversation.participants.joinToString { it.domainName },
+                                )
                             }
                         }
                         if (messages.isEmpty()) {
                             item {
-
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = stringResource(MR.string.chat_no_messages),
-                                        modifier = Modifier.padding(24.dp),
-                                    )
-                                }
+                                EmptyListItem(stringResource(MR.string.chat_no_messages))
                             }
                         }
                         items(messages, key = { message -> message.id }) { messageItem ->

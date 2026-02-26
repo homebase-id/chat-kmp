@@ -560,7 +560,21 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ShowContactInfo -> {
+                // ignore if click on own contact
+                if (action.odinId == uiState.value.currentOdinId) return
                 _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToContactInfo((action.odinId))) }
+            }
+
+            is ConversationListUiAction.ShowConversationSettings -> {
+                if (action.conversation.isGroupConversation) {
+                    _uiState.update {
+                        it.copy(uiEvent = ConversationListUiEvent.NavigateToGroupSettings((action.conversation.id.toString())))
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(uiEvent = ConversationListUiEvent.NavigateToConversationSettings((action.conversation.id.toString())))
+                    }
+                }
             }
 
             is ConversationListUiAction.ShowMessageInfo -> {

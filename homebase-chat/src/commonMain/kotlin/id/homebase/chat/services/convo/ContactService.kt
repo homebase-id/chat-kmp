@@ -49,6 +49,7 @@ class ContactService(
                 }
             }
         }
+        start()
     }
 
     fun start() {

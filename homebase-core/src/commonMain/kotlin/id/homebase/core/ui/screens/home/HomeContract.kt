@@ -8,9 +8,11 @@ data class HomeUiState(
 /** All possible user actions on Home screen. */
 sealed interface HomeUiAction {
     data object ChatListClicked : HomeUiAction
+    data object ExamplesClicked : HomeUiAction
 }
 
 /** One-off events for side effects (navigation). */
 sealed interface HomeUiEvent {
     data object NavigateToChatList : HomeUiEvent
+    data object NavigateToExample : HomeUiEvent
 }

@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage
 import io.github.vinceglb.filekit.PlatformFile
@@ -47,11 +48,10 @@ sealed interface ConversationListUiAction {
         val firstVisibleItemScrollOffset: Int
     ) : ConversationListUiAction
 
-    data class ShowConversationInfo(val conversationId: Uuid) : ConversationListUiAction
+    data class ShowConversationSettings(val conversation: ConversationUiModel) : ConversationListUiAction
     data class DeleteConversation(val conversationId: Uuid) : ConversationListUiAction
     data class ArchiveConversation(val conversationId: Uuid) : ConversationListUiAction
     data class ClearConversation(val conversationId: Uuid) : ConversationListUiAction
-
     data class ShowContactInfo(val odinId: String) : ConversationListUiAction
     data class ShowMessageInfo(val message: MessageUiModel) : ConversationListUiAction
     data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction

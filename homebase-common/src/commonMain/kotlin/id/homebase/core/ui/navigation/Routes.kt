@@ -39,10 +39,34 @@ sealed class Route {
     data class ContactInfo(val odinId: String) : Route()
 
     @Serializable
-    @SerialName("chat")
+    @SerialName("conversation")
     data class ChatList(val conversationId: String? = null) : Route()
+
+    @Serializable
+    @SerialName("conversation-settings")
+    data class ConversationSettings(val conversationId: String) : Route()
+
+    @Serializable
+    @SerialName("group-settings")
+    data class GroupSettings(val conversationId: String) : Route()
+
+    @Serializable
+    @SerialName("group-add-members")
+    data class GroupAddMembers(val conversationId: String) : Route()
+
+    @Serializable
+    @SerialName("group-edit")
+    data class GroupEdit(val conversationId: String) : Route()
+
+    @Serializable
+    @SerialName("examples")
+    data object Examples : Route()
 
     @Serializable
     @SerialName("notification-settings")
     data object NotificationSettings : Route()
+
+    @Serializable
+    @SerialName("appearance-settings")
+    data object AppearanceSettings : Route()
 }
