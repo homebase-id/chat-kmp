@@ -24,6 +24,7 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
         private const val TAG = "SecurityContextProvider"
     }
 
+    //TODO: Move to OdinSystemSerializer
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
@@ -39,7 +40,11 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
             val url = apiUrl(creds.domain, "/auth/context")
 
             val credentials = requireCreds()
-            val response: ApiResponse = plainGet(url = url, token = credentials.accessToken)
+            val response: ApiResponse = encryptedGet(
+                url = url,
+                token = credentials.accessToken,
+                secret = credentials.secret
+            )
 
             throwForFailure(response)
             parseSecurityContext(response.body)
