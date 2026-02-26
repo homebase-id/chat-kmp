@@ -32,11 +32,11 @@ import coil3.compose.SubcomposeAsyncImageContent
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.Warning
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.koin.compose.koinInject
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Progressive image component for Homebase drives.
@@ -68,8 +68,8 @@ fun HomebaseImage(
     error: @Composable (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
-    sharedTransitionScope: SharedTransitionScope?,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
@@ -102,16 +102,22 @@ fun HomebaseImage(
 
     // Shared transition modifier
     val transitionKey = "image-${imageData.fileId}-${imageData.payloadKey}"
-    if (sharedTransitionScope != null) {
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
-            customModified = customModified.sharedBounds(
-                rememberSharedContentState(key = transitionKey),
-                animatedVisibilityScope = animatedVisibilityScope,
-                boundsTransform = { _, _ ->
-                    tween(durationMillis = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION, easing = FastOutSlowInEasing)
-                },
-                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
-            )
+            customModified =
+                customModified.sharedBounds(
+                    rememberSharedContentState(key = transitionKey),
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    boundsTransform = { _, _ ->
+                        tween(
+                            durationMillis =
+                                HomebaseConstants.Animation
+                                    .CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                            easing = FastOutSlowInEasing
+                        )
+                    },
+                    resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
+                )
         }
     }
 
