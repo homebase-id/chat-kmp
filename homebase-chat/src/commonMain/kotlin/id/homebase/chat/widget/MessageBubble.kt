@@ -305,8 +305,8 @@ fun ReceivedMessageBubble(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
-                val authorNameTxt = message.originalAuthor?.domainName ?: ""
-                val authorOdinColor = getOdinIdColor(authorNameTxt)
+                val authorNameTxt = message.displayName
+                val authorOdinColor = getOdinIdColor(message.originalAuthor?.domainName ?: "")
                 val isDark = isSystemInDarkTheme()
                 val finalAuthorColor =
                     if (isDark) authorOdinColor.darkTheme else authorOdinColor.lightTheme

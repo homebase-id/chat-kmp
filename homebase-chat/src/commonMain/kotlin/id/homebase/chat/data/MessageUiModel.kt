@@ -11,7 +11,7 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 @Immutable
-data class  MessageUiModel(
+data class MessageUiModel(
 
     val id: Uuid, // uniqueId
     /** GlobalTransitId of the payload - same across all recipients */
@@ -23,6 +23,7 @@ data class  MessageUiModel(
     val created: Instant, // When the message was created by the author
     val modified: Instant?, // When the message was last modified
     val originalAuthor: OdinId?,
+    val displayName: String,
     val isRead: Boolean = false,
     val isEdited: Boolean = false,
     val messageAppData: MessageAppData, // TODO: Should we copy these up into the message?
@@ -32,7 +33,8 @@ data class  MessageUiModel(
     /** List of payload descriptors with metadata */
     val payloads: List<PayloadDescriptor>?,
 
-    val keyHeader: KeyHeader // TODO: Todd <-- make it simple and just store the key? (if we use the IV elsewhere that's kind of a bug)
+    val keyHeader: KeyHeader, // TODO: Todd <-- make it simple and just store the key? (if we use the IV elsewhere that's kind of a bug)
+    val isDeleted: Boolean = false
 ) {
     fun isCurrentUser(domain: OdinId?): Boolean = (originalAuthor == domain)
 }
