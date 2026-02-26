@@ -4,9 +4,11 @@ import id.homebase.api.di.apiModule
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.contactinfo.ContactInfoViewModel
 import id.homebase.chat.conversationlist.ConversationListViewModel
+import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
-import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.chat.services.ChatMessageActionService
@@ -52,6 +54,8 @@ val appModule = module {
     viewModelOf(::SelectMembersViewModel)
     viewModelOf(::MessageInfoViewModel)
     viewModelOf(::ContactInfoViewModel)
+    viewModelOf(::ConversationSettingsViewModel)
+    viewModelOf(::GroupSettingsViewModel)
     viewModelOf(::ExtendPermissionViewModel)
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)

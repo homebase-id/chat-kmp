@@ -104,7 +104,8 @@
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>
     <string name="chat_send_message_button">Send message</string>
-    <string name="chat_info">Conversation info</string>
+    <string name="chat_settings">Conversation settings</string>
+    <string name="chat_group_settings">Group settings</string>
     <string name="chat_delete">Delete</string>
     <string name="chat_archive">Archive</string>
     <string name="chat_clear">Clear</string>

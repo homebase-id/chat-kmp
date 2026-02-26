@@ -563,6 +563,18 @@ class ConversationListViewModel(
                 _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToContactInfo((action.odinId))) }
             }
 
+            is ConversationListUiAction.ShowConversationSettings -> {
+                if (action.conversation.isGroupConversation) {
+                    _uiState.update {
+                        it.copy(uiEvent = ConversationListUiEvent.NavigateToGroupSettings((action.conversation.id.toString())))
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(uiEvent = ConversationListUiEvent.NavigateToConversationSettings((action.conversation.participants.first().domainName)))
+                    }
+                }
+            }
+
             is ConversationListUiAction.ShowMessageInfo -> {
                 _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToMessageInfo((action.message))) }
             }

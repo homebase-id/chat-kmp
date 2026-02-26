@@ -1,5 +1,6 @@
 package id.homebase.core.widget
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -72,17 +73,21 @@ fun <T> SettingsClickableRow(
                     )
                 }
             }
-            if (showOptions) {
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                options.forEach { option ->
-                    SettingsRowOption(
-                        displayName = option.displayName,
-                        isSelected = option == selectedValue,
-                        onClick = {
-                            showOptions = false
-                            onSelected(option.data)
-                        },
-                    )
+            AnimatedVisibility(
+                visible = showOptions
+            ) {
+                Column {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    options.forEach { option ->
+                        SettingsRowOption(
+                            displayName = option.displayName,
+                            isSelected = option == selectedValue,
+                            onClick = {
+                                showOptions = false
+                                onSelected(option.data)
+                            },
+                        )
+                    }
                 }
             }
         }

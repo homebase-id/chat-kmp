@@ -37,8 +37,10 @@ import id.homebase.auth.login.LoginScreen
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
 import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
+import id.homebase.chat.groupsettings.GroupSettingsScreen
 import id.homebase.chat.messageinfo.MessageInfoScreen
 import id.homebase.chat.selectmembers.SelectMembersScreen
 import id.homebase.core.ui.assets.BootstrapChat
@@ -99,16 +101,15 @@ fun AppNavHost(
                                 )
                             },
                             label = { Text(topLevelRoute.label) },
-                            selected = currentDestination?.hasRoute(
-                                topLevelRoute.route::class
-                            ) == true,
+                            selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
                                     popUpTo(Route.ChatList()) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
-                            })
+                            },
+                        )
                     }
                 }
             }
@@ -187,6 +188,12 @@ fun AppNavHost(
                             },
                             onNavigateToContactInfo = {
                                 navController.navigate(Route.ContactInfo(it))
+                            },
+                            onNavigateToConversationSettings = {
+                                navController.navigate(Route.ConversationSettings(it))
+                            },
+                            onNavigateToGroupSettings = {
+                                navController.navigate(Route.GroupSettings(it))
                             },
                             onNavigateToMessageInfo = { conversationId, messageId, fileId ->
                                 navController.navigate(
@@ -281,6 +288,34 @@ fun AppNavHost(
                             }
                         }) {
                         MessageInfoScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                        )
+                    }
+                }
+
+                composable<Route.ConversationSettings> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        ConversationSettingsScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateBack = { navController.popBackStack() },
+                        )
+                    }
+                }
+
+                composable<Route.GroupSettings> {
+                    AuthenticatedRouteWithFlowManager(
+                        authState = youAuthFlowManager.authState, onUnauthenticated = {
+                            navController.navigate(Route.Login) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }) {
+                        GroupSettingsScreen(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
                         )

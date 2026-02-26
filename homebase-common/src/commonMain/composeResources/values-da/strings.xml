@@ -102,7 +102,8 @@
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>
     <string name="chat_send_message_button">Send besked</string>
-    <string name="chat_info">Samtale info</string>
+    <string name="chat_settings">Samtale indstillinger</string>
+    <string name="chat_group_settings">Gruppe indstillinger</string>
     <string name="chat_delete">Slet</string>
     <string name="chat_archive">Arkivér</string>
     <string name="chat_clear">Ryd</string>
