@@ -280,7 +280,7 @@ fun CreateConversationGroupUi(
                         ContactItem(
                             name = contact.name,
                             subTitle = contact.odinId.domainName,
-                            avatarUrl = contact.avatarUrl,
+                            odinId = contact.odinId,
                             avatarInitials = contact.avatarInitials,
                             onContactClick = {
                                 onUiAction(

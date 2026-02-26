@@ -42,6 +42,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.StyledSearchTextField
@@ -196,7 +200,7 @@ fun CreateConversationUi(
                                     ContactItem(
                                         name = contact.name,
                                         subTitle = contact.odinId.domainName,
-                                        avatarUrl = contact.avatarUrl,
+                                        odinId = contact.odinId,
                                         avatarInitials = contact.avatarInitials,
                                         onContactClick = {
                                             onUiAction(
@@ -230,7 +234,7 @@ fun ContactItem(
     subTitle: String? = null,
     selectionMode: Boolean = false,
     isSelected: Boolean = false,
-    avatarUrl: String,
+    odinId: OdinId,
     avatarInitials: String,
     onContactClick: () -> Unit,
 ) {
@@ -244,9 +248,16 @@ fun ContactItem(
             .padding(horizontal = 12.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AvatarImage(
-            avatarUrl = avatarUrl,
-            avatarInitials = avatarInitials,
+        ContactAvatar(
+            odinId = odinId,
+            profileImageData = null,
+            initials = avatarInitials,
+            options = AvatarOptions(
+                size = 28.dp,
+                initialsFontSize = 12.sp,
+            ),
+            sharedTransitionScope = null,
+            animatedVisibilityScope = null
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

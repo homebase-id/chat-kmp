@@ -13,7 +13,7 @@ import kotlinx.coroutines.Dispatchers
 
 class AuthConnectionCoordinator(
     private val credentialsManager: CredentialsManager,
-    private val userSessionRepository: OwnerSessionRepository,
+    private val ownerSessionRepository: OwnerSessionRepository,
     private val driveSyncManager: DriveSyncManager,
     private val eventBus: EventBus
 ) {
@@ -34,7 +34,7 @@ class AuthConnectionCoordinator(
     private suspend fun loadProfile()
     {
         val odinId = credentialsManager.requireActiveCredentials().domain
-        userSessionRepository.load(odinId)
+        ownerSessionRepository.load(odinId)
     }
 
     private suspend fun connect() {

@@ -25,13 +25,6 @@ class PublicProfileProvider(
             ?: throw Exception("Profile not found")
     }
 
-    suspend fun getPublicImage(
-        odinId: OdinId
-    ): ByteArray {
-        return cached.getPublicImage(odinId)
-            ?: throw Exception("Image not found")
-    }
-
     suspend fun clearCache() {
         cached.clearCaches()
     }

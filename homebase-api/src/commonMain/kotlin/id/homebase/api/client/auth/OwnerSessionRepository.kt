@@ -96,6 +96,7 @@ class OwnerSessionRepository(
         )
     }
 
+
     fun clear() {
         _user.value = null
     }

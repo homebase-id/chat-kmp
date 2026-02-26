@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.auth.initials
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
 import id.homebase.chat.conversationlist.ConversationListUiAction
@@ -142,7 +143,7 @@ fun ConversationListPane(
                                                 OwnerAvatar(
                                                     odinId = session.odinId,
                                                     profileImageData = null,
-                                                    initials = "xx",
+                                                    initials = session.initials(),
                                                     options = AvatarOptions(
                                                         size = 32.dp,
                                                         initialsFontSize = 12.sp,

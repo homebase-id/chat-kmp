@@ -42,6 +42,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.chat.createconversation.ContactItem
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.widget.AvatarImage
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
@@ -175,11 +177,16 @@ fun SelectMembersUi(
                         label = { Text(text = contact.name) },
                         selected = true,
                         leadingIcon = {
-                            AvatarImage(
-                                size = 28.dp,
-                                fontSize = 12.sp,
-                                avatarUrl = contact.avatarUrl,
-                                avatarInitials = contact.avatarInitials,
+                            ContactAvatar(
+                                odinId = contact.odinId,
+                                profileImageData = null,
+                                initials = contact.avatarInitials,
+                                options = AvatarOptions(
+                                    size = 28.dp,
+                                    initialsFontSize = 12.sp,
+                                ),
+                                sharedTransitionScope = null,
+                                animatedVisibilityScope = null
                             )
                         },
                         trailingIcon = {
@@ -245,7 +252,7 @@ fun SelectMembersUi(
                             subTitle = contact.odinId.domainName,
                             selectionMode = true,
                             isSelected = uiState.selectedContacts.contains(contact),
-                            avatarUrl = contact.avatarUrl,
+                            odinId = contact.odinId,
                             avatarInitials = contact.avatarInitials,
                             onContactClick = {
                                 onUiAction(
@@ -255,7 +262,6 @@ fun SelectMembersUi(
                         )
                     }
                 }
-
             }
         }
     }
