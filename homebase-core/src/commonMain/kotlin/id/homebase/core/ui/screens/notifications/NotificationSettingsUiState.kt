@@ -22,7 +22,6 @@ data class NotificationSettingsUiState(
     val playWhileAppOpen: Boolean = true,
     val notificationContentLevel: NotificationContentLevel = NotificationContentLevel.NAME_CONTENT_ACTIONS,
     val includeMutedChatsInBadge: Boolean = false,
-    val notifyOnContactJoins: Boolean = false,
     val isReRegistering: Boolean = false,
     val showContentLevelPicker: Boolean = false,
     val isPermissionGranted: Boolean = false,
@@ -33,7 +32,6 @@ sealed interface NotificationSettingsUiAction {
     data class SetPlayWhileAppOpen(val enabled: Boolean) : NotificationSettingsUiAction
     data class SetContentLevel(val level: NotificationContentLevel) : NotificationSettingsUiAction
     data class SetIncludeMutedChatsInBadge(val enabled: Boolean) : NotificationSettingsUiAction
-    data class SetNotifyOnContactJoins(val enabled: Boolean) : NotificationSettingsUiAction
     data object ToggleContentLevelPicker : NotificationSettingsUiAction
     data object ReRegisterPushNotifications : NotificationSettingsUiAction
     data object RequestPermission : NotificationSettingsUiAction

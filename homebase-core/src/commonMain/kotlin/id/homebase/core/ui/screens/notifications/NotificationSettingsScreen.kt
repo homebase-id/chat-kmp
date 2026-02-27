@@ -84,13 +84,16 @@ fun NotificationSettingsUi(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(stringResource(MR.string.settings_notifications)) }, navigationIcon = {
-                IconButton(onClick = onBackClick) {
-                    Icon(
-                        imageVector = Icons.Default.ChevronLeft, contentDescription = stringResource(MR.string.menu_back)
-                    )
-                }
-            })
+            TopAppBar(
+                title = { Text(stringResource(MR.string.settings_notifications)) },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            imageVector = Icons.Default.ChevronLeft,
+                            contentDescription = stringResource(MR.string.menu_back)
+                        )
+                    }
+                })
         }) { innerPadding ->
         Column(
             modifier = Modifier
@@ -190,16 +193,6 @@ fun NotificationSettingsUi(
                     })
             }
 
-            // ── Notify When Section ──
-            SectionHeader(title = "Notify when...")
-            Card(modifier = Modifier.fillMaxWidth()) {
-                SettingsToggleRow(
-                    label = "Contact Joins Homebase",
-                    checked = uiState.notifyOnContactJoins,
-                    onCheckedChange = {
-                        onAction(NotificationSettingsUiAction.SetNotifyOnContactJoins(it))
-                    })
-            }
 
             // ── Re-register Push Notifications ──
             Card(
