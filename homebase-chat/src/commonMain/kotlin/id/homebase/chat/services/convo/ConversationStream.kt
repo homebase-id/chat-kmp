@@ -25,6 +25,7 @@ import id.homebase.core.avatars.ConversationAvatarModel
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
     private val conversationService: ConversationService,
+    private val contactService: ContactService,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope
@@ -91,6 +92,15 @@ class ConversationStream(
         }
     }
 
+    private suspend fun resolveDisplayName(file: HomebaseFile): String {
+        val author = file.fileMetadata.originalAuthor ?: return ""
+
+        return contactService
+            .resolveByOdinId(author)
+            ?.name
+            ?: author.domainName
+    }
+
     private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
         if (messageFiles.isEmpty()) throw IllegalArgumentException("It can't be empty")
 
@@ -98,7 +108,7 @@ class ConversationStream(
         val incomingMessages =
             messageFiles.mapNotNull { file ->
                 ChatMessageStream.Companion.mapToMessageData(
-                    file
+                    file, ::resolveDisplayName
                 )
             }
 

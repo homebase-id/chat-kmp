@@ -16,6 +16,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
@@ -203,7 +204,8 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.DeleteMessage -> {
-                val messages = uiState.value.currentConversationMessages.mapNotNull { if (it is MessageListContentModel.Message) it.message else null }
+                val messages =
+                    uiState.value.currentConversationMessages.mapNotNull { if (it is MessageListContentModel.Message) it.message else null }
                 val message = messages.firstOrNull {
                     it.id == action.messageId
                 } ?: return
@@ -368,8 +370,13 @@ class ConversationListViewModel(
                             }
                         }
 
-                        val bundle = MessageAttachmentBuilder
-                            .build(attachments, fileOperationsProvider)
+                        val bundle = MessageAttachmentBuilder.build(
+                            attachments = attachments,
+                            fileOperationsProvider = fileOperationsProvider,
+                            payloadKeyFactory = { index, _ ->
+                                "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+                            }
+                        )
 
                         chatMessageSenderService.sendNewMessage(
                             messageUniqueId = Uuid.random(),
@@ -670,11 +677,17 @@ class ConversationListViewModel(
                         val date = message.created.toLocalDateTime(timezone).date
                         date
                     }
-                     val messages: List<MessageListContentModel> = groupedMessages.flatMap { (date, messages) ->
-                        listOf(MessageListContentModel.Section(date)) + messages.map { MessageListContentModel.Message(it) }
-                    }
+                    val messages: List<MessageListContentModel> =
+                        groupedMessages.flatMap { (date, messages) ->
+                            listOf(MessageListContentModel.Section(date)) + messages.map {
+                                MessageListContentModel.Message(
+                                    it
+                                )
+                            }
+                        }
 
-                    val indexOfMessageForScroll = if (messageId == null) null else messages.indexOfLast { it is MessageListContentModel.Message && it.message.id == messageId } + 1 // +1 for header
+                    val indexOfMessageForScroll =
+                        if (messageId == null) null else messages.indexOfLast { it is MessageListContentModel.Message && it.message.id == messageId } + 1 // +1 for header
 
                     _uiState.value = _uiState.value.copy(
                         selectedConversationId = conversationId,

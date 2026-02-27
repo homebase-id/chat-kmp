@@ -323,56 +323,23 @@ class ConversationService(
 
         val participants = appDataObj.recipients
 
-        val contactsByOdinId =
-            participants.associateWith { contactService.resolveByOdinId(it) }
-
         val displayNames =
             participants.map { odinId ->
-                contactsByOdinId[odinId]?.name ?: odinId.domainName
+                contactService.resolveByOdinId(odinId)?.name
+                    ?: odinId.domainName
             }
 
         val title =
             if (participants.size == 2) {
-                displayNames.first { it != domain.domainName }
+                val other = participants.first { it != domain }
+                contactService.resolveByOdinId(other)?.name
+                    ?: "fracko"
+
             } else {
                 appDataObj.title ?: displayNames.joinToString(", ")
             }
 
         // -------- avatar initials selection (no derivation) --------
-
-        val avatarInitials =
-            when {
-                // 1:1 conversation
-                participants.size == 2 -> {
-                    val other = participants.first { it != domain }
-                    contactsByOdinId[other]?.avatarInitials ?: "?"
-                }
-
-                // Group conversation (no image)
-                else -> {
-                    participants
-                        .firstOrNull { it != domain }
-                        ?.let { contactsByOdinId[it]?.avatarInitials }
-                        ?: "?"
-                }
-            }
-
-        val avatarUrl =
-            when {
-                // 1:1 conversation
-                participants.size == 2 -> {
-                    val other = participants.first { it != domain }
-                    "https://${contactsByOdinId[other]}/pub/image"
-                }
-
-                // Group conversation (no image)
-                else -> {
-                    participants
-                        .firstOrNull { it != domain }
-                        ?.let { contactsByOdinId[it]?.avatarInitials }
-                        ?: "?"
-                }
-            }
 
         val avatarModel = buildConversationAvatarModel(conversation)
 
@@ -384,8 +351,8 @@ class ConversationService(
                 timestamp = UnixTimeUtc(0).toInstant(),
                 unreadCount = 0,
                 avatarTiny = appData.previewThumbnail,
-                avatarInitials = avatarInitials,
-                avatarUrl = avatarUrl,
+                avatarInitials = "",
+                avatarUrl = "",
                 participants = participants,
                 lastRead =
                     localAppData?.lastReadTime?.toInstant()
@@ -395,11 +362,20 @@ class ConversationService(
 
         if (lastMsg != null) {
             ChatMessageStream
-                .mapToMessageData(lastMsg)
+                .mapToMessageData(lastMsg, ::resolveDisplayName)
                 ?.let { ui.updateWithLatestMessage(it) }
         }
 
         return ui
+    }
+
+    private suspend fun resolveDisplayName(file: HomebaseFile): String {
+        val author = file.fileMetadata.originalAuthor ?: return ""
+
+        return contactService
+            .resolveByOdinId(author)
+            ?.name
+            ?: author.domainName
     }
 
     private suspend fun buildConversationAvatarModel(
