@@ -23,16 +23,15 @@ class AndroidFileOperationsProvider(
         }
     }
 
-    override suspend fun readFileBytes(path: String): ByteArray =
-        withContext(Dispatchers.IO) {
-            if (path.startsWith("content://") || path.startsWith("content:")) {
-                val uri = path.toUri()
-                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: throw IllegalArgumentException("Unable to read content URI: $path")
-            } else {
-                File(path).readBytes()
-            }
+    override suspend fun readFileBytes(path: String): ByteArray = withContext(Dispatchers.IO) {
+        if (path.startsWith("content://") || path.startsWith("content:")) {
+            val uri = path.toUri()
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw IllegalArgumentException("Unable to read content URI: $path")
+        } else {
+            File(path).readBytes()
         }
+    }
 
     override fun deleteTempFile(path: String): Boolean {
         return runCatching {
@@ -54,20 +53,15 @@ class AndroidFileOperationsProvider(
         }.getOrDefault(false)
     }
 
-
     override fun getCacheDirectory(): String = context.cacheDir.absolutePath
 
-    override fun getFileSize(path: String): Long =
-        File(path).length()
+    override fun getFileSize(path: String): Long = File(path).length()
 
     override suspend fun writeBytesToTempFile(
-        bytes: ByteArray,
-        prefix: String,
-        suffix: String
-    ): String =
-        withContext(Dispatchers.IO) {
-            val file = File.createTempFile(prefix, suffix)
-            file.writeBytes(bytes)
-            file.absolutePath
-        }
+        bytes: ByteArray, prefix: String, suffix: String
+    ): String = withContext(Dispatchers.IO) {
+        val file = File.createTempFile(prefix, suffix, context.cacheDir)
+        file.writeBytes(bytes)
+        file.absolutePath
+    }
 }

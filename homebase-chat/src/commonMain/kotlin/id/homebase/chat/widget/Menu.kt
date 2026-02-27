@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -16,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
 import id.homebase.resources.chat_clear
@@ -48,50 +50,29 @@ fun ConversationMenu(
         expanded = showMenu,
         onDismissRequest = dismissMenu
     ) {
-        DropdownMenuItem(
-            onClick = onConversationInfo,
-            text = { Text(text = if (isGroup) stringResource(MR.string.chat_group_settings) else stringResource(MR.string.chat_settings)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null
-                )
-            }
-        )
+        DropdownMenuItem(onClick = onConversationInfo, text = {
+            Text(
+                text = if (isGroup) stringResource(MR.string.chat_group_settings)
+                else stringResource(MR.string.chat_settings)
+            )
+        }, leadingIcon = { Icon(imageVector = Icons.Default.Info, contentDescription = null) })
 
         HorizontalDivider()
-
 
         DropdownMenuItem(
             onClick = onDelete,
             text = { Text(text = stringResource(MR.string.chat_delete)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Filled.Delete, contentDescription = null) })
         DropdownMenuItem(
             onClick = onArchive,
             text = { Text(text = stringResource(MR.string.chat_archive)) },
             leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Archive,
-                    contentDescription = null
-                )
-            }
-        )
+                Icon(imageVector = Icons.Filled.Archive, contentDescription = null)
+            })
         DropdownMenuItem(
             onClick = onClear,
             text = { Text(text = stringResource(MR.string.chat_clear)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Clear,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Filled.Clear, contentDescription = null) })
     }
 }
 
@@ -101,6 +82,7 @@ fun ReceivedMessageMenu(
     dismissMenu: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
+    onShare: () -> Unit,
     onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
 ) {
@@ -112,51 +94,34 @@ fun ReceivedMessageMenu(
         DropdownMenuItem(
             onClick = onMessageInfo,
             text = { Text(text = stringResource(MR.string.chat_message_info)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Default.Info, contentDescription = null) })
 
         HorizontalDivider()
-
 
         DropdownMenuItem(
             onClick = onReply,
             text = { Text(text = stringResource(MR.string.chat_message_reply)) },
             leadingIcon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Reply,
-                    contentDescription = null
-                )
-            }
-        )
+                Icon(imageVector = Icons.AutoMirrored.Filled.Reply, contentDescription = null)
+            })
 
         DropdownMenuItem(
             onClick = onDelete,
             text = { Text(text = stringResource(MR.string.delete)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Filled.Delete, contentDescription = null) })
+
+        if (isMobile()) {
+            DropdownMenuItem(onClick = onShare, text = { Text(text = "Share") }, leadingIcon = {
+                Icon(imageVector = Icons.Default.Share, contentDescription = null)
+            })
+        }
 
         HorizontalDivider()
 
         DropdownMenuItem(
             onClick = onMarkAsRead,
             text = { Text("mark as read") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Filled.Delete, contentDescription = null) })
     }
 }
 
@@ -166,6 +131,7 @@ fun SentMessageMenu(
     dismissMenu: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
+    onShare: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -177,47 +143,30 @@ fun SentMessageMenu(
         DropdownMenuItem(
             onClick = onMessageInfo,
             text = { Text(text = stringResource(MR.string.chat_message_info)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Default.Info, contentDescription = null) })
 
         HorizontalDivider()
-
 
         DropdownMenuItem(
             onClick = onReply,
             text = { Text(text = stringResource(MR.string.chat_message_reply)) },
             leadingIcon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Reply,
-                    contentDescription = null
-                )
-            }
-        )
+                Icon(imageVector = Icons.AutoMirrored.Filled.Reply, contentDescription = null)
+            })
         DropdownMenuItem(
             onClick = onEdit,
             text = { Text(text = stringResource(MR.string.chat_message_edit)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Edit,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Filled.Edit, contentDescription = null) })
         DropdownMenuItem(
             onClick = onDelete,
             text = { Text(text = stringResource(MR.string.delete)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Filled.Delete, contentDescription = null) })
+
+        if (isMobile()) {
+            DropdownMenuItem(onClick = onShare, text = { Text(text = "Share") }, leadingIcon = {
+                Icon(imageVector = Icons.Default.Share, contentDescription = null)
+            })
+        }
     }
 }
 
@@ -237,22 +186,12 @@ fun FullScreenMediaMenu(
             onClick = onSave,
             text = { Text(text = stringResource(MR.string.save)) },
             leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Download,
-                    contentDescription = null
-                )
-            }
-        )
+                Icon(imageVector = Icons.Filled.Download, contentDescription = null)
+            })
         DropdownMenuItem(
             onClick = onDelete,
             text = { Text(text = stringResource(MR.string.delete)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Filled.Delete, contentDescription = null) })
     }
 }
 
@@ -278,7 +217,9 @@ fun ConversationListMenu(
         if (isFilteringUnread) {
             DropdownMenuItem(
                 onClick = onClearFilterUnread,
-                text = { Text(text = stringResource(MR.string.chat_filter_by_unread_clear_button)) },
+                text = {
+                    Text(text = stringResource(MR.string.chat_filter_by_unread_clear_button))
+                },
             )
         } else {
             DropdownMenuItem(

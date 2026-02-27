@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
@@ -29,20 +30,12 @@ class ChatMessageActionService(
 ) {
     private val chatDrive = chatTargetDrive.alias
 
-    suspend fun markAsRead(
-        messageIds: List<Uuid>
-    ) {
+    suspend fun markAsRead(messageIds: List<Uuid>) {
         operationsProvider.sendReadReceiptBatch(
-            driveId = chatDrive,
-            fileIds = fetchFileByUid(messageIds).mapNotNull { d -> d.fileId }
-        )
+            driveId = chatDrive, fileIds = fetchFileByUid(messageIds).mapNotNull { d -> d.fileId })
     }
 
-    suspend fun addReaction(
-        conversationId: Uuid,
-        messageId: Uuid,
-        emoji: String
-    ) {
+    suspend fun addReaction(conversationId: Uuid, messageId: Uuid, emoji: String) {
         if (!isValidEmoji(emoji)) return
 
         val content = ReactionContent(emoji = emoji)
@@ -54,11 +47,7 @@ class ChatMessageActionService(
         )
     }
 
-    suspend fun deleteReaction(
-        conversationId: Uuid,
-        messageId: Uuid,
-        emoji: String
-    ) {
+    suspend fun deleteReaction(conversationId: Uuid, messageId: Uuid, emoji: String) {
         if (!isValidEmoji(emoji)) return
 
         val content = ReactionContent(emoji = emoji)
@@ -71,12 +60,9 @@ class ChatMessageActionService(
         )
     }
 
-// -------------------- DELETE --------------------
+    // -------------------- DELETE --------------------
 
-    suspend fun deleteMessage(
-        messageId: Uuid,
-        deleteForEveryone: Boolean
-    ) {
+    suspend fun deleteMessage(messageId: Uuid, deleteForEveryone: Boolean) {
         val msg = chatMessageStream.getMessage(messageId) ?: return
         val conversation = conversationService.getConversation(msg.conversationId) ?: return
         val fileId = requireFileId(messageId)
@@ -93,11 +79,7 @@ class ChatMessageActionService(
             emptyList()
         }
 
-        fileProvider.softDeleteFile(
-            driveId = chatDrive,
-            fileId = fileId,
-            recipients = recipients
-        )
+        fileProvider.softDeleteFile(driveId = chatDrive, fileId = fileId, recipients = recipients)
     }
 
     suspend fun getReactions(messageId: Uuid): List<EmojiReaction> {
@@ -115,8 +97,8 @@ class ChatMessageActionService(
     }
 
     suspend fun requireFileId(messageId: Uuid): Uuid {
-        val d = fetchFileByUid(listOf(messageId)).firstOrNull()
-            ?: throw Exception("invalid message id")
+        val d =
+            fetchFileByUid(listOf(messageId)).firstOrNull() ?: throw Exception("invalid message id")
         return d.fileId
     }
 
@@ -125,30 +107,36 @@ class ChatMessageActionService(
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
 
-        val result =
-            queryBatch.queryBatchAsync(
-                dbm = dbm,
-                driveId = chatDrive,
-                noOfItems = 1000,
-                cursor = null,
-                sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
-                fileSystemType = 0,
-                uniqueIdAnyOf = uidList
-            )
+        val result = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = chatDrive,
+            noOfItems = 1000,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = uidList
+        )
 
         return result.records
     }
 
-    private fun isValidEmoji(input: String?): Boolean =
-        !input.isNullOrBlank() && input.length <= 8
+    private fun isValidEmoji(input: String?): Boolean = !input.isNullOrBlank() && input.length <= 8
 
     private suspend fun getRecipients(conversationId: Uuid): List<OdinId> {
-        val credentials = credentialsManager.requireActiveCredentials();
+        val credentials = credentialsManager.requireActiveCredentials()
         val conversation = conversationService.requireConversation(conversationId)
-        val recipients = conversation
-            .participants.filterNot { odinId -> odinId == credentials.domain }
+        val recipients =
+            conversation.participants.filterNot { odinId -> odinId == credentials.domain }
         return recipients
     }
 
+    suspend fun getPayloadBytes(
+        fileId: Uuid, payloadKey: String, keyHeader: KeyHeader
+    ): ByteArray? {
+        val response = fileProvider.getPayloadBytesDecrypted(
+            chatTargetDrive.alias, fileId, payloadKey, keyHeader
+        )
+        return response?.bytes
+    }
 }
