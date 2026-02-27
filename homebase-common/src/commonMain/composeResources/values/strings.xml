@@ -29,6 +29,7 @@
     <string name="remove">Remove</string>
     <string name="details">Details</string>
     <string name="you">You</string>
+    <string name="connection_requests_banner">%1$s connection request(s)</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -130,6 +131,8 @@
     <string name="chat_message_options">Message options</string>
     <string name="chat_message_attachment_options">Attachment options</string>
     <string name="chat_message_emoji_options">Emoji options</string>
+    <string name="chat_message_edited">Edited</string>
+    <string name="chat_message_deleted">🚫 This message was deleted</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>

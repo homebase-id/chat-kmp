@@ -111,7 +111,7 @@ class ChatMessageStream(
                 fileSystemType = 0
             )
 
-        val messageFile = result.records.singleOrNull() ?: return null;
+        val messageFile = result.records.singleOrNull() ?: return null
         return mapToMessageData(messageFile, ::resolveDisplayName)
     }
 
@@ -251,7 +251,7 @@ class ChatMessageStream(
                     originalAuthor = metadata.originalAuthor,
                     displayName = displayName,
                     isRead = false,
-                    isEdited = (metadata.created != metadata.updated),
+                    isEdited = messageAppData.isEdited,
                     content = messageAppData.message,
                     messageAppData = messageAppData,
                     reactionPreview = metadata.reactionPreview,
