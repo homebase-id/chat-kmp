@@ -30,7 +30,7 @@ class SelectMembersViewModel(
             contactService.start()
             contactService.contacts
                 .combine(snapshotFlow { searchTextState.text.toString() }) { contacts, query ->
-                    filterAndGroup(contacts, query)
+                    contacts.filterAndGroup(query)
                 }
                 .catch {
                     sendEvent(SelectMembersUiEvent.ShowErrorMessage(it.message ?: "Unknown error"))
@@ -74,25 +74,25 @@ class SelectMembersViewModel(
     private fun sendEvent(event: SelectMembersUiEvent) {
         _uiState.update { it.copy(uiEvent = event) }
     }
+}
 
-    private fun filterAndGroup(contacts: List<ContactUiModel>, query: String): List<ContactGroup> {
-        val contacts = if (query.isEmpty()) {
-            contacts
-        } else {
-            contacts.filter {
-                it.name.contains(
-                    query,
-                    ignoreCase = true
-                )
-            }
-        }
-        return contacts.groupBy {
-            it.name.first().uppercase()
-        }.map { (initial, contacts) ->
-            ContactGroup(
-                initial = initial,
-                contacts = contacts
+fun List<ContactUiModel>.filterAndGroup(query: String): List<ContactGroup> {
+    val contacts = if (query.isEmpty()) {
+        this
+    } else {
+        this.filter {
+            it.name.contains(
+                query,
+                ignoreCase = true
             )
-        }.sortedBy { it.initial }
+        }
     }
+    return contacts.groupBy {
+        it.name.first().uppercase()
+    }.map { (initial, contacts) ->
+        ContactGroup(
+            initial = initial,
+            contacts = contacts
+        )
+    }.sortedBy { it.initial }
 }

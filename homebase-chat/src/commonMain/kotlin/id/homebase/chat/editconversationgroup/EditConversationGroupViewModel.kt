@@ -65,6 +65,8 @@ class EditConversationGroupViewModel(
 
                         val currentUserDomain = credentialsManager.requireActiveCredentials().domain.domainName
                         val groupImage = uiState.value.groupImage
+
+                        // TODO - how to keep existing image
                         val bundle = if (groupImage != null) {
                             MessageAttachmentBuilder.buildSingle(
                                 attachment = AttachmentInput(
@@ -142,8 +144,7 @@ class EditConversationGroupViewModel(
     private fun loadData() {
         viewModelScope.launch {
             try {
-                val conversation =
-                    conversationService.getConversation(Uuid.parse(route.conversationId))
+                val conversation = conversationService.getConversation(Uuid.parse(route.conversationId))
                 if (conversation != null) {
                     groupNameTextState.setTextAndPlaceCursorAtEnd(conversation.name)
                     _uiState.update {
@@ -171,7 +172,7 @@ data class EditConversationGroupUiState(
     val conversation: ConversationUiModel? = null,
     val originalName: String = "",
     val imageChanged: Boolean = false,
-    val isLoading: Boolean = false,
+    val isLoading: Boolean = true,
     val groupImage: PlatformFile? = null,
     val saveAllowed: Boolean = false,
     val uiEvent: EditConversationGroupUiEvent? = null,
