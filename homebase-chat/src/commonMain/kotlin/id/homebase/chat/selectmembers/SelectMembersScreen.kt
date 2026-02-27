@@ -141,7 +141,7 @@ fun SelectMembersUi(
         floatingActionButton = {
             Button(
                 onClick = { onUiAction(SelectMembersUiAction.NextClicked) },
-                modifier = Modifier.defaultMinSize(minWidth = 56.dp, minHeight = 56.dp),
+                modifier = Modifier.defaultMinSize(minWidth = 56.dp),
                 enabled = uiState.selectedContacts.size >= 2,
                 shape = CircleShape
 
