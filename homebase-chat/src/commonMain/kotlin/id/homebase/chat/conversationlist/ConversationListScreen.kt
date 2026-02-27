@@ -52,9 +52,9 @@ import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @Composable
 fun ConversationListScreen(
@@ -64,6 +64,8 @@ fun ConversationListScreen(
     onNavigateToSettingsScreen: () -> Unit,
     onNavigateToNewConversation: () -> Unit,
     onNavigateToContactInfo: (odinId: String) -> Unit,
+    onNavigateToConversationSettings: (conversationId: String) -> Unit,
+    onNavigateToGroupSettings: (conversationId: String) -> Unit,
     onNavigateToMessageInfo: (conversationId: Uuid, messageId: Uuid, fileId: Uuid) -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
@@ -71,6 +73,7 @@ fun ConversationListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    val ownerSession by viewModel.ownerSession.collectAsState()
     // Check for missing permissions and show dialog if needed
     ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
@@ -94,6 +97,16 @@ fun ConversationListScreen(
             is ConversationListUiEvent.NavigateToContactInfo -> {
                 viewModel.eventConsumed()
                 onNavigateToContactInfo(event.odinId)
+            }
+
+            is ConversationListUiEvent.NavigateToGroupSettings -> {
+                viewModel.eventConsumed()
+                onNavigateToGroupSettings(event.conversationId)
+            }
+
+            is ConversationListUiEvent.NavigateToConversationSettings -> {
+                viewModel.eventConsumed()
+                onNavigateToConversationSettings(event.conversationId)
             }
 
             is ConversationListUiEvent.NavigateToMessageInfo -> {
@@ -307,6 +320,7 @@ fun ChatListUi(
                         searchTextState = conversationSearchTextFieldState,
                         onProfileClick = onNavigateToSettingsScreen,
                         onUiAction = onUiAction,
+                        ownerSession = uiState.ownerSession
                     )
                 }
             },

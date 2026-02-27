@@ -8,7 +8,9 @@
     <string name="expand">Udvid</string>
     <string name="collapse">Gør mindre</string>
     <string name="delete">Slet</string>
+    <string name="edit">Redigér</string>
     <string name="save">Gem</string>
+    <string name="done">Færdig</string>
     <string name="create">Opret</string>
     <string name="share">Del</string>
     <string name="ok">Ok</string>
@@ -23,6 +25,8 @@
     <string name="contacts">Kontakter</string>
     <string name="members">Medlemmer</string>
     <string name="remove">Fjern</string>
+    <string name="details">Detaljer</string>
+    <string name="you">Dig</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -30,6 +34,12 @@
     <string name="language_english_us">Engelsk (USA)</string>
     <string name="language_english_gb">Engelsk (Storbritannien)</string>
     <string name="language_danish">Dansk</string>
+
+    <!-- Theme options -->
+    <string name="theme">Tema</string>
+    <string name="theme_system">System</string>
+    <string name="theme_dark">Mørk</string>
+    <string name="theme_light">Lys</string>
 
     <!-- Time formatting -->
     <string name="time_just_now">Lige nu</string>
@@ -58,6 +68,15 @@
     <string name="login_authenticating">Authentikerer…</string>
     <string name="login_successful">Login lykkedes</string>
 
+    <!-- Settings screen -->
+    <string name="settings_appearance">Udseende</string>
+    <string name="settings_notifications">Notifikationer</string>
+    <string name="settings_logout">Log ud</string>
+    <string name="settings_delete_account">Slet min konto</string>
+    <string name="settings_delete_account_dialog_title">Slet din konto?</string>
+    <string name="settings_delete_account_dialog_text">Din konto er meget mere end bare denne app. Hvis du vil slette din konto kan du gøre det i ejer konsollen.</string>
+    <string name="settings_open_owner_console">Åben ejer konsol</string>
+
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
     <string name="chat_filter_by_unread_clear_button">Ryd filter</string>
@@ -76,18 +95,21 @@
     <string name="chat_new_conversation_search_placeholder">Søg kontakter</string>
     <string name="chat_new_conversation_new_group">Ny gruppe</string>
     <string name="chat_no_contacts_found">Ingen kontakter fundet</string>
-    <string name="chat_group_select_members">Vælg medlemmer</string>
 
-    <!-- Group new -->
+    <!-- Group -->
+    <string name="chat_group_select_members">Vælg medlemmer</string>
     <string name="chat_group_name_screen_title">Navngiv gruppe</string>
     <string name="chat_group_name_placeholder">Gruppenavn (påkrævet)</string>
     <string name="chat_group_remove_member">Fjern %1$s fra denne gruppe?</string>
-    <string name="chat_group_remove_member_warning">Du kan ikke fjerne medlem. En grupp skal bestå af mindst 2 yderligere medlemmer end dig selv..</string>
+    <string name="chat_group_remove_member_warning">Du kan ikke fjerne medlem. En gruppe skal bestå af mindst 2 yderligere medlemmer end dig selv..</string>
+    <string name="chat_group_edit">Redigér gruppe</string>
+    <string name="chat_group_add_members">Tilføj medlemmer</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>
     <string name="chat_send_message_button">Send besked</string>
-    <string name="chat_info">Samtale info</string>
+    <string name="chat_settings">Samtale indstillinger</string>
+    <string name="chat_group_settings">Gruppe indstillinger</string>
     <string name="chat_delete">Slet</string>
     <string name="chat_archive">Arkivér</string>
     <string name="chat_clear">Ryd</string>

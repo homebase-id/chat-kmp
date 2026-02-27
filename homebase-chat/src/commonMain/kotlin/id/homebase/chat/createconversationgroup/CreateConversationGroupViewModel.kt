@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ContactService
@@ -73,19 +74,15 @@ class CreateConversationGroupViewModel(
 
                         val groupImage = uiState.value.groupImage
                         val bundle = if (groupImage != null) {
-                            MessageAttachmentBuilder
-                                .build(
-                                    attachments = listOf(
-                                        AttachmentInput(
-                                            filePath = groupImage.toString(),
-                                            contentType = detectContentTypeFromExtensionOrHint(
-                                                groupImage.name
-                                            ),
-                                            displayName = groupImage.name,
-                                        )
-                                    ),
-                                    fileOperationsProvider = fileOperationsProvider,
-                                )
+                            MessageAttachmentBuilder.buildSingle(
+                                attachment = AttachmentInput(
+                                    filePath = groupImage.toString(),
+                                    contentType = detectContentTypeFromExtensionOrHint(groupImage.name),
+                                    displayName = groupImage.name
+                                ),
+                                fileOperationsProvider = fileOperationsProvider,
+                                payloadKey = ChatProtocol.ConversationImageKey
+                            )
                         } else {
                             null
                         }

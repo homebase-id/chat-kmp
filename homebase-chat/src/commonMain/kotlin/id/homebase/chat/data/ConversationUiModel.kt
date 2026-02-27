@@ -4,6 +4,8 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.services.ChatProtocol
+import id.homebase.core.avatars.ConversationAvatarModel
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -19,11 +21,15 @@ data class ConversationUiModel( // TODO: Move the data objects / classes into Co
     val avatarTiny: EmbeddedThumb?,
     val participants: List<OdinId> = listOf(),
     val isPinned: Boolean = false,
-    val lastRead: Instant
+    val lastRead: Instant,
+    val avatarModel: ConversationAvatarModel
 ) {
     /** True when there are multiple participants (i.e., a group conversation). */
     val isGroupConversation: Boolean
         get() = participants.size > 2
+
+    val isWithSelf: Boolean
+        get() = id == ChatProtocol.ConversationWithYourselfId
 
     fun updateWithLatestMessage(msg: MessageUiModel) {
         // TODO: Should we also increase unread count here if it's a new message?

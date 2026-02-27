@@ -2,6 +2,7 @@ package id.homebase.chat.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -13,6 +14,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.convo.ContactService
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,6 +26,7 @@ import kotlin.uuid.Uuid
 
 class ChatMessageStream(
     private val credentialsManager: CredentialsManager,
+    private val contactService: ContactService,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope
@@ -79,7 +82,7 @@ class ChatMessageStream(
         val messages =
             files
                 .filter { it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType }
-                .mapNotNull { mapToMessageData(it) }
+                .mapNotNull { mapToMessageData(it, ::resolveDisplayName) }
 
         messages.groupBy { it.conversationId }.forEach { (conversationId, msgs) ->
             conversationState.upsert(conversationId, msgs)
@@ -93,7 +96,24 @@ class ChatMessageStream(
         }
     }
 
-    // ---------- EXISTING LOGIC (UNCHANGED) ----------
+
+    suspend fun getMessage(messageId: Uuid): MessageUiModel? {
+        val c = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(c.getIdentityId())
+
+        val result =
+            queryBatch.queryBatchAsync(
+                dbm = dbm,
+                driveId = chatDrive,
+                noOfItems = 1,
+                filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+                uniqueIdAnyOf = listOf(messageId),
+                fileSystemType = 0
+            )
+
+        val messageFile = result.records.singleOrNull() ?: return null;
+        return mapToMessageData(messageFile, ::resolveDisplayName)
+    }
 
     suspend fun fetchMessages(
         conversationId: Uuid,
@@ -118,7 +138,9 @@ class ChatMessageStream(
             )
 
         return BatchResult(
-            records = result.records.mapNotNull { mapToMessageData(it) },
+            records = result.records.mapNotNull { header ->
+                mapToMessageData(header, ::resolveDisplayName)
+            },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
@@ -135,24 +157,38 @@ class ChatMessageStream(
 
         // TODO - inject searchQuery into actual db query
         val result = queryBatch.queryBatchAsync(
-                dbm = dbm,
-                driveId = chatDrive,
-                noOfItems = limit,
-                cursor = cursor,
-                sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
-                fileSystemType = 0,
-                filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
-            )
+            dbm = dbm,
+            driveId = chatDrive,
+            noOfItems = limit,
+            cursor = cursor,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+        )
 
         // TODO - remove simple content search filter when actual query does filtering
         return BatchResult(
             records = result.records
-                .filter { it.fileMetadata.appData.content?.contains(searchQuery, ignoreCase = true) == true }
-                .mapNotNull { mapToMessageData(it) },
+                .filter {
+                    it.fileMetadata.appData.content?.contains(
+                        searchQuery,
+                        ignoreCase = true
+                    ) == true
+                }
+                .mapNotNull { mapToMessageData(it, ::resolveDisplayName) },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
+    }
+
+    private suspend fun resolveDisplayName(file: HomebaseFile): String {
+        val author = file.fileMetadata.originalAuthor ?: return ""
+
+        return contactService
+            .resolveByOdinId(author)
+            ?.name
+            ?: author.domainName
     }
 
     companion object {
@@ -182,7 +218,12 @@ class ChatMessageStream(
             }
         }
 
-        suspend fun mapToMessageData(header: HomebaseFile): MessageUiModel? {
+        suspend fun mapToMessageData(
+            header: HomebaseFile,
+            displayNameResolver: suspend (HomebaseFile) -> String = {
+                it.fileMetadata.originalAuthor?.domainName ?: ""
+            }
+        ): MessageUiModel? {
             val metadata = header.fileMetadata
             val appData = metadata.appData
 
@@ -198,6 +239,8 @@ class ChatMessageStream(
                 val messageAppData = messageAppDataSource
                     .copy(deliveryStatus = getDeliveryStatus(header).value)
 
+                val displayName = displayNameResolver(header)
+
                 return MessageUiModel(
                     id = appData.uniqueId!!,
                     globalTransitId = metadata.globalTransitId,
@@ -206,6 +249,7 @@ class ChatMessageStream(
                     created = metadata.created.toInstant(),
                     modified = metadata.updated.toInstant(),
                     originalAuthor = metadata.originalAuthor,
+                    displayName = displayName,
                     isRead = false,
                     isEdited = (metadata.created != metadata.updated),
                     content = messageAppData.message,
@@ -213,7 +257,8 @@ class ChatMessageStream(
                     reactionPreview = metadata.reactionPreview,
                     previewThumbnail = metadata.appData.previewThumbnail,
                     payloads = metadata.payloads,
-                    keyHeader = header.keyHeader
+                    keyHeader = header.keyHeader,
+                    isDeleted = header.fileState == FileState.Deleted
                 )
             } catch (t: Throwable) {
 
@@ -230,6 +275,7 @@ class ChatMessageStream(
                         created = metadata.created.toInstant(),
                         modified = metadata.updated.toInstant(),
                         originalAuthor = metadata.originalAuthor,
+                        displayName = metadata.originalAuthor?.domainName ?: "",
                         isRead = false,
                         isEdited = (metadata.created != metadata.updated),
                         content = "Failed to parse message from server",

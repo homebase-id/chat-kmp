@@ -5,6 +5,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
@@ -19,11 +20,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
-import id.homebase.api.common.OdinId
+import id.homebase.core.avatars.ConversationAvatarModel
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
     private val conversationService: ConversationService,
+    private val contactService: ContactService,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope
@@ -90,6 +92,15 @@ class ConversationStream(
         }
     }
 
+    private suspend fun resolveDisplayName(file: HomebaseFile): String {
+        val author = file.fileMetadata.originalAuthor ?: return ""
+
+        return contactService
+            .resolveByOdinId(author)
+            ?.name
+            ?: author.domainName
+    }
+
     private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
         if (messageFiles.isEmpty()) throw IllegalArgumentException("It can't be empty")
 
@@ -97,7 +108,7 @@ class ConversationStream(
         val incomingMessages =
             messageFiles.mapNotNull { file ->
                 ChatMessageStream.Companion.mapToMessageData(
-                    file
+                    file, ::resolveDisplayName
                 )
             }
 
@@ -118,7 +129,13 @@ class ConversationStream(
                     avatarInitials = "AxB",
                     avatarUrl = "",
                     participants = emptyList(),
-                    lastRead = UnixTimeUtc(0).toInstant()
+                    lastRead = UnixTimeUtc(0).toInstant(),
+                    avatarModel = ConversationAvatarModel(
+                        type = ConversationAvatarModel.Type.GroupFallback,
+                        imageData = null,
+                        odinId = null,
+                        initials = null
+                    )
                 )
 
                 insertNewConversation(emptyConversation)
@@ -148,7 +165,8 @@ class ConversationStream(
 
     private suspend fun processConversationBatchIncrementally(conversationFiles: List<HomebaseFile>) {
         // For each file in the batch, map to model (fetch last message from DB if needed)
-        val incomingConversations = conversationFiles.map { file -> conversationService.mapToConversationUi(file, null) }
+        val incomingConversations =
+            conversationFiles.map { file -> conversationService.mapToConversationUi(file, null) }
 
         for (c in incomingConversations) {
             val matchingConversation = _conversations.value.find { it.id == c.id }
@@ -215,9 +233,7 @@ class ConversationStream(
     }
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {
-        return _conversations.value.firstOrNull { it.id == conversationId }?.let {
-            return it
-        }
+        return _conversations.value.firstOrNull { it.id == conversationId }
     }
 
     suspend fun getRecipients(conversationId: Uuid): List<OdinId> {

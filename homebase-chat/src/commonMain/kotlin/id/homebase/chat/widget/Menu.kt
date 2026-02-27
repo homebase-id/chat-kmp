@@ -22,11 +22,12 @@ import id.homebase.resources.chat_clear
 import id.homebase.resources.chat_delete
 import id.homebase.resources.chat_filter_by_unread_button
 import id.homebase.resources.chat_filter_by_unread_clear_button
-import id.homebase.resources.chat_info
+import id.homebase.resources.chat_group_settings
 import id.homebase.resources.chat_mark_all_as_read
 import id.homebase.resources.chat_message_edit
 import id.homebase.resources.chat_message_info
 import id.homebase.resources.chat_message_reply
+import id.homebase.resources.chat_settings
 import id.homebase.resources.delete
 import id.homebase.resources.save
 import id.homebase.resources.settings
@@ -36,6 +37,7 @@ import org.jetbrains.compose.resources.stringResource
 fun ConversationMenu(
     showMenu: Boolean,
     dismissMenu: () -> Unit,
+    isGroup: Boolean,
     onConversationInfo: () -> Unit,
     onDelete: () -> Unit,
     onArchive: () -> Unit,
@@ -48,7 +50,7 @@ fun ConversationMenu(
     ) {
         DropdownMenuItem(
             onClick = onConversationInfo,
-            text = { Text(text = stringResource(MR.string.chat_info)) },
+            text = { Text(text = if (isGroup) stringResource(MR.string.chat_group_settings) else stringResource(MR.string.chat_settings)) },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Info,

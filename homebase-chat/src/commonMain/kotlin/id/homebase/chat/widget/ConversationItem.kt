@@ -25,6 +25,10 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
+import id.homebase.chat.data.ConversationUiModel
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
@@ -48,6 +52,7 @@ fun ConversationItem(
     onClick: () -> Unit,
     onContactClick: (odinId: OdinId) -> Unit,
     isSelected: Boolean = false,
+    avatarModel: ConversationAvatarModel,
 ) {
     val textState = RichTextState().applyDefaultStyling()
     textState.setMarkdown(message.ifBlank { stringResource(MR.string.chat_no_messages) })
@@ -64,16 +69,16 @@ fun ConversationItem(
             .padding(horizontal = 12.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AvatarImage(
-            avatarUrl = avatarUrl,
-            avatarInitials = avatarInitials,
-            avatarTiny = avatarTiny,
-            isGroup = isGroup,
-            onClick = {
-                contactOdinId?.let {
-                    onContactClick(it)
+        ConversationAvatar(
+            avatarModel = avatarModel,
+            modifier = Modifier.padding(8.dp),
+            options = AvatarOptions(
+                onClick = {
+                    contactOdinId?.let {
+                        onContactClick(it)
+                    }
                 }
-            }
+            )
         )
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -147,10 +152,9 @@ fun ConversationItem(
 
 @Composable
 fun ConversationAvatarItem(
-    avatarUrl: String,
-    avatarInitials: String,
     onClick: () -> Unit,
     isSelected: Boolean = false,
+    conversation: ConversationUiModel,
 ) {
     Row(
         modifier = Modifier
@@ -165,10 +169,9 @@ fun ConversationAvatarItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        AvatarImage(
-            modifier = Modifier.padding(8.dp),
-            avatarUrl = avatarUrl,
-            avatarInitials = avatarInitials,
+        ConversationAvatar(
+            avatarModel = conversation.avatarModel,
+            modifier = Modifier.padding(8.dp)
         )
     }
 }

@@ -9,12 +9,14 @@ import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
@@ -50,7 +52,11 @@ class ConversationListViewModel(
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
+    private val ownerSessionRepository: OwnerSessionRepository
+
 ) : ViewModel() {
+
+    val ownerSession = ownerSessionRepository.user
 
     val chatListRoute = savedStateHandle.toRoute<Route.ChatList>()
 
@@ -65,6 +71,12 @@ class ConversationListViewModel(
         viewModelScope.launch {
             val domain = credentialsManager.requireActiveCredentials().domain.domainName
             _uiState.update { it.copy(currentOdinId = domain) }
+        }
+
+        viewModelScope.launch {
+            ownerSessionRepository.user.collect { session ->
+                _uiState.update { it.copy(ownerSession = session) }
+            }
         }
 
         viewModelScope.launch {
@@ -192,7 +204,8 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.DeleteMessage -> {
-                val messages = uiState.value.currentConversationMessages.mapNotNull { if (it is MessageListContentModel.Message) it.message else null }
+                val messages =
+                    uiState.value.currentConversationMessages.mapNotNull { if (it is MessageListContentModel.Message) it.message else null }
                 val message = messages.firstOrNull {
                     it.id == action.messageId
                 } ?: return
@@ -357,8 +370,13 @@ class ConversationListViewModel(
                             }
                         }
 
-                        val bundle = MessageAttachmentBuilder
-                            .build(attachments, fileOperationsProvider)
+                        val bundle = MessageAttachmentBuilder.build(
+                            attachments = attachments,
+                            fileOperationsProvider = fileOperationsProvider,
+                            payloadKeyFactory = { index, _ ->
+                                "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+                            }
+                        )
 
                         chatMessageSenderService.sendNewMessage(
                             messageUniqueId = Uuid.random(),
@@ -549,7 +567,21 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ShowContactInfo -> {
+                // ignore if click on own contact
+                if (action.odinId == uiState.value.currentOdinId) return
                 _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToContactInfo((action.odinId))) }
+            }
+
+            is ConversationListUiAction.ShowConversationSettings -> {
+                if (action.conversation.isGroupConversation) {
+                    _uiState.update {
+                        it.copy(uiEvent = ConversationListUiEvent.NavigateToGroupSettings((action.conversation.id.toString())))
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(uiEvent = ConversationListUiEvent.NavigateToConversationSettings((action.conversation.id.toString())))
+                    }
+                }
             }
 
             is ConversationListUiAction.ShowMessageInfo -> {
@@ -645,11 +677,17 @@ class ConversationListViewModel(
                         val date = message.created.toLocalDateTime(timezone).date
                         date
                     }
-                     val messages: List<MessageListContentModel> = groupedMessages.flatMap { (date, messages) ->
-                        listOf(MessageListContentModel.Section(date)) + messages.map { MessageListContentModel.Message(it) }
-                    }
+                    val messages: List<MessageListContentModel> =
+                        groupedMessages.flatMap { (date, messages) ->
+                            listOf(MessageListContentModel.Section(date)) + messages.map {
+                                MessageListContentModel.Message(
+                                    it
+                                )
+                            }
+                        }
 
-                    val indexOfMessageForScroll = if (messageId == null) null else messages.indexOfLast { it is MessageListContentModel.Message && it.message.id == messageId } + 1 // +1 for header
+                    val indexOfMessageForScroll =
+                        if (messageId == null) null else messages.indexOfLast { it is MessageListContentModel.Message && it.message.id == messageId } + 1 // +1 for header
 
                     _uiState.value = _uiState.value.copy(
                         selectedConversationId = conversationId,

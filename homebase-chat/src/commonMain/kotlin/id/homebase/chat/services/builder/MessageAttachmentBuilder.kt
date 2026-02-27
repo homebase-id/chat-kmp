@@ -6,13 +6,27 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
 
 object MessageAttachmentBuilder {
+
+    suspend fun buildSingle(
+        attachment: AttachmentInput,
+        fileOperationsProvider: FileOperationsProvider,
+        payloadKey: String
+    ): PayloadBundle {
+        return build(
+            attachments = listOf(attachment),
+            fileOperationsProvider = fileOperationsProvider
+        ) { _, _ -> payloadKey }
+    }
+
     suspend fun build(
         attachments: List<AttachmentInput>,
         fileOperationsProvider: FileOperationsProvider,
+        payloadKeyFactory: (index: Int, attachment: AttachmentInput) -> String
     ): PayloadBundle {
         val bundles =
             attachments.mapIndexed { index, attachment ->
-                val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+
+                val payloadKey = payloadKeyFactory(index, attachment)
 
                 when {
                     attachment.contentType.startsWith("image/") -> {

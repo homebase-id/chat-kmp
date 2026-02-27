@@ -26,8 +26,12 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.XorIdUtil
+import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.ImageSize
 import kotlinx.coroutines.CoroutineScope
+import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 
@@ -319,56 +323,25 @@ class ConversationService(
 
         val participants = appDataObj.recipients
 
-        val contactsByOdinId =
-            participants.associateWith { contactService.resolveByOdinId(it) }
-
         val displayNames =
             participants.map { odinId ->
-                contactsByOdinId[odinId]?.name ?: odinId.domainName
+                contactService.resolveByOdinId(odinId)?.name
+                    ?: odinId.domainName
             }
 
         val title =
             if (participants.size == 2) {
-                displayNames.first { it != domain.domainName }
+                val other = participants.first { it != domain }
+                contactService.resolveByOdinId(other)?.name
+                    ?: "fracko"
+
             } else {
                 appDataObj.title ?: displayNames.joinToString(", ")
             }
 
         // -------- avatar initials selection (no derivation) --------
 
-        val avatarInitials =
-            when {
-                // 1:1 conversation
-                participants.size == 2 -> {
-                    val other = participants.first { it != domain }
-                    contactsByOdinId[other]?.avatarInitials ?: "?"
-                }
-
-                // Group conversation (no image)
-                else -> {
-                    participants
-                        .firstOrNull { it != domain }
-                        ?.let { contactsByOdinId[it]?.avatarInitials }
-                        ?: "?"
-                }
-            }
-
-        val avatarUrl =
-            when {
-                // 1:1 conversation
-                participants.size == 2 -> {
-                    val other = participants.first { it != domain }
-                    "https://${contactsByOdinId[other]}/pub/image"
-                }
-
-                // Group conversation (no image)
-                else -> {
-                    participants
-                        .firstOrNull { it != domain }
-                        ?.let { contactsByOdinId[it]?.avatarInitials }
-                        ?: "?"
-                }
-            }
+        val avatarModel = buildConversationAvatarModel(conversation)
 
         val ui =
             ConversationUiModel(
@@ -378,20 +351,106 @@ class ConversationService(
                 timestamp = UnixTimeUtc(0).toInstant(),
                 unreadCount = 0,
                 avatarTiny = appData.previewThumbnail,
-                avatarInitials = avatarInitials,
-                avatarUrl = avatarUrl,
+                avatarInitials = "",
+                avatarUrl = "",
                 participants = participants,
                 lastRead =
                     localAppData?.lastReadTime?.toInstant()
-                        ?: UnixTimeUtc(0).toInstant()
+                        ?: UnixTimeUtc(0).toInstant(),
+                avatarModel = avatarModel
             )
 
         if (lastMsg != null) {
             ChatMessageStream
-                .mapToMessageData(lastMsg)
+                .mapToMessageData(lastMsg, ::resolveDisplayName)
                 ?.let { ui.updateWithLatestMessage(it) }
         }
 
         return ui
     }
+
+    private suspend fun resolveDisplayName(file: HomebaseFile): String {
+        val author = file.fileMetadata.originalAuthor ?: return ""
+
+        return contactService
+            .resolveByOdinId(author)
+            ?.name
+            ?: author.domainName
+    }
+
+    private suspend fun buildConversationAvatarModel(
+        conversation: HomebaseFile
+    ): ConversationAvatarModel {
+
+        val metadata = conversation.fileMetadata
+        val appData = metadata.appData
+
+        val domain = credentialsManager.getActiveDomain()
+            ?: error("No active domain")
+
+        val participants =
+            OdinSystemSerializer.deserialize<ConversationAppDataJson>(
+                appData.content ?: error("Missing content")
+            ).recipients
+
+        val uniqueId = appData.uniqueId
+            ?: error("Missing uniqueId")
+
+        // 1️⃣ Conversation custom image
+        val imagePayload = metadata.payloads
+            ?.firstOrNull { it.key == ChatProtocol.ConversationImageKey }
+
+
+        if (imagePayload != null) {
+            val imageSize: ImageSize = ImageSize.THUMB_MEDIUM
+
+            val imageData = HomebaseImageData(
+                driveId = chatDrive,
+                fileId = conversation.fileId,
+                payloadKey = imagePayload.key,
+                isEncrypted = metadata.isEncrypted,
+                previewThumbnail = imagePayload.previewThumbnail?.toEmbeddedThumb()
+                    ?: appData.previewThumbnail,
+                keyHeader = KeyHeader(
+                    iv = Base64.decode(
+                        imagePayload.iv
+                            ?: throw IllegalStateException("encrypted payload requires key header")
+                    ),
+                    aesKey = conversation.keyHeader.aesKey
+                ),
+                requestedSize = imageSize,
+                lastModified = imagePayload.lastModified,
+            )
+
+            return ConversationAvatarModel(
+                type = ConversationAvatarModel.Type.ConversationImage,
+                imageData = imageData
+            )
+        }
+
+        // 2️⃣ Self conversation (fixed ID)
+        if (uniqueId == ChatProtocol.ConversationWithYourselfId) {
+            return ConversationAvatarModel(
+                odinId = domain,
+                type = ConversationAvatarModel.Type.Owner
+            )
+        }
+
+        val others = participants.filter { it != domain }
+
+        // 3️⃣ 1:1
+        if (others.size == 1) {
+            return ConversationAvatarModel(
+                type = ConversationAvatarModel.Type.Connection,
+                odinId = others.first()
+            )
+        }
+
+        // 4️⃣ Group fallback
+        return ConversationAvatarModel(
+            type = ConversationAvatarModel.Type.GroupFallback
+        )
+    }
 }
+
+

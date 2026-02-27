@@ -1,19 +1,30 @@
 package id.homebase.chat.contactinfo
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import id.homebase.chat.widget.ErrorInfoItem
+import id.homebase.chat.widget.LoadingListItem
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ContactAvatar
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
@@ -30,6 +41,7 @@ fun ContactInfoScreen(
             viewModel.eventConsumed()
             onNavigateBack()
         }
+
         null -> {}
     }
 
@@ -50,7 +62,7 @@ fun ContactInfoUi(
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    IconButton(onClick = { onUiAction(ContactInfoUiAction.BackClicked)  }) {
+                    IconButton(onClick = { onUiAction(ContactInfoUiAction.BackClicked) }) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
                             contentDescription = stringResource(MR.string.menu_back)
@@ -61,10 +73,39 @@ fun ContactInfoUi(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.padding(padding)
+            modifier = Modifier.padding(padding).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("Contact info")
-            Text(uiState.text)
+            if (uiState.contact == null) {
+                if (uiState.isLoading) {
+                    LoadingListItem()
+                } else {
+                    ErrorInfoItem("No contact could be loaded")
+                }
+            }
+
+            uiState.contact?.let { contact ->
+                ContactAvatar(
+                    odinId = contact.odinId,
+                    profileImageData = null,
+                    initials = contact.avatarInitials,
+                    options = AvatarOptions(
+                        size = 72.dp,
+                        fontSize = 24.sp,
+                    ),
+                    sharedTransitionScope = null,
+                    animatedVisibilityScope = null
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = contact.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    text = contact.odinId.domainName,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
     }
 }

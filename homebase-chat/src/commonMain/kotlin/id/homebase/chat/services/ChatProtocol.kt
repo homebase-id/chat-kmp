@@ -9,9 +9,8 @@ object ChatProtocol {
     const val ContactFileType = 100
 
     val ConversationWithYourselfId: Uuid = Uuid.parse("e4ef2382-ab3c-405d-a8b5-ad3e09e980dd")
-    const val CONVERSATION_PAYLOAD_KEY = "convo_pk" // TODO: Explain what this represents
-    const val CONVERSATION_IMAGE_KEY =
-            "convo_img" // TODO: Explain what this represents (and where's the tiny)
+    const val ConversationPayloadKey = "convo_pk" // TODO: Explain what this represents
+    const val ConversationImageKey = "convo_img"
 
     const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889;
 

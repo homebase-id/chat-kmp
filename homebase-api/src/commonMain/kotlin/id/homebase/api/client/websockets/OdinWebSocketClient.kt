@@ -387,7 +387,13 @@ class OdinWebSocketClient(
         val file =
             OdinSystemSerializer.deserialize<InternalDriveFileId>(notification.data)
 
-        driveSyncManager.syncDrive(file.driveId)
+        try {
+            driveSyncManager.syncDrive(file.driveId)
+        }
+        catch (e: Exception)
+        {
+            Logger.e("handleAllReactionsDeletedEvent() probably used invalid driveId ${file.driveId} Exception:$e")
+        }
     }
 
 
@@ -395,7 +401,14 @@ class OdinWebSocketClient(
         val fileNotification =
             OdinSystemSerializer.deserialize<ClientDriveNotification>(notification.data)
         val driveId = fileNotification.targetDrive!!.alias
-        driveSyncManager.syncDrive(driveId)
+
+        try {
+            driveSyncManager.syncDrive(driveId)
+        }
+        catch (e : Exception)
+        {
+            Logger.e("handleFileEvent() probably used invalid driveId $driveId Exception:$e")
+        }
     }
 
 

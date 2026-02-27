@@ -10,7 +10,9 @@
     <string name="expand">Expand</string>
     <string name="collapse">Collapse</string>
     <string name="delete">Delete</string>
+    <string name="edit">Edit</string>
     <string name="save">Save</string>
+    <string name="done">Done</string>
     <string name="create">Create</string>
     <string name="share">Share</string>
     <string name="ok">Ok</string>
@@ -25,6 +27,8 @@
     <string name="contacts">Contacts</string>
     <string name="members">Members</string>
     <string name="remove">Remove</string>
+    <string name="details">Details</string>
+    <string name="you">You</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -32,6 +36,12 @@
     <string name="language_english_us">English (USA)</string>
     <string name="language_english_gb">English (Great Britain)</string>
     <string name="language_danish">Danish</string>
+
+    <!-- Theme options -->
+    <string name="theme">Theme</string>
+    <string name="theme_system">System</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_light">Light</string>
 
     <!-- Time formatting -->
     <string name="time_just_now">Just now</string>
@@ -60,6 +70,15 @@
     <string name="login_authenticating">Authenticating…</string>
     <string name="login_successful">Login successful</string>
 
+    <!-- Settings screen -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_logout">Log out</string>
+    <string name="settings_delete_account">Delete my account</string>
+    <string name="settings_delete_account_dialog_title">Delete your account?</string>
+    <string name="settings_delete_account_dialog_text">Your account is much more than only this app. If you want to remove your account, you can do so in the owner console.</string>
+    <string name="settings_open_owner_console">Open owner console</string>
+
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filter by unread</string>
     <string name="chat_filter_by_unread_clear_button">Clear filter</string>
@@ -80,16 +99,19 @@
     <string name="chat_no_contacts_found">No contacts found</string>
     <string name="chat_group_select_members">Select members</string>
 
-    <!-- Group new -->
+    <!-- Group -->
     <string name="chat_group_name_screen_title">Name this group</string>
     <string name="chat_group_name_placeholder">Group name (required)</string>
     <string name="chat_group_remove_member">Remove %1$s from this group?</string>
     <string name="chat_group_remove_member_warning">You cannot remove member. A group must have at least 2 members other than yourself.</string>
+    <string name="chat_group_edit">Edit group</string>
+    <string name="chat_group_add_members">Add members</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>
     <string name="chat_send_message_button">Send message</string>
-    <string name="chat_info">Conversation info</string>
+    <string name="chat_settings">Conversation settings</string>
+    <string name="chat_group_settings">Group settings</string>
     <string name="chat_delete">Delete</string>
     <string name="chat_archive">Archive</string>
     <string name="chat_clear">Clear</string>

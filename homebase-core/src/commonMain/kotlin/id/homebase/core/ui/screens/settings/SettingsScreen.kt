@@ -1,6 +1,6 @@
 package id.homebase.core.ui.screens.settings
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,13 +10,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.outlined.Brightness6
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,40 +36,83 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import id.homebase.core.settings.Language
-import id.homebase.core.settings.setPlatformSystemLocale
+import androidx.compose.ui.window.Dialog
+import id.homebase.api.client.auth.initials
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.DialogButtons
+import id.homebase.core.widget.DialogCard
+import id.homebase.core.widget.SettingsItemAction
 import id.homebase.resources.MR
-import id.homebase.resources.language
-import id.homebase.resources.language_danish
-import id.homebase.resources.language_english_gb
-import id.homebase.resources.language_english_us
-import id.homebase.resources.language_system
+import id.homebase.resources.cancel
+import id.homebase.resources.homebase_icon_round
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings
+import id.homebase.resources.settings_appearance
+import id.homebase.resources.settings_delete_account
+import id.homebase.resources.settings_delete_account_dialog_text
+import id.homebase.resources.settings_delete_account_dialog_title
+import id.homebase.resources.settings_logout
+import id.homebase.resources.settings_notifications
+import id.homebase.resources.settings_open_owner_console
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBackClick: () -> Unit,
-    onNavigateToNotifications: () -> Unit = {},
+    onNavigateToNotifications: () -> Unit,
+    onNavigateToAppearance: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val uriHandler = getUriHandler()
 
     LaunchedEffect(uiState.uiEvent) {
         when (val event = uiState.uiEvent) {
-            is SettingsUiEvent.SetLanguage -> {
-                viewModel.eventConsumed()
-                setPlatformSystemLocale(event.language)
-            }
-
+            null -> {}
             SettingsUiEvent.LoggedOut -> {
                 viewModel.eventConsumed()
                 // navigation handled at AppNavHost / auth gate
             }
 
-            null -> {}
+            is SettingsUiEvent.OpenUrl -> {
+                viewModel.eventConsumed()
+                uriHandler.openUrl(event.url)
+            }
+        }
+    }
+
+    when (uiState.uiDialog) {
+        null -> {}
+        is SettingsUiDialog.DeleteAccount -> {
+            Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
+                DialogCard(
+                    buttons = {
+                        DialogButtons(
+                            primaryText = stringResource(MR.string.cancel),
+                            onPrimaryClick = { viewModel.dialogClosed() },
+                            secondaryText = stringResource(MR.string.settings_open_owner_console),
+                            onSecondaryClick = {
+                                viewModel.dialogClosed()
+                                viewModel.onAction(SettingsUiAction.OpenOwnerConsoleClicked)
+                            },
+                        )
+                    }) {
+                    Text(
+                        modifier = Modifier.padding(16.dp),
+                        text = stringResource(MR.string.settings_delete_account_dialog_title),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                    Text(
+                        modifier = Modifier.padding(16.dp),
+                        text = stringResource(MR.string.settings_delete_account_dialog_text),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
         }
     }
 
@@ -72,7 +120,8 @@ fun SettingsScreen(
         uiState = uiState,
         onAction = viewModel::onAction,
         onBackClick = onBackClick,
-        onNavigateToNotifications = onNavigateToNotifications
+        onNavigateToNotifications = onNavigateToNotifications,
+        onNavigateToAppearance = onNavigateToAppearance
     )
 }
 
@@ -82,8 +131,11 @@ fun SettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
-    onNavigateToNotifications: () -> Unit = {},
+    onNavigateToNotifications: () -> Unit,
+    onNavigateToAppearance: () -> Unit,
 ) {
+    val scrollState = rememberScrollState()
+
     Scaffold(
         topBar = {
             TopAppBar(title = { Text(stringResource(MR.string.settings)) }, navigationIcon = {
@@ -94,119 +146,86 @@ fun SettingsUi(
                     )
                 }
             })
-        }) { innerPadding ->
+        }
+    ) { innerPadding ->
         Column(
-            modifier = Modifier.fillMaxSize().consumeWindowInsets(innerPadding)
-                .padding(innerPadding).padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .consumeWindowInsets(innerPadding)
+                .padding(innerPadding),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Language Section
-            Column(
-                modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)
+            // Avatar
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = stringResource(MR.string.language),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                uiState.availableLanguages.forEach { language ->
-                    LanguageOption(
-                        language = language,
-                        isSelected = language == uiState.selectedLanguage,
-                        onClick = { onAction(SettingsUiAction.LanguageSelected(language)) })
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Notifications Row
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToNotifications)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface
+                uiState.ownerSession?.let { ownerSession ->
+                    ContactAvatar(
+                        odinId = ownerSession.odinId,
+                        profileImageData = null,
+                        initials = ownerSession.initials(),
+                        options = AvatarOptions(
+                            size = 96.dp,
+                        ),
+                        sharedTransitionScope = null,
+                        animatedVisibilityScope = null
+                    )
+                    Spacer(modifier = Modifier.width(24.dp))
+                    Column {
+                        Text(
+                            text = ownerSession.displayName ?: "",
+                            style = MaterialTheme.typography.titleLarge
                         )
-                        Text(text = "Notifications", style = MaterialTheme.typography.bodyLarge)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = ownerSession.odinId.domainName,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
                     }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable {
-                    onAction(SettingsUiAction.LogoutClicked)
-                }) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Log out ${uiState.loggedInDomain}",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-fun LanguageOption(language: Language, isSelected: Boolean, onClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(getStringResourceForLanguage(language)),
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (isSelected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                imageVector = Icons.Outlined.Notifications,
+                text = stringResource(MR.string.settings_notifications),
+                onClick = onNavigateToNotifications
             )
-
-            if (isSelected) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                imageVector = Icons.Outlined.Brightness6,
+                text = stringResource(MR.string.settings_appearance),
+                onClick = onNavigateToAppearance
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                imageVector = Icons.Outlined.Delete,
+                text = stringResource(MR.string.settings_delete_account),
+                onClick = { onAction(SettingsUiAction.DeleteAccount) }
+            )
+            SettingsItemAction(
+                imageVector = Icons.AutoMirrored.Outlined.Logout,
+                text = stringResource(MR.string.settings_logout),
+                onClick = { onAction(SettingsUiAction.LogoutClicked) }
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Image(
+                    modifier = Modifier.size(64.dp),
+                    painter = painterResource(MR.drawable.homebase_icon_round),
+                    contentDescription = null
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(uiState.appName)
+                Text("Version ${uiState.appVersion}")
             }
         }
-    }
-}
-
-@Composable
-private fun getStringResourceForLanguage(
-    language: Language
-): org.jetbrains.compose.resources.StringResource {
-    return when (language) {
-        Language.SYSTEM -> MR.string.language_system
-        Language.ENGLISH_US -> MR.string.language_english_us
-        Language.ENGLISH_GB -> MR.string.language_english_gb
-        Language.DANISH -> MR.string.language_danish
     }
 }
 
@@ -215,8 +234,11 @@ private fun getStringResourceForLanguage(
 fun SettingsUiPreview() {
     HomebaseTheme {
         SettingsUi(
-            uiState = SettingsUiState(loggedInDomain = "your.identity.id"),
+            uiState = SettingsUiState(appVersion = "1.0.0"),
             onAction = {},
-            onBackClick = {})
+            onBackClick = {},
+            onNavigateToNotifications = {},
+            onNavigateToAppearance = {}
+        )
     }
 }

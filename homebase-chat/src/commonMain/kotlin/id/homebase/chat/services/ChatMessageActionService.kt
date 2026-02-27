@@ -20,6 +20,7 @@ import kotlin.uuid.Uuid
 
 class ChatMessageActionService(
     private val conversationService: ConversationService,
+    private val chatMessageStream: ChatMessageStream,
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val credentialsManager: CredentialsManager,
     private val operationsProvider: DriveFileOperationsProvider,
@@ -76,13 +77,26 @@ class ChatMessageActionService(
         messageId: Uuid,
         deleteForEveryone: Boolean
     ) {
-        if (deleteForEveryone) {
-            //TODO: need to look up the message and get the recipients
-            error("Not implemented yet")
+        val msg = chatMessageStream.getMessage(messageId) ?: return
+        val conversation = conversationService.getConversation(msg.conversationId) ?: return
+        val fileId = requireFileId(messageId)
+
+        if (conversation.isWithSelf) {
+            fileProvider.hardDeleteFile(chatDrive, fileId)
+            return
         }
+
+        val recipients = if (deleteForEveryone) {
+            val domain = credentialsManager.requireActiveCredentials().domain
+            conversation.participants.filter { it != domain }
+        } else {
+            emptyList()
+        }
+
         fileProvider.softDeleteFile(
             driveId = chatDrive,
-            fileId = requireFileId(messageId)
+            fileId = fileId,
+            recipients = recipients
         )
     }
 
