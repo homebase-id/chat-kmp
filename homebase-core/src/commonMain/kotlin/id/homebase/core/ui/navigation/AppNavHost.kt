@@ -38,6 +38,7 @@ import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
 import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
@@ -96,14 +97,11 @@ fun AppNavHost(
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
-                            icon = {
-                                Icon(
-                                    topLevelRoute.icon,
-                                    contentDescription = null
-                                )
-                            },
+                            icon = { Icon(topLevelRoute.icon, contentDescription = null) },
                             label = { Text(topLevelRoute.label) },
-                            selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
+                            selected = currentDestination?.hasRoute(
+                                topLevelRoute.route::class
+                            ) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
                                     popUpTo(Route.ChatList()) { saveState = true }
@@ -163,13 +161,12 @@ fun AppNavHost(
                         HomeScreen(
                             viewModel = koinViewModel(),
                             onNavigateToChatList = { navController.navigate(Route.ChatList()) },
-                            onNavigateToExamples = { navController.navigate(Route.Examples) }
-                        )
-
+                            onNavigateToExamples = { navController.navigate(Route.Examples) })
                     }
                 }
 
                 composable<Route.ChatList> {
+                    val extendPermissionVm: ExtendPermissionViewModel = koinViewModel()
                     AuthenticatedRouteWithFlowManager(
                         authState = youAuthFlowManager.authState,
                         onUnauthenticated = {
@@ -180,7 +177,7 @@ fun AppNavHost(
                     ) {
                         ConversationListScreen(
                             viewModel = koinViewModel(),
-                            extendPermissionViewModel = koinViewModel(),
+                            extendPermissionViewModel = extendPermissionVm,
                             onNavigateBack = { navController.popBackStack() },
                             onNavigateToSettingsScreen = {
                                 navController.navigate(Route.Settings)
@@ -208,8 +205,7 @@ fun AppNavHost(
                             },
                             onDetailPaneVisibilityChanged = {
                                 // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
-                                @Suppress("AssignedValueIsNeverRead")
-                                showingOnlyDetailPane = it
+                                @Suppress("AssignedValueIsNeverRead") showingOnlyDetailPane = it
                             },
                         )
                     }
@@ -226,14 +222,13 @@ fun AppNavHost(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
                             onShowConversation = { conversationId ->
-                                navController.navigate(Route.ChatList(conversationId.toString())) {
-                                    popUpTo(Route.CreateConversation) { inclusive = true }
-                                }
+                                navController.navigate(
+                                    Route.ChatList(conversationId.toString())
+                                ) { popUpTo(Route.CreateConversation) { inclusive = true } }
                             },
                             onShowCreateGroup = {
                                 navController.navigate(Route.CreateConversationSelectMembers)
-                            }
-                        )
+                            })
                     }
                 }
 
@@ -249,8 +244,7 @@ fun AppNavHost(
                             onNavigateBack = { navController.popBackStack() },
                             onMembersSelected = { ids ->
                                 navController.navigate(Route.CreateConversationGroup(ids))
-                            }
-                        )
+                            })
                     }
                 }
 
@@ -265,9 +259,9 @@ fun AppNavHost(
                             viewModel = koinViewModel(),
                             onNavigateBack = { navController.popBackStack() },
                             onShowConversation = { conversationId ->
-                                navController.navigate(Route.ChatList(conversationId.toString())) {
-                                    popUpTo(Route.CreateConversation) { inclusive = true }
-                                }
+                                navController.navigate(
+                                    Route.ChatList(conversationId.toString())
+                                ) { popUpTo(Route.CreateConversation) { inclusive = true } }
                             },
                         )
                     }
@@ -334,9 +328,7 @@ fun AppNavHost(
                             onAddMembers = {
                                 navController.navigate(Route.GroupAddMembers(it))
                             },
-                            onEditGroup = {
-                                navController.navigate(Route.GroupEdit(it))
-                            },
+                            onEditGroup = { navController.navigate(Route.GroupEdit(it)) },
                         )
                     }
                 }
@@ -375,9 +367,7 @@ fun AppNavHost(
                             navController.navigate(Route.Login) {
                                 popUpTo(0) { inclusive = true }
                             }
-                        }) {
-                        RichTextExample()
-                    }
+                        }) { RichTextExample() }
                 }
 
                 composable<Route.Settings> {
