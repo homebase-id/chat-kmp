@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -174,8 +175,7 @@ fun CreateConversationUi(
                             } else if (searchTextState.text.isNotEmpty()) {
                                 item {
                                     Text(
-                                        modifier = Modifier.padding(horizontal = 24.dp)
-                                            .padding(top = 16.dp),
+                                        modifier = Modifier.padding(bottom = 16.dp, start = 16.dp),
                                         text = stringResource(MR.string.contacts),
                                         style = MaterialTheme.typography.titleLarge
                                     )
@@ -232,6 +232,7 @@ fun ContactItem(
     name: String,
     subTitle: String? = null,
     selectionMode: Boolean = false,
+    isSelectionEnabled: Boolean= false,
     isSelected: Boolean = false,
     odinId: OdinId,
     avatarInitials: String,
@@ -242,6 +243,7 @@ fun ContactItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = {
+                if (selectionMode && !isSelectionEnabled) return@clickable
                 onContactClick()
             })
             .padding(horizontal = 12.dp, vertical = 20.dp),
@@ -277,10 +279,11 @@ fun ContactItem(
             }
         }
         if (selectionMode) {
+            val tint = if(isSelectionEnabled) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.4f)
             if (isSelected) {
-                Icon(Icons.Filled.CheckCircle, contentDescription = null)
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = tint)
             } else {
-                Icon(Icons.Outlined.Circle, contentDescription = null)
+                Icon(Icons.Outlined.Circle, contentDescription = null, tint = tint)
             }
         }
     }

@@ -32,17 +32,20 @@ import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.uuid.Uuid
 
+@OptIn(FlowPreview::class)
 class ConversationListViewModel(
     savedStateHandle: SavedStateHandle,
     private val credentialsManager: CredentialsManager,
@@ -110,7 +113,7 @@ class ConversationListViewModel(
 
         // Listen for search query changes
         viewModelScope.launch {
-            snapshotFlow { conversationSearchTextState.text.toString() }.collectLatest {
+            snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300).collectLatest {
                 updateListContent()
             }
         }
@@ -731,7 +734,7 @@ class ConversationListViewModel(
         _uiState.update { it.copy(uiEvent = event) }
     }
 
-    fun addMessage(conversationId: Uuid, content: String) {
+    private fun addMessage(conversationId: Uuid, content: String) {
         viewModelScope.launch {
             try {
                 chatMessageSenderService.sendNewMessage(
