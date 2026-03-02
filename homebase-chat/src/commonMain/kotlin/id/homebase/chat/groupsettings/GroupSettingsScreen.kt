@@ -144,6 +144,9 @@ fun GroupSettingsUi(
                 ) {
                     item {
                         ListItemAction(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
                             imageVector = Icons.Default.Add,
                             text = stringResource(MR.string.chat_group_add_members),
                             onClick = {
