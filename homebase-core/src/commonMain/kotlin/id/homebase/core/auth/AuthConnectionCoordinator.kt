@@ -52,7 +52,7 @@ class AuthConnectionCoordinator(
             databaseManager = DatabaseManager.appDb,
             drives = syncDrives,
             onConnected = { driveSyncManager.syncAll() },
-            onDisconnected = { driveSyncManager.stop() }
+            onDisconnected = { driveSyncManager.pause() }
         )
 
         wsClient = client
