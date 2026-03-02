@@ -112,7 +112,7 @@ class ConnectionRequestService(
     }
 
     fun mapToOutgoingModel(serverResponse: OutgoingConnectionRequestResponse): OutgoingConnectionRequestUiModel {
-        if (serverResponse.direction != "outgoig") {
+        if (serverResponse.direction != "outgoing") {
             throw IllegalStateException("this mapper only handles incoming requests")
         }
 

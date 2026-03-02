@@ -25,6 +25,7 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.ScrollPosition
+import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.resources.MR
 import id.homebase.resources.chat_search_result_conversations
@@ -67,7 +68,7 @@ class ConversationListViewModel(
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
     val conversationSearchTextState = TextFieldState()
-    val messageInputTextState = RichTextState()
+    val messageInputTextState = RichTextState().applyDefaultStyling()
     var currentConversationJob: Job? = null
 
     init {
@@ -92,14 +93,6 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            // TODO - configure properties for textField here
-            //textFieldState.config.linkColor = Color.Blue
-            //textFieldState.config.linkTextDecoration = TextDecoration.Underline
-            //textFieldState.config.codeSpanColor = Color.Blue
-            //textFieldState.config.codeSpanBackgroundColor = Color.Magenta
-            //textFieldState.config.codeSpanStrokeColor = Color.Yellow
-            messageInputTextState.config.listIndent = 0
-
             // TODO - restore any draft message stored for conversation here
             messageInputTextState.setMarkdown("")
         }
@@ -549,8 +542,6 @@ class ConversationListViewModel(
             //            is ConversationListUiAction.ClearConversation -> TODO()
             //            is ConversationListUiAction.DeleteConversation -> TODO()
             //            is ConversationListUiAction.EditMessage -> TODO()
-            //            is ConversationListUiAction.ShowConversationInfo -> TODO()
-            //            is ConversationListUiAction.ShowMessageInfo -> TODO()
             //            is ConversationListUiAction.StarMessage -> TODO()
 
             is ConversationListUiAction.ReplyToMessage -> {
