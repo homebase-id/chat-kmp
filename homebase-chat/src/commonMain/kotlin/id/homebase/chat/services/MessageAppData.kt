@@ -1,11 +1,18 @@
 package id.homebase.chat.services
 
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.files.RichText
+import id.homebase.api.client.drives.files.getPlainTextFromRichText
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
 
 /** Data class representing chat message homebaseFile.AppData (parsed from JSON) */
 @Serializable
@@ -14,7 +21,7 @@ data class MessageAppData(
     val replyPreview: ReplyPreview? = null,
 
     /** Content of the message - can be a simple string or rich text */
-    val message: String = "",
+    val message: JsonElement = JsonPrimitive(""),
     // homebaseFile.contentIsComplete is a boolean if true write "more..."
     // TODO: A helper function to load the text when the user presses "more..."
 
@@ -27,14 +34,34 @@ data class MessageAppData(
 ) {
     /** Get the delivery status as enum */
     fun getDeliveryStatusEnum(): ChatDeliveryStatus? = ChatDeliveryStatus.fromValue(deliveryStatus)
+
+    /** Returns the message as a plain string, extracting from RichText if necessary */
+    fun getMessageAsString(): String {
+        return when (message) {
+            is JsonPrimitive -> message.content
+            is JsonArray -> {
+                try {
+                    val richText =
+                        OdinSystemSerializer.json.decodeFromJsonElement<RichText>(message)
+                    getPlainTextFromRichText(richText) ?: ""
+                } catch (e: Exception) {
+                    "" // Fallback if decoding fails
+                }
+            }
+
+            else -> ""
+        }
+    }
 }
 
 @Serializable
 data class ReplyPreview(
     val replyUniqueId: Uuid, // FileId of the message that was replied to
     val authorOdinId: String, // frodo.baggins.demo.rocks
-    val message: String, // chopped chars (IDK how many you use? 40? 80? use truncateToCodePoints(80)
-    val previewThumbnail: EmbeddedThumb? = null // Real thumb via replyUniqueId, null for text-only messages
+    val message:
+    String, // chopped chars (IDK how many you use? 40? 80? use truncateToCodePoints(80)
+    val previewThumbnail: EmbeddedThumb? =
+        null // Real thumb via replyUniqueId, null for text-only messages
 ) // Tiny tiny thumb, can be even smaller than tinyThumb even a 1px color
 
 enum class ChatDeliveryStatus(val value: Int) {
