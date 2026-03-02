@@ -42,21 +42,28 @@ class AuthConnectionCoordinator(
 
         val driveIds = syncDrives.map { it.alias }
 
-        driveSyncManager.start(
-            drives = driveIds
+        driveSyncManager.start(drives = driveIds)
+
+        val client = OdinWebSocketClient(
+            credentialsManager = credentialsManager,
+            driveSyncManager = driveSyncManager,
+            scope = ioScope,
+            eventBus = eventBus,
+            databaseManager = DatabaseManager.appDb,
+            drives = syncDrives,
+            onConnected = { driveSyncManager.syncAll() },
+            onDisconnected = { driveSyncManager.stop() }
         )
 
-        wsClient =
-            OdinWebSocketClient(
-                credentialsManager = credentialsManager,
-                driveSyncManager = driveSyncManager,
-                scope = ioScope,
-                eventBus = eventBus,
-                databaseManager = DatabaseManager.appDb,
-                drives = syncDrives,
-                onConnected = { driveSyncManager.syncAll() },
-                onDisconnected = { driveSyncManager.stop() }
-            ).also { it.start() }
+        wsClient = client
+
+        try {
+            client.start()
+        } catch (e: Exception) {
+            wsClient = null
+            driveSyncManager.stop()
+            println("WebSocket failed to start: ${e.message}")
+        }
     }
 
     private fun disconnect() {

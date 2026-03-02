@@ -1,11 +1,13 @@
 package id.homebase.chat.services
 
+import androidx.compose.ui.text.toLowerCase
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -258,7 +260,7 @@ class ChatMessageStream(
                     previewThumbnail = metadata.appData.previewThumbnail,
                     payloads = metadata.payloads,
                     keyHeader = header.keyHeader,
-                    isDeleted = header.fileState == FileState.Deleted
+                    isDeleted = appData.archivalStatus == ArchivalStatus.Removed
                 )
             } catch (t: Throwable) {
 

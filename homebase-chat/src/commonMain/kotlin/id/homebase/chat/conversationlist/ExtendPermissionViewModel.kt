@@ -29,7 +29,10 @@ class ExtendPermissionViewModel(
     val uiState: StateFlow<ExtendPermissionUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch { checkPermissions() }
+        viewModelScope.launch {
+            runCatching { checkPermissions() }
+                .onFailure { Logger.e(TAG, it) { "Permission check failed" } }
+        }
     }
 
     private suspend fun checkPermissions() {

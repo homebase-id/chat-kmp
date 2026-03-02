@@ -17,7 +17,7 @@ object ChatProtocol {
     const val ConversationFileType = 8888
     const val MessageFileType = 7878
 
-    const val ARCHIVAL_STATUS_DELETED = 2
+    const val ChatArchiveStatusDeleted = 2
 
     const val DEFAULT_PAYLOAD_DESCRIPTOR_KEY = "pld_desc"
 

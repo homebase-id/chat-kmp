@@ -333,7 +333,7 @@ class ConversationService(
             if (participants.size == 2) {
                 val other = participants.first { it != domain }
                 contactService.resolveByOdinId(other)?.name
-                    ?: "fracko"
+                    ?: other.domainName
 
             } else {
                 appDataObj.title ?: displayNames.joinToString(", ")

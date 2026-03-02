@@ -46,7 +46,15 @@ fun App(
     HomebaseTheme(darkTheme = isDarkTheme) {
         LaunchedEffect(Unit) {
             notificationService.startListening()
-            launch { youAuthFlowManager.authState.collect { coordinator.onAuthStateChanged(it) } }
+            launch {
+                youAuthFlowManager.authState.collect { state ->
+                    runCatching {
+                        coordinator.onAuthStateChanged(state)
+                    }.onFailure {
+                        println("Auth connection failed (offline mode): ${it.message}")
+                    }
+                }
+            }
         }
 
         AppNavHost(navController = navController, youAuthFlowManager = youAuthFlowManager)

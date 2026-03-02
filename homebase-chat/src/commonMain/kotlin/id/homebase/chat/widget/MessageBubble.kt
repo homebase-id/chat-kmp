@@ -87,6 +87,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
+import id.homebase.resources.chat_message_was_deleted
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
@@ -129,6 +130,12 @@ fun SentMessageBubble(
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val text = if (message.isDeleted) {
+        stringResource(MR.string.chat_message_was_deleted)
+    } else {
+        message.content
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
@@ -218,7 +225,7 @@ fun SentMessageBubble(
                     modifier = Modifier.padding(
                         bottom = if (message.reactionPreview == null) 0.dp else 26.dp
                     ),
-                    text = message.content,
+                    text = text,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = true,
                     deliveryStatus = message.messageAppData.deliveryStatus,
@@ -296,6 +303,12 @@ fun ReceivedMessageBubble(
     val emojiOnly = message.content.isEmojiContentOnly() && !hasMedia
     val hasVisibleBackground = !mediaOnly && !emojiOnly
 
+    val text = if (message.isDeleted) {
+        stringResource(MR.string.chat_message_was_deleted)
+    } else {
+        message.content
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
     ) {
@@ -326,7 +339,7 @@ fun ReceivedMessageBubble(
                             bottom = if (message.reactionPreview == null) 0.dp
                             else 26.dp
                         ),
-                        text = message.content,
+                        text = text,
                         timestamp = formatMessageTimestamp(message.created),
                         sentByYou = false,
                         deliveryStatus = message.messageAppData.deliveryStatus,
@@ -538,7 +551,8 @@ fun MessageBubble(
     else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
     else MaterialTheme.colorScheme.onSurface
 
-    val textState = RichTextState().applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
+    val textState =
+        RichTextState().applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
     textState.setMarkdown(text)
 
     val shape = RoundedCornerShape(
