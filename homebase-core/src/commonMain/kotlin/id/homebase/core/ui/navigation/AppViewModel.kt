@@ -22,10 +22,12 @@ class AppViewModel(
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
+    private var credentialsJob: Job? = null
     private var listenForConnectionRequestsJob: Job? = null
 
-    init {
-        viewModelScope.launch {
+    fun refreshData() {
+        credentialsJob?.cancel()
+        credentialsJob = viewModelScope.launch {
             credentialsManager.credentialsFlow.collect { credentials ->
                 if (credentials != null) {
                     _uiState.update { it.copy(currentOdinId = credentials.domain) }

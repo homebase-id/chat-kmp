@@ -21,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +29,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -97,6 +101,18 @@ fun AppNavHost(
         WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
     )
     val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
+
+    // Get the lifecycle owner of the current composable
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Launch a coroutine that observes the lifecycle
+    LaunchedEffect(lifecycleOwner) {
+        // Repeat the block every time the lifecycle enters RESUMED state
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // Refresh logic here (e.g., fetch data)
+            viewModel.refreshData()
+        }
+    }
 
     Scaffold(
         bottomBar = {
