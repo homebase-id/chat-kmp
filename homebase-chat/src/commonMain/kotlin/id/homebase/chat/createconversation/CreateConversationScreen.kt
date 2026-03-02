@@ -214,6 +214,9 @@ fun CreateConversationUi(
                         is CreateConversationListItem.NewGroup -> {
                             item {
                                 ListItemAction(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
                                     imageVector = Icons.Default.Group,
                                     text = stringResource(MR.string.chat_new_conversation_new_group),
                                     onClick = { onUiAction(CreateConversationUiAction.CreateNewGroup) }

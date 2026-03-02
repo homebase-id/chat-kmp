@@ -1,21 +1,38 @@
 package id.homebase.chat.messageinfo
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import id.homebase.chat.widget.ReceivedMessageBubble
+import id.homebase.chat.widget.SentMessageBubble
+import id.homebase.core.util.formateDateTime
 import id.homebase.resources.MR
+import id.homebase.resources.chat_message_info
+import id.homebase.resources.details
 import id.homebase.resources.menu_back
+import id.homebase.resources.sent
+import id.homebase.resources.updated
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -30,6 +47,7 @@ fun MessageInfoScreen(
             viewModel.eventConsumed()
             onNavigateBack()
         }
+
         null -> {}
     }
 
@@ -48,9 +66,11 @@ fun MessageInfoUi(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {},
+                title = {
+                    Text(stringResource(MR.string.chat_message_info))
+                },
                 navigationIcon = {
-                    IconButton(onClick = { onUiAction(MessageInfoUiAction.BackClicked)  }) {
+                    IconButton(onClick = { onUiAction(MessageInfoUiAction.BackClicked) }) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
                             contentDescription = stringResource(MR.string.menu_back)
@@ -61,10 +81,71 @@ fun MessageInfoUi(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.padding(padding)
+            modifier = Modifier
+                .consumeWindowInsets(padding)
+                .padding(padding)
+                .padding(16.dp)
         ) {
-            Text("Message info")
-            Text(uiState.text)
+            if (uiState.isLoading) {
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                Spacer(modifier = Modifier.height(16.dp))
+                uiState.message?.let { message ->
+                    if (message.isCurrentUser(uiState.ownerSession?.odinId)) {
+                        SentMessageBubble(
+                            message = message,
+                            onEdit = {},
+                            onDelete = {},
+                            onMediaClick = {},
+                            onShowReactions = {},
+                        )
+                    } else {
+                        ReceivedMessageBubble(
+                            message = message,
+                            onDelete = { },
+                            onMarkAsRead = { },
+                            onMediaClick = {},
+                            onShowReactions = {},
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+                Text(
+                    text = stringResource(MR.string.details),
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Row(
+                    modifier = Modifier.padding(top = 16.dp)
+                ) {
+                    Text(
+                        text = stringResource(MR.string.sent) + ": ",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Text(
+                        text = uiState.message?.created?.let { formateDateTime(it) } ?: "",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+                Row(
+                    modifier = Modifier.padding(top = 16.dp)
+                ) {
+                    Text(
+                        text = stringResource(MR.string.updated) + ": ",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(
+                        text = uiState.message?.modified?.let { formateDateTime(it) }
+                            ?: uiState.message?.created?.let { formateDateTime(it) } ?: "",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
+
         }
     }
 }

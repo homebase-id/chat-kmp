@@ -46,6 +46,7 @@ import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
 import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
@@ -120,14 +121,11 @@ fun AppNavHost(
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
-                            icon = {
-                                Icon(
-                                    topLevelRoute.icon,
-                                    contentDescription = null
-                                )
-                            },
+                            icon = { Icon(topLevelRoute.icon, contentDescription = null) },
                             label = { Text(topLevelRoute.label) },
-                            selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
+                            selected = currentDestination?.hasRoute(
+                                topLevelRoute.route::class
+                            ) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
                                     popUpTo(Route.ChatList()) { saveState = true }

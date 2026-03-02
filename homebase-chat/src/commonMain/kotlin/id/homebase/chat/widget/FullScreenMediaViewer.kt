@@ -59,6 +59,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_options
@@ -108,8 +109,7 @@ fun FullScreenMediaViewer(
         mutableStateOf(zoomStates[selectedKey]?.second ?: Offset.Zero)
     }
 
-    val textState = remember { RichTextState() }
-    textState.config.listIndent = 0
+    val textState = remember { RichTextState().applyDefaultStyling() }
     textState.setMarkdown(data.content)
 
     BoxWithConstraints(
@@ -121,9 +121,8 @@ fun FullScreenMediaViewer(
         val viewportHeight = constraints.maxHeight.toFloat()
 
         val state = rememberTransformableState { zoomChange, offsetChange, _ ->
-            val currentState = zoomStates[selectedKey] ?: (1f to Offset.Zero)
-            var currentScale = currentState.first
-            var currentOffset = currentState.second
+            var currentScale = scale
+            var currentOffset = offset
 
             currentScale = (currentScale * zoomChange).coerceIn(1f, 5f)
 
@@ -142,11 +141,12 @@ fun FullScreenMediaViewer(
                 currentOffset = Offset.Zero
             }
 
+            scale = currentScale
+            offset = currentOffset
             zoomStates[selectedKey] = currentScale to currentOffset
         }
 
         selectedPayload?.let { payload ->
-            val currentZoomState = zoomStates[selectedKey] ?: (1f to Offset.Zero)
             val imageData = remember(data.driveId, data.fileId, selectedKey, selectedPayloadIv) {
                 HomebaseImageData(
                     driveId = data.driveId,
@@ -166,10 +166,10 @@ fun FullScreenMediaViewer(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer(
-                        scaleX = currentZoomState.first,
-                        scaleY = currentZoomState.first,
-                        translationX = currentZoomState.second.x,
-                        translationY = currentZoomState.second.y
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
                     )
                     .transformable(state = state)
                     .pointerInput(Unit) {

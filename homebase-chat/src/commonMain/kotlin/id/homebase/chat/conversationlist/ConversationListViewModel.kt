@@ -280,47 +280,25 @@ class ConversationListViewModel(
             is ConversationListUiAction.AddReaction -> {
                 viewModelScope.launch {
                     try {
-
-                        // TODO - If adding reaction already added to a message from me, then remove it, how to though?
-                        //chatMessageActionService.deleteReaction(action.messageId, action.reaction)
-
-                        println(
-                            "Adding reaction: ${action.reaction} - Unicode: ${
-                                action.reaction.map { it.code }.joinToString(" ") {
-                                    "U+${
-                                        it.toString(16).uppercase().padStart(4, '0')
-                                    }"
-                                }
-                            }"
-                        )
-
-                        chatMessageActionService.addReaction(
-                            action.conversationId,
-                            action.messageId,
-                            action.reaction
-                        )
+                        val messageReactions = chatMessageActionService.getReactions(action.messageId)
+                        val remove = messageReactions.any { it.emoji == action.reaction && it.odinId.domainName == _uiState.value.currentOdinId }
+                        if (remove) {
+                            chatMessageActionService.deleteReaction(
+                                action.conversationId,
+                                action.messageId,
+                                action.reaction
+                            )
+                        } else {
+                            chatMessageActionService.addReaction(
+                                action.conversationId,
+                                action.messageId,
+                                action.reaction
+                            )
+                        }
                     } catch (e: Exception) {
                         sendEvent(
                             ConversationListUiEvent.ShowErrorMessage(
                                 "Failed to add reaction: ${e.message}"
-                            )
-                        )
-                    }
-                }
-            }
-
-            is ConversationListUiAction.DeleteReaction -> {
-                viewModelScope.launch {
-                    try {
-                        chatMessageActionService.deleteReaction(
-                            action.conversationId,
-                            action.messageId,
-                            action.reaction
-                        )
-                    } catch (e: Exception) {
-                        sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
-                                "Failed to delete reaction: ${e.message}"
                             )
                         )
                     }
