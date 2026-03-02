@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.resources.MR
@@ -70,58 +69,56 @@ private fun extractEmoji(reactionContent: String): String? {
 }
 
 /**
- * Horizontal popup menu displaying common emoji reactions.
+ * Horizontal reaction menu displaying common emoji reactions.
  *
  * Shows a scrollable row of emoji buttons that can be selected to add a reaction to a message.
  * Automatically dismisses when an emoji is selected.
  *
  * @param onSelect Callback invoked when user selects an emoji reaction
- * @param onDismiss Callback invoked when popup should be dismissed
+ * @param onShowAllEmojis Callback invoked when emoji full selector should be shown
  */
 @Composable
-fun ReactionPopup(
+fun ReactionMenu(
     onSelect: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
-    onDismiss: () -> Unit,
 ) {
     val reactions = listOf("👍", "❤️", "😂", "😮", "😢")
     val scrollState = rememberScrollState()
 
-    Popup(
-        onDismissRequest = onDismiss
+    Surface(
+        modifier = Modifier
+            .wrapContentWidth()
+            .padding(top = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shadowElevation = 4.dp,
+        tonalElevation = 2.dp
     ) {
-        Surface(
+        Row(
             modifier = Modifier
-                .wrapContentWidth()
-                .padding(top = 4.dp),
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shadowElevation = 4.dp,
-            tonalElevation = 2.dp
+                .horizontalScroll(scrollState)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(scrollState)
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                reactions.forEach { emoji ->
-                    IconButton(
-                        onClick = { onSelect(emoji) },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Text(
-                            text = emoji,
-                            fontSize = 20.sp
-                        )
-                    }
-                }
+            reactions.forEach { emoji ->
                 IconButton(
-                    onClick = onShowAllEmojis,
+                    onClick = { onSelect(emoji) },
                     modifier = Modifier.size(40.dp)
                 ) {
-                    Icon(Icons.Default.MoreHoriz, contentDescription = stringResource(MR.string.chat_message_emoji_options))
+                    Text(
+                        text = emoji,
+                        fontSize = 20.sp
+                    )
                 }
+            }
+            IconButton(
+                onClick = onShowAllEmojis,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    Icons.Default.MoreHoriz,
+                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                )
             }
         }
     }

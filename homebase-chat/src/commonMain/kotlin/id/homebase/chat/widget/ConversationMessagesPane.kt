@@ -63,6 +63,16 @@ fun ConversationMessagesPane(
                 onUiAction(ConversationListUiAction.AttachPlatformFile(conversation.id, listOf(file)))
             }
         }
+    val fileLauncher = rememberFilePickerLauncher { file ->
+        file?.let {
+            onUiAction(
+                ConversationListUiAction.AttachPlatformFile(
+                    conversation.id,
+                    listOf(file),
+                )
+            )
+        }
+    }
 
     val listState = remember(conversation.id) {
         val conversationId = conversation.id
@@ -225,7 +235,8 @@ fun ConversationMessagesPane(
                             onSaveFile = {
                                 onUiAction(SaveFile(it))
                             },
-                            onAddFile = { galleryLauncher.launch() },
+                            onAddFile = { fileLauncher.launch() },
+                            onAddImage = { galleryLauncher.launch() },
                             onRemoveFile = { conversationId, attachmentId ->
                                 onUiAction(
                                     UnAttachFile(

@@ -12,8 +12,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive
-import kotlinx.coroutines.CoroutineScope
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CoroutineScope
 
 class ChatMessageSenderService(
     private val outboxSync: OutboxSync,
@@ -29,21 +29,19 @@ class ChatMessageSenderService(
         messageText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
-    ): SendMessageResult =
-        deliverMessage(
-            messageUniqueId = messageUniqueId,
-            conversationId = conversationId,
-            content =
-                MessageAppData(
-                    replyId = null,
-                    replyPreview = null,
-                    message = messageText,
-                    deliveryStatus = ChatDeliveryStatus.Sent.value
-                ),
-            notificationText = "You have a new message",
-            previousMessageUniqueId = previousMessageUniqueId,
-            payloadBundle = payloadBundle
-        )
+    ): SendMessageResult = deliverMessage(
+        messageUniqueId = messageUniqueId,
+        conversationId = conversationId,
+        content = MessageAppData(
+            replyId = null,
+            replyPreview = null,
+            message = kotlinx.serialization.json.JsonPrimitive(messageText),
+            deliveryStatus = ChatDeliveryStatus.Sent.value
+        ),
+        notificationText = "You have a new message",
+        previousMessageUniqueId = previousMessageUniqueId,
+        payloadBundle = payloadBundle
+    )
 
     suspend fun replyToMessage(
         messageUniqueId: Uuid,
@@ -52,20 +50,18 @@ class ChatMessageSenderService(
         messageText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
-    ): SendMessageResult =
-        deliverMessage(
-            messageUniqueId = messageUniqueId,
-            conversationId = conversationId,
-            content =
-                MessageAppData(
-                    replyPreview = replyTo,
-                    message = messageText,
-                    deliveryStatus = ChatDeliveryStatus.Sent.value
-                ),
-            notificationText = "You have a new reply",
-            previousMessageUniqueId = previousMessageUniqueId,
-            payloadBundle = payloadBundle
-        )
+    ): SendMessageResult = deliverMessage(
+        messageUniqueId = messageUniqueId,
+        conversationId = conversationId,
+        content = MessageAppData(
+            replyPreview = replyTo,
+            message = kotlinx.serialization.json.JsonPrimitive(messageText),
+            deliveryStatus = ChatDeliveryStatus.Sent.value
+        ),
+        notificationText = "You have a new reply",
+        previousMessageUniqueId = previousMessageUniqueId,
+        payloadBundle = payloadBundle
+    )
 
     private suspend fun deliverMessage(
         messageUniqueId: Uuid,
@@ -77,7 +73,7 @@ class ChatMessageSenderService(
     ): SendMessageResult {
 
         // distribute the conversation file if needed
-//        conversationWriterService.updateConversationRecipients(conversationId, )
+        //        conversationWriterService.updateConversationRecipients(conversationId, )
 
         val result = sendMessageInternal(
             messageUniqueId,
@@ -87,7 +83,7 @@ class ChatMessageSenderService(
             previousMessageUniqueId,
             payloadBundle
         )
-        return result;
+        return result
     }
 
     private suspend fun sendMessageInternal(
@@ -102,50 +98,37 @@ class ChatMessageSenderService(
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationService.getRecipients(conversationId)
 
-
-        val encryptedBundle = payloadBundleEncryptionService
-            .encryptBundle(
-                messageUniqueId,
-                payloadBundle,
-                keyHeader.aesKey,
-                scope = scope
-            )
+        val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
+            messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
+        )
 
         val metadata =
             UploadFileMetadata(
-                allowDistribution = true,
-                isEncrypted = true,
-                appData =
-                    UploadAppFileMetaData(
-                        uniqueId = messageUniqueId.toString(),
-                        groupId = conversationId.toString(),
-                        fileType = ChatProtocol.MessageFileType,
-                        userDate = UnixTimeUtc.now().milliseconds,
-                        content = OdinSystemSerializer.serialize(content),
-                        previewThumbnail =
-                            encryptedBundle
-                                .previewThumbs
-                                .minByOrNull { it.pixelWidth }
-                    )
-            )
+                allowDistribution = true, isEncrypted = true, appData = UploadAppFileMetaData(
+                    uniqueId = messageUniqueId.toString(),
+                    groupId = conversationId.toString(),
+                    fileType = ChatProtocol.MessageFileType,
+                    userDate = UnixTimeUtc.now().milliseconds,
+                    content = OdinSystemSerializer.serialize(content),
+                    previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
+                        it.pixelWidth
+                    }))
 
         val request = UploadFileRequest(
             driveId = chatDrive,
             keyHeader = keyHeader,
             metadata = metadata.encryptContent(keyHeader),
-            transitOptions =
-                TransitOptions(
-                    recipients = recipients,
-                    useAppNotification = true,
-                    appNotificationOptions =
-                        PushNotificationOptions(
-                            appId = ChatProtocol.ChatAppId.toString(),
-                            typeId = conversationId.toString(),
-                            tagId = messageUniqueId.toString(),
-                            silent = false,
-                            unEncryptedMessage = notificationText
-                        )
-                ),
+            transitOptions = TransitOptions(
+                recipients = recipients,
+                useAppNotification = true,
+                appNotificationOptions = PushNotificationOptions(
+                    appId = ChatProtocol.ChatAppId.toString(),
+                    typeId = conversationId.toString(),
+                    tagId = messageUniqueId.toString(),
+                    silent = false,
+                    unEncryptedMessage = notificationText
+                )
+            ),
             payloads = encryptedBundle.payloads,
             thumbnails = encryptedBundle.thumbnails
         )
@@ -163,7 +146,6 @@ class ChatMessageSenderService(
             outboxSync.send()
 
             return SendMessageResult(uniqueId = messageUniqueId)
-
         } catch (t: Throwable) {
             Logger.e("ChatMessageSenderService", t)
         }
@@ -172,14 +154,8 @@ class ChatMessageSenderService(
     }
 }
 
-data class EncryptedFileResult(
-    val filePath: String,
-    val iv: ByteArray
-)
+data class EncryptedFileResult(val filePath: String, val iv: ByteArray)
 
 data class EncryptedVideoResult(
-    val playlistPath: String,
-    val segmentPath: String,
-    val iv: ByteArray
+    val playlistPath: String, val segmentPath: String, val iv: ByteArray
 )
-

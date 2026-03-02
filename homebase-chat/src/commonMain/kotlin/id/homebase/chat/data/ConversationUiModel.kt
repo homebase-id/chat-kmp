@@ -11,18 +11,18 @@ import kotlin.uuid.Uuid
 
 @Immutable
 data class ConversationUiModel( // TODO: Move the data objects / classes into Conversation.kt ?
-    val id: Uuid,
-    val name: String,
-    var lastMessage: String,
-    var timestamp: Instant, // Timestamp of the last message in this convo
-    var unreadCount: Int = 0,
-    val avatarInitials: String,
-    val avatarUrl: String = "",
-    val avatarTiny: EmbeddedThumb?,
-    val participants: List<OdinId> = listOf(),
-    val isPinned: Boolean = false,
-    val lastRead: Instant,
-    val avatarModel: ConversationAvatarModel
+        val id: Uuid,
+        val name: String,
+        var lastMessage: String,
+        var timestamp: Instant, // Timestamp of the last message in this convo
+        var unreadCount: Int = 0,
+        val avatarInitials: String,
+        val avatarUrl: String = "",
+        val avatarTiny: EmbeddedThumb?,
+        val participants: List<OdinId> = listOf(),
+        val isPinned: Boolean = false,
+        val lastRead: Instant,
+        val avatarModel: ConversationAvatarModel
 ) {
     /** True when there are multiple participants (i.e., a group conversation). */
     val isGroupConversation: Boolean
@@ -34,7 +34,7 @@ data class ConversationUiModel( // TODO: Move the data objects / classes into Co
     fun updateWithLatestMessage(msg: MessageUiModel) {
         // TODO: Should we also increase unread count here if it's a new message?
         if (msg.created >= timestamp) {
-            lastMessage = msg.messageAppData.message.truncateToCodePoints(40)
+            lastMessage = msg.content.truncateToCodePoints(40)
             timestamp = msg.created
         }
     }

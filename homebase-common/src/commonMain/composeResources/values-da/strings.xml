@@ -27,6 +27,10 @@
     <string name="remove">Fjern</string>
     <string name="details">Detaljer</string>
     <string name="you">Dig</string>
+    <string name="recipients">Modtagere</string>
+    <string name="sent">Sendt</string>
+    <string name="updated">Opdateret</string>
+    <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -104,6 +108,8 @@
     <string name="chat_group_remove_member_warning">Du kan ikke fjerne medlem. En gruppe skal bestå af mindst 2 yderligere medlemmer end dig selv..</string>
     <string name="chat_group_edit">Redigér gruppe</string>
     <string name="chat_group_add_members">Tilføj medlemmer</string>
+    <string name="chat_group_members_list">%1$s og dig</string>
+    <string name="chat_group_members_list_many">%1$s, dig og %2$s andre</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>
@@ -115,6 +121,8 @@
     <string name="chat_clear">Ryd</string>
     <string name="chat_options">Samtale menu</string>
     <string name="chat_no_messages">Ingen beskeder endnu</string>
+    <string name="chat_message_edited">Redigeret</string>
+    <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
 
     <!-- Conversation message -->
     <string name="chat_message_info">Besked info</string>

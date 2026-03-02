@@ -30,7 +30,6 @@ class NotificationSettingsViewModel(
                     userPreferences.notificationContentLevel
                 ),
                 includeMutedChatsInBadge = userPreferences.includeMutedChatsInBadge,
-                notifyOnContactJoins = userPreferences.notifyOnContactJoins,
             )
         }
     }
@@ -54,10 +53,6 @@ class NotificationSettingsViewModel(
                 _uiState.update { it.copy(includeMutedChatsInBadge = action.enabled) }
             }
 
-            is NotificationSettingsUiAction.SetNotifyOnContactJoins -> {
-                userPreferences.notifyOnContactJoins = action.enabled
-                _uiState.update { it.copy(notifyOnContactJoins = action.enabled) }
-            }
 
             NotificationSettingsUiAction.ToggleContentLevelPicker -> {
                 _uiState.update { it.copy(showContentLevelPicker = !it.showContentLevelPicker) }

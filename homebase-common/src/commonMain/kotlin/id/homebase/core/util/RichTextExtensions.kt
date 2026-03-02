@@ -1,6 +1,5 @@
 package id.homebase.core.util
 
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextDecoration
@@ -44,7 +43,6 @@ fun RichTextState.programmaticBackspace() {
     removeTextRange(TextRange(start = start, end = end))
 }
 
-@Composable
 fun RichTextState.applyDefaultStyling(
     linkColor: Color = LightColors.Primary,
 ): RichTextState {

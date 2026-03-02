@@ -1,5 +1,9 @@
 package id.homebase.core.ui.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -17,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +29,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -38,6 +46,7 @@ import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
 import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
@@ -51,6 +60,9 @@ import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
+import id.homebase.core.util.buildNotificationUrl
+import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import kotlinx.coroutines.flow.StateFlow
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -63,20 +75,18 @@ sealed class TopLevelRoute(
 
 @Composable
 fun AppNavHost(
+    viewModel: AppViewModel,
     navController: NavHostController = rememberNavController(),
     youAuthFlowManager: YouAuthFlowManager
 ) {
-
+    val uiState by viewModel.uiState.collectAsState()
     val authState by youAuthFlowManager.authState.collectAsState()
     val isAuthenticated = authState is YouAuthState.Authenticated
-
     val adaptiveInfo = currentWindowAdaptiveInfo()
-    val useNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
-        WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
-    )
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val topLevelRoutes = remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Home) }
+    val uriHandler = getUriHandler()
 
     // Track if we're showing only the detail pane (list hidden) in a top level screen
     var showingOnlyDetailPane by remember { mutableStateOf(false) }
@@ -87,23 +97,35 @@ fun AppNavHost(
     }
 
     // Only show bottom nav if on a top-level route AND not showing only detail pane
-    val shouldShowBottomNav =
-        isAuthenticated && !useNavigationRail && isTopLevelRoute && !showingOnlyDetailPane
+    val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !showingOnlyDetailPane
+    val showNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
+        WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
+    )
+    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
+
+    // Get the lifecycle owner of the current composable
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Launch a coroutine that observes the lifecycle
+    LaunchedEffect(lifecycleOwner) {
+        // Repeat the block every time the lifecycle enters RESUMED state
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // Refresh logic here (e.g., fetch data)
+            viewModel.refreshData()
+        }
+    }
 
     Scaffold(
         bottomBar = {
-            if (shouldShowBottomNav) {
+            if (showBottomNavigationBar) {
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationBarItem(
-                            icon = {
-                                Icon(
-                                    topLevelRoute.icon,
-                                    contentDescription = null
-                                )
-                            },
+                            icon = { Icon(topLevelRoute.icon, contentDescription = null) },
                             label = { Text(topLevelRoute.label) },
-                            selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
+                            selected = currentDestination?.hasRoute(
+                                topLevelRoute.route::class
+                            ) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
                                     popUpTo(Route.ChatList()) { saveState = true }
@@ -120,7 +142,7 @@ fun AppNavHost(
             modifier = Modifier.fillMaxSize().consumeWindowInsets(paddingValues)
                 .padding(paddingValues)
         ) {
-            if (useNavigationRail && isAuthenticated) {
+            if (showNavigationRail && isAuthenticated) {
                 NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationRailItem(
@@ -138,291 +160,331 @@ fun AppNavHost(
                 }
             }
 
-            NavHost(
-                navController = navController,
-                startDestination = if (isAuthenticated) Route.ChatList() else Route.Login,
-                modifier = Modifier.weight(1f)
-            ) {
-                composable<Route.Login> {
-                    val vm = koinViewModel<LoginViewModel>()
-                    LoginScreen(
-                        viewModel = vm, onNavigateHome = {
-                            navController.navigate(Route.ChatList()) {
-                                popUpTo(Route.Login) { inclusive = true }
+            Column {
+                if (isOnTopLevelScreen) {
+                    if (uiState.incomingRequests.isNotEmpty()) {
+                        ConnectionRequestHeaderBanner(
+                            requestCount = uiState.incomingRequests.size,
+                            onBannerClick = {
+                                uiState.currentOdinId?.let {
+                                    val requestsUrl = it.buildNotificationUrl()
+                                    uriHandler.openUrl(requestsUrl)
+                                }
                             }
-                        })
-                }
-
-                composable<Route.Home> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        HomeScreen(
-                            viewModel = koinViewModel(),
-                            onNavigateToChatList = { navController.navigate(Route.ChatList()) },
-                            onNavigateToExamples = { navController.navigate(Route.Examples) }
                         )
-
                     }
                 }
 
-                composable<Route.ChatList> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState,
-                        onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        },
-                    ) {
-                        ConversationListScreen(
-                            viewModel = koinViewModel(),
-                            extendPermissionViewModel = koinViewModel(),
-                            onNavigateBack = { navController.popBackStack() },
-                            onNavigateToSettingsScreen = {
-                                navController.navigate(Route.Settings)
+                NavHost(
+                    navController = navController,
+                    startDestination = if (isAuthenticated) Route.ChatList() else Route.Login,
+                    modifier = Modifier.weight(1f),
+                    enterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { 1000 },
+                            animationSpec = tween(500)
+                        )
+                    },
+                    exitTransition = {
+                        slideOutHorizontally(
+                            targetOffsetX = { -1000 },
+                            animationSpec = tween(500)
+                        )
+                    },
+                    popEnterTransition = {
+                        slideInHorizontally(
+                            initialOffsetX = { -1000 },
+                            animationSpec = tween(500)
+                        )
+                    },
+                    popExitTransition = {
+                        slideOutHorizontally(
+                            targetOffsetX = { 1000 },
+                            animationSpec = tween(500)
+                        )
+                    }
+                ) {
+                    composable<Route.Login> {
+                        val vm = koinViewModel<LoginViewModel>()
+                        LoginScreen(
+                            viewModel = vm, onNavigateHome = {
+                                navController.navigate(Route.ChatList()) {
+                                    popUpTo(Route.Login) { inclusive = true }
+                                }
+                            })
+                    }
+
+                    composable<Route.Home> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            HomeScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateToChatList = { navController.navigate(Route.ChatList()) },
+                                onNavigateToExamples = { navController.navigate(Route.Examples) }
+                            )
+
+                        }
+                    }
+
+                    composable<Route.ChatList> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState,
+                            onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
                             },
-                            onNavigateToNewConversation = {
-                                navController.navigate(Route.CreateConversation)
-                            },
-                            onNavigateToContactInfo = {
-                                navController.navigate(Route.ContactInfo(it))
-                            },
-                            onNavigateToConversationSettings = {
-                                navController.navigate(Route.ConversationSettings(it))
-                            },
-                            onNavigateToGroupSettings = {
-                                navController.navigate(Route.GroupSettings(it))
-                            },
-                            onNavigateToMessageInfo = { conversationId, messageId, fileId ->
-                                navController.navigate(
-                                    Route.MessageInfo(
-                                        conversationId = conversationId.toString(),
-                                        messageId = messageId.toString(),
-                                        fileId = fileId.toString()
+                        ) {
+                            ConversationListScreen(
+                                viewModel = koinViewModel(),
+                                extendPermissionViewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                                onNavigateToSettingsScreen = {
+                                    navController.navigate(Route.Settings)
+                                },
+                                onNavigateToNewConversation = {
+                                    navController.navigate(Route.CreateConversation)
+                                },
+                                onNavigateToContactInfo = {
+                                    navController.navigate(Route.ContactInfo(it))
+                                },
+                                onNavigateToConversationSettings = {
+                                    navController.navigate(Route.ConversationSettings(it))
+                                },
+                                onNavigateToGroupSettings = {
+                                    navController.navigate(Route.GroupSettings(it))
+                                },
+                                onNavigateToMessageInfo = { conversationId, messageId, fileId ->
+                                    navController.navigate(
+                                        Route.MessageInfo(
+                                            conversationId = conversationId.toString(),
+                                            messageId = messageId.toString(),
+                                            fileId = fileId.toString()
+                                        )
                                     )
-                                )
-                            },
-                            onDetailPaneVisibilityChanged = {
-                                // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
-                                @Suppress("AssignedValueIsNeverRead")
-                                showingOnlyDetailPane = it
-                            },
-                        )
+                                },
+                                onDetailPaneVisibilityChanged = {
+                                    // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
+                                    @Suppress("AssignedValueIsNeverRead")
+                                    showingOnlyDetailPane = it
+                                },
+                            )
+                        }
                     }
-                }
 
-                composable<Route.CreateConversation> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        CreateConversationScreen(
-                            viewModel = koinViewModel(),
-                            onNavigateBack = { navController.popBackStack() },
-                            onShowConversation = { conversationId ->
-                                navController.navigate(Route.ChatList(conversationId.toString())) {
-                                    popUpTo(Route.CreateConversation) { inclusive = true }
+                    composable<Route.CreateConversation> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
                                 }
-                            },
-                            onShowCreateGroup = {
-                                navController.navigate(Route.CreateConversationSelectMembers)
-                            }
-                        )
-                    }
-                }
-
-                composable<Route.CreateConversationSelectMembers> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        SelectMembersScreen(
-                            viewModel = koinViewModel(),
-                            onNavigateBack = { navController.popBackStack() },
-                            onMembersSelected = { ids ->
-                                navController.navigate(Route.CreateConversationGroup(ids))
-                            }
-                        )
-                    }
-                }
-
-                composable<Route.CreateConversationGroup> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        CreateConversationGroupScreen(
-                            viewModel = koinViewModel(),
-                            onNavigateBack = { navController.popBackStack() },
-                            onShowConversation = { conversationId ->
-                                navController.navigate(Route.ChatList(conversationId.toString())) {
-                                    popUpTo(Route.CreateConversation) { inclusive = true }
+                            }) {
+                            CreateConversationScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                                onShowConversation = { conversationId ->
+                                    navController.navigate(Route.ChatList(conversationId.toString())) {
+                                        popUpTo(Route.CreateConversation) { inclusive = true }
+                                    }
+                                },
+                                onShowCreateGroup = {
+                                    navController.navigate(Route.CreateConversationSelectMembers)
                                 }
-                            },
-                        )
+                            )
+                        }
                     }
-                }
 
-                composable<Route.ContactInfo> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        ContactInfoScreen(
-                            viewModel = koinViewModel(),
-                            onNavigateBack = { navController.popBackStack() },
-                        )
+                    composable<Route.CreateConversationSelectMembers> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            SelectMembersScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                                onMembersSelected = { ids ->
+                                    navController.navigate(Route.CreateConversationGroup(ids))
+                                }
+                            )
+                        }
                     }
-                }
 
-                composable<Route.MessageInfo> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        MessageInfoScreen(
-                            viewModel = koinViewModel(),
-                            onNavigateBack = { navController.popBackStack() },
-                        )
+                    composable<Route.CreateConversationGroup> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            CreateConversationGroupScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                                onShowConversation = { conversationId ->
+                                    navController.navigate(Route.ChatList(conversationId.toString())) {
+                                        popUpTo(Route.CreateConversation) { inclusive = true }
+                                    }
+                                },
+                            )
+                        }
                     }
-                }
 
-                composable<Route.ConversationSettings> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        ConversationSettingsScreen(
-                            viewModel = koinViewModel(),
-                            onNavigateBack = { navController.popBackStack() },
-                            onShowContactInfo = {
-                                navController.navigate(Route.ContactInfo(it))
-                            },
-                        )
+                    composable<Route.ContactInfo> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            ContactInfoScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                            )
+                        }
                     }
-                }
 
-                composable<Route.GroupSettings> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        GroupSettingsScreen(
-                            viewModel = koinViewModel(),
-                            onNavigateBack = { navController.popBackStack() },
-                            onShowContactInfo = {
-                                navController.navigate(Route.ContactInfo(it))
-                            },
-                            onAddMembers = {
-                                navController.navigate(Route.GroupAddMembers(it))
-                            },
-                            onEditGroup = {
-                                navController.navigate(Route.GroupEdit(it))
-                            },
-                        )
+                    composable<Route.MessageInfo> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            MessageInfoScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                            )
+                        }
                     }
-                }
 
-                composable<Route.GroupAddMembers> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        AddGroupMembersScreen(
-                            viewModel = koinViewModel(),
-                            onNavigateBack = { navController.popBackStack() },
-                        )
+                    composable<Route.ConversationSettings> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            ConversationSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                                onShowContactInfo = {
+                                    navController.navigate(Route.ContactInfo(it))
+                                },
+                            )
+                        }
                     }
-                }
 
-                composable<Route.GroupEdit> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        EditConversationGroupScreen(
-                            viewModel = koinViewModel(),
-                            onNavigateBack = { navController.popBackStack() },
-                        )
+                    composable<Route.GroupSettings> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            GroupSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                                onShowContactInfo = {
+                                    navController.navigate(Route.ContactInfo(it))
+                                },
+                                onAddMembers = {
+                                    navController.navigate(Route.GroupAddMembers(it))
+                                },
+                                onEditGroup = {
+                                    navController.navigate(Route.GroupEdit(it))
+                                },
+                            )
+                        }
                     }
-                }
 
-                composable<Route.Examples> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        RichTextExample()
+                    composable<Route.GroupAddMembers> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            AddGroupMembersScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                            )
+                        }
                     }
-                }
 
-                composable<Route.Settings> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        SettingsScreen(
-                            viewModel = koinViewModel(),
-                            onBackClick = { navController.popBackStack() },
-                            onNavigateToNotifications = {
-                                navController.navigate(Route.NotificationSettings)
-                            },
-                            onNavigateToAppearance = {
-                                navController.navigate(Route.AppearanceSettings)
-                            },
-                        )
+                    composable<Route.GroupEdit> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            EditConversationGroupScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                            )
+                        }
                     }
-                }
 
-                composable<Route.NotificationSettings> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        NotificationSettingsScreen(
-                            viewModel = koinViewModel(),
-                            onBackClick = { navController.popBackStack() })
+                    composable<Route.Examples> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            RichTextExample()
+                        }
                     }
-                }
 
-                composable<Route.AppearanceSettings> {
-                    AuthenticatedRouteWithFlowManager(
-                        authState = youAuthFlowManager.authState, onUnauthenticated = {
-                            navController.navigate(Route.Login) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }) {
-                        AppearanceSettingsScreen(
-                            viewModel = koinViewModel(),
-                            onBackClick = { navController.popBackStack() })
+                    composable<Route.Settings> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            SettingsScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() },
+                                onNavigateToNotifications = {
+                                    navController.navigate(Route.NotificationSettings)
+                                },
+                                onNavigateToAppearance = {
+                                    navController.navigate(Route.AppearanceSettings)
+                                },
+                            )
+                        }
+                    }
+
+                    composable<Route.NotificationSettings> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            NotificationSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() })
+                        }
+                    }
+
+                    composable<Route.AppearanceSettings> {
+                        AuthenticatedRouteWithFlowManager(
+                            authState = youAuthFlowManager.authState, onUnauthenticated = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }) {
+                            AppearanceSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() })
+                        }
                     }
                 }
             }

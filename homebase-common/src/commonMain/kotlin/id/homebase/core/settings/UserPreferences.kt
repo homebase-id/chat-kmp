@@ -39,10 +39,7 @@ class UserPreferences(private val settings: Settings) {
         get() = settings.getBoolean("notification_include_muted_badge", false)
         set(value) = settings.putBoolean("notification_include_muted_badge", value)
 
-    var notifyOnContactJoins: Boolean
-        get() = settings.getBoolean("notification_contact_joins", false)
-        set(value) = settings.putBoolean("notification_contact_joins", value)
-
+   
     fun getConversationScrollIndex(conversationId: String): Int? {
         return settings.getIntOrNull("conversationScrollIndex-$conversationId")
     }

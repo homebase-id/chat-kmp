@@ -17,11 +17,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import id.homebase.resources.MR
+import id.homebase.resources.chat_group_members_list
+import id.homebase.resources.chat_group_members_list_many
+import kotlinx.collections.immutable.ImmutableList
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun GroupMemberNamesCard(
     modifier: Modifier = Modifier,
-    participantsString: String,
+    participantNames: ImmutableList<String>,
 ) {
     Row(
         modifier = modifier,
@@ -39,11 +44,22 @@ fun GroupMemberNamesCard(
                 Icon(Icons.Outlined.People, contentDescription = null)
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
-                    text = participantsString,
+                    text = buildParticipantsString(participantNames),
                     style = MaterialTheme.typography.labelMedium,
                     textAlign = TextAlign.Center,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun buildParticipantsString(participantNames: ImmutableList<String>): String {
+    return if (participantNames.size > 4) {
+        val participants = participantNames.take(3)
+        val remaining = participantNames.size - 3
+        stringResource(MR.string.chat_group_members_list_many, participants.joinToString(), remaining.toString())
+    } else {
+        stringResource(MR.string.chat_group_members_list, participantNames.joinToString())
     }
 }
