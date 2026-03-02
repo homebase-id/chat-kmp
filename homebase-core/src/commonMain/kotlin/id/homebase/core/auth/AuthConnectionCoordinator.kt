@@ -10,6 +10,7 @@ import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.config.syncDrives
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class AuthConnectionCoordinator(
     private val credentialsManager: CredentialsManager,
@@ -17,7 +18,7 @@ class AuthConnectionCoordinator(
     private val driveSyncManager: DriveSyncManager,
     private val eventBus: EventBus
 ) {
-    private val ioScope = CoroutineScope(Dispatchers.Default)
+    private val scope = CoroutineScope(Dispatchers.Default)
     private var wsClient: OdinWebSocketClient? = null
 
     suspend fun onAuthStateChanged(state: YouAuthState) {
@@ -49,11 +50,15 @@ class AuthConnectionCoordinator(
             OdinWebSocketClient(
                 credentialsManager = credentialsManager,
                 driveSyncManager = driveSyncManager,
-                scope = ioScope,
+                scope = scope,
                 eventBus = eventBus,
                 databaseManager = DatabaseManager.appDb,
                 drives = syncDrives,
-                onConnected = { driveSyncManager.syncAll() },
+                onConnected = {
+                    scope.launch {
+                        driveSyncManager.syncAll()
+                    }
+                },
                 onDisconnected = { driveSyncManager.pause() }
             ).also { it.start() }
     }
