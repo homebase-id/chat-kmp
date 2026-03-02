@@ -72,7 +72,7 @@ class DriveSyncManager(
     fun stop() {
         val snapshot = driveSyncs.values.toList()
         snapshot.forEach { it.cancel() }
-         driveSyncs.clear()
+        driveSyncs.clear()
     }
 
     fun clearStorage(): Job {

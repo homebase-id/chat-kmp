@@ -220,10 +220,38 @@ class ChatMessageStream(
         ): MessageUiModel? {
             val metadata = header.fileMetadata
             val appData = metadata.appData
+            val displayName = displayNameResolver(header)
+
+            val isDeleted = header.fileState == FileState.Deleted ||
+                    appData.archivalStatus == ArchivalStatus.Removed //archive is from previous versions of chat
+
+            if (isDeleted) {
+                return MessageUiModel(
+                    id = appData.uniqueId ?: Uuid.random(),
+                    globalTransitId = metadata.globalTransitId,
+                    fileId = header.fileId,
+                    conversationId = appData.groupId!!,
+                    created = metadata.created.toInstant(),
+                    modified = metadata.updated.toInstant(),
+                    originalAuthor = metadata.originalAuthor,
+                    displayName = displayName,
+                    isRead = false,
+                    isEdited = false,
+                    content = "",
+                    messageAppData = MessageAppData(),
+                    reactionPreview = metadata.reactionPreview,
+                    previewThumbnail = metadata.appData.previewThumbnail,
+                    payloads = metadata.payloads,
+                    keyHeader = header.keyHeader,
+                    isDeleted = true
+                )
+            }
 
             try {
                 require(appData.fileType == ChatProtocol.MessageFileType)
                 val content = appData.content
+
+
                 require(content != null)
                 require(appData.uniqueId != null)
                 require(appData.groupId != null)
@@ -231,8 +259,6 @@ class ChatMessageStream(
                 val messageAppDataSource = OdinSystemSerializer.deserialize<MessageAppData>(content)
                 val messageAppData =
                     messageAppDataSource.copy(deliveryStatus = getDeliveryStatus(header).value)
-
-                val displayName = displayNameResolver(header)
 
                 return MessageUiModel(
                     id = appData.uniqueId!!,
