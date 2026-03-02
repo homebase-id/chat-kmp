@@ -57,7 +57,11 @@ fun App(
             }
         }
 
-        AppNavHost(navController = navController, youAuthFlowManager = youAuthFlowManager)
+        AppNavHost(
+            viewModel = koinInject(),
+            navController = navController,
+            youAuthFlowManager = youAuthFlowManager
+        )
         LaunchedEffect(navController) { onNavHostReady(navController) }
     }
 }

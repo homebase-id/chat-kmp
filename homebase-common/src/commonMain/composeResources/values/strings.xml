@@ -29,6 +29,7 @@
     <string name="remove">Remove</string>
     <string name="details">Details</string>
     <string name="you">You</string>
+    <string name="connection_requests_banner">%1$s connection request(s)</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -106,6 +107,8 @@
     <string name="chat_group_remove_member_warning">You cannot remove member. A group must have at least 2 members other than yourself.</string>
     <string name="chat_group_edit">Edit group</string>
     <string name="chat_group_add_members">Add members</string>
+    <string name="chat_group_members_list">%1$s and you</string>
+    <string name="chat_group_members_list_many">%1$s, you and %2$s others</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>
@@ -128,6 +131,8 @@
     <string name="chat_message_options">Message options</string>
     <string name="chat_message_attachment_options">Attachment options</string>
     <string name="chat_message_emoji_options">Emoji options</string>
+    <string name="chat_message_edited">Edited</string>
+    <string name="chat_message_deleted">🚫 This message was deleted</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>

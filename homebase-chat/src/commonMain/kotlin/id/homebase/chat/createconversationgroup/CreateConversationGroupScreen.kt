@@ -44,8 +44,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import id.homebase.chat.createconversation.ContactItem
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.MinimalTextField
@@ -202,14 +206,14 @@ fun CreateConversationGroupUi(
         floatingActionButton = {
             Button(
                 onClick = { onUiAction(CreateConversationGroupUiAction.CreateGroup) },
-                modifier = Modifier.defaultMinSize(minWidth = 56.dp, minHeight = 56.dp),
-                enabled = uiState.createAllowed,
+                modifier = Modifier.defaultMinSize(minWidth = 56.dp),
+                enabled = uiState.createAllowed && !uiState.isCreatingGroup,
                 shape = CircleShape
 
             ) {
                 Text(stringResource(MR.string.create))
             }
-        }
+        },
     ) { paddingValues ->
         Column(
             modifier = Modifier.padding(paddingValues)
@@ -222,42 +226,14 @@ fun CreateConversationGroupUi(
                 }
             } else {
                 Row(
-                    modifier = Modifier.padding(end = 24.dp),
+                    modifier = Modifier.padding(end = 24.dp).fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.size(112.dp)) {
-                        if (uiState.groupImage != null) {
-                            RoundedIconFromFile(
-                                modifier = Modifier.align(Alignment.Center),
-                                path = uiState.groupImage.toString(),
-                                size = 72.dp,
-                                onClick = {
-                                    onUiAction(CreateConversationGroupUiAction.AddGroupImage)
-                                },
-                            )
-                            IconButton(
-                                onClick = { onUiAction(CreateConversationGroupUiAction.RemoveGroupImage) },
-                                modifier = Modifier.align(Alignment.TopEnd),
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = stringResource(MR.string.remove),
-                                )
-                            }
-                        } else {
-                            RoundedIcon(
-                                modifier = Modifier.align(Alignment.Center),
-                                imageVector = Icons.Outlined.PhotoCamera,
-                                size = 72.dp,
-                                onClick = {
-                                    onUiAction(CreateConversationGroupUiAction.AddGroupImage)
-                                },
-                            )
-                        }
-                    }
+                    GroupImage(
+                        url = uiState.groupImage?.toString(),
+                        onClickAdd = { onUiAction(CreateConversationGroupUiAction.AddGroupImage) },
+                        onClickRemove = { onUiAction(CreateConversationGroupUiAction.RemoveGroupImage) },
+                    )
                     MinimalTextField(
                         modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
                             .focusRequester(focusRequester),
@@ -266,31 +242,92 @@ fun CreateConversationGroupUi(
                         placeHolderText = stringResource(MR.string.chat_group_name_placeholder),
                     )
                 }
-                HorizontalDivider()
-                Text(
-                    modifier = Modifier.padding(horizontal = 24.dp).padding(top = 32.dp),
-                    text = stringResource(MR.string.members),
-                    style = MaterialTheme.typography.titleLarge
-                )
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(16.dp),
-                ) {
-                    items(uiState.contacts) { contact ->
-                        ContactItem(
-                            name = contact.name,
-                            subTitle = contact.odinId.domainName,
-                            odinId = contact.odinId,
-                            avatarInitials = contact.avatarInitials,
-                            onContactClick = {
-                                onUiAction(
-                                    CreateConversationGroupUiAction.RemoveClicked(contact)
-                                )
-                            },
-                        )
-                    }
+            }
+            HorizontalDivider()
+            Text(
+                modifier = Modifier.padding(horizontal = 24.dp).padding(top = 32.dp),
+                text = stringResource(MR.string.members),
+                style = MaterialTheme.typography.titleLarge
+            )
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(16.dp),
+            ) {
+                items(uiState.contacts) { contact ->
+                    ContactItem(
+                        name = contact.name,
+                        subTitle = contact.odinId.domainName,
+                        odinId = contact.odinId,
+                        avatarInitials = contact.avatarInitials,
+                        onContactClick = {
+                            onUiAction(
+                                CreateConversationGroupUiAction.RemoveClicked(contact)
+                            )
+                        },
+                    )
                 }
             }
         }
     }
+}
+
+@Composable
+fun GroupImage(
+    modifier: Modifier = Modifier,
+    avatarModel: ConversationAvatarModel? = null,
+    url: String?,
+    onClickAdd: () -> Unit,
+    onClickRemove: () -> Unit,
+) {
+    Box(modifier = modifier.size(112.dp)) {
+        if (avatarModel != null && avatarModel.type != ConversationAvatarModel.Type.GroupFallback) {
+            ConversationAvatar(
+                avatarModel = avatarModel,
+                modifier = Modifier.align(Alignment.Center),
+                options = AvatarOptions(
+                    size = 72.dp,
+                    fontSize = 24.sp,
+                )
+            )
+            IconButton(
+                onClick = onClickRemove,
+                modifier = Modifier.align(Alignment.TopEnd),
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.remove),
+                )
+            }
+        } else if (url != null) {
+            RoundedIconFromFile(
+                modifier = Modifier.align(Alignment.Center),
+                path = url,
+                size = 72.dp,
+                onClick = onClickAdd,
+            )
+            IconButton(
+                onClick = onClickRemove,
+                modifier = Modifier.align(Alignment.TopEnd),
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.remove),
+                )
+            }
+        } else {
+            RoundedIcon(
+                modifier = Modifier.align(Alignment.Center),
+                imageVector = Icons.Outlined.PhotoCamera,
+                size = 72.dp,
+                onClick = onClickAdd,
+            )
+        }
+    }
+
 }

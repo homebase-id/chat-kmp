@@ -113,7 +113,7 @@ class ChatMessageStream(
                 fileSystemType = 0
             )
 
-        val messageFile = result.records.singleOrNull() ?: return null;
+        val messageFile = result.records.singleOrNull() ?: return null
         return mapToMessageData(messageFile, ::resolveDisplayName)
     }
 
@@ -253,14 +253,15 @@ class ChatMessageStream(
                     originalAuthor = metadata.originalAuthor,
                     displayName = displayName,
                     isRead = false,
-                    isEdited = (metadata.created != metadata.updated),
+                    isEdited = messageAppData.isEdited,
                     content = messageAppData.message,
                     messageAppData = messageAppData,
                     reactionPreview = metadata.reactionPreview,
                     previewThumbnail = metadata.appData.previewThumbnail,
                     payloads = metadata.payloads,
                     keyHeader = header.keyHeader,
-                    isDeleted = appData.archivalStatus == ArchivalStatus.Removed
+                    isDeleted = header.fileState == FileState.Deleted ||
+                            appData.archivalStatus == ArchivalStatus.Removed //archive is for older files
                 )
             } catch (t: Throwable) {
 

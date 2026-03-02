@@ -20,10 +20,12 @@ import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.convo.ContactService
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
@@ -48,7 +50,9 @@ val appModule = module {
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
     singleOf(::NotificationService)
+    singleOf(::ConnectionRequestService)
 
+    viewModelOf(::AppViewModel)
     viewModelOf(::HomeViewModel)
     viewModelOf(::ConversationListViewModel)
     viewModelOf(::CreateConversationViewModel)

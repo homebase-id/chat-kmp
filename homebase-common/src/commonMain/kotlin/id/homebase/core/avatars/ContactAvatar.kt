@@ -19,8 +19,8 @@ fun ContactAvatar(
     initials: String?,
     options: AvatarOptions,
     modifier: Modifier = Modifier,
-    sharedTransitionScope: SharedTransitionScope?,
-    animatedVisibilityScope: AnimatedVisibilityScope?
+    sharedTransitionScope: SharedTransitionScope?= null,
+    animatedVisibilityScope: AnimatedVisibilityScope?= null,
 ) {
     if (profileImageData != null) {
         if (animatedVisibilityScope == null) {

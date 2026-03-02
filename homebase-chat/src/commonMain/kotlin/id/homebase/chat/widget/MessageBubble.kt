@@ -84,10 +84,11 @@ import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.core.widget.ReactionList
 import id.homebase.core.widget.ReactionPopup
 import id.homebase.resources.MR
+import id.homebase.resources.chat_message_deleted
+import id.homebase.resources.chat_message_edited
 import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
-import id.homebase.resources.chat_message_was_deleted
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
@@ -222,6 +223,8 @@ fun SentMessageBubble(
                     text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = true,
+                    isEdited = message.isEdited,
+                    isDeleted = message.isDeleted,
                     deliveryStatus = message.messageAppData.deliveryStatus,
                     payloads = message.payloads,
                     fileId = message.fileId,
@@ -330,6 +333,8 @@ fun ReceivedMessageBubble(
                         text = message.content,
                         timestamp = formatMessageTimestamp(message.created),
                         sentByYou = false,
+                        isEdited = message.isEdited,
+                        isDeleted = message.isDeleted,
                         deliveryStatus = message.messageAppData.deliveryStatus,
                         payloads = message.payloads,
                         fileId = message.fileId,
@@ -469,6 +474,8 @@ fun MessageBubble(
     text: String,
     timestamp: String,
     sentByYou: Boolean,
+    isEdited: Boolean,
+    isDeleted: Boolean,
     deliveryStatus: Int,
     payloads: List<PayloadDescriptor>? = null,
     fileId: Uuid,
@@ -530,6 +537,7 @@ fun MessageBubble(
         }
     }
 
+    val messageInfoText = if (isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
     val mediaOnly = !text.hasContent() && hasMedia
     val emojiOnly = text.isEmojiContentOnly() && !hasMedia
     val backgroundColor = if (emojiOnly) Color.Unspecified
@@ -539,9 +547,12 @@ fun MessageBubble(
     else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
     else MaterialTheme.colorScheme.onSurface
 
-    val textState =
-        RichTextState().applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
-    textState.setMarkdown(text)
+    val textState = RichTextState().applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
+    if (isDeleted) {
+        textState.setText(stringResource(MR.string.chat_message_deleted))
+    } else {
+        textState.setMarkdown(text)
+    }
 
     val shape = RoundedCornerShape(
         topStart = Dimens.Message.cornerRadius,
@@ -598,7 +609,7 @@ fun MessageBubble(
                             verticalAlignment = Alignment.Bottom
                         ) {
                             Text(
-                                text = timestamp,
+                                text = messageInfoText,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = contentColor.copy(alpha = 0.7f)
                             )
@@ -682,7 +693,7 @@ fun MessageBubble(
                         horizontalArrangement = Arrangement.End,
                     ) {
                         Text(
-                            text = timestamp,
+                            text = messageInfoText,
                             style = MaterialTheme.typography.labelSmall,
                             color = contentColor.copy(alpha = 0.7f)
                         )

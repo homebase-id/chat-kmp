@@ -4,9 +4,9 @@ import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
+import kotlinx.serialization.Serializable
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
-import kotlinx.serialization.Serializable
 
 @Serializable
 data class SendReadReceiptRequest(
@@ -21,6 +21,12 @@ data class SendReadReceiptResult(
 @Serializable
 data class SendReadReceiptResultFileItem(
     val fileId: Uuid,
+    val status: List<SendReadReceiptResultStatusItem>
+)
+
+@Serializable
+data class SendReadReceiptResultStatusItem(
+    val recipient: String,
     val status: String
 )
 

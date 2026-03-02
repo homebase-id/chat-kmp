@@ -25,6 +25,7 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.ScrollPosition
+import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.resources.MR
 import id.homebase.resources.chat_search_result_conversations
@@ -32,17 +33,20 @@ import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.uuid.Uuid
 
+@OptIn(FlowPreview::class)
 class ConversationListViewModel(
     savedStateHandle: SavedStateHandle,
     private val credentialsManager: CredentialsManager,
@@ -64,7 +68,7 @@ class ConversationListViewModel(
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
     val conversationSearchTextState = TextFieldState()
-    val messageInputTextState = RichTextState()
+    val messageInputTextState = RichTextState().applyDefaultStyling()
     var currentConversationJob: Job? = null
 
     init {
@@ -89,14 +93,6 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            // TODO - configure properties for textField here
-            //textFieldState.config.linkColor = Color.Blue
-            //textFieldState.config.linkTextDecoration = TextDecoration.Underline
-            //textFieldState.config.codeSpanColor = Color.Blue
-            //textFieldState.config.codeSpanBackgroundColor = Color.Magenta
-            //textFieldState.config.codeSpanStrokeColor = Color.Yellow
-            messageInputTextState.config.listIndent = 0
-
             // TODO - restore any draft message stored for conversation here
             messageInputTextState.setMarkdown("")
         }
@@ -110,7 +106,7 @@ class ConversationListViewModel(
 
         // Listen for search query changes
         viewModelScope.launch {
-            snapshotFlow { conversationSearchTextState.text.toString() }.collectLatest {
+            snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300).collectLatest {
                 updateListContent()
             }
         }
@@ -546,8 +542,6 @@ class ConversationListViewModel(
             //            is ConversationListUiAction.ClearConversation -> TODO()
             //            is ConversationListUiAction.DeleteConversation -> TODO()
             //            is ConversationListUiAction.EditMessage -> TODO()
-            //            is ConversationListUiAction.ShowConversationInfo -> TODO()
-            //            is ConversationListUiAction.ShowMessageInfo -> TODO()
             //            is ConversationListUiAction.StarMessage -> TODO()
 
             is ConversationListUiAction.ReplyToMessage -> {
@@ -731,7 +725,7 @@ class ConversationListViewModel(
         _uiState.update { it.copy(uiEvent = event) }
     }
 
-    fun addMessage(conversationId: Uuid, content: String) {
+    private fun addMessage(conversationId: Uuid, content: String) {
         viewModelScope.launch {
             try {
                 chatMessageSenderService.sendNewMessage(

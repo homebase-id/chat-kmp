@@ -80,6 +80,7 @@ import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toPersistentList
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -191,9 +192,7 @@ fun ConversationContent(
                                 fontSize = 12.sp,
                                 onClick = {
                                     onUiAction(
-                                        ConversationListUiAction.ShowContactInfo(
-                                            conversation.participants.first().domainName
-                                        )
+                                        ConversationListUiAction.ShowConversationSettings(conversation)
                                     )
                                 }
                             )
@@ -306,7 +305,12 @@ fun ConversationContent(
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp)
                                         .padding(bottom = 16.dp),
-                                    participantsString = conversation.participants.joinToString { it.domainName },
+                                    // TODO - how to get list of nice display names
+                                    participantNames = conversation.participants.filter {
+                                        it.domainName != currentOdinId
+                                    }.map {
+                                        it.domainName
+                                    }.toPersistentList(),
                                 )
                             }
                         }

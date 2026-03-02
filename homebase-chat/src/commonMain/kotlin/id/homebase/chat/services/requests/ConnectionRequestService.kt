@@ -6,22 +6,20 @@ import id.homebase.api.client.connections.OutgoingConnectionRequestResponse
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
-import kotlinx.coroutines.CoroutineScope
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.OutgoingConnectionRequestUiModel
-import id.homebase.chat.services.convo.ContactService
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
-
 
 class ConnectionRequestService(
     private val connectionRequestProvider: ConnectionRequestProvider,
     private val eventBus: EventBus,
-    private val contactService: ContactService,
-    private val scope: CoroutineScope
+    scope: CoroutineScope
 ) {
     private val _incomingRequests =
         MutableStateFlow<List<IncomingConnectionRequestUiModel>>(emptyList())
@@ -67,8 +65,8 @@ class ConnectionRequestService(
     }
 
     private suspend fun refresh() {
-        _incomingRequests.value = fetchIncomingRequests()
-        _outgoingRequests.value = fetchOutgoingRequests()
+        _incomingRequests.update { fetchIncomingRequests() }
+        _outgoingRequests.update { fetchOutgoingRequests() }
     }
 
     suspend fun fetchIncomingRequests(): List<IncomingConnectionRequestUiModel> {
@@ -102,7 +100,7 @@ class ConnectionRequestService(
         return requests
     }
 
-    suspend fun mapToIncomingModel(serverResponse: IncomingConnectionRequestResponse): IncomingConnectionRequestUiModel {
+    fun mapToIncomingModel(serverResponse: IncomingConnectionRequestResponse): IncomingConnectionRequestUiModel {
         val ui =
             IncomingConnectionRequestUiModel(
                 senderName = "TODO " + serverResponse.senderOdinId,
@@ -113,8 +111,8 @@ class ConnectionRequestService(
         return ui
     }
 
-    suspend fun mapToOutgoingModel(serverResponse: OutgoingConnectionRequestResponse): OutgoingConnectionRequestUiModel {
-        if (serverResponse.direction != "outgoig") {
+    fun mapToOutgoingModel(serverResponse: OutgoingConnectionRequestResponse): OutgoingConnectionRequestUiModel {
+        if (serverResponse.direction != "outgoing") {
             throw IllegalStateException("this mapper only handles incoming requests")
         }
 
