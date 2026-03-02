@@ -755,7 +755,7 @@ fun MessageBubble(
     }
 }
 
-val DELIVERY_ICON_SIZE = 14.dp
+val DELIVERY_ICON_SIZE = 12.dp
 
 @Composable
 fun DeliveryStatus(deliveryStatus: Int) {
