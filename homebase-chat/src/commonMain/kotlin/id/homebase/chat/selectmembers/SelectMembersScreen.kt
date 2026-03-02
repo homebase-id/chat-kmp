@@ -105,7 +105,6 @@ fun SelectMembersUi(
     onUiAction: (SelectMembersUiAction) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
-
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
@@ -141,7 +140,7 @@ fun SelectMembersUi(
         floatingActionButton = {
             Button(
                 onClick = { onUiAction(SelectMembersUiAction.NextClicked) },
-                modifier = Modifier.defaultMinSize(minWidth = 56.dp, minHeight = 56.dp),
+                modifier = Modifier.defaultMinSize(minWidth = 56.dp),
                 enabled = uiState.selectedContacts.size >= 2,
                 shape = CircleShape
 
@@ -151,7 +150,7 @@ fun SelectMembersUi(
                     contentDescription = stringResource(MR.string.next)
                 )
             }
-        }
+        },
     ) { paddingValues ->
         Column(
             modifier = Modifier.padding(paddingValues)
@@ -225,7 +224,7 @@ fun SelectMembersUi(
                 } else {
                     item {
                         Text(
-                            modifier = Modifier.padding(horizontal = 24.dp).padding(top = 16.dp),
+                            modifier = Modifier.padding(bottom = 16.dp, start = 16.dp),
                             text = stringResource(MR.string.contacts),
                             style = MaterialTheme.typography.titleLarge
                         )

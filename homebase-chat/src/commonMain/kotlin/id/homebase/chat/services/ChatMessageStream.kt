@@ -242,7 +242,7 @@ class ChatMessageStream(
                     originalAuthor = metadata.originalAuthor,
                     displayName = displayName,
                     isRead = false,
-                    isEdited = (metadata.created != metadata.updated),
+                    isEdited = messageAppData.isEdited,
                     content = messageAppData.getMessageAsString(),
                     messageAppData = messageAppData,
                     reactionPreview = metadata.reactionPreview,

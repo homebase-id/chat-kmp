@@ -149,3 +149,21 @@ private fun codePointAt(s: String, index: Int): Pair<Int, Int> {
     }
     return Pair(ch.code, 1)
 }
+
+fun String.initials(): String {
+    val tokens =
+        this
+            .trim()
+            .split("\\s+".toRegex())
+            .filter { it.isNotEmpty() }
+
+    return when {
+        tokens.size >= 2 ->
+            "${tokens.first().first()}${tokens.last().first()}".uppercase().trim()
+
+        tokens.size == 1 ->
+            tokens.first().first().uppercaseChar().toString().trim()
+
+        else -> ""
+    }
+}
