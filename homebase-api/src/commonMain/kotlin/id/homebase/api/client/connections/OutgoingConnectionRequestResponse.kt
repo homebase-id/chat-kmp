@@ -6,7 +6,7 @@ import kotlin.uuid.Uuid
 
 @Serializable
 data class OutgoingConnectionRequestResponse(
-    val contactData: String? = null,
+    val contactData: ContactData? = null,
     val senderOdinId: OdinId,
     val circleIds: List<Uuid>? = null,
     val message: String? = null,
@@ -15,4 +15,9 @@ data class OutgoingConnectionRequestResponse(
     val connectionRequestOrigin: String, // ConnectionRequestOrigin
     val recipient: OdinId,
     val direction: String // incoming  or outgoing
+)
+
+@Serializable
+data class ContactData(
+    val name: String? = null,
 )

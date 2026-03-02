@@ -146,4 +146,9 @@ object ExtendedColors {
     val Success = Color(0xFF4CAF50)
     val Warning = Color(0xFFFF9800)
     val Info = Color(0xFF2196F3)
+
+    // Requests banner
+    val RequestBanner = Color(0xFFFFD9A3)
+    val OnRequestBanner = Color(0xFF3D2C1A)
+
 }

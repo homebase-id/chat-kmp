@@ -27,6 +27,7 @@
     <string name="remove">Fjern</string>
     <string name="details">Detaljer</string>
     <string name="you">Dig</string>
+    <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -117,6 +118,8 @@
     <string name="chat_clear">Ryd</string>
     <string name="chat_options">Samtale menu</string>
     <string name="chat_no_messages">Ingen beskeder endnu</string>
+    <string name="chat_message_edited">Redigeret</string>
+    <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
 
     <!-- Conversation message -->
     <string name="chat_message_info">Besked info</string>

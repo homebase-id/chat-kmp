@@ -232,7 +232,7 @@ fun ContactItem(
     name: String,
     subTitle: String? = null,
     selectionMode: Boolean = false,
-    isSelectionEnabled: Boolean= false,
+    isSelectionEnabled: Boolean= true,
     isSelected: Boolean = false,
     odinId: OdinId,
     avatarInitials: String,
