@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +52,7 @@ import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.menu_back
 import id.homebase.resources.save
+import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -65,10 +68,12 @@ fun FullScreenAttachmentEditor(
     onPageChanged: (Int) -> Unit,
     onSaveFile: (file: AttachmentPendingFile) -> Unit,
     onAddFile: () -> Unit,
+    onAddImage: () -> Unit,
     onRemoveFile: (conversationId: Uuid, attachmentId: Uuid) -> Unit,
     onSendMessage: (conversationId: Uuid, message: String, files: List<AttachmentPendingFile>) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val isFileMode = data.attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
     val pagerState = rememberPagerState(
         initialPage = currentPage.coerceIn(0, maxOf(0, data.attachments.size - 1)),
@@ -100,20 +105,30 @@ fun FullScreenAttachmentEditor(
                 userScrollEnabled = true,
                 beyondViewportPageCount = 1
             ) { page ->
-                val uri = when (val attachment = data.attachments[page]) {
-                    is AttachmentPendingFile.File -> attachment.file.toString()
-                    is AttachmentPendingFile.Gallery -> attachment.image.thumbnailUri
-
+                when (val attachment = data.attachments[page]) {
+                    is AttachmentPendingFile.File -> {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Default.UploadFile, contentDescription = null, Modifier.size(96.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(attachment.file.name)
+                        }
+                    }
+                    is AttachmentPendingFile.Gallery -> {
+                        AsyncImage(
+                            imageLoader = imageLoader,
+                            model = attachment.image.thumbnailUri,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp)),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
                 }
-                AsyncImage(
-                    imageLoader = imageLoader,
-                    model = uri,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp)),
-                    contentScale = ContentScale.Fit
-                )
             }
             IconButton(
                 onClick = onDismiss,
@@ -163,18 +178,25 @@ fun FullScreenAttachmentEditor(
                                     }
                                 }
                         ) {
-                            val uri = when (attachment) {
-                                is AttachmentPendingFile.File -> attachment.file.toString()
-                                is AttachmentPendingFile.Gallery -> attachment.image.thumbnailUri
-
+                            when (attachment) {
+                                is AttachmentPendingFile.File -> {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(Icons.Default.UploadFile, contentDescription = null)
+                                    }
+                                }
+                                is AttachmentPendingFile.Gallery -> {
+                                    AsyncImage(
+                                        imageLoader = imageLoader,
+                                        model = attachment.image.thumbnailUri,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
                             }
-                            AsyncImage(
-                                imageLoader = imageLoader,
-                                model = uri,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
 
                             // Show trash overlay on selected image
                             if (isSelected) {
@@ -199,7 +221,7 @@ fun FullScreenAttachmentEditor(
                 item {
                     // Plus button to add more images
                     IconButton(
-                        onClick = onAddFile,
+                        onClick = if (isFileMode) onAddFile else onAddImage,
                         colors = IconButtonDefaults.iconButtonColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                         )

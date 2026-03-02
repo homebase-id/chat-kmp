@@ -60,8 +60,8 @@ fun MediaItem(
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     shape: Shape = RoundedCornerShape(topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius),
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
