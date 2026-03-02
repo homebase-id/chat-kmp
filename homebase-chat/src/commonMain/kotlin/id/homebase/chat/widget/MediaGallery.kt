@@ -64,8 +64,8 @@ fun MediaGallery(
         topStart = Dimens.Message.cornerRadius,
         topEnd = Dimens.Message.cornerRadius
     ),
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
     if (payloads.isEmpty()) return
 
@@ -142,8 +142,8 @@ private fun TwoImageLayout(
     keyHeader: KeyHeader,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(Dimens.Album.twoTotalHeight),
@@ -179,8 +179,8 @@ private fun ThreeImageLayout(
     keyHeader: KeyHeader,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -239,8 +239,8 @@ private fun FourPlusImageLayout(
     keyHeader: KeyHeader,
     onMediaClick: ((PayloadDescriptor) -> Unit)?,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
     val remainingCount = payloads.size - 4
 

@@ -46,8 +46,8 @@ fun MediaMessage(
         topStart = Dimens.Message.cornerRadius,
         topEnd = Dimens.Message.cornerRadius
     ),
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
     if (payloads.isEmpty()) return
 

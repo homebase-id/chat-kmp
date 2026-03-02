@@ -27,6 +27,9 @@
     <string name="remove">Fjern</string>
     <string name="details">Detaljer</string>
     <string name="you">Dig</string>
+    <string name="recipients">Modtagere</string>
+    <string name="sent">Sendt</string>
+    <string name="updated">Opdateret</string>
     <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
 
     <!-- Language options -->
