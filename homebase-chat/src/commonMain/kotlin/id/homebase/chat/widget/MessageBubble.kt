@@ -208,6 +208,10 @@ fun SentMessageBubble(
                             popupMode = MessagePopupMode.None
                             onDelete(message.id)
                         },
+                        onShare = {
+                            popupMode = MessagePopupMode.None
+                            onShare()
+                        }
                     )
                 }
             }
@@ -441,6 +445,10 @@ fun ReceivedMessageBubble(
                             popupMode = MessagePopupMode.None
                             onDelete(message.id)
                         },
+                        onShare = {
+                            popupMode = MessagePopupMode.None
+                            onShare()
+                        }
                     )
                 }
             }
@@ -695,71 +703,30 @@ fun MessageBubble(
                                 horizontal = 12.dp, vertical = 8.dp
                             ),
                         ) {
+
                             if (emojiOnly) {
                                 // Render emoji-only messages prominently
                                 val size = if (text.length <= 6) 56.sp else 42.sp
                                 Text(
-                                    text = it,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = authorColor ?: contentColor,
-                                    modifier =
-                                        Modifier.padding(
-                                            start = 12.dp,
-                                            top = 8.dp,
-                                            end = 12.dp
-                                        ),
-                                    maxLines = 1,
+                                    text = text,
+                                    onTextLayout = { textLayoutResult = it },
+                                    fontSize = size,
+                                    style = MaterialTheme.typography.displaySmall,
+                                    color = contentColor
                                 )
-                            }
-                            // Inline reply preview if this message is a reply
-                            replyPreview?.let { reply ->
-                                InlineReplyPreview(
-                                    replyPreview = reply,
-                                    sentByYou = sentByYou
-                                )
-                            }
-                            if (hasMedia) {
-                                MediaMessage(
-                                    payloads = filteredPayloads,
-                                    fileId = fileId,
-                                    driveId = chatTargetDrive.alias,
-                                    previewThumbnail = previewThumbnail,
-                                    onMediaClick = onMediaClick,
-                                    keyHeader = keyHeader,
-                                    onMediaLongPress = { _, _ -> handleLongClick() },
-                                    sharedTransitionScope = sharedTransitionScope,
-                                    animatedVisibilityScope = animatedVisibilityScope,
-                                )
-                            }
-                            Row(
-                                modifier =
-                                    Modifier.padding(
-                                        horizontal = 12.dp,
-                                        vertical = 8.dp
-                                    ),
-                            ) {
-                                if (emojiOnly) {
-                                    // Render emoji-only messages prominently
-                                    val size = if (text.length <= 6) 56.sp else 42.sp
-                                    Text(
-                                        text = text,
+                            } else {
+                                // Display normal rich text
+                                SelectionContainer {
+                                    RichText(
+                                        state = textState,
                                         onTextLayout = { textLayoutResult = it },
-                                        fontSize = size,
-                                        style = MaterialTheme.typography.displaySmall,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = contentColor
                                     )
-                                } else {
-                                    // Display normal rich text
-                                    SelectionContainer {
-                                        RichText(
-                                            state = textState,
-                                            onTextLayout = { textLayoutResult = it },
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = contentColor
-                                        )
-                                    }
                                 }
                             }
+
+
                         }
                     }
                     Row(
@@ -779,61 +746,61 @@ fun MessageBubble(
                             DeliveryStatus(deliveryStatus = deliveryStatus)
                         }
                     }
-                ) { measurables, constraints ->
-                    val textPlaceable = measurables[0].measure(constraints)
-                    val timePlaceable = measurables[1].measure(constraints)
+                }) { measurables, constraints ->
+                val textPlaceable = measurables[0].measure(constraints)
+                val timePlaceable = measurables[1].measure(constraints)
 
-                    val layoutResult = textLayoutResult
-                    var totalWidth: Int
-                    var totalHeight: Int
-                    var timeX: Int
-                    var timeY: Int
+                val layoutResult = textLayoutResult
+                var totalWidth: Int
+                var totalHeight: Int
+                var timeX: Int
+                var timeY: Int
 
-                    if (layoutResult == null) {
-                        // Fallback if layout isn't ready yet
-                        totalWidth = textPlaceable.width
+                if (layoutResult == null) {
+                    // Fallback if layout isn't ready yet
+                    totalWidth = textPlaceable.width
+                    totalHeight = textPlaceable.height
+                    timeX = 0
+                    timeY = 0
+                } else {
+                    val lastLineIndex = layoutResult.lineCount - 1
+                    val lastLineRight = layoutResult.getLineRight(lastLineIndex)
+
+                    // Determine if timestamp fits on the last line
+                    // We add a small gap (8dp converted to px) between text and time
+                    val horizontalGap = 8.dp.toPx()
+                    val fitsOnLastLine =
+                        (constraints.maxWidth - lastLineRight) >
+                                (timePlaceable.width + horizontalGap)
+
+                    if (fitsOnLastLine) {
+                        // Fits on the same line
+                        totalWidth =
+                            maxOf(
+                                textPlaceable.width,
+                                (lastLineRight +
+                                        horizontalGap +
+                                        timePlaceable.width)
+                                    .toInt()
+                            )
                         totalHeight = textPlaceable.height
-                        timeX = 0
-                        timeY = 0
+                        timeX = totalWidth - timePlaceable.width
+                        timeY = totalHeight - timePlaceable.height
                     } else {
-                        val lastLineIndex = layoutResult.lineCount - 1
-                        val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-
-                        // Determine if timestamp fits on the last line
-                        // We add a small gap (8dp converted to px) between text and time
-                        val horizontalGap = 8.dp.toPx()
-                        val fitsOnLastLine =
-                            (constraints.maxWidth - lastLineRight) >
-                                    (timePlaceable.width + horizontalGap)
-
-                        if (fitsOnLastLine) {
-                            // Fits on the same line
-                            totalWidth =
-                                maxOf(
-                                    textPlaceable.width,
-                                    (lastLineRight +
-                                            horizontalGap +
-                                            timePlaceable.width)
-                                        .toInt()
-                                )
-                            totalHeight = textPlaceable.height
-                            timeX = totalWidth - timePlaceable.width
-                            timeY = totalHeight - timePlaceable.height
-                        } else {
-                            // Needs a new line
-                            totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
-                            totalHeight = textPlaceable.height + timePlaceable.height
-                            timeX = totalWidth - timePlaceable.width
-                            timeY = totalHeight - timePlaceable.height
-                        }
-                    }
-
-                    layout(totalWidth, totalHeight) {
-                        textPlaceable.placeRelative(0, 0)
-                        timePlaceable.placeRelative(timeX, timeY)
+                        // Needs a new line
+                        totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
+                        totalHeight = textPlaceable.height + timePlaceable.height
+                        timeX = totalWidth - timePlaceable.width
+                        timeY = totalHeight - timePlaceable.height
                     }
                 }
+
+                layout(totalWidth, totalHeight) {
+                    textPlaceable.placeRelative(0, 0)
+                    timePlaceable.placeRelative(timeX, timeY)
+                }
             }
+        }
     }
 }
 
