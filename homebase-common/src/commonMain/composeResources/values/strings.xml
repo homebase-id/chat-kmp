@@ -128,7 +128,6 @@
     <string name="chat_message_options">Message options</string>
     <string name="chat_message_attachment_options">Attachment options</string>
     <string name="chat_message_emoji_options">Emoji options</string>
-    <string name="chat_message_was_deleted">This message was deleted</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>

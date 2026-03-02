@@ -130,7 +130,6 @@
     <string name="chat_message_add_gallery_image">Fjern billede</string>
     <string name="chat_message_remove_gallery_image">Tilføj billede</string>
     <string name="chat_message_hide_keyboard">Skjul tastatur</string>
-    <string name="chat_message_was_deleted">Denne besked er slettet.</string>
 
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Søg efter emoji</string>
