@@ -47,6 +47,7 @@ import id.homebase.resources.chat_settings
 import id.homebase.resources.delete
 import id.homebase.resources.save
 import id.homebase.resources.settings
+import id.homebase.resources.share
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -102,7 +103,7 @@ fun ConversationMenu(
 
 @Composable
 fun ReceivedMessagePopup(
-    mode: MessagePopupMode ,
+    mode: MessagePopupMode,
     dismissMenu: () -> Unit,
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
@@ -161,7 +162,7 @@ fun ReceivedMessagePopup(
 
 @Composable
 fun SentMessagePopup(
-    mode: MessagePopupMode ,
+    mode: MessagePopupMode,
     dismissMenu: () -> Unit,
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
@@ -218,6 +219,13 @@ fun SentMessagePopup(
                             text = stringResource(MR.string.delete),
                             imageVector = Icons.Filled.Delete,
                         )
+                        if (isMobile()) {
+                            ListItemActionNormalIcon(
+                                onClick = onShare,
+                                text = stringResource(MR.string.share),
+                                imageVector = Icons.Default.Share,
+                            )
+                        }
                     }
                 }
             }
