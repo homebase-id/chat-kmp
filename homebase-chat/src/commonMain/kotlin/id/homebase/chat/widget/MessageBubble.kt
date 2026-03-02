@@ -82,7 +82,6 @@ import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.core.widget.ReactionList
-import id.homebase.core.widget.ReactionPopup
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_edited
@@ -126,8 +125,7 @@ fun SentMessageBubble(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
-    var showMenu by remember { mutableStateOf(false) }
-    var showReactionPicker by remember { mutableStateOf(false) }
+    var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -144,7 +142,7 @@ fun SentMessageBubble(
             Column {
                 IconButton(
                     modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                    onClick = { showMenu = true },
+                    onClick = { popupMode = MessagePopupMode.Menu },
                     enabled = isHovered
                 ) {
                     Icon(
@@ -153,26 +151,6 @@ fun SentMessageBubble(
                         tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                     )
                 }
-                SentMessageMenu(
-                    showMenu = showMenu,
-                    dismissMenu = { showMenu = false },
-                    onMessageInfo = {
-                        showMenu = false
-                        onMessageInfo(message.id)
-                    },
-                    onReply = {
-                        showMenu = false
-                        onReply(message.id)
-                    },
-                    onEdit = {
-                        showMenu = false
-                        onEdit(message.id)
-                    },
-                    onDelete = {
-                        showMenu = false
-                        onDelete(message.id)
-                    },
-                )
             }
             IconButton(
                 modifier = Modifier.alpha(if (isHovered) 1f else 0f),
@@ -188,7 +166,7 @@ fun SentMessageBubble(
             Column {
                 IconButton(
                     modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                    onClick = { showReactionPicker = !showReactionPicker },
+                    onClick = { popupMode = MessagePopupMode.Reaction },
                     enabled = isHovered
                 ) {
                     Icon(
@@ -197,16 +175,35 @@ fun SentMessageBubble(
                         tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                     )
                 }
-                if (showReactionPicker) {
-                    ReactionPopup(onSelect = { reaction ->
-                        showMenu = false
-                        showReactionPicker = false
-                        onAddReaction(message.id, reaction)
-                    }, onShowAllEmojis = {
-                        showMenu = false
-                        showReactionPicker = false
-                        showEmojiPicker = true
-                    }, onDismiss = { showReactionPicker = false })
+                if (popupMode != MessagePopupMode.None) {
+                    SentMessagePopup(
+                        mode = popupMode,
+                        dismissMenu = { popupMode = MessagePopupMode.None },
+                        onSelectEmoji = { reaction ->
+                            popupMode = MessagePopupMode.None
+                            onAddReaction(message.id, reaction)
+                        },
+                        onShowAllEmojis = {
+                            popupMode = MessagePopupMode.None
+                            showEmojiPicker = true
+                        },
+                        onMessageInfo = {
+                            popupMode = MessagePopupMode.None
+                            onMessageInfo(message.id)
+                        },
+                        onReply = {
+                            popupMode = MessagePopupMode.None
+                            onReply(message.id)
+                        },
+                        onEdit = {
+                            popupMode = MessagePopupMode.None
+                            onEdit(message.id)
+                        },
+                        onDelete = {
+                            popupMode = MessagePopupMode.None
+                            onDelete(message.id)
+                        },
+                    )
                 }
                 if (showEmojiPicker) {
                     EmojiSelectorDialog(onDismiss = { showEmojiPicker = false }, onEmojiSelected = {
@@ -230,10 +227,7 @@ fun SentMessageBubble(
                     fileId = message.fileId,
                     previewThumbnail = message.previewThumbnail,
                     replyPreview = message.messageAppData.replyPreview,
-                    onLongClick = {
-                        showMenu = true
-                        showReactionPicker = true
-                    },
+                    onLongClick = { popupMode = MessagePopupMode.All },
                     keyHeader = message.keyHeader,
                     onMediaClick = onMediaClick,
                     sharedTransitionScope = sharedTransitionScope,
@@ -283,8 +277,7 @@ fun ReceivedMessageBubble(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
-    var showMenu by remember { mutableStateOf(false) }
-    var showReactionPicker by remember { mutableStateOf(false) }
+    var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -345,10 +338,7 @@ fun ReceivedMessageBubble(
                         else null,
                         authorColor = if (renderAuthorName && hasVisibleBackground) finalAuthorColor
                         else null,
-                        onLongClick = {
-                            showMenu = true
-                            showReactionPicker = true
-                        },
+                        onLongClick = { popupMode = MessagePopupMode.All },
                         onMediaClick = onMediaClick,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
@@ -366,7 +356,7 @@ fun ReceivedMessageBubble(
             Column {
                 IconButton(
                     modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                    onClick = { showReactionPicker = !showReactionPicker },
+                    onClick = { popupMode = MessagePopupMode.Reaction },
                     enabled = isHovered
                 ) {
                     Icon(
@@ -375,16 +365,31 @@ fun ReceivedMessageBubble(
                         tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                     )
                 }
-                if (showReactionPicker) {
-                    ReactionPopup(onSelect = { reaction ->
-                        showReactionPicker = false
-                        showMenu = false
-                        onAddReaction(message.id, reaction)
-                    }, onShowAllEmojis = {
-                        showReactionPicker = false
-                        showMenu = false
-                        showEmojiPicker = true
-                    }, onDismiss = { showReactionPicker = false })
+                if (popupMode != MessagePopupMode.None) {
+                    ReceivedMessagePopup(
+                        mode = popupMode,
+                        dismissMenu = { popupMode = MessagePopupMode.None },
+                        onSelectEmoji = { reaction ->
+                            popupMode = MessagePopupMode.None
+                            onAddReaction(message.id, reaction)
+                        },
+                        onShowAllEmojis = {
+                            popupMode = MessagePopupMode.None
+                            showEmojiPicker = true
+                        },
+                        onMessageInfo = {
+                            popupMode = MessagePopupMode.None
+                            onMessageInfo(message.id)
+                        },
+                        onReply = {
+                            popupMode = MessagePopupMode.None
+                            onReply(message.id)
+                        },
+                        onDelete = {
+                            popupMode = MessagePopupMode.None
+                            onDelete(message.id)
+                        },
+                    )
                 }
                 if (showEmojiPicker) {
                     EmojiSelectorDialog(onDismiss = { showEmojiPicker = false }, onEmojiSelected = {
@@ -407,7 +412,7 @@ fun ReceivedMessageBubble(
             Column {
                 IconButton(
                     modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                    onClick = { showMenu = true },
+                    onClick = { popupMode = MessagePopupMode.Menu },
                     enabled = isHovered
                 ) {
                     Icon(
@@ -416,26 +421,6 @@ fun ReceivedMessageBubble(
                         tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                     )
                 }
-                ReceivedMessageMenu(
-                    showMenu = showMenu,
-                    dismissMenu = { showMenu = false },
-                    onMessageInfo = {
-                        showMenu = false
-                        onMessageInfo(message.id)
-                    },
-                    onReply = {
-                        showMenu = false
-                        onReply(message.id)
-                    },
-                    onDelete = {
-                        showMenu = false
-                        onDelete(message.id)
-                    },
-                    onMarkAsRead = {
-                        showMenu = false
-                        onMarkAsRead(message.id)
-                    },
-                )
             }
         }
         Spacer(modifier = Modifier.width(16.dp))
@@ -537,7 +522,8 @@ fun MessageBubble(
         }
     }
 
-    val messageInfoText = if (isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
+    val messageInfoText =
+        if (isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
     val mediaOnly = !text.hasContent() && hasMedia
     val emojiOnly = text.isEmojiContentOnly() && !hasMedia
     val backgroundColor = if (emojiOnly) Color.Unspecified
@@ -547,7 +533,8 @@ fun MessageBubble(
     else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
     else MaterialTheme.colorScheme.onSurface
 
-    val textState = RichTextState().applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
+    val textState =
+        RichTextState().applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
     if (isDeleted) {
         textState.setText(stringResource(MR.string.chat_message_deleted))
     } else {
@@ -652,6 +639,7 @@ fun MessageBubble(
                                 previewThumbnail = previewThumbnail,
                                 onMediaClick = onMediaClick,
                                 keyHeader = keyHeader,
+                                preserveAspectRatio = false,
                                 onMediaLongPress = { _, _ -> handleLongClick() },
                                 sharedTransitionScope = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,

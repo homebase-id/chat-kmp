@@ -1,5 +1,12 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
@@ -13,9 +20,16 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.widget.ListItemActionNormalIcon
+import id.homebase.core.widget.ReactionMenu
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
 import id.homebase.resources.chat_clear
@@ -50,7 +64,13 @@ fun ConversationMenu(
     ) {
         DropdownMenuItem(
             onClick = onConversationInfo,
-            text = { Text(text = if (isGroup) stringResource(MR.string.chat_group_settings) else stringResource(MR.string.chat_settings)) },
+            text = {
+                Text(
+                    text = if (isGroup) stringResource(MR.string.chat_group_settings) else stringResource(
+                        MR.string.chat_settings
+                    )
+                )
+            },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Info,
@@ -96,129 +116,133 @@ fun ConversationMenu(
 }
 
 @Composable
-fun ReceivedMessageMenu(
-    showMenu: Boolean,
+fun ReceivedMessagePopup(
+    mode: MessagePopupMode ,
     dismissMenu: () -> Unit,
+    onSelectEmoji: (String) -> Unit,
+    onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
     onDelete: () -> Unit,
-    onMarkAsRead: () -> Unit,
 ) {
-    DropdownMenu(
-        shape = RoundedCornerShape(Dimens.Message.cornerRadius),
-        expanded = showMenu,
+    Popup(
         onDismissRequest = dismissMenu
     ) {
-        DropdownMenuItem(
-            onClick = onMessageInfo,
-            text = { Text(text = stringResource(MR.string.chat_message_info)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null
+        Column {
+            if (mode == MessagePopupMode.Reaction || mode == MessagePopupMode.All) {
+                ReactionMenu(
+                    onSelect = onSelectEmoji,
+                    onShowAllEmojis = onShowAllEmojis,
                 )
+                Spacer(modifier = Modifier.height(8.dp))
             }
-        )
-
-        HorizontalDivider()
-
-
-        DropdownMenuItem(
-            onClick = onReply,
-            text = { Text(text = stringResource(MR.string.chat_message_reply)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Reply,
-                    contentDescription = null
-                )
+            if (mode == MessagePopupMode.Menu || mode == MessagePopupMode.All) {
+                Surface(
+                    modifier = Modifier
+                        .wrapContentWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shadowElevation = 4.dp,
+                    tonalElevation = 2.dp
+                ) {
+                    Column(
+                        modifier = Modifier.width(IntrinsicSize.Max)
+                    ) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onMessageInfo,
+                            text = stringResource(MR.string.chat_message_info),
+                            imageVector = Icons.Default.Info,
+                        )
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onReply,
+                            text = stringResource(MR.string.chat_message_reply),
+                            imageVector = Icons.AutoMirrored.Filled.Reply,
+                        )
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onDelete,
+                            text = stringResource(MR.string.delete),
+                            imageVector = Icons.Filled.Delete,
+                        )
+                    }
+                }
             }
-        )
-
-        DropdownMenuItem(
-            onClick = onDelete,
-            text = { Text(text = stringResource(MR.string.delete)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
-
-        HorizontalDivider()
-
-        DropdownMenuItem(
-            onClick = onMarkAsRead,
-            text = { Text("mark as read") },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
+        }
     }
 }
 
 @Composable
-fun SentMessageMenu(
-    showMenu: Boolean,
+fun SentMessagePopup(
+    mode: MessagePopupMode ,
     dismissMenu: () -> Unit,
+    onSelectEmoji: (String) -> Unit,
+    onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    DropdownMenu(
-        shape = RoundedCornerShape(Dimens.Message.cornerRadius),
-        expanded = showMenu,
+    Popup(
         onDismissRequest = dismissMenu
     ) {
-        DropdownMenuItem(
-            onClick = onMessageInfo,
-            text = { Text(text = stringResource(MR.string.chat_message_info)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null
+        Column {
+            if (mode == MessagePopupMode.Reaction || mode == MessagePopupMode.All) {
+                ReactionMenu(
+                    onSelect = onSelectEmoji,
+                    onShowAllEmojis = onShowAllEmojis,
                 )
+                Spacer(modifier = Modifier.height(8.dp))
             }
-        )
-
-        HorizontalDivider()
-
-
-        DropdownMenuItem(
-            onClick = onReply,
-            text = { Text(text = stringResource(MR.string.chat_message_reply)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Reply,
-                    contentDescription = null
-                )
+            if (mode == MessagePopupMode.Menu || mode == MessagePopupMode.All) {
+                Surface(
+                    modifier = Modifier
+                        .wrapContentWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shadowElevation = 4.dp,
+                    tonalElevation = 2.dp
+                ) {
+                    Column(
+                        modifier = Modifier.width(IntrinsicSize.Max)
+                    ) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onMessageInfo,
+                            text = stringResource(MR.string.chat_message_info),
+                            imageVector = Icons.Default.Info,
+                        )
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onReply,
+                            text = stringResource(MR.string.chat_message_reply),
+                            imageVector = Icons.AutoMirrored.Filled.Reply,
+                        )
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onEdit,
+                            text = stringResource(MR.string.chat_message_edit),
+                            imageVector = Icons.Filled.Edit,
+                        )
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onDelete,
+                            text = stringResource(MR.string.delete),
+                            imageVector = Icons.Filled.Delete,
+                        )
+                    }
+                }
             }
-        )
-        DropdownMenuItem(
-            onClick = onEdit,
-            text = { Text(text = stringResource(MR.string.chat_message_edit)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Edit,
-                    contentDescription = null
-                )
-            }
-        )
-        DropdownMenuItem(
-            onClick = onDelete,
-            text = { Text(text = stringResource(MR.string.delete)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
+        }
     }
+}
+
+enum class MessagePopupMode {
+    None,
+    All,
+    Reaction,
+    Menu,
 }
 
 @Composable
