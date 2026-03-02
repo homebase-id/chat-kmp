@@ -5,12 +5,12 @@ import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.ValidationUtil
 import id.homebase.api.client.websockets.InternalDriveFileId
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
+import kotlinx.serialization.Serializable
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
-import kotlinx.serialization.Serializable
-import id.homebase.api.common.OdinId
 
 // ==================== REQUEST / RESPONSE MODELS ====================
 
@@ -123,7 +123,7 @@ class DriveFileGroupReactionProvider(
         val creds = requireCreds()
         val endpoint = "/drives/$driveId/files/$fileId/group-reactions"
 
-        val response = encryptedPostJson(
+        val response = encryptedDelete(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
             jsonBody = OdinSystemSerializer.serialize(

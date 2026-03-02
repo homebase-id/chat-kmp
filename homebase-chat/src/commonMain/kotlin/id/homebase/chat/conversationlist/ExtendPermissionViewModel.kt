@@ -7,7 +7,6 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.core.config.getPermissionExtensionConfig
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,8 +20,8 @@ import kotlinx.coroutines.launch
  * permission-checking logic.
  */
 class ExtendPermissionViewModel(
-    private val securityContextProvider: SecurityContextProvider,
-    private val credentialsManager: CredentialsManager
+        private val securityContextProvider: SecurityContextProvider,
+        private val credentialsManager: CredentialsManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ExtendPermissionUiState>(ExtendPermissionUiState.Idle)
@@ -36,9 +35,6 @@ class ExtendPermissionViewModel(
     }
 
     private suspend fun checkPermissions() {
-        // Wait for initial composition and auth state to stabilize,
-        // preventing the dialog from flickering during screen transitions
-        delay(1000)
         try {
             val domain = credentialsManager.requireActiveCredentials().domain.domainName
             val manager = PermissionExtensionManager.create(securityContextProvider, domain)
@@ -50,10 +46,10 @@ class ExtendPermissionViewModel(
                     "Missing permissions detected: drives=${result.missingDrives.size}, permissions=${result.missingPermissions.size}, allConnected=${result.missingAllConnectedCircle}"
                 }
                 _uiState.value =
-                    ExtendPermissionUiState.ShowDialog(
-                        extendPermissionUrl = result.extendPermissionUrl,
-                        appName = config.appName
-                    )
+                        ExtendPermissionUiState.ShowDialog(
+                                extendPermissionUrl = result.extendPermissionUrl,
+                                appName = config.appName
+                        )
             } else {
                 Logger.d(TAG) { "All permissions are granted" }
             }
@@ -79,7 +75,7 @@ sealed interface ExtendPermissionUiState {
 
     /** Missing permissions detected, dialog should be shown. */
     data class ShowDialog(val extendPermissionUrl: String, val appName: String) :
-        ExtendPermissionUiState
+            ExtendPermissionUiState
 
     /** User dismissed the dialog. */
     data object Dismissed : ExtendPermissionUiState

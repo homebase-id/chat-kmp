@@ -18,13 +18,13 @@ import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.ContactService
 import id.homebase.core.config.chatTargetDrive
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlin.uuid.Uuid
 
 class ChatMessageStream(
     private val credentialsManager: CredentialsManager,
@@ -98,7 +98,6 @@ class ChatMessageStream(
         }
     }
 
-
     suspend fun getMessage(messageId: Uuid): MessageUiModel? {
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
@@ -140,9 +139,10 @@ class ChatMessageStream(
             )
 
         return BatchResult(
-            records = result.records.mapNotNull { header ->
-                mapToMessageData(header, ::resolveDisplayName)
-            },
+            records =
+                result.records.mapNotNull { header ->
+                    mapToMessageData(header, ::resolveDisplayName)
+                },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
@@ -158,27 +158,29 @@ class ChatMessageStream(
         val queryBatch = QueryBatch(c.getIdentityId())
 
         // TODO - inject searchQuery into actual db query
-        val result = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = chatDrive,
-            noOfItems = limit,
-            cursor = cursor,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
-        )
+        val result =
+            queryBatch.queryBatchAsync(
+                dbm = dbm,
+                driveId = chatDrive,
+                noOfItems = limit,
+                cursor = cursor,
+                sortOrder = QueryBatchSortOrder.NewestFirst,
+                sortField = QueryBatchSortField.CreatedDate,
+                fileSystemType = 0,
+                filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+            )
 
         // TODO - remove simple content search filter when actual query does filtering
         return BatchResult(
-            records = result.records
-                .filter {
-                    it.fileMetadata.appData.content?.contains(
-                        searchQuery,
-                        ignoreCase = true
-                    ) == true
-                }
-                .mapNotNull { mapToMessageData(it, ::resolveDisplayName) },
+            records =
+                result.records
+                    .filter {
+                        it.fileMetadata.appData.content?.contains(
+                            searchQuery,
+                            ignoreCase = true
+                        ) == true
+                    }
+                    .mapNotNull { mapToMessageData(it, ::resolveDisplayName) },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
@@ -187,10 +189,7 @@ class ChatMessageStream(
     private suspend fun resolveDisplayName(file: HomebaseFile): String {
         val author = file.fileMetadata.originalAuthor ?: return ""
 
-        return contactService
-            .resolveByOdinId(author)
-            ?.name
-            ?: author.domainName
+        return contactService.resolveByOdinId(author)?.name ?: author.domainName
     }
 
     companion object {
@@ -198,25 +197,18 @@ class ChatMessageStream(
         private fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
             val count = header.serverMetadata.originalRecipientCount
-            val transferSummary = header.serverMetadata
-                .transferHistory?.summary ?: return ChatDeliveryStatus.Sent
+            val transferSummary =
+                header.serverMetadata.transferHistory?.summary ?: return ChatDeliveryStatus.Sent
 
             if (header.fileMetadata.appData.groupId == ChatProtocol.ConversationWithYourselfId) {
                 return ChatDeliveryStatus.Read
             }
 
             return when {
-                transferSummary.totalFailed > 0 ->
-                    ChatDeliveryStatus.Failed
-
-                transferSummary.totalReadByRecipient >= count ->
-                    ChatDeliveryStatus.Read
-
-                transferSummary.totalDelivered >= count ->
-                    ChatDeliveryStatus.Delivered
-
-                else ->
-                    ChatDeliveryStatus.Sent
+                transferSummary.totalFailed > 0 -> ChatDeliveryStatus.Failed
+                transferSummary.totalReadByRecipient >= count -> ChatDeliveryStatus.Read
+                transferSummary.totalDelivered >= count -> ChatDeliveryStatus.Delivered
+                else -> ChatDeliveryStatus.Sent
             }
         }
 
@@ -236,10 +228,9 @@ class ChatMessageStream(
                 require(appData.uniqueId != null)
                 require(appData.groupId != null)
 
-                val messageAppDataSource = OdinSystemSerializer
-                    .deserialize<MessageAppData>(content)
-                val messageAppData = messageAppDataSource
-                    .copy(deliveryStatus = getDeliveryStatus(header).value)
+                val messageAppDataSource = OdinSystemSerializer.deserialize<MessageAppData>(content)
+                val messageAppData =
+                    messageAppDataSource.copy(deliveryStatus = getDeliveryStatus(header).value)
 
                 val displayName = displayNameResolver(header)
 
@@ -254,7 +245,7 @@ class ChatMessageStream(
                     displayName = displayName,
                     isRead = false,
                     isEdited = messageAppData.isEdited,
-                    content = messageAppData.message,
+                    content = messageAppData.getMessageAsString(),
                     messageAppData = messageAppData,
                     reactionPreview = metadata.reactionPreview,
                     previewThumbnail = metadata.appData.previewThumbnail,

@@ -38,6 +38,7 @@ fun MediaMessage(
     driveId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
     keyHeader: KeyHeader,
+    preserveAspectRatio: Boolean = true,
     modifier: Modifier = Modifier,
     onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
@@ -45,8 +46,8 @@ fun MediaMessage(
         topStart = Dimens.Message.cornerRadius,
         topEnd = Dimens.Message.cornerRadius
     ),
-    sharedTransitionScope: SharedTransitionScope,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
     if (payloads.isEmpty()) return
 
@@ -70,7 +71,7 @@ fun MediaMessage(
                         max = Dimens.MediaBubble.maxHeight
                     ),
                 imageSize = ImageSize.THUMB_MEDIUM,
-                preserveAspectRatio = true,
+                preserveAspectRatio = preserveAspectRatio,
                 onClick = { onMediaClick?.invoke(payloads[0]) },
                 onLongPress = { offset ->
                     onMediaLongPress?.invoke(payloads[0], offset)
