@@ -60,6 +60,11 @@ class DriveSyncManager(
         d.sync()
     }
 
+    fun pause() {
+        val snapshot = driveSyncs.values.toList()
+        snapshot.forEach { it.cancel() }
+    }
+
     fun stop() {
         val snapshot = driveSyncs.values.toList()
         snapshot.forEach { it.cancel() }
