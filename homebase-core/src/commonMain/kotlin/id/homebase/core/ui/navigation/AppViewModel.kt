@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 class AppViewModel(
     private val connectionRequestService: ConnectionRequestService,
@@ -47,7 +48,11 @@ class AppViewModel(
                 connectionRequestService.incomingRequests.collect { incomingRequests ->
                     _uiState.update { it.copy(incomingRequests = incomingRequests) }
                 }
-            } catch (e: Exception) {
+            }
+            catch (e: CancellationException) {
+                // Ignore — this is expected
+            }
+            catch (e: Exception) {
                 Logger.e("Failed to collect incoming requests", e)
             }
         }

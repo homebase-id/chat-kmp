@@ -5,7 +5,10 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
@@ -203,18 +206,20 @@ class ConversationService(
         conversationId: Uuid,
         title: String?,
         recipients: List<OdinId>,
-        payloadBundle: PayloadBundle
+        payloadBundle: PayloadBundle? = null
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
 
-        val conversationFile =
-            getConversationHomebaseFile(conversationId) ?: error("No conversation found")
+        val conversationFile = getConversationHomebaseFile(conversationId)
+            ?: error("No conversation found")
 
         // Always include self, never distribute to self
         val normalizedRecipients = (recipients + domain).distinct()
-
-        val keyHeader = KeyHeader.newRandom16()
+        val keyHeader = KeyHeader(
+            iv = ByteArrayUtil.getRndByteArray(16),
+            aesKey = conversationFile.keyHeader.aesKey
+        )
 
         val content =
             ConversationAppDataJson(
@@ -223,21 +228,49 @@ class ConversationService(
                 version = 1 // logical version; server enforces via versionTag
             )
 
-        val encryptedBundle =
-            payloadBundleEncryptionService.encryptBundle(
-                conversationId,
-                payloadBundle,
-                keyHeader.aesKey,
-                scope
-            )
 
-        val manifest =
-            UpdateManifest.build(
-                payloads = encryptedBundle.payloads,
+        var manifest: UpdateManifest
+        var previewThumb: EmbeddedThumb?
+        var payloads: List<PayloadFile>?
+        var thumbs: List<ThumbnailFile>?
+
+        if (payloadBundle == null) {
+            manifest = UpdateManifest.build(
+                payloads = null,
                 toDeletePayloads = null,
-                thumbnails = encryptedBundle.thumbnails,
+                thumbnails = null,
                 generatePayloadIv = false
             )
+
+            payloads = emptyList()
+            thumbs = emptyList()
+            previewThumb = conversationFile.fileMetadata.appData.previewThumbnail
+
+        } else {
+
+            val encryptedBundle =
+                payloadBundleEncryptionService.encryptBundle(
+                    conversationId,
+                    payloadBundle,
+                    keyHeader.aesKey,
+                    scope
+                )
+
+            payloads = encryptedBundle.payloads
+            thumbs = encryptedBundle.thumbnails
+
+            manifest =
+                UpdateManifest.build(
+                    payloads = payloads,
+                    toDeletePayloads = null,
+                    thumbnails = encryptedBundle.thumbnails,
+                    generatePayloadIv = false
+                )
+
+            previewThumb = encryptedBundle.previewThumbs.minByOrNull {
+                it.pixelWidth
+            }
+        }
 
         val metadata =
             UploadFileMetadata(
@@ -249,10 +282,7 @@ class ConversationService(
                         uniqueId = conversationId.toString(),
                         fileType = ChatProtocol.ConversationFileType,
                         content = OdinSystemSerializer.serialize(content),
-                        previewThumbnail =
-                            encryptedBundle.previewThumbs.minByOrNull {
-                                it.pixelWidth
-                            }
+                        previewThumbnail = previewThumb
                     )
             )
 
@@ -271,8 +301,8 @@ class ConversationService(
                 keyHeader = keyHeader,
                 instructions = instructions,
                 metadata = metadata.encryptContent(keyHeader),
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails
+                payloads = payloads,
+                thumbnails = thumbs
             )
 
         driveUploadProvider.updateFileByUniqueId(
