@@ -328,14 +328,9 @@ class ConversationListViewModel(
             is ConversationListUiAction.DeleteMessageForMe -> {
                 viewModelScope.launch {
                     try {
-<<<<<<< HEAD
                         chatMessageActionService.deleteMessageClassic(
                             action.messageId,
                             deleteForEveryone = false
-=======
-                        chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = false
->>>>>>> main
                         )
                     } catch (e: Exception) {
                         sendEvent(
