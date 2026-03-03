@@ -49,7 +49,7 @@ fun MessageItem(
             },
             onAddReaction = { _, reaction ->
                 onUiAction(
-                    ConversationListUiAction.AddReaction(
+                    ConversationListUiAction.ToggleReaction(
                         message.conversationId,
                         message.id,
                         reaction = reaction
@@ -73,7 +73,7 @@ fun MessageItem(
             onMarkAsRead = { onUiAction(ConversationListUiAction.MarkAsRead(message.id)) },
             onAddReaction = { _, reaction ->
                 onUiAction(
-                    ConversationListUiAction.AddReaction(
+                    ConversationListUiAction.ToggleReaction(
                         message.conversationId,
                         message.id,
                         reaction = reaction

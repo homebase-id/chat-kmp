@@ -231,7 +231,7 @@ class ChatMessageStream(
                 val content = appData.content
 
                 val isDeleted = header.fileState == FileState.Deleted ||
-                        header.fileMetadata.appData.archivalStatus == ArchivalStatus.Archived
+                        header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
 
                 if (isDeleted) {
                     return MessageUiModel(
@@ -244,7 +244,7 @@ class ChatMessageStream(
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         isRead = false,
-                        isEdited = (metadata.created != metadata.updated),
+                        isEdited = false,
                         content = "",
                         messageAppData = MessageAppData(),
                         reactionPreview = metadata.reactionPreview,

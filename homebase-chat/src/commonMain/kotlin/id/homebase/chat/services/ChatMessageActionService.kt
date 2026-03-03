@@ -11,6 +11,8 @@ import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
+import id.homebase.api.client.drives.files.reactions.ToggleReactionResult
+import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
@@ -61,6 +63,22 @@ class ChatMessageActionService(
         )
     }
 
+    suspend fun toggleReaction(conversationId: Uuid, messageId: Uuid, emoji: String):
+            ToggleReactionResult {
+        if (!isValidEmoji(emoji)) return ToggleReactionResult(
+            resultType = ToggleReactionResultType.None
+        )
+
+        val content = ReactionContent(emoji = emoji)
+
+        return reactionProvider.toggleReaction(
+            driveId = chatDrive,
+            fileId = requireFileId(messageId),
+            reaction = OdinSystemSerializer.serialize(content),
+            recipients = getRecipients(conversationId)
+        )
+    }
+
     suspend fun deleteReaction(conversationId: Uuid, messageId: Uuid, emoji: String) {
         if (!isValidEmoji(emoji)) return
 
@@ -76,7 +94,7 @@ class ChatMessageActionService(
 
     // -------------------- DELETE --------------------
 
-    suspend fun deleteMessageProper(
+    suspend fun deleteMessage(
         messageId: Uuid,
         deleteForEveryone: Boolean
     ) {
