@@ -243,7 +243,7 @@ class ChatMessageStream(
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         isRead = false,
-                        isEdited = (metadata.created != metadata.updated),
+                        isEdited = false,
                         content = "",
                         messageAppData = MessageAppData(),
                         reactionPreview = metadata.reactionPreview,
