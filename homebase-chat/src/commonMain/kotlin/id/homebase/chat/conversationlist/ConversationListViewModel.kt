@@ -199,6 +199,19 @@ class ConversationListViewModel(
                 }
             }
 
+            is ConversationListUiAction.EditMessage -> {
+                val hasMessage = !messageInputTextState.annotatedString.isBlank()
+                if (hasMessage) {
+
+                    val content = messageInputTextState.toMarkdown()
+                    editMessage(
+                        messageId = action.messageId,
+                        content = content
+                    )
+                    messageInputTextState.clear()
+                }
+            }
+
             is ConversationListUiAction.DeleteMessage -> {
                 val messages = uiState.value.currentConversationMessages.mapNotNull {
                     if (it is MessageListContentModel.Message) it.message else null
@@ -298,8 +311,9 @@ class ConversationListViewModel(
             is ConversationListUiAction.DeleteMessageForEveryone -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = true
+                        chatMessageActionService.deleteMessageClassic(
+                            action.messageId,
+                            deleteForEveryone = true
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -314,8 +328,9 @@ class ConversationListViewModel(
             is ConversationListUiAction.DeleteMessageForMe -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = false
+                        chatMessageActionService.deleteMessageClassic(
+                            action.messageId,
+                            deleteForEveryone = false
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -809,6 +824,25 @@ class ConversationListViewModel(
 
     private fun sendEvent(event: ConversationListUiEvent) {
         _uiState.update { it.copy(uiEvent = event) }
+    }
+
+    private fun editMessage(
+        messageId: Uuid,
+        content: String) {
+        viewModelScope.launch {
+            try {
+                chatMessageSenderService.updateMessage(
+                    messageId = messageId,
+                    content = content
+                )
+            } catch (e: Exception) {
+                sendEvent(
+                    ConversationListUiEvent.ShowErrorMessage(
+                        "Failed to edit message: ${e.message}"
+                    )
+                )
+            }
+        }
     }
 
     private fun addMessage(conversationId: Uuid, content: String) {

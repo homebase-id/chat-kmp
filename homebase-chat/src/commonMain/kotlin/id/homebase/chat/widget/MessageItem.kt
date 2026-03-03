@@ -29,8 +29,15 @@ fun MessageItem(
             message = message,
             onMessageInfo = { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) },
             onReply = { onUiAction(ConversationListUiAction.ReplyToMessage(message)) },
+            onEdit = {
+                onUiAction(
+                    ConversationListUiAction.EditMessage(
+                        conversationId = message.conversationId,
+                        messageId = message.id
+                    )
+                )
+            },
             onShare = { onUiAction(ConversationListUiAction.ShareMessage(message)) },
-            onEdit = { onUiAction(ConversationListUiAction.EditMessage(message.id)) },
             onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) },
             onMediaClick = { payload ->
                 onUiAction(

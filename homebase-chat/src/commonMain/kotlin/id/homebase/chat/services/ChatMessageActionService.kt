@@ -1,22 +1,35 @@
 package id.homebase.chat.services
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
+import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
+import id.homebase.api.client.drives.upload.PayloadDeleteKey
+import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.UpdateLocale
+import id.homebase.api.client.drives.upload.UpdateManifest
+import id.homebase.api.client.drives.upload.UploadAppFileMetaData
+import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.ReactionContent
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.widget.EmojiReaction
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.uuid.Uuid
 
 class ChatMessageActionService(
@@ -26,6 +39,7 @@ class ChatMessageActionService(
     private val credentialsManager: CredentialsManager,
     private val operationsProvider: DriveFileOperationsProvider,
     private val fileProvider: DriveFileProvider,
+    private val outboxSync: OutboxSync,
     private val dbm: DatabaseManager,
 ) {
     private val chatDrive = chatTargetDrive.alias
@@ -62,7 +76,10 @@ class ChatMessageActionService(
 
     // -------------------- DELETE --------------------
 
-    suspend fun deleteMessage(messageId: Uuid, deleteForEveryone: Boolean) {
+    suspend fun deleteMessageProper(
+        messageId: Uuid,
+        deleteForEveryone: Boolean
+    ) {
         val msg = chatMessageStream.getMessage(messageId) ?: return
         val conversation = conversationService.getConversation(msg.conversationId) ?: return
         val fileId = requireFileId(messageId)
@@ -80,6 +97,101 @@ class ChatMessageActionService(
         }
 
         fileProvider.softDeleteFile(driveId = chatDrive, fileId = fileId, recipients = recipients)
+    }
+
+    suspend fun deleteMessageClassic(
+        messageId: Uuid,
+        deleteForEveryone: Boolean
+    ) {
+        val msg = chatMessageStream.getMessage(messageId)
+            ?: throw IllegalArgumentException("message not found")
+
+        val conversation = conversationService.getConversation(msg.conversationId)
+            ?: return
+
+        val keyHeader = KeyHeader(
+            iv = ByteArrayUtil.getRndByteArray(16),
+            aesKey = msg.keyHeader.aesKey
+        )
+
+        if (conversation.isWithSelf) {
+            val fileId = requireFileId(messageId)
+            fileProvider.hardDeleteFile(chatDrive, fileId)
+            return
+        }
+
+        val recipients = if (deleteForEveryone) {
+            val domain = credentialsManager.requireActiveCredentials().domain
+            conversation.participants.filter { it != domain }
+        } else {
+            emptyList()
+        }
+
+        val msgContent = msg.messageAppData.copy(
+            message = JsonPrimitive("")
+        )
+
+        val metadata = UploadFileMetadata(
+            allowDistribution = true,
+            isEncrypted = true,
+            versionTag = msg.versionTag,
+            appData = UploadAppFileMetaData(
+                uniqueId = messageId.toString(),
+                groupId = msg.conversationId.toString(),
+                fileType = ChatProtocol.MessageFileType,
+                userDate = UnixTimeUtc.now().milliseconds,
+                content = OdinSystemSerializer.serialize(msgContent),
+                previewThumbnail = msg.previewThumbnail,
+                archivalStatus = ArchivalStatus.Archived
+            ),
+//            accessControlList =
+        )
+
+        val manifest =
+            UpdateManifest.build(
+                payloads = null,
+                toDeletePayloads = msg.payloads?.map { PayloadDeleteKey(it.key) },
+                thumbnails = null,
+                generatePayloadIv = false
+            )
+
+        val request = UpdateFileByUniqueIdRequest(
+            driveId = chatDrive,
+            uniqueId = messageId,
+            keyHeader = keyHeader,
+            instructions = FileUpdateInstructionSet(
+                transferIv = ByteArrayUtil.getRndByteArray(16),
+                locale = UpdateLocale.Local,
+                recipients = recipients,
+                manifest = manifest,
+                useAppNotification = false,
+                appNotificationOptions = null
+            ),
+            metadata = metadata.encryptContent(keyHeader),
+            payloads = emptyList(),
+            thumbnails = emptyList()
+        )
+
+        try {
+            if (outboxSync.tryEnqueue(
+                    request.driveId,
+                    messageId,
+                    dependencyUniqueId = null,
+                    priority = 1,
+                    uploadType = DriveOutboxUploader.UpdateFile,
+                    json = OdinSystemSerializer.serialize(request),
+                )
+            ) {
+                outboxSync.send()
+            }
+
+            return;
+
+        } catch (t: Throwable) {
+            Logger.e("ChatMessageActionService", t)
+        }
+
+        error("Failed to delete chat message")
     }
 
     suspend fun getReactions(messageId: Uuid): List<EmojiReaction> {

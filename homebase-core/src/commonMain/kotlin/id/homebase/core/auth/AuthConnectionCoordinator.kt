@@ -31,8 +31,7 @@ class AuthConnectionCoordinator(
         }
     }
 
-    private suspend fun loadProfile()
-    {
+    private suspend fun loadProfile() {
         val odinId = credentialsManager.requireActiveCredentials().domain
         ownerSessionRepository.load(odinId)
     }
@@ -55,7 +54,7 @@ class AuthConnectionCoordinator(
                 databaseManager = DatabaseManager.appDb,
                 drives = syncDrives,
                 onConnected = { driveSyncManager.syncAll() },
-                onDisconnected = { driveSyncManager.stop() }
+                onDisconnected = { driveSyncManager.pause() }
             ).also { it.start() }
     }
 

@@ -33,8 +33,9 @@ data class MessageUiModel(
     /** List of payload descriptors with metadata */
     val payloads: List<PayloadDescriptor>?,
 
-    val keyHeader: KeyHeader, // TODO: Todd <-- make it simple and just store the key? (if we use the IV elsewhere that's kind of a bug)
-    val isDeleted: Boolean = false
+    val keyHeader: KeyHeader,
+    val isDeleted: Boolean = false,
+    val versionTag: Uuid
 ) {
     fun isCurrentUser(domain: OdinId?): Boolean = (originalAuthor == domain)
 }
