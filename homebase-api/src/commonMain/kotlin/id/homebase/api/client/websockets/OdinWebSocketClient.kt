@@ -1,25 +1,26 @@
 package id.homebase.api.client.websockets
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.crypto.AesCbc
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.MainIndexMetaHelpers
-import id.homebase.api.toBase64
-import id.homebase.api.common.SecureByteArray
-import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.SharedSecretEncryptedPayload
+import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.AesCbc
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.MainIndexMetaHelpers
+import id.homebase.api.toBase64
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -98,7 +99,8 @@ class OdinWebSocketClient(
                     // If connectOnce returns normally, we consider that a success
                     // Reset backoff so next failure retries fast again
                     reconnectDelayMs = 1_000L
-
+                } catch (_: CancellationException) {
+                    // ignore cancellation
                 } catch (e: Exception) {
                     Logger.e(e) { "WebSocket connect failed ${e.message}" }
                 }

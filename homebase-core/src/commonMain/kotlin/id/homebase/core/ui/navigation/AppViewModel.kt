@@ -8,6 +8,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.services.requests.ConnectionRequestService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,8 +48,10 @@ class AppViewModel(
                 connectionRequestService.incomingRequests.collect { incomingRequests ->
                     _uiState.update { it.copy(incomingRequests = incomingRequests) }
                 }
+            } catch (_: CancellationException) {
+                // ignore cancellation
             } catch (e: Exception) {
-                Logger.e("Failed to collect incoming requests", e)
+                Logger.e("AppViewModel", e) { "Failed to collect incoming requests: ${e.message}" }
             }
         }
     }

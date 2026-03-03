@@ -37,16 +37,13 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
-import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
-import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
 import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
@@ -57,13 +54,13 @@ import id.homebase.chat.selectmembers.SelectMembersScreen
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.home.HomeScreen
+import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
-import kotlinx.coroutines.flow.StateFlow
 import org.koin.compose.viewmodel.koinViewModel
 
 sealed class TopLevelRoute(
@@ -76,7 +73,7 @@ sealed class TopLevelRoute(
 @Composable
 fun AppNavHost(
     viewModel: AppViewModel,
-    navController: NavHostController = rememberNavController(),
+    navController: NavHostController,
     youAuthFlowManager: YouAuthFlowManager
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -114,6 +111,28 @@ fun AppNavHost(
             viewModel.refreshData()
         }
     }
+
+    // Global auth guard - navigate to login when unauthenticated
+    LaunchedEffect(authState, currentDestination) {
+        if (authState is YouAuthState.Unauthenticated || authState is YouAuthState.Error) {
+            // Only navigate if we're not already on the login screen and NavHost is initialized
+            if (currentDestination != null && !currentDestination.hasRoute(Route.Login::class)&& !currentDestination.hasRoute(Route.AppLoading::class)) {
+                navController.navigate(Route.Login) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        }
+    }
+
+//    if (authState is YouAuthState.Initializing) {
+//        Box(
+//            modifier = Modifier.fillMaxSize(),
+//            contentAlignment = Alignment.Center
+//        ) {
+//            CircularProgressIndicator()
+//        }
+//        return
+//    }
 
     Scaffold(
         bottomBar = {
@@ -177,7 +196,7 @@ fun AppNavHost(
 
                 NavHost(
                     navController = navController,
-                    startDestination = if (isAuthenticated) Route.ChatList() else Route.Login,
+                    startDestination = Route.AppLoading,
                     modifier = Modifier.weight(1f),
                     enterTransition = {
                         slideInHorizontally(
@@ -204,41 +223,45 @@ fun AppNavHost(
                         )
                     }
                 ) {
+                    composable<Route.AppLoading> {
+                        AppLoadingScreen(
+                            viewModel = koinViewModel(),
+                            onNavigateToMainScreen = {
+                                navController.navigate(Route.ChatList()) {
+                                    popUpTo(Route.AppLoading) { inclusive = true }
+                                }
+                            },
+                            onNavigateToLogin = {
+                                navController.navigate(Route.Login) {
+                                    popUpTo(Route.AppLoading) { inclusive = true }
+                                }
+                            },
+                        )
+                    }
+
                     composable<Route.Login> {
-                        val vm = koinViewModel<LoginViewModel>()
                         LoginScreen(
-                            viewModel = vm, onNavigateHome = {
+                            viewModel = koinViewModel(),
+                            onNavigateHome = {
                                 navController.navigate(Route.ChatList()) {
                                     popUpTo(Route.Login) { inclusive = true }
                                 }
-                            })
+                            },
+                        )
                     }
 
                     composable<Route.Home> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             HomeScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateToChatList = { navController.navigate(Route.ChatList()) },
                                 onNavigateToExamples = { navController.navigate(Route.Examples) }
                             )
-
                         }
                     }
 
                     composable<Route.ChatList> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState,
-                            onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            },
-                        ) {
+                        if (isAuthenticated) {
                             ConversationListScreen(
                                 viewModel = koinViewModel(),
                                 extendPermissionViewModel = koinViewModel(),
@@ -277,12 +300,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.CreateConversation> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             CreateConversationScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
@@ -299,12 +317,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.CreateConversationSelectMembers> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             SelectMembersScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
@@ -316,12 +329,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.CreateConversationGroup> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             CreateConversationGroupScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
@@ -335,12 +343,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.ContactInfo> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             ContactInfoScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
@@ -349,12 +352,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.MessageInfo> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             MessageInfoScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
@@ -363,12 +361,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.ConversationSettings> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             ConversationSettingsScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
@@ -380,12 +373,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.GroupSettings> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             GroupSettingsScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
@@ -403,12 +391,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.GroupAddMembers> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             AddGroupMembersScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
@@ -417,12 +400,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.GroupEdit> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             EditConversationGroupScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
@@ -431,23 +409,13 @@ fun AppNavHost(
                     }
 
                     composable<Route.Examples> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             RichTextExample()
                         }
                     }
 
                     composable<Route.Settings> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             SettingsScreen(
                                 viewModel = koinViewModel(),
                                 onBackClick = { navController.popBackStack() },
@@ -462,12 +430,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.NotificationSettings> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             NotificationSettingsScreen(
                                 viewModel = koinViewModel(),
                                 onBackClick = { navController.popBackStack() })
@@ -475,12 +438,7 @@ fun AppNavHost(
                     }
 
                     composable<Route.AppearanceSettings> {
-                        AuthenticatedRouteWithFlowManager(
-                            authState = youAuthFlowManager.authState, onUnauthenticated = {
-                                navController.navigate(Route.Login) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }) {
+                        if (isAuthenticated) {
                             AppearanceSettingsScreen(
                                 viewModel = koinViewModel(),
                                 onBackClick = { navController.popBackStack() })
@@ -492,22 +450,3 @@ fun AppNavHost(
     }
 }
 
-/** Wrapper for routes that require authentication using YouAuthFlowManager. */
-@Composable
-private fun AuthenticatedRouteWithFlowManager(
-    authState: StateFlow<YouAuthState>,
-    onUnauthenticated: () -> Unit,
-    content: @Composable () -> Unit
-) {
-    val currentAuthState by authState.collectAsState()
-
-    when (currentAuthState) {
-        is YouAuthState.Authenticated -> content()
-        is YouAuthState.Unauthenticated -> onUnauthenticated()
-        is YouAuthState.Authenticating -> {
-            // Show loading or nothing while authenticating
-        }
-
-        is YouAuthState.Error -> onUnauthenticated()
-    }
-}

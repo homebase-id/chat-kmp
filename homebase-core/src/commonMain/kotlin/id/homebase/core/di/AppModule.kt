@@ -28,6 +28,7 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
+import id.homebase.core.ui.screens.loading.AppLoadingViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
 import org.koin.core.module.Module
@@ -53,6 +54,7 @@ val appModule = module {
     singleOf(::ConnectionRequestService)
 
     viewModelOf(::AppViewModel)
+    viewModelOf(::AppLoadingViewModel)
     viewModelOf(::HomeViewModel)
     viewModelOf(::ConversationListViewModel)
     viewModelOf(::CreateConversationViewModel)

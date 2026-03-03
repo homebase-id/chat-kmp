@@ -9,14 +9,11 @@ import androidx.compose.runtime.getValue
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import id.homebase.api.youauth.YouAuthFlowManager
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.di.allModules
-import id.homebase.core.notifications.NotificationService
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.AppNavHost
 import id.homebase.core.ui.theme.HomebaseTheme
-import kotlinx.coroutines.launch
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 
@@ -36,19 +33,12 @@ fun App(
 ) {
     val navController = rememberNavController()
     val youAuthFlowManager: YouAuthFlowManager = koinInject()
-    val notificationService: NotificationService = koinInject()
-    val coordinator: AuthConnectionCoordinator = koinInject()
     val userPreferences: UserPreferences = koinInject()
 
     val prefState by userPreferences.preferenceState.collectAsState()
     val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme() else if (prefState.theme == ThemeState.Dark) true else false
 
     HomebaseTheme(darkTheme = isDarkTheme) {
-        LaunchedEffect(Unit) {
-            notificationService.startListening()
-            launch { youAuthFlowManager.authState.collect { coordinator.onAuthStateChanged(it) } }
-        }
-
         AppNavHost(
             viewModel = koinInject(),
             navController = navController,

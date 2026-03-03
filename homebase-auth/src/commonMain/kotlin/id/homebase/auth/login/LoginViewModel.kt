@@ -8,22 +8,29 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.getPlatform
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
-import id.homebase.api.youauth.YouAuthState
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
+import id.homebase.core.util.StartupState
+import id.homebase.core.util.mapToStartupState
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class LoginViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
+    private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val usernameStorage: UsernameStorage,
     private val httpClient: HttpClient
 ) : ViewModel() {
@@ -34,14 +41,6 @@ class LoginViewModel(
     init {
         loadUsernameFromStorage()
         observeAuthState()
-
-        viewModelScope.launch {
-            try {
-                checkExistingSession()
-            } catch (e: Exception) {
-                Logger.e("LoginViewModel", e) { "Error checking existing session: ${e.message}" }
-            }
-        }
     }
 
     fun eventConsumed() {
@@ -55,13 +54,22 @@ class LoginViewModel(
             is LoginUiAction.CreateAccount -> {
                 _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenUrl("https://homebase.id/sign-up")) }
             }
+
             is LoginUiAction.LoginClicked -> {
                 startLogin(action.homebaseId)
             }
+
             LoginUiAction.AppResumed -> {
                 // Auth flow may have completed or been cancelled
                 observeAuthState()
             }
+        }
+    }
+
+    fun onCallbackUrl(url: String) {
+        viewModelScope.launch {
+            Logger.i("Is this line hit?")
+            youAuthFlowManager.handleCallback(url)
         }
     }
 
@@ -114,7 +122,6 @@ class LoginViewModel(
             try {
                 val authUrl = youAuthFlowManager.authorize(
                     identity = homebaseId,
-                    scope = viewModelScope,
                     appId = AppConfig.APP_ID,
                     appName = AppConfig.APP_NAME,
                     drives = targetDriveAccessRequest,
@@ -145,60 +152,69 @@ class LoginViewModel(
         }
     }
 
-    private suspend fun checkExistingSession() {
-        if (youAuthFlowManager.restoreSession()) {
-            _uiState.update {
-                it.copy(
-                    isAuthenticated = true,
-                    uiEvent = LoginUiEvent.NavigateToHome
-                )
-            }
-        }
-    }
-
     private fun observeAuthState() {
+
         viewModelScope.launch {
-            youAuthFlowManager.authState.collect { authState ->
-                when (authState) {
-                    is YouAuthState.Authenticated -> {
-                        usernameStorage.saveUsername(_uiState.value.homebaseId)
 
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                isAuthenticated = true,
-                                errorMessage = null,
-                                uiEvent = LoginUiEvent.NavigateToHome
-                            )
-                        }
+            combine(
+                authConnectionCoordinator.connectionState,
+                youAuthFlowManager.authState
+            ) { connectionState, authState ->
+                authState.mapToStartupState(connectionState.isDoingInitialConnection)
+            }
+                .distinctUntilChanged() // Ensures only unique combined results are emitted
+                .catch { error ->
+                    _uiState.update {
+                        it.copy(errorMessage = error.message ?: "Unknown error")
                     }
+                }
+                .collectLatest { authState ->
+                    Logger.i(tag = "LoginViewModel", messageString = "AuthState: $authState")
+                    when (authState) {
+                        is StartupState.Authenticated -> {
+                            usernameStorage.saveUsername(_uiState.value.homebaseId)
+                            // Don't do redirect here, wait for AuthConnectionCoordinator connected state
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    isAuthenticated = true,
+                                    errorMessage = null,
+                                    uiEvent = LoginUiEvent.NavigateToHome
+                                )
+                            }
 
-                    is YouAuthState.Unauthenticated -> {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                isAuthenticated = false
-                            )
                         }
-                    }
 
-                    is YouAuthState.Authenticating -> {
-                        _uiState.update {
-                            it.copy(isLoading = true)
+                        is StartupState.Unauthenticated -> {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    isAuthenticated = false
+                                )
+                            }
                         }
-                    }
 
-                    is YouAuthState.Error -> {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                isAuthenticated = false,
-                                errorMessage = authState.message
-                            )
+                        is StartupState.Authenticating -> {
+                            _uiState.update {
+                                it.copy(isLoading = true)
+                            }
+                        }
+
+                        is StartupState.Error -> {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    isAuthenticated = false,
+                                    errorMessage = authState.message
+                                )
+                            }
+                        }
+
+                        else -> {
+                            // ignore
                         }
                     }
                 }
-            }
         }
     }
 }

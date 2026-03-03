@@ -9,15 +9,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.lifecycleScope
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
-import com.mmk.kmpnotifier.notification.*
+import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.init
 import io.github.vinceglb.filekit.manualFileKitCoreInitialization
 import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
 
 class MainActivity : AppCompatActivity() {
+
+    val youAuthFlowManager: YouAuthFlowManager by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -64,7 +67,7 @@ class MainActivity : AppCompatActivity() {
         val data = intent.data
         if (data != null && data.scheme == "youauth") {
             val callbackURL = data.toString()
-            lifecycleScope.launch { YouAuthFlowManager.handleCallback(callbackURL) }
+            lifecycleScope.launch { youAuthFlowManager.handleCallback(callbackURL) }
         }
     }
 }

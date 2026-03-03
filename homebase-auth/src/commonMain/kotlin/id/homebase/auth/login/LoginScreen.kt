@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.viewModelScope
 import id.homebase.api.util.cleanDomain
 import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.assets.Homebase
@@ -105,7 +104,7 @@ fun LoginScreen(
                 // Launch browser via Compose context (platform-specific)
                 launchAuthBrowser(uiEvent.url)
                 // Notify BrowserLauncher for callback setup (JVM needs server, iOS launches here)
-                BrowserLauncher.onAuthBrowserOpened(uiEvent.url, viewModel.viewModelScope)
+                BrowserLauncher.onAuthBrowserOpened(uiEvent.url, viewModel::onCallbackUrl)
             }
 
             null -> {}

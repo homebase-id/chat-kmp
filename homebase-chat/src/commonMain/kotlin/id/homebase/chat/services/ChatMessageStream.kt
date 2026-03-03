@@ -17,13 +17,13 @@ import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.ContactService
 import id.homebase.core.config.chatTargetDrive
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
 class ChatMessageStream(
     private val credentialsManager: CredentialsManager,
@@ -222,6 +222,7 @@ class ChatMessageStream(
             val appData = metadata.appData
 
             try {
+                // TODO - if this fails app crashes
                 require(appData.fileType == ChatProtocol.MessageFileType)
                 val versionTag = requireNotNull(header.fileMetadata.versionTag) {
                     "versionTag missing in fileMetadata"

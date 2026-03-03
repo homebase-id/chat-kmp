@@ -58,7 +58,6 @@ class DriveSyncManager(
         jobs.joinAll()
 
         eventBus.emit(BackendEvent.DriveEvent.SyncAllCompleted)
-
     }
 
     fun syncDrive(driveId: Uuid) {
