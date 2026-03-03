@@ -1,14 +1,15 @@
 package id.homebase.core.util
 
 fun detectContentTypeFromExtensionOrHint(nameOrPath: String?): String {
-    val ext = nameOrPath?.substringAfterLast('.')?.lowercase()?.takeIf { it.isNotBlank() } ?: return "application/octet-stream"
+    val ext = nameOrPath?.substringAfterLast('.')?.lowercase()?.takeIf { it.isNotBlank() }
+        ?: return "application/octet-stream"
     return commonExtToMime[ext] ?: "application/octet-stream"
 }
 
 private val commonExtToMime: Map<String, String> = mapOf(
     "png" to "image/png",
-    "jpg" to "image/jpeg",
-    "jpeg" to "image/jpeg",
+    "jpg" to "image/jpg",
+    "jpeg" to "image/jpg",
     "gif" to "image/gif",
     "webp" to "image/webp",
     "pdf" to "application/pdf",

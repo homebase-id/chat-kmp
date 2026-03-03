@@ -17,17 +17,19 @@ fun MessageItem(
     onUiAction: (ConversationListUiAction) -> Unit
 ) {
     // TODO: currentOdinId is "" - is that supposed to be the case??
-    val odinId: OdinId? = try {
-        OdinId(currentOdinId)
-    } catch (_: Exception) {
-        null
-    }
+    val odinId: OdinId? =
+        try {
+            OdinId(currentOdinId)
+        } catch (_: Exception) {
+            null
+        }
 
     if (message.isCurrentUser(odinId)) {
         SentMessageBubble(
             message = message,
             onMessageInfo = { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) },
             onReply = { onUiAction(ConversationListUiAction.ReplyToMessage(message)) },
+            onShare = { onUiAction(ConversationListUiAction.ShareMessage(message)) },
             onEdit = { onUiAction(ConversationListUiAction.EditMessage(message.id)) },
             onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) },
             onMediaClick = { payload ->
@@ -41,7 +43,9 @@ fun MessageItem(
             onAddReaction = { _, reaction ->
                 onUiAction(
                     ConversationListUiAction.AddReaction(
-                        message.conversationId, message.id, reaction = reaction
+                        message.conversationId,
+                        message.id,
+                        reaction = reaction
                     )
                 )
             },
@@ -57,12 +61,15 @@ fun MessageItem(
             renderAuthorName = renderAuthorName,
             onMessageInfo = { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) },
             onReply = { onUiAction(ConversationListUiAction.ReplyToMessage(message)) },
+            onShare = { onUiAction(ConversationListUiAction.ShareMessage(message)) },
             onDelete = { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) },
             onMarkAsRead = { onUiAction(ConversationListUiAction.MarkAsRead(message.id)) },
             onAddReaction = { _, reaction ->
                 onUiAction(
                     ConversationListUiAction.AddReaction(
-                        message.conversationId, message.id, reaction = reaction
+                        message.conversationId,
+                        message.id,
+                        reaction = reaction
                     )
                 )
             },

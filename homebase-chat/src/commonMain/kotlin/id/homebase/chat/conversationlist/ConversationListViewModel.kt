@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.file.FileOperationsProvider
@@ -31,6 +32,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.name
+import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -44,7 +46,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
-import kotlin.uuid.Uuid
+import kotlin.io.encoding.Base64
 
 @OptIn(FlowPreview::class)
 class ConversationListViewModel(
@@ -57,7 +59,6 @@ class ConversationListViewModel(
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
     private val ownerSessionRepository: OwnerSessionRepository
-
 ) : ViewModel() {
 
     val ownerSession = ownerSessionRepository.user
@@ -99,16 +100,15 @@ class ConversationListViewModel(
 
         // Load initial message if conversation is set
         viewModelScope.launch {
-            chatListRoute.conversationId?.let {
-                loadMessagesForConversation(Uuid.parse(it), null)
-            }
+            chatListRoute.conversationId?.let { loadMessagesForConversation(Uuid.parse(it), null) }
         }
 
         // Listen for search query changes
         viewModelScope.launch {
-            snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300).collectLatest {
-                updateListContent()
-            }
+            snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300)
+                .collectLatest {
+                    updateListContent()
+                }
         }
     }
 
@@ -139,8 +139,9 @@ class ConversationListViewModel(
             }
 
             ConversationListUiAction.NewConversationClicked -> {
-                _uiState.value =
-                    _uiState.value.copy(uiEvent = ConversationListUiEvent.NavigateToNewConversation)
+                _uiState.value = _uiState.value.copy(
+                    uiEvent = ConversationListUiEvent.NavigateToNewConversation
+                )
             }
 
             ConversationListUiAction.ClearSelection -> {
@@ -180,11 +181,10 @@ class ConversationListViewModel(
             is ConversationListUiAction.SaveScrollPosition -> {
                 _uiState.update {
                     it.copy(
-                        conversationScrollPosition =
-                            ScrollPosition(
-                                firstVisibleItemIndex = action.firstVisibleItemIndex,
-                                firstVisibleItemScrollOffset = action.firstVisibleItemScrollOffset,
-                            )
+                        conversationScrollPosition = ScrollPosition(
+                            firstVisibleItemIndex = action.firstVisibleItemIndex,
+                            firstVisibleItemScrollOffset = action.firstVisibleItemScrollOffset,
+                        )
                     )
                 }
 
@@ -200,11 +200,10 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.DeleteMessage -> {
-                val messages =
-                    uiState.value.currentConversationMessages.mapNotNull { if (it is MessageListContentModel.Message) it.message else null }
-                val message = messages.firstOrNull {
-                    it.id == action.messageId
-                } ?: return
+                val messages = uiState.value.currentConversationMessages.mapNotNull {
+                    if (it is MessageListContentModel.Message) it.message else null
+                }
+                val message = messages.firstOrNull { it.id == action.messageId } ?: return
                 val isCurrentUserMessage =
                     message.originalAuthor?.domainName == _uiState.value.currentOdinId
                 _uiState.update {
@@ -218,7 +217,74 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ShareMedia -> {
-                sendEvent(ConversationListUiEvent.ShowErrorMessage("Not implemented yet"))
+                viewModelScope.launch {
+                    try {
+                        val messageModel =
+                            _uiState.value.currentConversationMessages.filterIsInstance<MessageListContentModel.Message>()
+                                .find { it.message.id == action.messageId } ?: return@launch
+                        val message = messageModel.message
+                        val payload =
+                            message.payloads?.find { it.key == action.payloadKey } ?: return@launch
+                        val payloadIv = Base64.decode(
+                            payload.iv
+                                ?: throw IllegalStateException("encrypted payload requires key header")
+                        )
+                        val bytes = chatMessageActionService.getPayloadBytes(
+                            message.fileId,
+                            action.payloadKey,
+                            KeyHeader(payloadIv, message.keyHeader.aesKey)
+                        )
+                        if (bytes != null) {
+                            var extension = payload.contentType?.substringAfter("/") ?: "bin"
+                            extension = when (extension) {
+                                "jpeg" -> "jpg"
+                                else -> extension
+                            }
+                            val tempPath = fileOperationsProvider.writeBytesToTempFile(
+                                bytes, "share_", ".$extension"
+                            )
+                            sendEvent(ConversationListUiEvent.ShareFile(tempPath))
+                        } else {
+                            sendEvent(
+                                ConversationListUiEvent.ShowErrorMessage(
+                                    "Failed to download file for sharing"
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("ConversationListViewModel", e) {
+                            "Failed to share media: ${e.message}"
+                        }
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to share: ${e.message}"
+                            )
+                        )
+                    }
+                }
+            }
+
+            is ConversationListUiAction.ShareMessage -> {
+                val message = action.message
+                val filteredPayloads = message.payloads?.filter {
+                    !listOf(
+                        ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
+                        ChatProtocol.DEFAULT_PAYLOAD_KEY,
+                        ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
+                    ).contains(it.key)
+                }
+                val hasMedia = !filteredPayloads.isNullOrEmpty()
+                if (hasMedia) {
+                    // Share the first media payload as a file
+                    val payload = filteredPayloads.first()
+                    onAction(ConversationListUiAction.ShareMedia(message.id, payload.key))
+                } else {
+                    // Text-only message
+                    val text = message.content
+                    if (text.isNotBlank()) {
+                        sendEvent(ConversationListUiEvent.ShareText(text))
+                    }
+                }
             }
 
             is ConversationListUiAction.DownloadMedia -> {
@@ -233,8 +299,7 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId,
-                            deleteForEveryone = true
+                            action.messageId, deleteForEveryone = true
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -250,8 +315,7 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId,
-                            deleteForEveryone = false
+                            action.messageId, deleteForEveryone = false
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -280,8 +344,10 @@ class ConversationListViewModel(
             is ConversationListUiAction.AddReaction -> {
                 viewModelScope.launch {
                     try {
-                        val messageReactions = chatMessageActionService.getReactions(action.messageId)
-                        val remove = messageReactions.any { it.emoji == action.reaction && it.odinId.domainName == _uiState.value.currentOdinId }
+                        val messageReactions =
+                            chatMessageActionService.getReactions(action.messageId)
+                        val remove =
+                            messageReactions.any { it.emoji == action.reaction && it.odinId.domainName == _uiState.value.currentOdinId }
                         if (remove) {
                             chatMessageActionService.deleteReaction(
                                 action.conversationId,
@@ -349,8 +415,7 @@ class ConversationListViewModel(
                             fileOperationsProvider = fileOperationsProvider,
                             payloadKeyFactory = { index, _ ->
                                 "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                            }
-                        )
+                            })
 
                         chatMessageSenderService.sendNewMessage(
                             messageUniqueId = Uuid.random(),
@@ -363,7 +428,11 @@ class ConversationListViewModel(
                         _uiState.update { it.copy(loadingNewMessage = false) }
                     } catch (e: Exception) {
                         Logger.e("Failed to send file(s)", e)
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to send file(s): ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to send file(s): ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -371,10 +440,12 @@ class ConversationListViewModel(
             is ConversationListUiAction.AttachPlatformFile -> {
                 viewModelScope.launch {
                     try {
-                        val newFiles =
-                            action.files.map { AttachmentPendingFile.File(Uuid.generateV7(), it) }
-                        val conversation =
-                            _uiState.value.activeConversations.find { it.id == action.conversationId }
+                        val newFiles = action.files.map {
+                            AttachmentPendingFile.File(Uuid.generateV7(), it)
+                        }
+                        val conversation = _uiState.value.activeConversations.find {
+                            it.id == action.conversationId
+                        }
                         if (newFiles.isEmpty() || conversation == null) return@launch
 
                         val overlay = _uiState.value.fullScreenOverlay
@@ -399,7 +470,11 @@ class ConversationListViewModel(
                         }
                     } catch (e: Exception) {
                         Logger.e("Failed to attach file(s)", e)
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to attach file(s): ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to attach file(s): ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -407,15 +482,12 @@ class ConversationListViewModel(
             is ConversationListUiAction.AttachGalleryItem -> {
                 viewModelScope.launch {
                     try {
-                        val newFiles =
-                            action.files.map {
-                                AttachmentPendingFile.Gallery(
-                                    Uuid.generateV7(),
-                                    it
-                                )
-                            }
-                        val conversation =
-                            _uiState.value.activeConversations.find { it.id == action.conversationId }
+                        val newFiles = action.files.map {
+                            AttachmentPendingFile.Gallery(Uuid.generateV7(), it)
+                        }
+                        val conversation = _uiState.value.activeConversations.find {
+                            it.id == action.conversationId
+                        }
                         if (newFiles.isEmpty() || conversation == null) return@launch
 
                         val overlay = _uiState.value.fullScreenOverlay
@@ -440,7 +512,11 @@ class ConversationListViewModel(
                         }
                     } catch (e: Exception) {
                         Logger.e("Failed to attach file(s)", e)
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to attach file(s): ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to attach file(s): ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -451,8 +527,9 @@ class ConversationListViewModel(
                         val fullScreenOverlay = _uiState.value.fullScreenOverlay
                         if (fullScreenOverlay == null || fullScreenOverlay !is FullScreenOverlay.AttachmentData) return@launch
 
-                        val newFiles =
-                            fullScreenOverlay.attachments.filter { it.attachmentId != action.id }
+                        val newFiles = fullScreenOverlay.attachments.filter {
+                            it.attachmentId != action.id
+                        }
                         _uiState.update {
                             it.copy(
                                 fullScreenOverlay = fullScreenOverlay.copy(attachments = newFiles),
@@ -460,7 +537,11 @@ class ConversationListViewModel(
                         }
                     } catch (e: Exception) {
                         Logger.e("Failed to unattach file", e)
-                        sendEvent(ConversationListUiEvent.ShowErrorMessage("Failed to unattach file: ${e.message}"))
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to unattach file: ${e.message}"
+                            )
+                        )
                     }
                 }
             }
@@ -541,23 +622,39 @@ class ConversationListViewModel(
             is ConversationListUiAction.ShowContactInfo -> {
                 // ignore if click on own contact
                 if (action.odinId == uiState.value.currentOdinId) return
-                _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToContactInfo((action.odinId))) }
+                _uiState.update {
+                    it.copy(
+                        uiEvent = ConversationListUiEvent.NavigateToContactInfo((action.odinId))
+                    )
+                }
             }
 
             is ConversationListUiAction.ShowConversationSettings -> {
                 if (action.conversation.isGroupConversation) {
                     _uiState.update {
-                        it.copy(uiEvent = ConversationListUiEvent.NavigateToGroupSettings((action.conversation.id.toString())))
+                        it.copy(
+                            uiEvent = ConversationListUiEvent.NavigateToGroupSettings(
+                                (action.conversation.id.toString())
+                            )
+                        )
                     }
                 } else {
                     _uiState.update {
-                        it.copy(uiEvent = ConversationListUiEvent.NavigateToConversationSettings((action.conversation.id.toString())))
+                        it.copy(
+                            uiEvent = ConversationListUiEvent.NavigateToConversationSettings(
+                                (action.conversation.id.toString())
+                            )
+                        )
                     }
                 }
             }
 
             is ConversationListUiAction.ShowMessageInfo -> {
-                _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToMessageInfo((action.message))) }
+                _uiState.update {
+                    it.copy(
+                        uiEvent = ConversationListUiEvent.NavigateToMessageInfo((action.message))
+                    )
+                }
             }
 
             else -> {
@@ -572,16 +669,18 @@ class ConversationListViewModel(
                 val searchQuery = conversationSearchTextState.text.toString()
                 val filterByUnread = uiState.value.filterByUnread
                 val conversationsPool =
-                    if (filterByUnread) uiState.value.activeConversations.filter { it.unreadCount > 0 || it.id == uiState.value.selectedConversationId } else uiState.value.activeConversations
+                    if (filterByUnread) uiState.value.activeConversations.filter {
+                        it.unreadCount > 0 || it.id == uiState.value.selectedConversationId
+                    }
+                    else uiState.value.activeConversations
 
                 if (searchQuery.isEmpty()) {
                     _uiState.update {
                         it.copy(
-                            conversationsContent = if (conversationsPool.isEmpty()) ConversationListContentState.Empty else ConversationListContentState.Items(
-                                conversationsPool.map { conv ->
-                                    ConversationListContentModel.Conversation(conv)
-                                }.toPersistentList()
-                            )
+                            conversationsContent = if (conversationsPool.isEmpty()) ConversationListContentState.Empty
+                            else ConversationListContentState.Items(conversationsPool.map { conv ->
+                                ConversationListContentModel.Conversation(conv)
+                            }.toPersistentList())
                         )
                     }
                 } else {
@@ -591,29 +690,37 @@ class ConversationListViewModel(
                         conversation.name.contains(searchQuery, ignoreCase = true)
                     }.toPersistentList()
                     if (conversations.isNotEmpty()) {
-                        result.add(ConversationListContentModel.Header(MR.string.chat_search_result_conversations))
-                        result.addAll(conversations.map {
-                            ConversationListContentModel.Conversation(
-                                it
+                        result.add(
+                            ConversationListContentModel.Header(
+                                MR.string.chat_search_result_conversations
                             )
-                        })
+                        )
+                        result.addAll(
+                            conversations.map { ConversationListContentModel.Conversation(it) })
                     }
 
-                    // Only search for message if filter by unread conversations filter is not enabled
+                    // Only search for message if filter by unread conversations filter is not
+                    // enabled
                     if (!filterByUnread) {
                         val messages = chatMessageStream.searchMessages(searchQuery).records
                         if (messages.isNotEmpty()) {
-                            result.add(ConversationListContentModel.Header(MR.string.chat_search_result_messages))
+                            result.add(
+                                ConversationListContentModel.Header(
+                                    MR.string.chat_search_result_messages
+                                )
+                            )
                             result.addAll(messages.map { ConversationListContentModel.Message(it) })
                         }
                     }
 
                     _uiState.update {
                         it.copy(
-                            conversationsContent = if (result.isEmpty())
-                                ConversationListContentState.EmptySearch(searchQuery)
-                            else
-                                ConversationListContentState.Items(result.toPersistentList())
+                            conversationsContent = if (result.isEmpty()) ConversationListContentState.EmptySearch(
+                                searchQuery
+                            )
+                            else ConversationListContentState.Items(
+                                result.toPersistentList()
+                            )
                         )
                     }
                 }
@@ -658,18 +765,19 @@ class ConversationListViewModel(
                             }
                         }
 
-                    val indexOfMessageForScroll =
-                        if (messageId == null) null else messages.indexOfLast { it is MessageListContentModel.Message && it.message.id == messageId } + 1 // +1 for header
+                    val indexOfMessageForScroll = if (messageId == null) null
+                    else messages.indexOfLast {
+                        it is MessageListContentModel.Message && it.message.id == messageId
+                    } + 1 // +1 for header
 
                     _uiState.value = _uiState.value.copy(
                         selectedConversationId = conversationId,
                         currentConversationMessages = messages.toPersistentList(),
-                        conversationScrollPosition =
-                            if (indexOfMessageForScroll == null) {
-                                getScrollPosition(conversationId)
-                            } else {
-                                ScrollPosition(indexOfMessageForScroll, 0)
-                            },
+                        conversationScrollPosition = if (indexOfMessageForScroll == null) {
+                            getScrollPosition(conversationId)
+                        } else {
+                            ScrollPosition(indexOfMessageForScroll, 0)
+                        },
                     )
                 }
             } catch (_: CancellationException) {

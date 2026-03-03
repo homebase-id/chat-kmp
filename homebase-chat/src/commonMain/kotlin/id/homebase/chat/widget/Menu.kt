@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.util.isMobile
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.core.widget.ReactionMenu
 import id.homebase.resources.MR
@@ -45,6 +47,7 @@ import id.homebase.resources.chat_settings
 import id.homebase.resources.delete
 import id.homebase.resources.save
 import id.homebase.resources.settings
+import id.homebase.resources.share
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -81,48 +84,32 @@ fun ConversationMenu(
 
         HorizontalDivider()
 
-
         DropdownMenuItem(
             onClick = onDelete,
             text = { Text(text = stringResource(MR.string.chat_delete)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Filled.Delete, contentDescription = null) })
         DropdownMenuItem(
             onClick = onArchive,
             text = { Text(text = stringResource(MR.string.chat_archive)) },
             leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Archive,
-                    contentDescription = null
-                )
-            }
-        )
+                Icon(imageVector = Icons.Filled.Archive, contentDescription = null)
+            })
         DropdownMenuItem(
             onClick = onClear,
             text = { Text(text = stringResource(MR.string.chat_clear)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Clear,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Filled.Clear, contentDescription = null) })
     }
 }
 
 @Composable
 fun ReceivedMessagePopup(
-    mode: MessagePopupMode ,
+    mode: MessagePopupMode,
     dismissMenu: () -> Unit,
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
+    onShare: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Popup(
@@ -175,12 +162,13 @@ fun ReceivedMessagePopup(
 
 @Composable
 fun SentMessagePopup(
-    mode: MessagePopupMode ,
+    mode: MessagePopupMode,
     dismissMenu: () -> Unit,
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
+    onShare: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -231,6 +219,13 @@ fun SentMessagePopup(
                             text = stringResource(MR.string.delete),
                             imageVector = Icons.Filled.Delete,
                         )
+                        if (isMobile()) {
+                            ListItemActionNormalIcon(
+                                onClick = onShare,
+                                text = stringResource(MR.string.share),
+                                imageVector = Icons.Default.Share,
+                            )
+                        }
                     }
                 }
             }
@@ -261,22 +256,12 @@ fun FullScreenMediaMenu(
             onClick = onSave,
             text = { Text(text = stringResource(MR.string.save)) },
             leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Download,
-                    contentDescription = null
-                )
-            }
-        )
+                Icon(imageVector = Icons.Filled.Download, contentDescription = null)
+            })
         DropdownMenuItem(
             onClick = onDelete,
             text = { Text(text = stringResource(MR.string.delete)) },
-            leadingIcon = {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null
-                )
-            }
-        )
+            leadingIcon = { Icon(imageVector = Icons.Filled.Delete, contentDescription = null) })
     }
 }
 
@@ -302,7 +287,9 @@ fun ConversationListMenu(
         if (isFilteringUnread) {
             DropdownMenuItem(
                 onClick = onClearFilterUnread,
-                text = { Text(text = stringResource(MR.string.chat_filter_by_unread_clear_button)) },
+                text = {
+                    Text(text = stringResource(MR.string.chat_filter_by_unread_clear_button))
+                },
             )
         } else {
             DropdownMenuItem(

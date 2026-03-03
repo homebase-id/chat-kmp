@@ -103,6 +103,7 @@ fun MessageInfoUi(
                             onDelete = {},
                             onMediaClick = {},
                             onShowReactions = {},
+                            onShare = {}
                         )
                     } else {
                         ReceivedMessageBubble(
@@ -111,6 +112,7 @@ fun MessageInfoUi(
                             onMarkAsRead = { },
                             onMediaClick = {},
                             onShowReactions = {},
+                            onShare = {}
                         )
                     }
                 }
