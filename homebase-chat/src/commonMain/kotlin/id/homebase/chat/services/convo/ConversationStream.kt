@@ -13,14 +13,14 @@ import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlin.uuid.Uuid
-import id.homebase.core.avatars.ConversationAvatarModel
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
@@ -95,10 +95,7 @@ class ConversationStream(
     private suspend fun resolveDisplayName(file: HomebaseFile): String {
         val author = file.fileMetadata.originalAuthor ?: return ""
 
-        return contactService
-            .resolveByOdinId(author)
-            ?.name
-            ?: author.domainName
+        return contactService.resolveByOdinId(author)?.name ?: author.domainName
     }
 
     private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
@@ -107,9 +104,7 @@ class ConversationStream(
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingMessages =
             messageFiles.mapNotNull { file ->
-                ChatMessageStream.Companion.mapToMessageData(
-                    file, ::resolveDisplayName
-                )
+                ChatMessageStream.Companion.mapToMessageData(file, ::resolveDisplayName)
             }
 
         if (messageFiles.size != incomingMessages.size)
@@ -118,25 +113,33 @@ class ConversationStream(
         for (m in incomingMessages) {
             val matchingConversation = _conversations.value.find { it.id == m.conversationId }
             if (matchingConversation == null) {
-                val emptyConversation = ConversationUiModel(
-                    id = m.conversationId,
-                    name = "Pending...",
-                    lastMessage = m.content,
-                    timestamp = m.created,
-                    unreadCount = 0,
-                    avatarTiny = null,
-                    // Conversation has an image
-                    avatarInitials = "AxB",
-                    avatarUrl = "",
-                    participants = emptyList(),
-                    lastRead = UnixTimeUtc(0).toInstant(),
-                    avatarModel = ConversationAvatarModel(
-                        type = ConversationAvatarModel.Type.GroupFallback,
-                        imageData = null,
-                        odinId = null,
-                        initials = null
+                val emptyConversation =
+                    ConversationUiModel(
+                        id = m.conversationId,
+                        name = "Pending...",
+                        lastMessage = m.content,
+                        timestamp = m.created,
+                        unreadCount = 0,
+                        avatarTiny = null,
+                        // Conversation has an image
+                        avatarInitials = "AxB",
+                        avatarUrl = "",
+                        participants = emptyList(),
+                        lastRead = UnixTimeUtc(0).toInstant(),
+                        avatarModel =
+                            ConversationAvatarModel(
+                                type = ConversationAvatarModel.Type.GroupFallback,
+                                imageData = null,
+                                odinId = null,
+                                initials = null
+                            ),
+                        lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
+                        lastMessageIsDeleted = m.isDeleted,
+                        lastMessageFirstPayload = m.payloads?.firstOrNull(),
+                        lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
+                        lastMessageIsFromActiveUser =
+                            m.isCurrentUser(credentialsManager.getActiveDomain())
                     )
-                )
 
                 insertNewConversation(emptyConversation)
             } else {
@@ -157,16 +160,25 @@ class ConversationStream(
             if (!m.isEdited) c.unreadCount++
             c.timestamp = m.created
             c.lastMessage = m.content.truncateToCodePoints(40) // TODO: Global constant
+            c.lastMessageDeliveryStatus = m.messageAppData.deliveryStatus
+            c.lastMessageIsDeleted = m.isDeleted
+            c.lastMessageFirstPayload = m.payloads?.firstOrNull()
+            c.lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1
+            c.lastMessageIsFromActiveUser = m.isCurrentUser(credentialsManager.getActiveDomain())
         }
 
         // Logger.i("Unread count now ${c.unreadCount} edited ${m.isEdited} on coversation id
         // ${c.id}")
     }
 
-    private suspend fun processConversationBatchIncrementally(conversationFiles: List<HomebaseFile>) {
+    private suspend fun processConversationBatchIncrementally(
+        conversationFiles: List<HomebaseFile>
+    ) {
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingConversations =
-            conversationFiles.map { file -> conversationService.mapToConversationUi(file, null) }
+            conversationFiles.map { file ->
+                conversationService.mapToConversationUi(file, null)
+            }
 
         for (c in incomingConversations) {
             val matchingConversation = _conversations.value.find { it.id == c.id }
@@ -201,11 +213,17 @@ class ConversationStream(
                     avatarInitials = incoming.avatarInitials,
                     participants = incoming.participants,
                     timestamp = incoming.timestamp,
-                    lastMessage = incoming.lastMessage
+                    lastMessage = incoming.lastMessage,
+                    lastMessageDeliveryStatus = incoming.lastMessageDeliveryStatus,
+                    lastMessageIsDeleted = incoming.lastMessageIsDeleted,
+                    lastMessageFirstPayload = incoming.lastMessageFirstPayload,
+                    lastMessageHasMultiplePayloads =
+                        incoming.lastMessageHasMultiplePayloads,
+                    lastMessageIsFromActiveUser = incoming.lastMessageIsFromActiveUser
                 )
             // We should optimize later to not  map the full list
             _conversations.value =
-                _conversations.value.map { if (it.id == existing.id) existing else it }
+                _conversations.value.map { if (it.id == existing.id) updatedConvo else it }
         }
     }
 
