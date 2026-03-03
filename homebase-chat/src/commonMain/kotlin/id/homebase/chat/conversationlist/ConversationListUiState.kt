@@ -10,12 +10,12 @@ import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.EmojiReaction
 import io.github.vinceglb.filekit.PlatformFile
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.datetime.LocalDate
 import org.jetbrains.compose.resources.StringResource
-import kotlin.time.Instant
-import kotlin.uuid.Uuid
 
 @Immutable
 data class ConversationListUiState(
@@ -32,6 +32,7 @@ data class ConversationListUiState(
     val isSearchActive: Boolean = false,
     val ownerSession: OwnerSession? = null,
     val messageReactions: List<EmojiReaction>? = null,
+    val downloadingFiles: Set<String> = emptySet(),
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
 )
@@ -40,7 +41,8 @@ data class ConversationListUiState(
 sealed interface ConversationListContentState {
     data object Empty : ConversationListContentState
     data class EmptySearch(val query: String) : ConversationListContentState
-    data class Items(val list: ImmutableList<ConversationListContentModel>) : ConversationListContentState
+    data class Items(val list: ImmutableList<ConversationListContentModel>) :
+        ConversationListContentState
 }
 
 @Immutable

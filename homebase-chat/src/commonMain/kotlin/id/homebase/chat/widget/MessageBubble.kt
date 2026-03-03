@@ -125,6 +125,7 @@ fun SentMessageBubble(
     onShowReactions: (ReactionSummary) -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    downloadingFiles: Set<String>,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -224,11 +225,7 @@ fun SentMessageBubble(
 
             Box {
                 MessageBubble(
-                    modifier =
-                        Modifier.padding(
-                            bottom =
-                                if (message.reactionPreview == null) 0.dp else 26.dp
-                        ),
+                    modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
                     text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
                     sentByYou = true,
@@ -248,6 +245,8 @@ fun SentMessageBubble(
                     onMediaClick = onMediaClick,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                    messageId = message.id,
+                    downloadingFiles = downloadingFiles
                 )
                 message.reactionPreview?.let { reactionSummary ->
                     ReactionList(
@@ -293,20 +292,19 @@ fun ReceivedMessageBubble(
     onMediaClick: (PayloadDescriptor) -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    downloadingFiles: Set<String>,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
-    val filteredPayloads =
-        message.payloads?.filter {
-            !listOf(
-                ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                ChatProtocol.DEFAULT_PAYLOAD_KEY,
-                ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-            )
-                .contains(it.key)
-        }
+    val filteredPayloads = message.payloads?.filter {
+        !listOf(
+            ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
+            ChatProtocol.DEFAULT_PAYLOAD_KEY,
+            ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
+        ).contains(it.key)
+    }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     val mediaOnly = !message.content.hasContent() && hasMedia
     val emojiOnly = message.content.isEmojiContentOnly() && !hasMedia
@@ -338,12 +336,10 @@ fun ReceivedMessageBubble(
                 }
                 Box {
                     MessageBubble(
-                        modifier =
-                            Modifier.padding(
-                                bottom =
-                                    if (message.reactionPreview == null) 0.dp
-                                    else 26.dp
-                            ),
+                        modifier = Modifier.padding(
+                            bottom = if (message.reactionPreview == null) 0.dp
+                            else 26.dp
+                        ),
                         text = message.content,
                         timestamp = formatMessageTimestamp(message.created),
                         sentByYou = false,
@@ -355,12 +351,10 @@ fun ReceivedMessageBubble(
                         keyHeader = message.keyHeader,
                         previewThumbnail = message.previewThumbnail,
                         replyPreview = message.messageAppData.replyPreview,
-                        authorName =
-                            if (renderAuthorName && hasVisibleBackground) authorNameTxt
-                            else null,
-                        authorColor =
-                            if (renderAuthorName && hasVisibleBackground) finalAuthorColor
-                            else null,
+                        authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
+                        else null,
+                        authorColor = if (renderAuthorName && hasVisibleBackground) finalAuthorColor
+                        else null,
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 popupMode = MessagePopupMode.All
@@ -369,6 +363,8 @@ fun ReceivedMessageBubble(
                         onMediaClick = onMediaClick,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
+                        messageId = message.id,
+                        downloadingFiles = downloadingFiles
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(
@@ -448,8 +444,7 @@ fun ReceivedMessageBubble(
                         onShare = {
                             popupMode = MessagePopupMode.None
                             onShare()
-                        }
-                    )
+                        })
                 }
             }
             if (showEmojiPicker) {
@@ -509,16 +504,16 @@ fun MessageBubble(
     onMediaClick: (PayloadDescriptor) -> Unit,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
+    messageId: Uuid,
+    downloadingFiles: Set<String>,
 ) {
-    val filteredPayloads =
-        payloads?.filter {
-            !listOf(
-                ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                ChatProtocol.DEFAULT_PAYLOAD_KEY,
-                ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-            )
-                .contains(it.key)
-        }
+    val filteredPayloads = payloads?.filter {
+        !listOf(
+            ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
+            ChatProtocol.DEFAULT_PAYLOAD_KEY,
+            ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
+        ).contains(it.key)
+    }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -531,11 +526,10 @@ fun MessageBubble(
     val coroutineScope = rememberCoroutineScope()
 
     // Use a spring for smoother, natural motion and avoid tiny abrupt tweens
-    val springSpec =
-        spring<Float>(
-            dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
-            stiffness = Spring.StiffnessLow
-        )
+    val springSpec = spring<Float>(
+        dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
+        stiffness = Spring.StiffnessLow
+    )
 
     // Keep quick press feedback when not running the long-press animation
     LaunchedEffect(isPressed) {
@@ -562,50 +556,45 @@ fun MessageBubble(
     }
 
     val messageInfoText =
-        if (isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
+        if (isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp"
+        else timestamp
     val mediaOnly = !text.hasContent() && hasMedia
     val emojiOnly = text.isEmojiContentOnly() && !hasMedia
-    val backgroundColor =
-        if (emojiOnly) Color.Unspecified
-        else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
-        else MaterialTheme.colorScheme.surfaceContainerHigh
-    val contentColor =
-        if (emojiOnly) MaterialTheme.colorScheme.onSurface
-        else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
-        else MaterialTheme.colorScheme.onSurface
+    val backgroundColor = if (emojiOnly) Color.Unspecified
+    else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+    else MaterialTheme.colorScheme.surfaceContainerHigh
+    val contentColor = if (emojiOnly) MaterialTheme.colorScheme.onSurface
+    else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+    else MaterialTheme.colorScheme.onSurface
 
-    val textState =
-        RichTextState().applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
+    val textState = RichTextState().applyDefaultStyling(
+        linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary
+    )
     if (isDeleted) {
         textState.setText(stringResource(MR.string.chat_message_deleted))
     } else {
         textState.setMarkdown(text)
     }
 
-    val shape =
-        RoundedCornerShape(
-            topStart = Dimens.Message.cornerRadius,
-            topEnd = Dimens.Message.cornerRadius,
-            bottomStart =
-                if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-            bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-        )
+    val shape = RoundedCornerShape(
+        topStart = Dimens.Message.cornerRadius,
+        topEnd = Dimens.Message.cornerRadius,
+        bottomStart = if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+        bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+    )
 
     Surface(
-        modifier =
-            modifier.clip(shape)
-                .ifTrue(isMobile()) {
-                    Modifier.combinedClickable(
-                        onClick = {},
-                        onLongClick = { handleLongClick() },
-                        interactionSource = pressInteractionSource,
-                        indication = null
-                    )
-                }
-                .graphicsLayer {
-                    scaleX = scaleAnim.value
-                    scaleY = scaleAnim.value
-                },
+        modifier = modifier.clip(shape).ifTrue(isMobile()) {
+            Modifier.combinedClickable(
+                onClick = {},
+                onLongClick = { handleLongClick() },
+                interactionSource = pressInteractionSource,
+                indication = null
+            )
+        }.graphicsLayer {
+            scaleX = scaleAnim.value
+            scaleY = scaleAnim.value
+        },
         shape = shape,
         color = backgroundColor,
     ) {
@@ -622,27 +611,22 @@ fun MessageBubble(
                     shape = RoundedCornerShape(Dimens.Message.cornerRadius),
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                    messageId = messageId,
+                    downloadingFiles = downloadingFiles
                 )
                 Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
                     Box(
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .height(40.dp)
-                                .align(Alignment.BottomStart)
-                                .background(
-                                    brush =
-                                        Brush.verticalGradient(
-                                            colors =
-                                                listOf(
-                                                    Color.Transparent,
-                                                    Color.Black
-                                                        .copy(
-                                                            alpha =
-                                                                0.6f
-                                                        ),
-                                                )
-                                        )
-                                ),
+                        modifier = Modifier.fillMaxWidth().height(40.dp)
+                            .align(Alignment.BottomStart).background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        Color.Black.copy(
+                                            alpha = 0.6f
+                                        ),
+                                    )
+                                )
+                            ),
                     ) {
                         Row(
                             modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
@@ -696,6 +680,8 @@ fun MessageBubble(
                                 onMediaLongPress = { _, _ -> handleLongClick() },
                                 sharedTransitionScope = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
+                                messageId = messageId,
+                                downloadingFiles = downloadingFiles
                             )
                         }
                         Row(
@@ -703,7 +689,6 @@ fun MessageBubble(
                                 horizontal = 12.dp, vertical = 8.dp
                             ),
                         ) {
-
                             if (emojiOnly) {
                                 // Render emoji-only messages prominently
                                 val size = if (text.length <= 6) 56.sp else 42.sp
@@ -725,8 +710,6 @@ fun MessageBubble(
                                     )
                                 }
                             }
-
-
                         }
                     }
                     Row(
@@ -770,19 +753,14 @@ fun MessageBubble(
                     // We add a small gap (8dp converted to px) between text and time
                     val horizontalGap = 8.dp.toPx()
                     val fitsOnLastLine =
-                        (constraints.maxWidth - lastLineRight) >
-                                (timePlaceable.width + horizontalGap)
+                        (constraints.maxWidth - lastLineRight) > (timePlaceable.width + horizontalGap)
 
                     if (fitsOnLastLine) {
                         // Fits on the same line
-                        totalWidth =
-                            maxOf(
-                                textPlaceable.width,
-                                (lastLineRight +
-                                        horizontalGap +
-                                        timePlaceable.width)
-                                    .toInt()
-                            )
+                        totalWidth = maxOf(
+                            textPlaceable.width,
+                            (lastLineRight + horizontalGap + timePlaceable.width).toInt()
+                        )
                         totalHeight = textPlaceable.height
                         timeX = totalWidth - timePlaceable.width
                         timeY = totalHeight - timePlaceable.height
@@ -856,31 +834,28 @@ private fun String.hasContent(): Boolean {
 @OptIn(ExperimentalResourceApi::class)
 @Composable
 private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
-    val accentColor =
-        if (sentByYou) {
-            HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
-        } else {
-            MaterialTheme.colorScheme.primary
-        }
-    val contentColor =
-        if (sentByYou) {
-            HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
-        } else {
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-        }
+    val accentColor = if (sentByYou) {
+        HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+    val contentColor = if (sentByYou) {
+        HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+    }
 
     // Decode preview thumbnail if available
-    val thumbnailBitmap =
-        remember(replyPreview.previewThumbnail) {
-            replyPreview.previewThumbnail?.content?.let { base64Content ->
-                try {
-                    val bytes = Base64.decode(base64Content)
-                    bytes.decodeToImageBitmap()
-                } catch (_: Exception) {
-                    null
-                }
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail) {
+        replyPreview.previewThumbnail?.content?.let { base64Content ->
+            try {
+                val bytes = Base64.decode(base64Content)
+                bytes.decodeToImageBitmap()
+            } catch (_: Exception) {
+                null
             }
         }
+    }
 
     Row(
         modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
@@ -888,10 +863,8 @@ private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
     ) {
         // Vertical accent bar
         Box(
-            modifier =
-                Modifier.width(3.dp)
-                    .heightIn(min = 24.dp)
-                    .background(color = accentColor, shape = RoundedCornerShape(2.dp))
+            modifier = Modifier.width(3.dp).heightIn(min = 24.dp)
+                .background(color = accentColor, shape = RoundedCornerShape(2.dp))
         )
         Spacer(modifier = Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f, fill = false)) {

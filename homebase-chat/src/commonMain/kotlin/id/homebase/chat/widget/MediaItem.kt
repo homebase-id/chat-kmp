@@ -59,9 +59,13 @@ fun MediaItem(
     preserveAspectRatio: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius),
+    shape: Shape = RoundedCornerShape(
+        topStart = Dimens.Message.cornerRadius,
+        topEnd = Dimens.Message.cornerRadius
+    ),
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
+    isDownloading: Boolean = false,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
@@ -108,10 +112,7 @@ fun MediaItem(
                     requestedSize = imageSize,
                     lastModified = payload.lastModified,
                     isEncrypted = true,
-                    keyHeader = KeyHeader(
-                        iv = payloadIv,
-                        aesKey = keyHeader.aesKey
-                    )
+                    keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
                 )
 
             HomebaseImage(
@@ -145,12 +146,16 @@ fun MediaItem(
             )
         }
 
-        contentType.startsWith("application/") -> {
-            // TODO: Implement file viewer/downloader
-            MediaPlaceholder(
-                emoji = "📄",
-                label = "File",
-                modifier = baseModifier,
+        contentType == "application/zip" ||
+                contentType == "application/x-rar-compressed" ||
+                contentType == "application/vnd.android.package-archive" ||
+                contentType.startsWith("text/") ||
+                contentType.startsWith("application/") -> {
+            DocumentMediaItem(
+                payload = payload,
+                modifier = Modifier.clip(shape),
+                onDownloadClick = { onClick?.invoke() },
+                isDownloading = isDownloading
             )
         }
 

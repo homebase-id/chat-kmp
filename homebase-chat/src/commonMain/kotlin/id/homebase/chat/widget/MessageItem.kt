@@ -14,15 +14,15 @@ fun MessageItem(
     renderAuthorName: Boolean = false,
     animatedVisibilityScope: AnimatedVisibilityScope,
     sharedTransitionScope: SharedTransitionScope,
-    onUiAction: (ConversationListUiAction) -> Unit
+    onUiAction: (ConversationListUiAction) -> Unit,
+    downloadingFiles: Set<String>,
 ) {
     // TODO: currentOdinId is "" - is that supposed to be the case??
-    val odinId: OdinId? =
-        try {
-            OdinId(currentOdinId)
-        } catch (_: Exception) {
-            null
-        }
+    val odinId: OdinId? = try {
+        OdinId(currentOdinId)
+    } catch (_: Exception) {
+        null
+    }
 
     if (message.isCurrentUser(odinId)) {
         SentMessageBubble(
@@ -54,6 +54,7 @@ fun MessageItem(
             },
             animatedVisibilityScope = animatedVisibilityScope,
             sharedTransitionScope = sharedTransitionScope,
+            downloadingFiles = downloadingFiles
         )
     } else {
         ReceivedMessageBubble(
@@ -86,6 +87,7 @@ fun MessageItem(
             },
             animatedVisibilityScope = animatedVisibilityScope,
             sharedTransitionScope = sharedTransitionScope,
+            downloadingFiles = downloadingFiles
         )
     }
 }

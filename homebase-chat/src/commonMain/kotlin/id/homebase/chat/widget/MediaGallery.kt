@@ -60,12 +60,15 @@ fun MediaGallery(
     modifier: Modifier = Modifier,
     onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(
-        topStart = Dimens.Message.cornerRadius,
-        topEnd = Dimens.Message.cornerRadius
-    ),
+    shape: Shape =
+        RoundedCornerShape(
+            topStart = Dimens.Message.cornerRadius,
+            topEnd = Dimens.Message.cornerRadius
+        ),
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
+    messageId: Uuid,
+    downloadingFiles: Set<String>,
 ) {
     if (payloads.isEmpty()) return
 
@@ -79,18 +82,14 @@ fun MediaGallery(
                     driveId = driveId,
                     keyHeader = keyHeader,
                     previewThumbnail = previewThumbnail
-                        ?: payloads[0].previewThumbnail
-                            ?.toEmbeddedThumb(),
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .height(Dimens.MediaBubble.maxHeight),
+                        ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
+                    modifier = Modifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight),
                     imageSize = ImageSize.THUMB_LARGE,
                     onClick = { onMediaClick?.invoke(payloads[0]) },
-                    onLongPress = { offset ->
-                        onMediaLongPress?.invoke(payloads[0], offset)
-                    },
+                    onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}")
                 )
             }
 
@@ -104,6 +103,8 @@ fun MediaGallery(
                     onMediaLongPress = onMediaLongPress,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                    messageId = messageId,
+                    downloadingFiles = downloadingFiles
                 )
 
             3 ->
@@ -116,6 +117,8 @@ fun MediaGallery(
                     onMediaLongPress = onMediaLongPress,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                    messageId = messageId,
+                    downloadingFiles = downloadingFiles
                 )
 
             else ->
@@ -128,6 +131,8 @@ fun MediaGallery(
                     onMediaLongPress = onMediaLongPress,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                    messageId = messageId,
+                    downloadingFiles = downloadingFiles
                 )
         }
     }
@@ -144,6 +149,8 @@ private fun TwoImageLayout(
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
+    messageId: Uuid,
+    downloadingFiles: Set<String>,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(Dimens.Album.twoTotalHeight),
@@ -160,11 +167,10 @@ private fun TwoImageLayout(
                 imageSize = ImageSize.THUMB_SMALL,
                 shape = RectangleShape,
                 onClick = { onMediaClick?.invoke(payload) },
-                onLongPress = { offset ->
-                    onMediaLongPress?.invoke(payload, offset)
-                },
+                onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
+                isDownloading = downloadingFiles.contains("${messageId}_${payload.key}")
             )
         }
     }
@@ -181,6 +187,8 @@ private fun ThreeImageLayout(
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
+    messageId: Uuid,
+    downloadingFiles: Set<String>,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -196,18 +204,16 @@ private fun ThreeImageLayout(
                     payload = payload,
                     fileId = fileId,
                     driveId = driveId,
-                    previewThumbnail =
-                        payload.previewThumbnail?.toEmbeddedThumb(),
+                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                     keyHeader = keyHeader,
                     modifier = Modifier.weight(1f).fillMaxSize(),
                     imageSize = ImageSize.THUMB_SMALL,
                     shape = RectangleShape,
                     onClick = { onMediaClick?.invoke(payload) },
-                    onLongPress = { offset ->
-                        onMediaLongPress?.invoke(payload, offset)
-                    },
+                    onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                    isDownloading = downloadingFiles.contains("${messageId}_${payload.key}")
                 )
             }
         }
@@ -226,6 +232,7 @@ private fun ThreeImageLayout(
             onLongPress = { offset -> onMediaLongPress?.invoke(payloads[2], offset) },
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,
+            isDownloading = downloadingFiles.contains("${messageId}_${payloads[2].key}")
         )
     }
 }
@@ -241,6 +248,8 @@ private fun FourPlusImageLayout(
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)?,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
+    messageId: Uuid,
+    downloadingFiles: Set<String>,
 ) {
     val remainingCount = payloads.size - 4
 
@@ -259,17 +268,15 @@ private fun FourPlusImageLayout(
                     fileId = fileId,
                     driveId = driveId,
                     keyHeader = keyHeader,
-                    previewThumbnail =
-                        payload.previewThumbnail?.toEmbeddedThumb(),
+                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
                     modifier = Modifier.weight(1f).fillMaxSize(),
                     imageSize = ImageSize.THUMB_SMALL,
                     shape = RectangleShape,
                     onClick = { onMediaClick?.invoke(payload) },
-                    onLongPress = { offset ->
-                        onMediaLongPress?.invoke(payload, offset)
-                    },
+                    onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                    isDownloading = downloadingFiles.contains("${messageId}_${payload.key}")
                 )
             }
         }
@@ -290,11 +297,10 @@ private fun FourPlusImageLayout(
                 imageSize = ImageSize.THUMB_SMALL,
                 shape = RectangleShape,
                 onClick = { onMediaClick?.invoke(payloads[2]) },
-                onLongPress = { offset ->
-                    onMediaLongPress?.invoke(payloads[2], offset)
-                },
+                onLongPress = { offset -> onMediaLongPress?.invoke(payloads[2], offset) },
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
+                isDownloading = downloadingFiles.contains("${messageId}_${payloads[2].key}")
             )
 
             // Fourth image with optional overlay
@@ -309,17 +315,15 @@ private fun FourPlusImageLayout(
                     fileId = fileId,
                     driveId = driveId,
                     keyHeader = keyHeader,
-                    previewThumbnail =
-                        payloads[3].previewThumbnail?.toEmbeddedThumb(),
+                    previewThumbnail = payloads[3].previewThumbnail?.toEmbeddedThumb(),
                     modifier = Modifier.fillMaxSize(),
                     imageSize = ImageSize.THUMB_SMALL,
                     shape = RectangleShape,
                     onClick = null, // Handled by parent Box
-                    onLongPress = { offset ->
-                        onMediaLongPress?.invoke(payloads[3], offset)
-                    },
+                    onLongPress = { offset -> onMediaLongPress?.invoke(payloads[3], offset) },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
+                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[3].key}")
                 )
 
                 // Overlay showing remaining count
@@ -327,18 +331,12 @@ private fun FourPlusImageLayout(
                     Box(
                         modifier =
                             Modifier.fillMaxSize()
-                                .background(
-                                    Color.Black.copy(
-                                        alpha = 0.5f
-                                    )
-                                ),
+                                .background(Color.Black.copy(alpha = 0.5f)),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             text = "+$remainingCount",
-                            style =
-                                MaterialTheme.typography
-                                    .headlineMedium,
+                            style = MaterialTheme.typography.headlineMedium,
                             color = Color.White,
                         )
                     }

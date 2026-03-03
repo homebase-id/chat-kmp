@@ -19,7 +19,9 @@ sealed interface ConversationListUiAction {
     data object ClearFilterByUnreadClicked : ConversationListUiAction
     data class SendMessage(val conversationId: Uuid) : ConversationListUiAction
     data class SendFile(
-        val conversationId: Uuid, val message: String, val attachments: List<AttachmentPendingFile>
+        val conversationId: Uuid,
+        val message: String,
+        val attachments: List<AttachmentPendingFile>
     ) : ConversationListUiAction
 
     data class AttachGalleryItem(
@@ -37,9 +39,12 @@ sealed interface ConversationListUiAction {
         val id: Uuid,
     ) : ConversationListUiAction
 
-    data class ShareMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
+    data class ShareMedia(val messageId: Uuid, val payloadKey: String) :
+        ConversationListUiAction
+
     data class ShareMessage(val message: MessageUiModel) : ConversationListUiAction
-    data class DownloadMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
+    data class DownloadMedia(val messageId: Uuid, val payloadKey: String) :
+        ConversationListUiAction
 
     data class SaveFile(val file: AttachmentPendingFile) : ConversationListUiAction
 
@@ -70,8 +75,12 @@ sealed interface ConversationListUiAction {
     data class DeleteMessageForEveryone(val messageId: Uuid) : ConversationListUiAction
 
     data class MarkAsRead(val messageId: Uuid) : ConversationListUiAction
-    data class AddReaction(val conversationId: Uuid, val messageId: Uuid, val reaction: String) :
-        ConversationListUiAction
+    data class AddReaction(
+        val conversationId: Uuid,
+        val messageId: Uuid,
+        val reaction: String
+    ) : ConversationListUiAction
+
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
 
     data object HideReactionDetails : ConversationListUiAction
