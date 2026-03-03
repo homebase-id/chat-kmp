@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.file.FileOperationsProvider
@@ -45,6 +46,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.io.encoding.Base64
 
 @OptIn(FlowPreview::class)
 class ConversationListViewModel(
@@ -103,9 +105,10 @@ class ConversationListViewModel(
 
         // Listen for search query changes
         viewModelScope.launch {
-            snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300).collectLatest {
-                updateListContent()
-            }
+            snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300)
+                .collectLatest {
+                    updateListContent()
+                }
         }
     }
 
@@ -222,11 +225,21 @@ class ConversationListViewModel(
                         val message = messageModel.message
                         val payload =
                             message.payloads?.find { it.key == action.payloadKey } ?: return@launch
+                        val payloadIv = Base64.decode(
+                            payload.iv
+                                ?: throw IllegalStateException("encrypted payload requires key header")
+                        )
                         val bytes = chatMessageActionService.getPayloadBytes(
-                            message.fileId, action.payloadKey, message.keyHeader
+                            message.fileId,
+                            action.payloadKey,
+                            KeyHeader(payloadIv, message.keyHeader.aesKey)
                         )
                         if (bytes != null) {
-                            val extension = payload.contentType?.substringAfter("/") ?: "bin"
+                            var extension = payload.contentType?.substringAfter("/") ?: "bin"
+                            extension = when (extension) {
+                                "jpeg" -> "jpg"
+                                else -> extension
+                            }
                             val tempPath = fileOperationsProvider.writeBytesToTempFile(
                                 bytes, "share_", ".$extension"
                             )
@@ -263,7 +276,7 @@ class ConversationListViewModel(
                 val hasMedia = !filteredPayloads.isNullOrEmpty()
                 if (hasMedia) {
                     // Share the first media payload as a file
-                    val payload = filteredPayloads!!.first()
+                    val payload = filteredPayloads.first()
                     onAction(ConversationListUiAction.ShareMedia(message.id, payload.key))
                 } else {
                     // Text-only message
@@ -331,8 +344,10 @@ class ConversationListViewModel(
             is ConversationListUiAction.AddReaction -> {
                 viewModelScope.launch {
                     try {
-                        val messageReactions = chatMessageActionService.getReactions(action.messageId)
-                        val remove = messageReactions.any { it.emoji == action.reaction && it.odinId.domainName == _uiState.value.currentOdinId }
+                        val messageReactions =
+                            chatMessageActionService.getReactions(action.messageId)
+                        val remove =
+                            messageReactions.any { it.emoji == action.reaction && it.odinId.domainName == _uiState.value.currentOdinId }
                         if (remove) {
                             chatMessageActionService.deleteReaction(
                                 action.conversationId,

@@ -50,9 +50,9 @@ actual fun getUriHandler(): FileSystemHandler {
                         type = mimeType
                         putExtra(Intent.EXTRA_STREAM, uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
                     val chooser = Intent.createChooser(intent, null)
-                    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(chooser)
                 } catch (e: Exception) {
                     Logger.e(TAG, e) { "Failed to share file: ${e.message}" }

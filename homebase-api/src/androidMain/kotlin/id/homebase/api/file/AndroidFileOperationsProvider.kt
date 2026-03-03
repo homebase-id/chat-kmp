@@ -62,6 +62,6 @@ class AndroidFileOperationsProvider(
     ): String = withContext(Dispatchers.IO) {
         val file = File.createTempFile(prefix, suffix, context.cacheDir)
         file.writeBytes(bytes)
-        file.absolutePath
+        file.path
     }
 }
