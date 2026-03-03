@@ -11,6 +11,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
@@ -311,7 +312,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.DeleteMessageForEveryone -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.deleteMessageClassic(
+                        chatMessageActionService.deleteMessage(
                             action.messageId,
                             deleteForEveryone = true
                         )
@@ -328,7 +329,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.DeleteMessageForMe -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.deleteMessageClassic(
+                        chatMessageActionService.deleteMessage(
                             action.messageId,
                             deleteForEveryone = false
                         )
@@ -356,30 +357,27 @@ class ConversationListViewModel(
                 }
             }
 
-            is ConversationListUiAction.AddReaction -> {
+            is ConversationListUiAction.ToggleReaction -> {
                 viewModelScope.launch {
                     try {
-                        val messageReactions =
-                            chatMessageActionService.getReactions(action.messageId)
-                        val remove =
-                            messageReactions.any { it.emoji == action.reaction && it.odinId.domainName == _uiState.value.currentOdinId }
-                        if (remove) {
-                            chatMessageActionService.deleteReaction(
-                                action.conversationId,
-                                action.messageId,
-                                action.reaction
-                            )
-                        } else {
-                            chatMessageActionService.addReaction(
-                                action.conversationId,
-                                action.messageId,
-                                action.reaction
-                            )
-                        }
+                        val result = chatMessageActionService.toggleReaction(
+                            action.conversationId,
+                            action.messageId,
+                            action.reaction
+                        )
+
+                        // Anders - TODO:
+//                        if (result.resultType == ToggleReactionResultType.Added) {
+//
+//                        }
+//                        else if (result.resultType == ToggleReactionResultType.Deleted)
+//
+//                        }
+
                     } catch (e: Exception) {
                         sendEvent(
                             ConversationListUiEvent.ShowErrorMessage(
-                                "Failed to add reaction: ${e.message}"
+                                "Failed to toggle reaction: ${e.message}"
                             )
                         )
                     }
@@ -828,7 +826,8 @@ class ConversationListViewModel(
 
     private fun editMessage(
         messageId: Uuid,
-        content: String) {
+        content: String
+    ) {
         viewModelScope.launch {
             try {
                 chatMessageSenderService.updateMessage(

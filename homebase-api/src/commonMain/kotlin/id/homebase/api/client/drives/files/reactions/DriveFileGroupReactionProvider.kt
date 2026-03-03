@@ -140,6 +140,37 @@ class DriveFileGroupReactionProvider(
         throwForFailure(response)
     }
 
+    suspend fun toggleReaction(
+        driveId: Uuid,
+        fileId: Uuid,
+        reaction: String,
+        recipients: List<OdinId>
+    ): ToggleReactionResult {
+
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
+
+        val creds = requireCreds()
+        val endpoint = "/drives/$driveId/files/$fileId/group-reactions/toggle"
+
+        val response = encryptedPostJson(
+            url = apiUrl(creds.domain, endpoint),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(
+                ToggleReactionRequest(
+                    reaction = reaction,
+                    transitOptions = ReactionTransitOptions(
+                        recipients = recipients
+                    )
+                )
+            ),
+            secret = creds.secret
+        )
+
+        throwForFailure(response)
+        return deserialize(response.body)
+    }
+
     // -------------------- LIST --------------------
 
     suspend fun listReactions(
@@ -227,3 +258,5 @@ class DriveFileGroupReactionProvider(
         return deserialize(response.body)
     }
 }
+
+

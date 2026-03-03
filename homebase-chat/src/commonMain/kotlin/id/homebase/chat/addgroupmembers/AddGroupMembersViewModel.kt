@@ -85,13 +85,6 @@ class AddGroupMembersViewModel(
                         val currentUserDomain =
                             credentialsManager.requireActiveCredentials().domain.domainName
 
-                        // TODO - how to keep existing image
-                        val bundle = PayloadBundle(
-                            payloads = emptyList(),
-                            thumbnails = emptyList(),
-                            previewThumbs = emptyList(),
-                        )
-
                         val recipients = conversation.participants.filter {
                             it.domainName != currentUserDomain
                         } + uiState.value.selectedContacts.map { it.odinId }
@@ -100,7 +93,7 @@ class AddGroupMembersViewModel(
                             conversationId = conversation.id,
                             recipients = recipients,
                             title = conversation.name,
-                            payloadBundle = bundle,
+                            payloadBundle = null,
                         )
                         sendEvent(AddGroupMembersUiEvent.Back)
                     } catch (e: Exception) {

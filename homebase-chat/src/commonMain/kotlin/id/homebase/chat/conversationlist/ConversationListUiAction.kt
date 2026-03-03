@@ -1,6 +1,5 @@
 package id.homebase.chat.conversationlist
 
-import id.homebase.api.client.KeyHeader
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage
@@ -71,7 +70,7 @@ sealed interface ConversationListUiAction {
     data class DeleteMessageForEveryone(val messageId: Uuid) : ConversationListUiAction
 
     data class MarkAsRead(val messageId: Uuid) : ConversationListUiAction
-    data class AddReaction(val conversationId: Uuid, val messageId: Uuid, val reaction: String) :
+    data class ToggleReaction(val conversationId: Uuid, val messageId: Uuid, val reaction: String) :
         ConversationListUiAction
 
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
