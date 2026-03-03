@@ -230,7 +230,7 @@ class ChatMessageStream(
                 val content = appData.content
 
                 val isDeleted = header.fileState == FileState.Deleted ||
-                        header.fileMetadata.appData.archivalStatus == ArchivalStatus.Archived
+                        header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
 
                 if (isDeleted) {
                     return MessageUiModel(
