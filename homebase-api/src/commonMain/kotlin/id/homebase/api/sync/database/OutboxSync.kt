@@ -1,13 +1,10 @@
 package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.sync.database.Outbox
 import id.homebase.api.common.time.UnixTimeUtc
-import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.crypto.toUtf8ByteArray
-import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -132,22 +129,32 @@ class OutboxSync(
         }
     }
 
-    public suspend fun enqueue(
+    public suspend fun tryEnqueue(
         driveId: Uuid,
         uniqueId: Uuid,
         dependencyUniqueId: Uuid? = null,
         priority: Long,
         uploadType: Long,
         json: String
-    ) {
-        databaseManager.outbox.insert(
-            driveId,
-            uniqueId,
-            dependencyUniqueId = dependencyUniqueId,
-            priority = priority,
-            uploadType = uploadType,
-            json = json.toUtf8ByteArray(),
-            filePaths = null
-        )
+    ): Boolean {
+        try {
+            databaseManager.outbox.insert(
+                driveId,
+                uniqueId,
+                dependencyUniqueId = dependencyUniqueId,
+                priority = priority,
+                uploadType = uploadType,
+                json = json.toUtf8ByteArray(),
+                filePaths = null
+            )
+
+            return true
+
+        } catch (t: Throwable) {
+            Logger.e("OutboxSync - Failed to Enqueue", t)
+        }
+
+        return false
+
     }
 }

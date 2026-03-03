@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.file.FileOperationsProvider
@@ -106,9 +107,10 @@ class ConversationListViewModel(
 
         // Listen for search query changes
         viewModelScope.launch {
-            snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300).collectLatest {
-                updateListContent()
-            }
+            snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300)
+                .collectLatest {
+                    updateListContent()
+                }
         }
     }
 
@@ -199,6 +201,19 @@ class ConversationListViewModel(
                 }
             }
 
+            is ConversationListUiAction.EditMessage -> {
+                val hasMessage = !messageInputTextState.annotatedString.isBlank()
+                if (hasMessage) {
+
+                    val content = messageInputTextState.toMarkdown()
+                    editMessage(
+                        messageId = action.messageId,
+                        content = content
+                    )
+                    messageInputTextState.clear()
+                }
+            }
+
             is ConversationListUiAction.DeleteMessage -> {
                 val messages =
                     uiState.value.currentConversationMessages.mapNotNull { if (it is MessageListContentModel.Message) it.message else null }
@@ -232,7 +247,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.DeleteMessageForEveryone -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.deleteMessage(
+                        chatMessageActionService.deleteMessageClassic(
                             action.messageId,
                             deleteForEveryone = true
                         )
@@ -249,7 +264,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.DeleteMessageForMe -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.deleteMessage(
+                        chatMessageActionService.deleteMessageClassic(
                             action.messageId,
                             deleteForEveryone = false
                         )
@@ -280,8 +295,10 @@ class ConversationListViewModel(
             is ConversationListUiAction.AddReaction -> {
                 viewModelScope.launch {
                     try {
-                        val messageReactions = chatMessageActionService.getReactions(action.messageId)
-                        val remove = messageReactions.any { it.emoji == action.reaction && it.odinId.domainName == _uiState.value.currentOdinId }
+                        val messageReactions =
+                            chatMessageActionService.getReactions(action.messageId)
+                        val remove =
+                            messageReactions.any { it.emoji == action.reaction && it.odinId.domainName == _uiState.value.currentOdinId }
                         if (remove) {
                             chatMessageActionService.deleteReaction(
                                 action.conversationId,
@@ -701,6 +718,25 @@ class ConversationListViewModel(
 
     private fun sendEvent(event: ConversationListUiEvent) {
         _uiState.update { it.copy(uiEvent = event) }
+    }
+
+    private fun editMessage(
+        messageId: Uuid,
+        content: String) {
+        viewModelScope.launch {
+            try {
+                chatMessageSenderService.updateMessage(
+                    messageId = messageId,
+                    content = content
+                )
+            } catch (e: Exception) {
+                sendEvent(
+                    ConversationListUiEvent.ShowErrorMessage(
+                        "Failed to edit message: ${e.message}"
+                    )
+                )
+            }
+        }
     }
 
     private fun addMessage(conversationId: Uuid, content: String) {

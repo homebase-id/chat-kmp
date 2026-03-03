@@ -26,7 +26,8 @@ class ChatMessageSenderService(
     private val outboxSync: OutboxSync,
     private val conversationService: ConversationStream,
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val chatMessageStream: ChatMessageStream
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -142,7 +143,7 @@ class ChatMessageSenderService(
         )
         try {
 
-            outboxSync.enqueue(
+            outboxSync.tryEnqueue(
                 request.driveId,
                 messageUniqueId,
                 dependencyUniqueId = previousMessageUniqueId,
@@ -162,32 +163,37 @@ class ChatMessageSenderService(
     }
 
     suspend fun updateMessage(
-        messageUniqueId: Uuid,
-        conversationId: Uuid,
-        content: MessageAppData,
-        notificationText: String,
-        payloadBundle: PayloadBundle?
-    ): SendMessageResult {
+        messageId: Uuid,
+        content: String,
+    ): UpdateMessageResult {
 
-        val keyHeader = ???
-        val recipients = conversationService.getRecipients(conversationId)
+        // grab the existing message
+        val msg = chatMessageStream.getMessage(messageId)
+            ?: throw IllegalArgumentException("message not found")
 
-        val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
-            messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
+        val keyHeader = KeyHeader(
+            iv = ByteArrayUtil.getRndByteArray(16),
+            aesKey = msg.keyHeader.aesKey
+        )
+
+        val recipients = conversationService.getRecipients(msg.conversationId)
+
+        val msgContent = msg.messageAppData.copy(
+            message = JsonPrimitive(content)
         )
 
         val metadata = UploadFileMetadata(
             allowDistribution = true,
             isEncrypted = true,
+            versionTag = msg.versionTag,
             appData = UploadAppFileMetaData(
-                uniqueId = messageUniqueId.toString(),
-                groupId = conversationId.toString(),
+                uniqueId = messageId.toString(),
+                groupId = msg.conversationId.toString(),
                 fileType = ChatProtocol.MessageFileType,
                 userDate = UnixTimeUtc.now().milliseconds,
-                content = OdinSystemSerializer.serialize(content),
-                previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
-                    it.pixelWidth
-                })
+                content = OdinSystemSerializer.serialize(msgContent),
+                previewThumbnail = msg.previewThumbnail
+            )
         )
 
         val manifest =
@@ -200,7 +206,7 @@ class ChatMessageSenderService(
 
         val request = UpdateFileByUniqueIdRequest(
             driveId = chatDrive,
-            uniqueId = messageUniqueId,
+            uniqueId = messageId,
             keyHeader = keyHeader,
             instructions = FileUpdateInstructionSet(
                 transferIv = ByteArrayUtil.getRndByteArray(16),
@@ -211,34 +217,29 @@ class ChatMessageSenderService(
                 appNotificationOptions = null
             ),
             metadata = metadata.encryptContent(keyHeader),
-            payloads = encryptedBundle.payloads,
-            thumbnails = encryptedBundle.thumbnails
+            payloads = emptyList(),
+            thumbnails = emptyList()
         )
 
         try {
+            if (outboxSync.tryEnqueue(
+                    request.driveId,
+                    messageId,
+                    dependencyUniqueId = null,
+                    priority = 1,
+                    uploadType = DriveOutboxUploader.UpdateFile,
+                    json = OdinSystemSerializer.serialize(request),
+                )
+            ) {
+                outboxSync.send()
+            }
 
-            outboxSync.enqueue(
-                request.driveId,
-                messageUniqueId,
-                dependencyUniqueId = null,
-                priority = 1,
-                uploadType = DriveOutboxUploader.UpdateFile,
-                json = OdinSystemSerializer.serialize(request),
-            )
+            return UpdateMessageResult(uniqueId = messageId)
 
-            outboxSync.send()
-
-            return SendMessageResult(uniqueId = messageUniqueId)
         } catch (t: Throwable) {
             Logger.e("ChatMessageSenderService", t)
         }
 
-        error("Failed to send chat message")
+        error("Failed to update chat message")
     }
 }
-
-data class EncryptedFileResult(val filePath: String, val iv: ByteArray)
-
-data class EncryptedVideoResult(
-    val playlistPath: String, val segmentPath: String, val iv: ByteArray
-)

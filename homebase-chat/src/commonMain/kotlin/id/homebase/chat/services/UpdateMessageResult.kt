@@ -2,5 +2,4 @@ package id.homebase.chat.services
 
 import kotlin.uuid.Uuid
 
-data class SendMessageResult(val uniqueId: Uuid)
-
+data class UpdateMessageResult(val uniqueId: Uuid)

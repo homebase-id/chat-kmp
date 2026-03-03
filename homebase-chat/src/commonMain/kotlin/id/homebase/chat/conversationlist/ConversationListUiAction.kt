@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.client.KeyHeader
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage
@@ -7,7 +8,9 @@ import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
 sealed interface ConversationListUiAction {
-    data class ConversationClicked(val conversationId: Uuid, val messageId: Uuid?) : ConversationListUiAction
+    data class ConversationClicked(val conversationId: Uuid, val messageId: Uuid?) :
+        ConversationListUiAction
+
     data object BackClicked : ConversationListUiAction
     data object SearchClicked : ConversationListUiAction
     data object SearchBackClicked : ConversationListUiAction
@@ -48,7 +51,9 @@ sealed interface ConversationListUiAction {
         val firstVisibleItemScrollOffset: Int
     ) : ConversationListUiAction
 
-    data class ShowConversationSettings(val conversation: ConversationUiModel) : ConversationListUiAction
+    data class ShowConversationSettings(val conversation: ConversationUiModel) :
+        ConversationListUiAction
+
     data class DeleteConversation(val conversationId: Uuid) : ConversationListUiAction
     data class ArchiveConversation(val conversationId: Uuid) : ConversationListUiAction
     data class ClearConversation(val conversationId: Uuid) : ConversationListUiAction
@@ -56,7 +61,7 @@ sealed interface ConversationListUiAction {
     data class ShowMessageInfo(val message: MessageUiModel) : ConversationListUiAction
     data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction
     data object CancelReplyToMessage : ConversationListUiAction
-    data class EditMessage(val messageId: Uuid) : ConversationListUiAction
+    data class EditMessage(val conversationId: Uuid, val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessage(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForMe(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForEveryone(val messageId: Uuid) : ConversationListUiAction
@@ -64,6 +69,7 @@ sealed interface ConversationListUiAction {
     data class MarkAsRead(val messageId: Uuid) : ConversationListUiAction
     data class AddReaction(val conversationId: Uuid, val messageId: Uuid, val reaction: String) :
         ConversationListUiAction
+
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
 
     data object HideReactionDetails : ConversationListUiAction
