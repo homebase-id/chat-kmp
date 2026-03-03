@@ -32,6 +32,8 @@ data class ConversationListUiState(
     val isSearchActive: Boolean = false,
     val ownerSession: OwnerSession? = null,
     val messageReactions: List<EmojiReaction>? = null,
+    val driveIsConnected: Boolean = false,
+    val driveIsSyncing: Boolean = false,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
 )

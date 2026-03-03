@@ -3,6 +3,7 @@ package id.homebase.core.auth
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.websockets.OdinWebSocketClient
 import id.homebase.api.sync.DriveSyncManager
@@ -15,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -37,6 +39,16 @@ class AuthConnectionCoordinator(
                 onAuthStateChanged(it)
             }
         }
+        scope.launch {
+            eventBus.events.collectLatest {
+                if (it is BackendEvent.ConnectionOnline) {
+                    // When offline always refetch profile if name is not set
+                    if (ownerSessionRepository.user.value?.firstName == null) {
+                        loadProfile()
+                    }
+                }
+            }
+        }
     }
 
     suspend fun onAuthStateChanged(state: YouAuthState) {
@@ -45,13 +57,20 @@ class AuthConnectionCoordinator(
                 connect()
                 loadProfile()
             }
-            else -> disconnect()
+            is YouAuthState.Initializing -> {
+                // ignore
+            }
+            else -> {
+                disconnect()
+            }
         }
     }
 
-    private suspend fun loadProfile() {
-        val odinId = credentialsManager.requireActiveCredentials().domain
-        ownerSessionRepository.load(odinId)
+    private fun loadProfile() {
+        scope.launch {
+            val odinId = credentialsManager.requireActiveCredentials().domain
+            ownerSessionRepository.load(odinId)
+        }
     }
 
     private suspend fun connect() {

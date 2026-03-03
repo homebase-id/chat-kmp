@@ -11,6 +11,8 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
@@ -22,6 +24,7 @@ import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.Route
@@ -32,7 +35,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.name
-import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -42,11 +44,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 
 @OptIn(FlowPreview::class)
 class ConversationListViewModel(
@@ -58,7 +62,9 @@ class ConversationListViewModel(
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val ownerSessionRepository: OwnerSessionRepository
+    private val ownerSessionRepository: OwnerSessionRepository,
+    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val eventBus: EventBus,
 ) : ViewModel() {
 
     val ownerSession = ownerSessionRepository.user
@@ -109,6 +115,25 @@ class ConversationListViewModel(
                 .collectLatest {
                     updateListContent()
                 }
+        }
+
+        // Set connected state
+        viewModelScope.launch {
+            authConnectionCoordinator.connectionState
+                .collectLatest { state ->
+                    _uiState.update { it.copy(driveIsConnected = state.isConnected) }
+                }
+        }
+
+        // Set isConnecting state
+        viewModelScope.launch {
+            eventBus.events.filter { it is BackendEvent.DriveEvent }.collectLatest { state ->
+                if (state is BackendEvent.DriveEvent.SyncAllCompleted || state is BackendEvent.DriveEvent.Completed) {
+                    _uiState.update { it.copy(driveIsSyncing = false) }
+                } else if (state is BackendEvent.DriveEvent.Started || state is BackendEvent.DriveEvent.SyncAllStarted) {
+                    _uiState.update { it.copy(driveIsSyncing = true) }
+                }
+            }
         }
     }
 
@@ -828,7 +853,8 @@ class ConversationListViewModel(
 
     private fun editMessage(
         messageId: Uuid,
-        content: String) {
+        content: String
+    ) {
         viewModelScope.launch {
             try {
                 chatMessageSenderService.updateMessage(
