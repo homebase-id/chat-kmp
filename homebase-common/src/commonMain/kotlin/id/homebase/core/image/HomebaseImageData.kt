@@ -12,40 +12,38 @@ import kotlin.uuid.Uuid
  */
 data class HomebaseImageData(
     /** Drive containing the file */
-        val driveId: Uuid,
+    val driveId: Uuid,
     /** File ID of the image */
-        val fileId: Uuid,
+    val fileId: Uuid,
     /** Payload key for the image content */
-        val payloadKey: String,
+    val payloadKey: String,
     /** Embedded tiny preview thumbnail (base64) for instant display */
-        val previewThumbnail: EmbeddedThumb? = null,
+    val previewThumbnail: EmbeddedThumb? = null,
     /** Desired resolution for thumbnail loading */
-        val requestedSize: ImageSize? = null,
+    val requestedSize: ImageSize? = null,
     /** If true, load full resolution payload instead of thumbnail */
-        val loadFullPayload: Boolean = false,
+    val loadFullPayload: Boolean = false,
     /** Whether the image is encrypted */
-        val isEncrypted: Boolean = true,
+    val isEncrypted: Boolean = true,
     /** Last modification timestamp for cache validation */
-        val lastModified: Long? = null,
+    val lastModified: Long? = null,
     /** Local pending file (for images being uploaded/sent) */
-        val pendingFile: PlatformFile? = null,
+    val pendingFile: PlatformFile? = null,
     /** KeyHeader for decryption of the payload */
-        val keyHeader: KeyHeader,
+    val keyHeader: KeyHeader,
 ) {
     companion object {
         /** Create data for a pending (not yet uploaded) image */
         fun pending(
-                file: PlatformFile,
-                previewThumbnail: EmbeddedThumb? = null
-        ): HomebaseImageData =
-                HomebaseImageData(
-                        driveId = Uuid.NIL,
-                        fileId = Uuid.NIL,
-                        payloadKey = "",
-                        previewThumbnail = previewThumbnail,
-                        pendingFile = file,
-                        keyHeader = KeyHeader.newRandom16(),
-                )
+            file: PlatformFile, previewThumbnail: EmbeddedThumb? = null
+        ): HomebaseImageData = HomebaseImageData(
+            driveId = Uuid.NIL,
+            fileId = Uuid.NIL,
+            payloadKey = "",
+            previewThumbnail = previewThumbnail,
+            pendingFile = file,
+            keyHeader = KeyHeader.newRandom16(),
+        )
     }
 
     /** Whether this is a pending/local file not yet uploaded */

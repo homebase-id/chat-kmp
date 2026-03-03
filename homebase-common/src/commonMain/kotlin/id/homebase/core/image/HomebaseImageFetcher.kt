@@ -21,9 +21,9 @@ import okio.Buffer
  * 3. Returning bytes as a Coil source
  */
 class HomebaseImageFetcher(
-        private val data: HomebaseImageData,
-        private val options: Options,
-        private val homebaseImageLoader: HomebaseImageLoader
+    private val data: HomebaseImageData,
+    private val options: Options,
+    private val homebaseImageLoader: HomebaseImageLoader
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult? {
@@ -40,11 +40,11 @@ class HomebaseImageFetcher(
 
         // Load image
         val result =
-                if (data.loadFullPayload) {
-                    homebaseImageLoader.loadFullPayload(data)
-                } else {
-                    homebaseImageLoader.loadThumbnail(data, targetSize)
-                }
+            if (data.loadFullPayload) {
+                homebaseImageLoader.loadFullPayload(data)
+            } else {
+                homebaseImageLoader.loadThumbnail(data, targetSize)
+            }
 
         return result?.toFetchResult()
     }
@@ -54,9 +54,9 @@ class HomebaseImageFetcher(
         val imageSource = ImageSource(buffer, options.fileSystem)
 
         return SourceFetchResult(
-                source = imageSource,
-                mimeType = contentType,
-                dataSource = DataSource.DISK
+            source = imageSource,
+            mimeType = contentType,
+            dataSource = DataSource.DISK
         )
     }
 
@@ -74,12 +74,12 @@ class HomebaseImageFetcher(
 
     /** Factory for creating HomebaseImageFetcher instances */
     class Factory(private val homebaseImageLoader: HomebaseImageLoader) :
-            Fetcher.Factory<HomebaseImageData> {
+        Fetcher.Factory<HomebaseImageData> {
 
         override fun create(
-                data: HomebaseImageData,
-                options: Options,
-                imageLoader: ImageLoader
+            data: HomebaseImageData,
+            options: Options,
+            imageLoader: ImageLoader
         ): Fetcher = HomebaseImageFetcher(data, options, this.homebaseImageLoader)
     }
 }
