@@ -112,12 +112,10 @@ class OdinWebSocketClient(
 
                 Logger.w { "WebSocket disconnected, retrying in ${reconnectDelayMs}ms" }
 
+                delay(withJitter(reconnectDelayMs))
+                Logger.i { "Delay completed, reconnecting..." }
 
-                    delay(withJitter(reconnectDelayMs))
-                    Logger.i { "Delay completed, reconnecting..." }
-
-                    reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
-
+                reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
             }
 
         }
@@ -394,9 +392,7 @@ class OdinWebSocketClient(
 
         try {
             driveSyncManager.syncDrive(file.driveId)
-        }
-        catch (e: Exception)
-        {
+        } catch (e: Exception) {
             Logger.e("handleAllReactionsDeletedEvent() probably used invalid driveId ${file.driveId} Exception:$e")
         }
     }
@@ -409,9 +405,7 @@ class OdinWebSocketClient(
 
         try {
             driveSyncManager.syncDrive(driveId)
-        }
-        catch (e : Exception)
-        {
+        } catch (e: Exception) {
             Logger.e("handleFileEvent() probably used invalid driveId $driveId Exception:$e")
         }
     }

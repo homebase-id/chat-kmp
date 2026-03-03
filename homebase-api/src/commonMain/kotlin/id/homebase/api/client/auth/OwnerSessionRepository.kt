@@ -6,7 +6,6 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.Json
@@ -22,7 +21,6 @@ class OwnerSessionRepository(
 
     private val _user = MutableStateFlow<OwnerSession?>(null)
     val user: StateFlow<OwnerSession?> = _user
-    private var currentJob: Job? = null
 
     suspend fun load(odinId: OdinId) {
         val updated = fetch(odinId)

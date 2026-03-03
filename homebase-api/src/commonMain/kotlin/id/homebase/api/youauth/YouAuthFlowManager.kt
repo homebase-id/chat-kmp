@@ -77,12 +77,22 @@ class YouAuthFlowManager(
 
     private val scope = CoroutineScope(Job() + Dispatchers.IO)
 
+    // Registry for callback routing
+    private val callbackRegistry = mutableMapOf<String, AuthCodeFlowState>()
+
     companion object {
         private val TAG = "YouAuthFlowManager"
     }
 
-    // Registry for callback routing
-    private val callbackRegistry = mutableMapOf<String, AuthCodeFlowState>()
+    init {
+        scope.launch {
+            try {
+                restoreSession()
+            } catch (e: Exception) {
+                Logger.e(TAG, e) { "Error checking existing session: ${e.message}" }
+            }
+        }
+    }
 
     /** Handle an authorization callback URL. */
     suspend fun handleCallback(url: String) {
@@ -110,16 +120,6 @@ class YouAuthFlowManager(
             completeAuth(url, state, params)
         } catch (e: Exception) {
             Logger.e(TAG, e) { "Error handling callback" }
-        }
-    }
-
-    init {
-        scope.launch {
-            try {
-                restoreSession()
-            } catch (e: Exception) {
-                Logger.e(TAG, e) { "Error checking existing session: ${e.message}" }
-            }
         }
     }
 

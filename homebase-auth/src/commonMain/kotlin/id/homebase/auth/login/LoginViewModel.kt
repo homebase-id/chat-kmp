@@ -173,7 +173,7 @@ class LoginViewModel(
                     when (authState) {
                         is StartupState.Authenticated -> {
                             usernameStorage.saveUsername(_uiState.value.homebaseId)
-                            // Don't do redirect here, wait for AuthConnectionCoordinator connected state
+
                             _uiState.update {
                                 it.copy(
                                     isLoading = false,
