@@ -24,18 +24,22 @@ sealed interface ConversationListUiAction {
     ) : ConversationListUiAction
 
     data class AttachGalleryItem(
-        val conversationId: Uuid, val files: List<GalleryImage>,
+        val conversationId: Uuid,
+        val files: List<GalleryImage>,
     ) : ConversationListUiAction
 
     data class AttachPlatformFile(
-        val conversationId: Uuid, val files: List<PlatformFile>,
+        val conversationId: Uuid,
+        val files: List<PlatformFile>,
     ) : ConversationListUiAction
 
     data class UnAttachFile(
-        val conversationId: Uuid, val id: Uuid,
+        val conversationId: Uuid,
+        val id: Uuid,
     ) : ConversationListUiAction
 
     data class ShareMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
+    data class ShareMessage(val message: MessageUiModel) : ConversationListUiAction
     data class DownloadMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
 
     data class SaveFile(val file: AttachmentPendingFile) : ConversationListUiAction
@@ -73,5 +77,4 @@ sealed interface ConversationListUiAction {
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
 
     data object HideReactionDetails : ConversationListUiAction
-
 }
