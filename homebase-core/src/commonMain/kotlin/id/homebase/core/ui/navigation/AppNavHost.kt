@@ -124,16 +124,6 @@ fun AppNavHost(
         }
     }
 
-//    if (authState is YouAuthState.Initializing) {
-//        Box(
-//            modifier = Modifier.fillMaxSize(),
-//            contentAlignment = Alignment.Center
-//        ) {
-//            CircularProgressIndicator()
-//        }
-//        return
-//    }
-
     Scaffold(
         bottomBar = {
             if (showBottomNavigationBar) {

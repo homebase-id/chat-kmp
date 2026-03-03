@@ -48,8 +48,8 @@ class AppViewModel(
                 connectionRequestService.incomingRequests.collect { incomingRequests ->
                     _uiState.update { it.copy(incomingRequests = incomingRequests) }
                 }
-            } catch (_: CancellationException) {
-                // ignore cancellation
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.e("AppViewModel", e) { "Failed to collect incoming requests: ${e.message}" }
             }

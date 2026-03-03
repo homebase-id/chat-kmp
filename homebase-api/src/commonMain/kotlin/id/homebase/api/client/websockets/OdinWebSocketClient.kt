@@ -80,6 +80,9 @@ class OdinWebSocketClient(
     private suspend fun handleDisconnected() {
         eventBus.emit(BackendEvent.ConnectionOffline)
         onDisconnected()
+
+        connectionJob?.cancel()
+        start()
     }
 
     private suspend fun handleGoingOnline() {
@@ -99,22 +102,22 @@ class OdinWebSocketClient(
                     // If connectOnce returns normally, we consider that a success
                     // Reset backoff so next failure retries fast again
                     reconnectDelayMs = 1_000L
-                } catch (_: CancellationException) {
-                    // ignore cancellation
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Logger.e(e) { "WebSocket connect failed ${e.message}" }
                 }
 
                 eventBus.emit(BackendEvent.ConnectionOffline)
 
-                Logger.w {
-                    "WebSocket disconnected, retrying in ${reconnectDelayMs}ms"
-                }
+                Logger.w { "WebSocket disconnected, retrying in ${reconnectDelayMs}ms" }
 
-                delay(withJitter(reconnectDelayMs))
 
-                reconnectDelayMs =
-                    (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
+                    delay(withJitter(reconnectDelayMs))
+                    Logger.i { "Delay completed, reconnecting..." }
+
+                    reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
+
             }
 
         }
