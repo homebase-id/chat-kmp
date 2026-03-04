@@ -66,7 +66,6 @@ class EditConversationGroupViewModel(
                         val currentUserDomain = credentialsManager.requireActiveCredentials().domain.domainName
                         val groupImage = uiState.value.groupImage
 
-                        // TODO - how to keep existing image
                         val bundle = if (groupImage != null) {
                             MessageAttachmentBuilder.buildSingle(
                                 attachment = AttachmentInput(
@@ -78,11 +77,7 @@ class EditConversationGroupViewModel(
                                 payloadKey = ChatProtocol.ConversationImageKey
                             )
                         } else {
-                            PayloadBundle(
-                                payloads = emptyList(),
-                                thumbnails = emptyList(),
-                                previewThumbs = emptyList(),
-                            )
+                            null
                         }
 
                         conversationService.updateConversation(

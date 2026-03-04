@@ -1,25 +1,26 @@
 package id.homebase.api.client.websockets
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.crypto.AesCbc
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.MainIndexMetaHelpers
-import id.homebase.api.toBase64
-import id.homebase.api.common.SecureByteArray
-import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.SharedSecretEncryptedPayload
+import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.AesCbc
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.MainIndexMetaHelpers
+import id.homebase.api.toBase64
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -79,6 +80,9 @@ class OdinWebSocketClient(
     private suspend fun handleDisconnected() {
         eventBus.emit(BackendEvent.ConnectionOffline)
         onDisconnected()
+
+        connectionJob?.cancel()
+        start()
     }
 
     private suspend fun handleGoingOnline() {
@@ -98,21 +102,20 @@ class OdinWebSocketClient(
                     // If connectOnce returns normally, we consider that a success
                     // Reset backoff so next failure retries fast again
                     reconnectDelayMs = 1_000L
-
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Logger.e(e) { "WebSocket connect failed ${e.message}" }
                 }
 
                 eventBus.emit(BackendEvent.ConnectionOffline)
 
-                Logger.w {
-                    "WebSocket disconnected, retrying in ${reconnectDelayMs}ms"
-                }
+                Logger.w { "WebSocket disconnected, retrying in ${reconnectDelayMs}ms" }
 
                 delay(withJitter(reconnectDelayMs))
+                Logger.i { "Delay completed, reconnecting..." }
 
-                reconnectDelayMs =
-                    (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
+                reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
             }
 
         }
@@ -389,9 +392,7 @@ class OdinWebSocketClient(
 
         try {
             driveSyncManager.syncDrive(file.driveId)
-        }
-        catch (e: Exception)
-        {
+        } catch (e: Exception) {
             Logger.e("handleAllReactionsDeletedEvent() probably used invalid driveId ${file.driveId} Exception:$e")
         }
     }
@@ -404,9 +405,7 @@ class OdinWebSocketClient(
 
         try {
             driveSyncManager.syncDrive(driveId)
-        }
-        catch (e : Exception)
-        {
+        } catch (e: Exception) {
             Logger.e("handleFileEvent() probably used invalid driveId $driveId Exception:$e")
         }
     }

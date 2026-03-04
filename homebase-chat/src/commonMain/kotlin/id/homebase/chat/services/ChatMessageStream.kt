@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -16,13 +17,13 @@ import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.ContactService
 import id.homebase.core.config.chatTargetDrive
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
 class ChatMessageStream(
     private val credentialsManager: CredentialsManager,
@@ -216,12 +217,46 @@ class ChatMessageStream(
                 it.fileMetadata.originalAuthor?.domainName ?: ""
             }
         ): MessageUiModel? {
+
             val metadata = header.fileMetadata
             val appData = metadata.appData
 
             try {
+                // TODO - if this fails app crashes
                 require(appData.fileType == ChatProtocol.MessageFileType)
+                val versionTag = requireNotNull(header.fileMetadata.versionTag) {
+                    "versionTag missing in fileMetadata"
+                }
+
                 val content = appData.content
+
+                val isDeleted = header.fileState == FileState.Deleted ||
+                        header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
+
+                if (isDeleted) {
+                    return MessageUiModel(
+                        id = appData.uniqueId!!,
+                        globalTransitId = metadata.globalTransitId,
+                        fileId = header.fileId,
+                        conversationId = appData.groupId!!,
+                        created = metadata.created.toInstant(),
+                        modified = metadata.updated.toInstant(),
+                        originalAuthor = metadata.originalAuthor,
+                        displayName = metadata.originalAuthor?.domainName ?: "",
+                        isRead = false,
+                        isEdited = false,
+                        content = "",
+                        messageAppData = MessageAppData(),
+                        reactionPreview = metadata.reactionPreview,
+                        previewThumbnail = metadata.appData.previewThumbnail,
+                        payloads = metadata.payloads,
+                        keyHeader = header.keyHeader,
+                        isDeleted = true,
+                        versionTag = versionTag
+
+                    )
+                }
+
                 require(content != null)
                 require(appData.uniqueId != null)
                 require(appData.groupId != null)
@@ -237,19 +272,19 @@ class ChatMessageStream(
                     globalTransitId = metadata.globalTransitId,
                     fileId = header.fileId,
                     conversationId = appData.groupId!!,
+                    content = messageAppData.getMessageAsString(),
                     created = metadata.created.toInstant(),
                     modified = metadata.updated.toInstant(),
                     originalAuthor = metadata.originalAuthor,
                     displayName = displayName,
-                    isRead = false,
                     isEdited = messageAppData.isEdited,
-                    content = messageAppData.getMessageAsString(),
                     messageAppData = messageAppData,
                     reactionPreview = metadata.reactionPreview,
                     previewThumbnail = metadata.appData.previewThumbnail,
                     payloads = metadata.payloads,
                     keyHeader = header.keyHeader,
-                    isDeleted = header.fileState == FileState.Deleted
+                    versionTag = versionTag
+
                 )
             } catch (t: Throwable) {
 
@@ -263,18 +298,17 @@ class ChatMessageStream(
                         globalTransitId = metadata.globalTransitId,
                         fileId = header.fileId,
                         conversationId = appData.groupId!!,
+                        content = "Failed to parse message from server",
                         created = metadata.created.toInstant(),
                         modified = metadata.updated.toInstant(),
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
-                        isRead = false,
-                        isEdited = (metadata.created != metadata.updated),
-                        content = "Failed to parse message from server",
                         messageAppData = MessageAppData(),
                         reactionPreview = metadata.reactionPreview,
                         previewThumbnail = metadata.appData.previewThumbnail,
                         payloads = metadata.payloads,
-                        keyHeader = header.keyHeader
+                        keyHeader = header.keyHeader,
+                        versionTag = Uuid.NIL
                     )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {

@@ -11,6 +11,9 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
@@ -22,6 +25,7 @@ import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.Route
@@ -32,8 +36,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.name
-import kotlin.io.encoding.Base64
-import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -43,22 +45,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
-
-@OptIn(FlowPreview::class)
+import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 class ConversationListViewModel(
     savedStateHandle: SavedStateHandle,
-    private val credentialsManager: CredentialsManager,
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val ownerSessionRepository: OwnerSessionRepository
+    private val ownerSessionRepository: OwnerSessionRepository,
+    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val eventBus: EventBus,
 ) : ViewModel() {
 
     val ownerSession = ownerSessionRepository.user
@@ -107,6 +111,25 @@ class ConversationListViewModel(
         viewModelScope.launch {
             snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300)
                 .collectLatest { updateListContent() }
+        }
+
+        // Set connected state
+        viewModelScope.launch {
+            authConnectionCoordinator.connectionState
+                .collectLatest { state ->
+                    _uiState.update { it.copy(driveIsConnected = state.isConnected) }
+                }
+        }
+
+        // Set isConnecting state
+        viewModelScope.launch {
+            eventBus.events.filter { it is BackendEvent.DriveEvent }.collectLatest { state ->
+                if (state is BackendEvent.DriveEvent.SyncAllCompleted || state is BackendEvent.DriveEvent.Completed) {
+                    _uiState.update { it.copy(driveIsSyncing = false) }
+                } else if (state is BackendEvent.DriveEvent.Started || state is BackendEvent.DriveEvent.SyncAllStarted) {
+                    _uiState.update { it.copy(driveIsSyncing = true) }
+                }
+            }
         }
     }
 
@@ -194,6 +217,19 @@ class ConversationListViewModel(
                     userPreferences.setConversationScrollOffset(
                         action.conversationId.toString(), action.firstVisibleItemScrollOffset
                     )
+                }
+            }
+
+            is ConversationListUiAction.EditMessage -> {
+                val hasMessage = !messageInputTextState.annotatedString.isBlank()
+                if (hasMessage) {
+
+                    val content = messageInputTextState.toMarkdown()
+                    editMessage(
+                        messageId = action.messageId,
+                        content = content
+                    )
+                    messageInputTextState.clear()
                 }
             }
 
@@ -354,7 +390,8 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = true
+                            action.messageId,
+                            deleteForEveryone = true
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -370,7 +407,8 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId, deleteForEveryone = false
+                            action.messageId,
+                            deleteForEveryone = false
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -396,27 +434,27 @@ class ConversationListViewModel(
                 }
             }
 
-            is ConversationListUiAction.AddReaction -> {
+            is ConversationListUiAction.ToggleReaction -> {
                 viewModelScope.launch {
                     try {
-                        val messageReactions =
-                            chatMessageActionService.getReactions(action.messageId)
-                        val remove = messageReactions.any {
-                            it.emoji == action.reaction && it.odinId.domainName == _uiState.value.currentOdinId
-                        }
-                        if (remove) {
-                            chatMessageActionService.deleteReaction(
-                                action.conversationId, action.messageId, action.reaction
-                            )
-                        } else {
-                            chatMessageActionService.addReaction(
-                                action.conversationId, action.messageId, action.reaction
-                            )
-                        }
+                        val result = chatMessageActionService.toggleReaction(
+                            action.conversationId,
+                            action.messageId,
+                            action.reaction
+                        )
+
+                        // Anders - TODO:
+//                        if (result.resultType == ToggleReactionResultType.Added) {
+//
+//                        }
+//                        else if (result.resultType == ToggleReactionResultType.Deleted)
+//
+//                        }
+
                     } catch (e: Exception) {
                         sendEvent(
                             ConversationListUiEvent.ShowErrorMessage(
-                                "Failed to add reaction: ${e.message}"
+                                "Failed to toggle reaction: ${e.message}"
                             )
                         )
                     }
@@ -876,6 +914,26 @@ class ConversationListViewModel(
 
     private fun sendEvent(event: ConversationListUiEvent) {
         _uiState.update { it.copy(uiEvent = event) }
+    }
+
+    private fun editMessage(
+        messageId: Uuid,
+        content: String
+    ) {
+        viewModelScope.launch {
+            try {
+                chatMessageSenderService.updateMessage(
+                    messageId = messageId,
+                    content = content
+                )
+            } catch (e: Exception) {
+                sendEvent(
+                    ConversationListUiEvent.ShowErrorMessage(
+                        "Failed to edit message: ${e.message}"
+                    )
+                )
+            }
+        }
     }
 
     private fun addMessage(conversationId: Uuid, content: String) {

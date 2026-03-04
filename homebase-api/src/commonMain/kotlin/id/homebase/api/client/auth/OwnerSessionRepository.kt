@@ -1,9 +1,11 @@
 package id.homebase.api.client.auth
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.Json
@@ -25,11 +27,32 @@ class OwnerSessionRepository(
         _user.value = updated
     }
 
-    private suspend fun fetch(odinId: OdinId): OwnerSession? {
+    private suspend fun fetch(odinId: OdinId): OwnerSession {
         val url = "https://$odinId/cdn/sitedata.json"
-        val raw = httpClient.get(url).bodyAsText()
 
-        val root = Json.parseToJsonElement(raw).jsonArray
+
+        val response = try {
+            httpClient.get(url)
+        } catch (e: Exception) {
+            Logger.e("OwnerSessionRepository") { "Fetching $url failed: ${e.message}"}
+            null
+        }
+
+        if (response == null || response.status == HttpStatusCode.NotFound) {
+            return OwnerSession(
+                odinId = odinId,
+                displayName = odinId.toString(),
+                firstName = null,
+                surName = null,
+                profileImageFileId = null,
+                profileImageFileKey = null,
+                profileImagePreviewThumbnail = null,
+                profileImageLastModified = null,
+                status = null
+            )
+        }
+
+        val root = Json.parseToJsonElement(response.bodyAsText()).jsonArray
 
         val nameSection = root.find { it.jsonObject["name"]?.jsonPrimitive?.content == "name" }
         val photoSection = root.find { it.jsonObject["name"]?.jsonPrimitive?.content == "photo" }

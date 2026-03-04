@@ -3,6 +3,7 @@ package id.homebase.api.sync
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.CoroutineScope
@@ -49,15 +50,25 @@ class DriveSyncManager(
         }
     }
 
-    fun syncAll() {
+    suspend fun syncAll() {
+        eventBus.emit(BackendEvent.DriveEvent.SyncAllStarted)
+
         val snapshot = driveSyncs.values.toList()
-        snapshot.forEach { it.sync() }
+        val jobs = snapshot.mapNotNull { it.sync() }
+        jobs.joinAll()
+
+        eventBus.emit(BackendEvent.DriveEvent.SyncAllCompleted)
     }
 
     fun syncDrive(driveId: Uuid) {
         val d = driveSyncs[driveId] ?: throw Exception("syncDrive() invalid driveId: $driveId")
 
         d.sync()
+    }
+
+    fun pause() {
+        val snapshot = driveSyncs.values.toList()
+        snapshot.forEach { it.cancel() }
     }
 
     fun stop() {

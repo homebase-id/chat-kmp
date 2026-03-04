@@ -124,6 +124,7 @@ enum class OdinClientErrorCode(val value: Int) {
     CannotModifyRemotePayloadIdentity(4169),
     MissingPayloadKeys(4170),
     ThumbnailTooLarge(4171),
+    MustRotateKeyHeaderIvWhenUpdating(4172),
 
     // Connection errors 50xx
     NotAnAutoConnection(5001),

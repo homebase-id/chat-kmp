@@ -33,6 +33,8 @@ data class ConversationListUiState(
     val ownerSession: OwnerSession? = null,
     val messageReactions: List<EmojiReaction>? = null,
     val downloadingFiles: Set<String> = emptySet(),
+    val driveIsConnected: Boolean = false,
+    val driveIsSyncing: Boolean = false,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
 )

@@ -57,11 +57,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.window.core.layout.WindowSizeClass
-import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.initials
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
 import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.chat.conversationlist.ConversationListUiState
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.ui.assets.FeatherEdit
@@ -77,20 +77,17 @@ import id.homebase.resources.chat_search_empty_description
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.search
-import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationListPane(
-    listContent: ConversationListContentState,
+    uiState: ConversationListUiState,
     selectedConversationId: Uuid? = null,
-    filterByUnread: Boolean,
-    isSearchActive: Boolean,
     searchTextState: TextFieldState,
     onProfileClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
-    ownerSession: OwnerSession?
 ) {
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val twoPaneWindow = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
@@ -103,8 +100,8 @@ fun ConversationListPane(
 
     // Request focus on box element to prevent soft keyboard popping up
     LaunchedEffect(Unit) { focusRequesterNone.requestFocus() }
-    LaunchedEffect(isSearchActive) {
-        if (isSearchActive) {
+    LaunchedEffect(uiState.isSearchActive) {
+        if (uiState.isSearchActive) {
             focusRequesterSearch.requestFocus()
         }
     }
@@ -123,7 +120,7 @@ fun ConversationListPane(
                             ) {
                                 Spacer(modifier = Modifier.width(20.dp))
                                 AnimatedVisibility(
-                                    visible = !isSearchActive, enter = fadeIn(
+                                    visible = !uiState.isSearchActive, enter = fadeIn(
                                         animationSpec = tween(
                                             300, delayMillis = 200
                                         )
@@ -132,17 +129,20 @@ fun ConversationListPane(
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        ownerSession?.let { session ->
+                                        uiState.ownerSession?.let { session ->
                                             OwnerAvatar(
                                                 odinId = session.odinId,
                                                 profileImageData = null,
                                                 initials = session.initials(),
+                                                driveIsConnected = uiState.driveIsConnected,
+                                                driveIsSyncing = uiState.driveIsSyncing,
                                                 options = AvatarOptions(
                                                     size = 32.dp, fontSize = 12.sp, onClick = {
                                                         onProfileClick()
                                                     }),
                                                 animatedVisibilityScope = this@AnimatedVisibility,
-                                                sharedTransitionScope = null)
+                                                sharedTransitionScope = null,
+                                                )
                                         }
 
                                         Spacer(modifier = Modifier.width(16.dp))
@@ -161,7 +161,7 @@ fun ConversationListPane(
                             AnimatedVisibility(
                                 modifier = Modifier.align(Alignment.CenterEnd).fillMaxWidth()
                                     .padding(end = 16.dp),
-                                visible = isSearchActive,
+                                visible = uiState.isSearchActive,
                                 enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(
                                     animationSpec = tween(300), expandFrom = Alignment.End
                                 ),
@@ -187,7 +187,7 @@ fun ConversationListPane(
                             }
                         }
                     }, actions = {
-                        if (!isSearchActive) {
+                        if (!uiState.isSearchActive) {
                             IconButton(
                                 onClick = {
                                     onUiAction(
@@ -212,7 +212,7 @@ fun ConversationListPane(
                                 ConversationListMenu(
                                     showMenu = showMenu,
                                     dismissMenu = { showMenu = false },
-                                    isFilteringUnread = filterByUnread,
+                                    isFilteringUnread = uiState.filterByUnread,
                                     onMarkAllAsRead = {
                                         // TODO
                                         showMenu = false
@@ -277,7 +277,7 @@ fun ConversationListPane(
                         .consumeWindowInsets(innerPadding),
                     state = listState,
                 ) {
-                    if (filterByUnread) {
+                    if (uiState.filterByUnread) {
                         item {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -308,7 +308,7 @@ fun ConversationListPane(
                             }
                         }
                     }
-                    when (listContent) {
+                    when (uiState.conversationsContent) {
                         is ConversationListContentState.Empty -> {
                             item {
                                 Row(
@@ -333,7 +333,7 @@ fun ConversationListPane(
                                 ) {
                                     Text(
                                         text = stringResource(
-                                            MR.string.chat_search_result_empty, listContent.query
+                                            MR.string.chat_search_result_empty, uiState.conversationsContent.query
                                         )
                                     )
                                 }
@@ -341,7 +341,7 @@ fun ConversationListPane(
                         }
 
                         is ConversationListContentState.Items -> {
-                            items(listContent.list) { listItem ->
+                            items(uiState.conversationsContent.list) { listItem ->
                                 ConversationLisContentItem(
                                     listItem = listItem,
                                     selectedConversationId = selectedConversationId,
@@ -352,7 +352,7 @@ fun ConversationListPane(
                         }
                     }
 
-                    if (filterByUnread) {
+                    if (uiState.filterByUnread) {
                         item {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),

@@ -32,6 +32,7 @@
     <string name="recipients">Recipients</string>
     <string name="sent">Sent</string>
     <string name="updated">Updated</string>
+    <string name="loading">Loading...</string>
     <string name="connection_requests_banner">%1$s connection request(s)</string>
 
     <!-- Language options -->

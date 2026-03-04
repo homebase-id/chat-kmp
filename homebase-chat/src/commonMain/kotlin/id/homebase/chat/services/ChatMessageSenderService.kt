@@ -2,24 +2,32 @@ package id.homebase.chat.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.PushNotificationOptions
 import id.homebase.api.client.drives.upload.TransitOptions
+import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.UpdateLocale
+import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.serialization.json.JsonPrimitive
 
 class ChatMessageSenderService(
     private val outboxSync: OutboxSync,
     private val conversationService: ConversationStream,
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val chatMessageStream: ChatMessageStream
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -35,7 +43,7 @@ class ChatMessageSenderService(
         content = MessageAppData(
             replyId = null,
             replyPreview = null,
-            message = kotlinx.serialization.json.JsonPrimitive(messageText),
+            message = JsonPrimitive(messageText),
             deliveryStatus = ChatDeliveryStatus.Sent.value
         ),
         notificationText = "You have a new message",
@@ -55,7 +63,7 @@ class ChatMessageSenderService(
         conversationId = conversationId,
         content = MessageAppData(
             replyPreview = replyTo,
-            message = kotlinx.serialization.json.JsonPrimitive(messageText),
+            message = JsonPrimitive(messageText),
             deliveryStatus = ChatDeliveryStatus.Sent.value
         ),
         notificationText = "You have a new reply",
@@ -112,7 +120,8 @@ class ChatMessageSenderService(
                     content = OdinSystemSerializer.serialize(content),
                     previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
                         it.pixelWidth
-                    }))
+                    })
+            )
 
         val request = UploadFileRequest(
             driveId = chatDrive,
@@ -134,12 +143,12 @@ class ChatMessageSenderService(
         )
         try {
 
-            outboxSync.enqueue(
+            outboxSync.tryEnqueue(
                 request.driveId,
                 messageUniqueId,
                 dependencyUniqueId = previousMessageUniqueId,
                 priority = 1,
-                uploadType = 1,
+                uploadType = DriveOutboxUploader.UploadNewFile,
                 json = OdinSystemSerializer.serialize(request),
             )
 
@@ -152,10 +161,85 @@ class ChatMessageSenderService(
 
         error("Failed to send chat message")
     }
+
+    suspend fun updateMessage(
+        messageId: Uuid,
+        content: String,
+    ): UpdateMessageResult {
+
+        // grab the existing message
+        val msg = chatMessageStream.getMessage(messageId)
+            ?: throw IllegalArgumentException("message not found")
+
+        val keyHeader = KeyHeader(
+            iv = ByteArrayUtil.getRndByteArray(16),
+            aesKey = msg.keyHeader.aesKey
+        )
+
+        val recipients = conversationService.getRecipients(msg.conversationId)
+
+        val msgContent = msg.messageAppData.copy(
+            message = JsonPrimitive(content)
+        )
+
+        val metadata = UploadFileMetadata(
+            allowDistribution = true,
+            isEncrypted = true,
+            versionTag = msg.versionTag,
+            appData = UploadAppFileMetaData(
+                uniqueId = messageId.toString(),
+                groupId = msg.conversationId.toString(),
+                fileType = ChatProtocol.MessageFileType,
+                userDate = UnixTimeUtc.now().milliseconds,
+                content = OdinSystemSerializer.serialize(msgContent),
+                previewThumbnail = msg.previewThumbnail
+            )
+        )
+
+        val manifest =
+            UpdateManifest.build(
+                payloads = null,
+                toDeletePayloads = null,
+                thumbnails = null,
+                generatePayloadIv = false
+            )
+
+        val request = UpdateFileByUniqueIdRequest(
+            driveId = chatDrive,
+            uniqueId = messageId,
+            keyHeader = keyHeader,
+            instructions = FileUpdateInstructionSet(
+                transferIv = ByteArrayUtil.getRndByteArray(16),
+                locale = UpdateLocale.Local,
+                recipients = recipients,
+                manifest = manifest,
+                useAppNotification = false,
+                appNotificationOptions = null
+            ),
+            metadata = metadata.encryptContent(keyHeader),
+            payloads = emptyList(),
+            thumbnails = emptyList()
+        )
+
+        try {
+            if (outboxSync.tryEnqueue(
+                    request.driveId,
+                    messageId,
+                    dependencyUniqueId = null,
+                    priority = 1,
+                    uploadType = DriveOutboxUploader.UpdateFile,
+                    json = OdinSystemSerializer.serialize(request),
+                )
+            ) {
+                outboxSync.send()
+            }
+
+            return UpdateMessageResult(uniqueId = messageId)
+
+        } catch (t: Throwable) {
+            Logger.e("ChatMessageSenderService", t)
+        }
+
+        error("Failed to update chat message")
+    }
 }
-
-data class EncryptedFileResult(val filePath: String, val iv: ByteArray)
-
-data class EncryptedVideoResult(
-    val playlistPath: String, val segmentPath: String, val iv: ByteArray
-)
