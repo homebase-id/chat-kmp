@@ -13,7 +13,6 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
@@ -38,7 +37,6 @@ import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -361,7 +359,7 @@ class ConversationListViewModel(
                             val tempFile = fileOperationsProvider.writeBytesToTempFile(
                                 fileBytes, fileName, ".$extension"
                             )
-                            sendEvent(ConversationListUiEvent.ShareFile(tempFile))
+                            sendEvent(ConversationListUiEvent.OpenFile(tempFile))
                         } else {
                             sendEvent(
                                 ConversationListUiEvent.ShowErrorMessage(
