@@ -52,8 +52,10 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
+
 class ConversationListViewModel(
     savedStateHandle: SavedStateHandle,
+    private val credentialsManager: CredentialsManager,
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,

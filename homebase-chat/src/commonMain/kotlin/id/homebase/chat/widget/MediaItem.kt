@@ -103,7 +103,8 @@ fun MediaItem(
             val imageData =
                 remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
                     val payloadIv = Base64.decode(
-                        payload.iv ?: throw IllegalStateException("encrypted payload requires key header")
+                        payload.iv
+                            ?: throw IllegalStateException("encrypted payload requires key header")
                     )
                     HomebaseImageData(
                         driveId = driveId,
@@ -157,7 +158,7 @@ fun MediaItem(
                 contentType.startsWith("application/") -> {
             DocumentMediaItem(
                 payload = payload,
-                modifier = Modifier.clip(shape),
+                modifier = baseModifier,
                 onDownloadClick = { onClick?.invoke() },
                 isDownloading = isDownloading
             )
