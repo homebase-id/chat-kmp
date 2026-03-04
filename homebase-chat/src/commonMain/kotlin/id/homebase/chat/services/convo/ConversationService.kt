@@ -211,8 +211,8 @@ class ConversationService(
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
 
-        val conversationFile = getConversationHomebaseFile(conversationId)
-            ?: error("No conversation found")
+        val conversationFile =
+            getConversationHomebaseFile(conversationId) ?: error("No conversation found")
 
         // Always include self, never distribute to self
         val normalizedRecipients = (recipients + domain).distinct()

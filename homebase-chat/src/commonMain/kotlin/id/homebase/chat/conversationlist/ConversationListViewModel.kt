@@ -53,7 +53,6 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
-@OptIn(FlowPreview::class)
 class ConversationListViewModel(
     savedStateHandle: SavedStateHandle,
     private val credentialsManager: CredentialsManager,
@@ -113,9 +112,7 @@ class ConversationListViewModel(
         // Listen for search query changes
         viewModelScope.launch {
             snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300)
-                .collectLatest {
-                    updateListContent()
-                }
+                .collectLatest { updateListContent() }
         }
 
         // Set connected state
@@ -265,8 +262,9 @@ class ConversationListViewModel(
                         val payload =
                             message.payloads?.find { it.key == action.payloadKey } ?: return@launch
                         val payloadIv = Base64.decode(
-                            payload.iv
-                                ?: throw IllegalStateException("encrypted payload requires key header")
+                            payload.iv ?: throw IllegalStateException(
+                                "encrypted payload requires key header"
+                            )
                         )
                         val bytes = chatMessageActionService.getPayloadBytes(
                             message.fileId,
@@ -327,7 +325,63 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.DownloadMedia -> {
-                sendEvent(ConversationListUiEvent.ShowErrorMessage("Not implemented yet"))
+                val message =
+                    _uiState.value.currentConversationMessages.filterIsInstance<MessageListContentModel.Message>()
+                        .map { it.message }.find { it.id == action.messageId } ?: return
+
+                val fileKey = "${message.id}_${action.payloadKey}"
+
+                // 1. Add to downloadingFiles set
+                _uiState.update { it.copy(downloadingFiles = it.downloadingFiles + fileKey) }
+
+                viewModelScope.launch {
+                    try {
+
+                        val payload =
+                            message.payloads?.find { it.key == action.payloadKey } ?: return@launch
+                        val payloadIv = Base64.decode(
+                            payload.iv ?: throw IllegalStateException(
+                                "encrypted payload requires key header"
+                            )
+                        )
+                        val fileBytes = chatMessageActionService.getPayloadBytes(
+                            message.fileId,
+                            action.payloadKey,
+                            KeyHeader(payloadIv, message.keyHeader.aesKey)
+                        )
+
+                        val fileName = payload.descriptorContent ?: payload.key
+
+                        if (fileBytes != null) {
+                            var extension = payload.contentType?.substringAfter("/") ?: "bin"
+                            extension = when (extension) {
+                                "jpeg" -> "jpg"
+                                else -> extension
+                            }
+                            val tempFile = fileOperationsProvider.writeBytesToTempFile(
+                                fileBytes, fileName, ".$extension"
+                            )
+                            sendEvent(ConversationListUiEvent.ShareFile(tempFile))
+                        } else {
+                            sendEvent(
+                                ConversationListUiEvent.ShowErrorMessage(
+                                    "Could not download file"
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Error downloading file: ${e.message}"
+                            )
+                        )
+                    } finally {
+                        // 4. Remove from downloadingFiles set
+                        _uiState.update {
+                            it.copy(downloadingFiles = it.downloadingFiles - fileKey)
+                        }
+                    }
+                }
             }
 
             is ConversationListUiAction.SaveFile -> {
@@ -617,8 +671,23 @@ class ConversationListViewModel(
                             }
 
                             contentType.startsWith("audio/") -> {}
-                            contentType.startsWith("application/") -> {}
-                            else -> {}
+                            contentType.startsWith("application/") || contentType.startsWith("text/") || contentType.startsWith(
+                                "message/"
+                            ) -> {
+                                onAction(
+                                    ConversationListUiAction.DownloadMedia(
+                                        action.message.id, action.payloadKey
+                                    )
+                                )
+                            }
+
+                            else -> {
+                                onAction(
+                                    ConversationListUiAction.DownloadMedia(
+                                        action.message.id, action.payloadKey
+                                    )
+                                )
+                            }
                         }
                     } catch (e: Exception) {
                         Logger.e("Failed to handle media click", e)

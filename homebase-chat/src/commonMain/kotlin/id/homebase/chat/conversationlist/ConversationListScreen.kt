@@ -131,6 +131,11 @@ fun ConversationListScreen(
                 fileSystemHandler.shareFile(Path(event.filePath))
             }
 
+            is ConversationListUiEvent.OpenFile -> {
+                viewModel.eventConsumed()
+                fileSystemHandler.openFile(Path(event.filePath), showChooser = true)
+            }
+
             null -> {}
         }
     }
@@ -159,8 +164,8 @@ fun ConversationListScreen(
                                 if (dialog.allowDeleteForEveryone) {
                                     viewModel.onAction(
                                         ConversationListUiAction.DeleteMessageForEveryone(
-                                            dialog.messageId
-                                        )
+                                                dialog.messageId
+                                            )
                                     )
                                     viewModel.dialogClosed()
                                 }
@@ -337,7 +342,8 @@ fun ChatListUi(
                                     onUiAction = onUiAction,
                                     currentOdinId = uiState.currentOdinId,
                                     replyToMessage = uiState.replyToMessage,
-                                    messageReactions = uiState.messageReactions
+                                    messageReactions = uiState.messageReactions,
+                                    downloadingFiles = uiState.downloadingFiles
                                 )
                             }
                         } else {

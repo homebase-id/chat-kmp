@@ -59,9 +59,13 @@ fun MediaItem(
     preserveAspectRatio: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(topStart = Dimens.Message.cornerRadius, topEnd = Dimens.Message.cornerRadius),
+    shape: Shape = RoundedCornerShape(
+        topStart = Dimens.Message.cornerRadius,
+        topEnd = Dimens.Message.cornerRadius
+    ),
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
+    isDownloading: Boolean = false,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
@@ -94,25 +98,27 @@ fun MediaItem(
     when {
         contentType.startsWith("image/") -> {
             // Render image via HomebaseImage
-            val payloadIv = Base64.decode(
-                payload.iv ?: throw IllegalStateException("encrypted payload requires key header")
-            )
+            // Remember the image data to avoid creating a new instance on every recomposition,
+            // which would cause Coil to restart the image loading pipeline and cause flickering.
             val imageData =
-                HomebaseImageData(
-                    driveId = driveId,
-                    fileId = fileId,
-                    payloadKey = payload.key,
-                    previewThumbnail =
-                        payload.previewThumbnail?.toEmbeddedThumb()
-                            ?: previewThumbnail,
-                    requestedSize = imageSize,
-                    lastModified = payload.lastModified,
-                    isEncrypted = true,
-                    keyHeader = KeyHeader(
-                        iv = payloadIv,
-                        aesKey = keyHeader.aesKey
+                remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
+                    val payloadIv = Base64.decode(
+                        payload.iv
+                            ?: throw IllegalStateException("encrypted payload requires key header")
                     )
-                )
+                    HomebaseImageData(
+                        driveId = driveId,
+                        fileId = fileId,
+                        payloadKey = payload.key,
+                        previewThumbnail =
+                            payload.previewThumbnail?.toEmbeddedThumb()
+                                ?: previewThumbnail,
+                        requestedSize = imageSize,
+                        lastModified = payload.lastModified,
+                        isEncrypted = true,
+                        keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
+                    )
+                }
 
             HomebaseImage(
                 imageData = imageData,
@@ -145,12 +151,16 @@ fun MediaItem(
             )
         }
 
-        contentType.startsWith("application/") -> {
-            // TODO: Implement file viewer/downloader
-            MediaPlaceholder(
-                emoji = "📄",
-                label = "File",
+        contentType == "application/zip" ||
+                contentType == "application/x-rar-compressed" ||
+                contentType == "application/vnd.android.package-archive" ||
+                contentType.startsWith("text/") ||
+                contentType.startsWith("application/") -> {
+            DocumentMediaItem(
+                payload = payload,
                 modifier = baseModifier,
+                onDownloadClick = { onClick?.invoke() },
+                isDownloading = isDownloading
             )
         }
 

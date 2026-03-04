@@ -51,10 +51,7 @@ fun MessageInfoScreen(
         null -> {}
     }
 
-    MessageInfoUi(
-        uiState = uiState,
-        onUiAction = viewModel::onUiAction
-    )
+    MessageInfoUi(uiState = uiState, onUiAction = viewModel::onUiAction)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,9 +63,7 @@ fun MessageInfoUi(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(stringResource(MR.string.chat_message_info))
-                },
+                title = { Text(stringResource(MR.string.chat_message_info)) },
                 navigationIcon = {
                     IconButton(onClick = { onUiAction(MessageInfoUiAction.BackClicked) }) {
                         Icon(
@@ -78,21 +73,13 @@ fun MessageInfoUi(
                     }
                 },
             )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .consumeWindowInsets(padding)
-                .padding(padding)
-                .padding(16.dp)
-        ) {
+        }) { padding ->
+        Column(modifier = Modifier.consumeWindowInsets(padding).padding(padding).padding(16.dp)) {
             if (uiState.isLoading) {
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
+                ) { CircularProgressIndicator() }
             } else {
                 Spacer(modifier = Modifier.height(16.dp))
                 uiState.message?.let { message ->
@@ -103,16 +90,18 @@ fun MessageInfoUi(
                             onDelete = {},
                             onMediaClick = {},
                             onShowReactions = {},
-                            onShare = {}
+                            onShare = {},
+                            downloadingFiles = emptySet()
                         )
                     } else {
                         ReceivedMessageBubble(
                             message = message,
-                            onDelete = { },
-                            onMarkAsRead = { },
+                            onDelete = {},
+                            onMarkAsRead = {},
                             onMediaClick = {},
                             onShowReactions = {},
-                            onShare = {}
+                            onShare = {},
+                            downloadingFiles = emptySet()
                         )
                     }
                 }
@@ -121,9 +110,7 @@ fun MessageInfoUi(
                     text = stringResource(MR.string.details),
                     style = MaterialTheme.typography.titleLarge
                 )
-                Row(
-                    modifier = Modifier.padding(top = 16.dp)
-                ) {
+                Row(modifier = Modifier.padding(top = 16.dp)) {
                     Text(
                         text = stringResource(MR.string.sent) + ": ",
                         style = MaterialTheme.typography.labelLarge
@@ -133,9 +120,7 @@ fun MessageInfoUi(
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
-                Row(
-                    modifier = Modifier.padding(top = 16.dp)
-                ) {
+                Row(modifier = Modifier.padding(top = 16.dp)) {
                     Text(
                         text = stringResource(MR.string.updated) + ": ",
                         style = MaterialTheme.typography.labelLarge,
@@ -147,7 +132,6 @@ fun MessageInfoUi(
                     )
                 }
             }
-
         }
     }
 }

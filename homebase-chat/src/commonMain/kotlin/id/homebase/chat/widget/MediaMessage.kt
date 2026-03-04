@@ -48,6 +48,8 @@ fun MediaMessage(
     ),
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
+    messageId: Uuid,
+    downloadingFiles: Set<String>,
 ) {
     if (payloads.isEmpty()) return
 
@@ -55,8 +57,7 @@ fun MediaMessage(
         1 -> {
             // Single media item - constrain to max 50% width (~210dp), preserve aspect
             // ratio
-            val widthModifier = modifier
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            val widthModifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
             MediaItem(
                 payload = payloads[0],
                 fileId = fileId,
@@ -64,21 +65,18 @@ fun MediaMessage(
                 previewThumbnail = previewThumbnail
                     ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
                 keyHeader = keyHeader,
-
-                modifier =
-                    widthModifier.heightIn(
-                        min = Dimens.MediaBubble.minHeight,
-                        max = Dimens.MediaBubble.maxHeight
-                    ),
+                modifier = widthModifier.heightIn(
+                    min = Dimens.MediaBubble.minHeight,
+                    max = Dimens.MediaBubble.maxHeight
+                ),
                 imageSize = ImageSize.THUMB_MEDIUM,
                 preserveAspectRatio = preserveAspectRatio,
                 onClick = { onMediaClick?.invoke(payloads[0]) },
-                onLongPress = { offset ->
-                    onMediaLongPress?.invoke(payloads[0], offset)
-                },
+                onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
                 shape = shape,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
+                isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}")
             )
         }
 
@@ -96,6 +94,8 @@ fun MediaMessage(
                 shape = shape,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
+                messageId = messageId,
+                downloadingFiles = downloadingFiles
             )
         }
     }

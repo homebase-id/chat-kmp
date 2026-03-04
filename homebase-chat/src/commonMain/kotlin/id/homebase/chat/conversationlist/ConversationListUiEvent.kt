@@ -12,4 +12,5 @@ sealed interface ConversationListUiEvent {
     data class ShowErrorMessage(val message: String) : ConversationListUiEvent
     data class ShareText(val text: String) : ConversationListUiEvent
     data class ShareFile(val filePath: String) : ConversationListUiEvent
+    data class OpenFile(val filePath: String) : ConversationListUiEvent
 }
