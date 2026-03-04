@@ -6,49 +6,29 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.IntroductionGroup
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchSortField
-import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.TransitOptions
-import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
-import id.homebase.api.client.drives.upload.UpdateLocale
-import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.OdinId
-import id.homebase.api.common.SecureByteArray
-import id.homebase.api.common.time.UnixTimeUtc
-import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.QueryBatch
-import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatMessageSenderService
-import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.XorIdUtil
-import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
-import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 
 class ConversationService(
     private val credentialsManager: CredentialsManager,
-    private val driveUploadProvider: DriveUploadProvider,
+    private val conversationRepository: ConversationRepository,
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
-    private val dbm: DatabaseManager,
     private val contactService: ContactService,
     private val introductionProvider: ConnectionIntroductionProvider,
+    private val conversationUpdater: ConversationUpdater,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val scope: CoroutineScope
 ) {
@@ -72,7 +52,7 @@ class ConversationService(
                 XorIdUtil.getNewXorId(domain.domainName, recipients.first().domainName)
             }
 
-        val existingConversation = getConversation(newConversationId)
+        val existingConversation = conversationRepository.getConversation(newConversationId)
         if (existingConversation != null) {
             return newConversationId
         }
@@ -109,68 +89,20 @@ class ConversationService(
                 thumbnails = encryptedBundle.thumbnails
             )
 
-        driveUploadProvider.uploadFile(request)
+        conversationRepository.createConversationFile(newConversationId, request)
 
         if (isGroup) {
             trySendIntroductions(recipients, "$domain has added you to a group chat")
 
-            chatMessageSenderService.sendSystemMessage(
-                messageUniqueId = Uuid.random(),
-                conversationId = newConversationId,
-                messageText = "$domain started this group titled $title"
-            )
+            // this wont work here because we've got a timing issue with sync
+//            chatMessageSenderService.sendSystemMessage(
+//                messageUniqueId = Uuid.random(),
+//                conversationId = newConversationId,
+//                messageText = "$domain started this group titled $title"
+//            )
         }
 
         return newConversationId
-    }
-
-    suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
-        return getConversation(conversationId)
-            ?: throw IllegalStateException("No conversation for Id")
-    }
-
-    suspend fun getConversation(conversationId: Uuid): ConversationUiModel? {
-        val file = getConversationHomebaseFile(conversationId) ?: return null
-        return mapToConversationUi(file, null)
-    }
-
-    suspend fun ensureRecipientsHaveConversation(conversationId: Uuid) {
-
-        val self = credentialsManager.requireActiveDomain()
-
-        val conversation = getConversationHomebaseFile(conversationId) ?: return;
-
-        val recipients =
-            OdinSystemSerializer.deserialize<ConversationAppDataJson>(
-                conversation.fileMetadata.appData.content ?: return
-            ).recipients
-
-        val filteredRecipients =
-            recipients.filter { it != self }
-
-        val serverMetadata = conversation.serverMetadata
-
-        val anyRecipientMissingConversation =
-            serverMetadata.originalRecipientCount !=
-                    serverMetadata.transferHistory?.summary?.totalDelivered
-
-        if (anyRecipientMissingConversation) {
-            redistributeConversation(conversationId)
-            if (filteredRecipients.size > 1) {
-                trySendIntroductions(filteredRecipients, "$self has added you to a group chat")
-            }
-        }
-    }
-
-    suspend fun redistributeConversation(conversationId: Uuid) {
-
-        val conversation = requireConversation(conversationId)
-
-        updateConversationInternal(
-            conversationId = conversationId,
-            title = conversation.name,
-            recipients = conversation.participants
-        )
     }
 
     suspend fun updateGroupMembers(
@@ -178,7 +110,7 @@ class ConversationService(
         add: List<OdinId> = emptyList(),
         remove: List<OdinId> = emptyList()
     ) {
-        val conversation = requireConversation(conversationId)
+        val conversation = conversationRepository.requireConversation(conversationId)
 
         val domain = credentialsManager.requireActiveDomain()
         val current = conversation.participants.toMutableSet()
@@ -226,7 +158,7 @@ class ConversationService(
     }
 
     suspend fun introduceEveryone(conversationId: Uuid, message: String?) {
-        val conversation = requireConversation(conversationId)
+        val conversation = conversationRepository.requireConversation(conversationId)
         trySendIntroductions(conversation.participants, message ?: "")
     }
 
@@ -236,7 +168,7 @@ class ConversationService(
         payloadBundle: PayloadBundle? = null
     ) {
 
-        val conversation = requireConversation(conversationId)
+        val conversation = conversationRepository.requireConversation(conversationId)
         val domain = credentialsManager.requireActiveDomain()
 
         var previousMessageId: Uuid? = null
@@ -284,230 +216,18 @@ class ConversationService(
         payloadBundle: PayloadBundle? = null
     ) {
 
-        val credentials = credentialsManager.requireActiveCredentials()
-        val domain = credentials.domain
-
-        val conversationFile =
-            getConversationHomebaseFile(conversationId) ?: error("No conversation found")
-
-        val normalizedRecipients = normalizeRecipients(recipients, domain)
-
-        val keyHeader =
-            KeyHeader(
-                iv = ByteArrayUtil.getRndByteArray(16),
-                aesKey = conversationFile.keyHeader.aesKey
-            )
-
-        val content = buildConversationContent(title, normalizedRecipients)
-
-        val bundle =
-            prepareUpdateBundle(
-                conversationId,
-                payloadBundle,
-                keyHeader.aesKey,
-                conversationFile.fileMetadata.appData.previewThumbnail
-            )
-
-        val manifest = bundle.manifest
-        val payloads = bundle.payloads
-        val thumbs = bundle.thumbnails
-        val previewThumb = bundle.previewThumb
-
-        val metadata =
-            buildConversationMetadata(
-                conversationId,
-                content,
-                previewThumb,
-                conversationFile.fileMetadata.versionTag
-            )
-
-        val instructions =
-            FileUpdateInstructionSet(
-                transferIv = ByteArrayUtil.getRndByteArray(16),
-                locale = UpdateLocale.Local,
-                recipients = recipients,
-                manifest = manifest
-            )
-
-        val request =
-            UpdateFileByUniqueIdRequest(
-                driveId = chatDrive,
-                uniqueId = conversationId,
-                keyHeader = keyHeader,
-                instructions = instructions,
-                metadata = metadata.encryptContent(keyHeader),
-                payloads = payloads,
-                thumbnails = thumbs
-            )
-
-        driveUploadProvider.updateFileByUniqueId(
-            request = request,
-            onVersionConflict = {
-                null
-            }
+        conversationUpdater.updateConversation(
+            conversationId = conversationId,
+            title = title,
+            recipients = recipients,
+            payloadBundle = payloadBundle
         )
     }
 
-    private suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
-
-        val c = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(c.getIdentityId())
-
-        val result =
-            queryBatch.queryBatchAsync(
-                dbm = dbm,
-                driveId = chatDrive,
-                noOfItems = 1,
-                cursor = null,
-                sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
-                fileSystemType = 0,
-                uniqueIdAnyOf = listOf(conversationId),
-                filetypesAnyOf = listOf(ChatProtocol.ConversationFileType),
-            )
-
-        return result.records.firstOrNull()
-    }
-
-    suspend fun mapToConversationUi(
-        conversation: HomebaseFile,
-        lastMsg: HomebaseFile?
-    ): ConversationUiModel {
-
-        val metadata = conversation.fileMetadata
-        val appData = metadata.appData
-
-        if (appData.fileType != ChatProtocol.ConversationFileType) {
-            throw IllegalArgumentException("Not a conversation file")
-        }
-
-        val appDataObj =
-            OdinSystemSerializer.deserialize<ConversationAppDataJson>(
-                appData.content ?: error("Conversation appData missing")
-            )
-
-        val domain = credentialsManager.getActiveDomain() ?: error("No active domain")
-
-        val localAppData =
-            metadata.localAppData?.content?.let {
-                OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it)
-            }
-
-        val participants = appDataObj.recipients
-
-        val displayNames =
-            participants.map { odinId ->
-                contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
-            }
-
-        val title =
-            if (participants.size == 2) {
-                val other = participants.first { it != domain }
-                contactService.resolveByOdinId(other)?.name ?: "fracko"
-            } else {
-                appDataObj.title ?: displayNames.joinToString(", ")
-            }
-
-        val avatarModel = buildConversationAvatarModel(conversation)
-
-        val ui =
-            ConversationUiModel(
-                id = appData.uniqueId ?: error("Missing uniqueId"),
-                name = title,
-                lastMessage = " ",
-                timestamp = UnixTimeUtc(0).toInstant(),
-                unreadCount = 0,
-                avatarTiny = appData.previewThumbnail,
-                avatarInitials = "",
-                avatarUrl = "",
-                participants = participants,
-                lastRead = localAppData?.lastReadTime?.toInstant()
-                    ?: UnixTimeUtc(0).toInstant(),
-                avatarModel = avatarModel
-            )
-
-        if (lastMsg != null) {
-            ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
-                ui.updateWithLatestMessage(it, domain)
-            }
-        }
-
-        return ui
-    }
 
     private suspend fun resolveDisplayName(file: HomebaseFile): String {
         val author = file.fileMetadata.originalAuthor ?: return ""
         return contactService.resolveByOdinId(author)?.name ?: author.domainName
-    }
-
-    private suspend fun buildConversationAvatarModel(
-        conversation: HomebaseFile
-    ): ConversationAvatarModel {
-
-        val metadata = conversation.fileMetadata
-        val appData = metadata.appData
-
-        val domain = credentialsManager.getActiveDomain() ?: error("No active domain")
-
-        val participants =
-            OdinSystemSerializer.deserialize<ConversationAppDataJson>(
-                appData.content ?: error("Missing content")
-            ).recipients
-
-        val uniqueId = appData.uniqueId ?: error("Missing uniqueId")
-
-        val imagePayload =
-            metadata.payloads?.firstOrNull { it.key == ChatProtocol.ConversationImageKey }
-
-        if (imagePayload != null) {
-
-            val imageData =
-                HomebaseImageData(
-                    driveId = chatDrive,
-                    fileId = conversation.fileId,
-                    payloadKey = imagePayload.key,
-                    isEncrypted = metadata.isEncrypted,
-                    previewThumbnail =
-                        imagePayload.previewThumbnail?.toEmbeddedThumb()
-                            ?: appData.previewThumbnail,
-                    keyHeader =
-                        KeyHeader(
-                            iv =
-                                Base64.decode(
-                                    imagePayload.iv
-                                        ?: throw IllegalStateException(
-                                            "encrypted payload requires key header"
-                                        )
-                                ),
-                            aesKey = conversation.keyHeader.aesKey
-                        ),
-                    requestedSize = ImageSize.THUMB_MEDIUM,
-                    lastModified = imagePayload.lastModified,
-                )
-
-            return ConversationAvatarModel(
-                type = ConversationAvatarModel.Type.ConversationImage,
-                imageData = imageData
-            )
-        }
-
-        if (uniqueId == ChatProtocol.ConversationWithYourselfId) {
-            return ConversationAvatarModel(
-                odinId = domain,
-                type = ConversationAvatarModel.Type.Owner
-            )
-        }
-
-        val others = participants.filter { it != domain }
-
-        if (others.size == 1) {
-            return ConversationAvatarModel(
-                type = ConversationAvatarModel.Type.Connection,
-                odinId = others.first()
-            )
-        }
-
-        return ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback)
     }
 
     private fun normalizeRecipients(
@@ -551,7 +271,7 @@ class ConversationService(
         )
 
 
-    private suspend fun trySendIntroductions(
+    suspend fun trySendIntroductions(
         recipients: List<OdinId>,
         message: String
     ) {
@@ -567,57 +287,4 @@ class ConversationService(
             Logger.e("Failed sending introductions", t)
         }
     }
-
-    private suspend fun prepareUpdateBundle(
-        conversationId: Uuid,
-        payloadBundle: PayloadBundle?,
-        aesKey: SecureByteArray,
-        existingPreview: EmbeddedThumb?
-    ): UpdateBundleResult {
-
-        if (payloadBundle == null) {
-            return UpdateBundleResult(
-                manifest = UpdateManifest.build(
-                    payloads = null,
-                    toDeletePayloads = null,
-                    thumbnails = null,
-                    generatePayloadIv = false
-                ),
-                payloads = emptyList(),
-                thumbnails = emptyList(),
-                previewThumb = existingPreview
-            )
-        }
-
-        val encryptedBundle =
-            payloadBundleEncryptionService.encryptBundle(
-                conversationId,
-                payloadBundle,
-                aesKey,
-                scope
-            )
-
-        val payloads = encryptedBundle.payloads
-        val thumbs = encryptedBundle.thumbnails
-
-        return UpdateBundleResult(
-            manifest =
-                UpdateManifest.build(
-                    payloads = payloads,
-                    toDeletePayloads = null,
-                    thumbnails = thumbs,
-                    generatePayloadIv = false
-                ),
-            payloads = payloads,
-            thumbnails = thumbs,
-            previewThumb = selectPreviewThumb(encryptedBundle.previewThumbs)
-        )
-    }
-
-    private data class UpdateBundleResult(
-        val manifest: UpdateManifest,
-        val payloads: List<PayloadFile>,
-        val thumbnails: List<ThumbnailFile>,
-        val previewThumb: EmbeddedThumb?
-    )
 }

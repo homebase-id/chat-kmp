@@ -38,6 +38,7 @@ import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +53,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
+@OptIn(FlowPreview::class)
 class ConversationListViewModel(
     savedStateHandle: SavedStateHandle,
     private val credentialsManager: CredentialsManager,

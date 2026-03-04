@@ -5,7 +5,6 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.truncateToCodePoints
@@ -24,8 +23,8 @@ import kotlinx.coroutines.launch
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
-    private val conversationService: ConversationService,
     private val contactService: ContactService,
+    private val conversationReader: ConversationRepository,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope
@@ -177,7 +176,7 @@ class ConversationStream(
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingConversations =
             conversationFiles.map { file ->
-                conversationService.mapToConversationUi(file, null)
+                conversationReader.mapToConversationUi(file, null)
             }
 
         for (c in incomingConversations) {
@@ -245,25 +244,13 @@ class ConversationStream(
         _conversations.value = result
     }
 
-    suspend fun ensureRecipientsHaveConversation(conversationId: Uuid) {
-        // just an ugly pass thru for #DI reasons
-        conversationService.ensureRecipientsHaveConversation(conversationId)
-    }
 
     suspend fun fetchConversations(): List<ConversationUiModel> {
         val result = dbm.chatReadCount.selectAllConversationPlusLastMessage()
-        return result.map { conversationService.mapToConversationUi(it.conversation, it.message) }
+        return result.map { conversationReader.mapToConversationUi(it.conversation, it.message) }
     }
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {
         return _conversations.value.firstOrNull { it.id == conversationId }
-    }
-
-    suspend fun getRecipients(conversationId: Uuid): List<OdinId> {
-
-        val domain = credentialsManager.getActiveDomain()!!
-        val conversation = getConversationById(conversationId) ?: return listOf()
-        val recipients = conversation.participants.filter { it != domain }
-        return recipients
     }
 }

@@ -28,14 +28,14 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.ReactionContent
-import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.ConversationRepository
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.widget.EmojiReaction
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.uuid.Uuid
 
 class ChatMessageActionService(
-    private val conversationService: ConversationService,
+    private val conversationRepository: ConversationRepository,
     private val chatMessageStream: ChatMessageStream,
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val credentialsManager: CredentialsManager,
@@ -104,7 +104,7 @@ class ChatMessageActionService(
             throw IllegalArgumentException("Cannot delete system message")
         }
 
-        val conversation = conversationService.getConversation(msg.conversationId) ?: return
+        val conversation = conversationRepository.getConversation(msg.conversationId) ?: return
         val fileId = requireFileId(messageId)
 
         if (conversation.isWithSelf) {
@@ -129,7 +129,7 @@ class ChatMessageActionService(
         val msg = chatMessageStream.getMessage(messageId)
             ?: throw IllegalArgumentException("message not found")
 
-        val conversation = conversationService.getConversation(msg.conversationId)
+        val conversation = conversationRepository.getConversation(msg.conversationId)
             ?: return
 
         val keyHeader = KeyHeader(
@@ -260,7 +260,7 @@ class ChatMessageActionService(
 
     private suspend fun getRecipients(conversationId: Uuid): List<OdinId> {
         val credentials = credentialsManager.requireActiveCredentials()
-        val conversation = conversationService.requireConversation(conversationId)
+        val conversation = conversationRepository.requireConversation(conversationId)
         val recipients =
             conversation.participants.filterNot { odinId -> odinId == credentials.domain }
         return recipients

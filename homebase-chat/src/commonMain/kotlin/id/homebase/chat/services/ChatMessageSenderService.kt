@@ -16,7 +16,8 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.ConversationDistributor
+import id.homebase.chat.services.convo.ConversationRepository
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
@@ -24,7 +25,8 @@ import kotlinx.serialization.json.JsonPrimitive
 
 class ChatMessageSenderService(
     private val outboxSync: OutboxSync,
-    private val conversationService: ConversationStream,
+    private val conversationRepository: ConversationRepository,
+    private val conversationDistributor: ConversationDistributor,
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
     private val scope: CoroutineScope,
     private val chatMessageStream: ChatMessageStream
@@ -104,7 +106,7 @@ class ChatMessageSenderService(
     ): SendMessageResult {
 
         val keyHeader = KeyHeader.newRandom16()
-        val recipients = conversationService.getRecipients(conversationId)
+        val recipients = conversationRepository.getRecipients(conversationId)
 
         val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
             messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
@@ -144,7 +146,7 @@ class ChatMessageSenderService(
         )
 
         try {
-            conversationService.ensureRecipientsHaveConversation(conversationId)
+            conversationDistributor.ensureRecipientsHaveConversation(conversationId)
 
             val enqueued = outboxSync.tryEnqueue(
                 request.driveId,
@@ -185,7 +187,7 @@ class ChatMessageSenderService(
             aesKey = msg.keyHeader.aesKey
         )
 
-        val recipients = conversationService.getRecipients(msg.conversationId)
+        val recipients = conversationRepository.getRecipients(msg.conversationId)
 
         val msgContent = msg.messageAppData.copy(
             message = JsonPrimitive(content)
@@ -232,7 +234,7 @@ class ChatMessageSenderService(
 
         try {
 
-            conversationService.ensureRecipientsHaveConversation(msg.conversationId)
+            conversationDistributor.ensureRecipientsHaveConversation(msg.conversationId)
 
             if (outboxSync.tryEnqueue(
                     request.driveId,

@@ -18,8 +18,11 @@ import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.ConversationDistributor
+import id.homebase.chat.services.convo.ConversationRepository
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.ConversationUpdater
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.image.HomebaseImageLoader
@@ -44,8 +47,12 @@ val appModule = module {
 
     factoryOf(::PayloadBundleEncryptionService)
     singleOf(::ContactService)
+
+    singleOf(::ConversationRepository)
     singleOf(::ConversationStream)
     singleOf(::ConversationService)
+    singleOf(::ConversationUpdater)
+    singleOf(::ConversationDistributor)
     singleOf(::ChatMessageStream)
     singleOf(::ChatMessageSenderService)
     singleOf(::HomebaseImageLoader)

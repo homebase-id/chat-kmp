@@ -9,13 +9,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.chat.services.convo.ConversationRepository
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
@@ -31,8 +30,8 @@ import kotlin.uuid.Uuid
 
 class EditConversationGroupViewModel(
     savedStateHandle: SavedStateHandle,
+    private val conversationRepository: ConversationRepository,
     private val conversationService: ConversationService,
-    private val credentialsManager: CredentialsManager,
     private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel() {
     val route = savedStateHandle.toRoute<Route.GroupEdit>()
@@ -137,7 +136,7 @@ class EditConversationGroupViewModel(
     private fun loadData() {
         viewModelScope.launch {
             try {
-                val conversation = conversationService.getConversation(Uuid.parse(route.conversationId))
+                val conversation = conversationRepository.getConversation(Uuid.parse(route.conversationId))
                 if (conversation != null) {
                     groupNameTextState.setTextAndPlaceCursorAtEnd(conversation.name)
                     _uiState.update {

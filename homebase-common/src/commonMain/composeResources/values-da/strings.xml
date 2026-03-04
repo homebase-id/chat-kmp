@@ -124,7 +124,7 @@
     <string name="chat_no_messages">Ingen beskeder endnu</string>
     <string name="chat_message_edited">Redigeret</string>
     <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
-    <string name="chat_group_introduce_everyone">Introduce Everyone</string>
+    <string name="chat_group_introduce_everyone">Introducer alle</string>
 
 
     <!-- Conversation message -->

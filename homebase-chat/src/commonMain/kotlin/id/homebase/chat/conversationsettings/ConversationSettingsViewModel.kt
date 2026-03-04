@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
-import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.ConversationRepository
 import id.homebase.core.ui.navigation.Route
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +16,7 @@ import kotlin.uuid.Uuid
 
 class ConversationSettingsViewModel(
     savedStateHandle: SavedStateHandle,
-    val conversationService: ConversationService,
+    val conversationRepository: ConversationRepository,
 ) : ViewModel() {
 
     val route = savedStateHandle.toRoute<Route.ConversationSettings>()
@@ -42,7 +42,7 @@ class ConversationSettingsViewModel(
     private fun loadData() {
         viewModelScope.launch {
             try {
-                val conversation = conversationService.getConversation(Uuid.parse(route.conversationId))
+                val conversation = conversationRepository.getConversation(Uuid.parse(route.conversationId))
                 if (conversation != null) {
                     _uiState.update { it.copy(conversation = conversation, isLoading = false) }
                 } else {

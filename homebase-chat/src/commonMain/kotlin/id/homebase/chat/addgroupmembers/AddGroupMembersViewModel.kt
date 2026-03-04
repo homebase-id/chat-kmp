@@ -14,8 +14,8 @@ import id.homebase.chat.createconversation.ContactGroup
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.selectmembers.filterAndGroup
-import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.ConversationRepository
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.ui.navigation.Route
 import kotlinx.collections.immutable.PersistentList
@@ -34,6 +34,7 @@ import kotlin.uuid.Uuid
 class AddGroupMembersViewModel(
     savedStateHandle: SavedStateHandle,
     private val contactService: ContactService,
+    private val conversationRepository: ConversationRepository,
     private val conversationService: ConversationService,
     private val credentialsManager: CredentialsManager,
 ) : ViewModel() {
@@ -115,7 +116,7 @@ class AddGroupMembersViewModel(
         viewModelScope.launch {
             try {
                 val conversation =
-                    conversationService.getConversation(Uuid.parse(route.conversationId))
+                    conversationRepository.getConversation(Uuid.parse(route.conversationId))
                 if (conversation != null) {
                     _uiState.update {
                         it.copy(

@@ -511,26 +511,30 @@ fun MessageBubble(
     downloadingFiles: Set<String>,
 ) {
 
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            Modifier.weight(1f).height(1.dp)
-                .background(MaterialTheme.colorScheme.outlineVariant)
-        )
+    if (isSystemMessage) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier.weight(1f).height(1.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant)
+            )
 
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 12.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+            Text(
+                text = text,
+                modifier = Modifier.padding(horizontal = 12.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
-        Box(
-            Modifier.weight(1f).height(1.dp)
-                .background(MaterialTheme.colorScheme.outlineVariant)
-        )
+            Box(
+                Modifier.weight(1f).height(1.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant)
+            )
+        }
+
+        return
     }
 
     val filteredPayloads = payloads?.filter {
