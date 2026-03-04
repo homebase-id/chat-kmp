@@ -1,9 +1,10 @@
 package id.homebase.api.client.drives.files
 
-import id.homebase.api.client.drives.upload.EmbeddedThumb
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 
 @Serializable
+@Immutable
 data class PayloadDescriptor(
     val key: String,
     val contentType: String? = null,

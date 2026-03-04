@@ -2,14 +2,15 @@
 
 package id.homebase.api.client.drives.upload
 
-import id.homebase.api.client.drives.files.ArchivalStatus
-import id.homebase.api.crypto.EncryptedKeyHeader
+import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
+import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.prototype.lib.serialization.Base64ByteArraySerializer
-import kotlin.io.encoding.Base64
 import kotlinx.serialization.Serializable
+import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
@@ -18,6 +19,7 @@ import kotlin.uuid.Uuid
  * from the sync/image EmbeddedThumb which uses contentBase64 field name.
  */
 @Serializable
+@Immutable
 data class EmbeddedThumb(
         val pixelWidth: Int,
         val pixelHeight: Int,

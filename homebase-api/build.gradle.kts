@@ -1,4 +1,3 @@
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -89,6 +88,7 @@ kotlin {
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
             implementation(libs.kotlinx.io.core)
+            implementation(libs.kotlinx.immutableCollections)
             implementation("com.mayakapps.kache:kache:2.1.1")
             implementation("com.mayakapps.kache:file-kache:2.1.1")
             implementation("com.squareup.okio:okio:3.16.4")

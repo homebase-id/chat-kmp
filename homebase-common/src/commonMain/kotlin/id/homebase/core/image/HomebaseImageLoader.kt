@@ -7,8 +7,6 @@ import id.homebase.api.client.withRetry
 import io.github.vinceglb.filekit.extension
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.readBytes
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 /** Image data container */
 // TODO: Rename to memoryImage?

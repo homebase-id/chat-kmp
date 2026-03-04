@@ -59,7 +59,6 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatDeliveryStatus
@@ -88,12 +87,15 @@ import id.homebase.resources.chat_message_edited
 import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
-import kotlin.io.encoding.Base64
-import kotlin.uuid.Uuid
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
+import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 
 /**
  * Displays a message bubble for messages sent to other users.
@@ -115,14 +117,14 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun SentMessageBubble(
     message: MessageUiModel,
-    onMessageInfo: ((messageId: Uuid) -> Unit)? = null,
-    onReply: ((messageId: Uuid) -> Unit)? = null,
-    onEdit: ((messageId: Uuid) -> Unit)? = null,
+    onMessageInfo: (() -> Unit)? = null,
+    onReply: (() -> Unit)? = null,
+    onEdit: (() -> Unit)? = null,
     onShare: () -> Unit,
-    onDelete: (messageId: Uuid) -> Unit,
+    onDelete: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
-    onShowReactions: (ReactionSummary) -> Unit,
+    onShowReactions: () -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
@@ -158,7 +160,7 @@ fun SentMessageBubble(
                 if (onReply != null) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { onReply.invoke(message.id) },
+                        onClick = { onReply.invoke() },
                         enabled = isHovered
                     ) {
                         Icon(
@@ -195,19 +197,19 @@ fun SentMessageBubble(
                         },
                         onMessageInfo = {
                             popupMode = MessagePopupMode.None
-                            onMessageInfo?.invoke(message.id)
+                            onMessageInfo?.invoke()
                         },
                         onReply = {
                             popupMode = MessagePopupMode.None
-                            onReply?.invoke(message.id)
+                            onReply?.invoke()
                         },
                         onEdit = {
                             popupMode = MessagePopupMode.None
-                            onEdit?.invoke(message.id)
+                            onEdit?.invoke()
                         },
                         onDelete = {
                             popupMode = MessagePopupMode.None
-                            onDelete(message.id)
+                            onDelete()
                         },
                         onShare = {
                             popupMode = MessagePopupMode.None
@@ -252,7 +254,7 @@ fun SentMessageBubble(
                         modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
                         reactionSummary = reactionSummary,
                         onClick = { onAddReaction?.invoke(message.id, it) },
-                        onLongClick = { onShowReactions(reactionSummary) },
+                        onLongClick = { onShowReactions() },
                     )
                 }
             }
@@ -281,13 +283,13 @@ fun SentMessageBubble(
 fun ReceivedMessageBubble(
     message: MessageUiModel,
     renderAuthorName: Boolean = false,
-    onMessageInfo: ((messageId: Uuid) -> Unit)? = null,
-    onReply: ((messageId: Uuid) -> Unit)? = null,
+    onMessageInfo: (() -> Unit)? = null,
+    onReply: (() -> Unit)? = null,
     onShare: () -> Unit,
-    onDelete: (messageId: Uuid) -> Unit,
-    onMarkAsRead: (messageId: Uuid) -> Unit,
+    onDelete: () -> Unit,
+    onMarkAsRead: () -> Unit,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
-    onShowReactions: (ReactionSummary) -> Unit,
+    onShowReactions: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
@@ -370,7 +372,7 @@ fun ReceivedMessageBubble(
                             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp),
                             reactionSummary = reactionSummary,
                             onClick = { onAddReaction?.invoke(message.id, it) },
-                            onLongClick = { onShowReactions(reactionSummary) },
+                            onLongClick = { onShowReactions() },
                         )
                     }
                 }
@@ -392,7 +394,7 @@ fun ReceivedMessageBubble(
                 if (onReply != null) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { onReply(message.id) },
+                        onClick = { onReply() },
                         enabled = isHovered
                     ) {
                         Icon(
@@ -430,15 +432,15 @@ fun ReceivedMessageBubble(
                         },
                         onMessageInfo = {
                             popupMode = MessagePopupMode.None
-                            onMessageInfo?.invoke(message.id)
+                            onMessageInfo?.invoke()
                         },
                         onReply = {
                             popupMode = MessagePopupMode.None
-                            onReply?.invoke(message.id)
+                            onReply?.invoke()
                         },
                         onDelete = {
                             popupMode = MessagePopupMode.None
-                            onDelete(message.id)
+                            onDelete()
                         },
                         onShare = {
                             popupMode = MessagePopupMode.None
@@ -492,7 +494,7 @@ fun MessageBubble(
     isEdited: Boolean,
     isDeleted: Boolean,
     deliveryStatus: Int,
-    payloads: List<PayloadDescriptor>? = null,
+    payloads: ImmutableList<PayloadDescriptor>? = null,
     fileId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
     replyPreview: ReplyPreview? = null,
@@ -525,10 +527,12 @@ fun MessageBubble(
     val coroutineScope = rememberCoroutineScope()
 
     // Use a spring for smoother, natural motion and avoid tiny abrupt tweens
-    val springSpec = spring<Float>(
-        dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
-        stiffness = Spring.StiffnessLow
-    )
+    val springSpec = remember {
+        spring<Float>(
+            dampingRatio = Spring.DampingRatioNoBouncy, // less bounce on emulator
+            stiffness = Spring.StiffnessLow
+        )
+    }
 
     // Keep quick press feedback when not running the long-press animation
     LaunchedEffect(isPressed) {
@@ -555,32 +559,36 @@ fun MessageBubble(
     }
 
     val messageInfoText =
-        if (isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp"
-        else timestamp
-    val mediaOnly = !text.hasContent() && hasMedia
-    val emojiOnly = text.isEmojiContentOnly() && !hasMedia
-    val backgroundColor = if (emojiOnly) Color.Unspecified
-    else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
-    else MaterialTheme.colorScheme.surfaceContainerHigh
-    val contentColor = if (emojiOnly) MaterialTheme.colorScheme.onSurface
-    else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
-    else MaterialTheme.colorScheme.onSurface
+        if (isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
+    val mediaOnly = remember { !text.hasContent() && hasMedia }
+    val emojiOnly = remember { text.isEmojiContentOnly() && !hasMedia }
+    val backgroundColor =
+        if (emojiOnly) Color.Unspecified
+        else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+        else MaterialTheme.colorScheme.surfaceContainerHigh
+    val contentColor =
+        if (emojiOnly) MaterialTheme.colorScheme.onSurface
+        else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+        else MaterialTheme.colorScheme.onSurface
 
-    val textState = RichTextState().applyDefaultStyling(
-        linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary
-    )
-    if (isDeleted) {
-        textState.setText(stringResource(MR.string.chat_message_deleted))
-    } else {
-        textState.setMarkdown(text)
+    val deletedText = stringResource(MR.string.chat_message_deleted)
+    val textState = remember {
+        RichTextState()
+            .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
+            .also {
+                it.setMarkdown(if (isDeleted) text else deletedText)
+            }
     }
 
-    val shape = RoundedCornerShape(
-        topStart = Dimens.Message.cornerRadius,
-        topEnd = Dimens.Message.cornerRadius,
-        bottomStart = if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-        bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
-    )
+    val shape = remember {
+        RoundedCornerShape(
+            topStart = Dimens.Message.cornerRadius,
+            topEnd = Dimens.Message.cornerRadius,
+            bottomStart =
+                if (!sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+            bottomEnd = if (sentByYou && !mediaOnly) 4.dp else Dimens.Message.cornerRadius,
+        )
+    }
 
     Surface(
         modifier = modifier.clip(shape).ifTrue(isMobile()) {
@@ -600,7 +608,7 @@ fun MessageBubble(
         if (mediaOnly) {
             Box(modifier = Modifier.wrapContentWidth()) {
                 MediaMessage(
-                    payloads = filteredPayloads,
+                    payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
                     fileId = fileId,
                     keyHeader = keyHeader,
                     driveId = chatTargetDrive.alias,
@@ -634,7 +642,7 @@ fun MessageBubble(
                             Text(
                                 text = messageInfoText,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = contentColor.copy(alpha = 0.7f)
+                                color = HomebaseTheme.extendedColors.bubbleSentSurface.copy(alpha = 0.7f)
                             )
                             if (sentByYou) {
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -644,109 +652,111 @@ fun MessageBubble(
                     }
                 }
             }
-        } else Column {
-            // Don't place content for message here, place it in one of the
-            // 2 composables in Layout content so its size can be calculated
-            Layout(
-                content = {
-                    Column {
-                        authorName?.let {
-                            Text(
-                                text = it,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = authorColor ?: contentColor,
+        } else {
+            Column {
+                // Don't place content for message here, place it in one of the
+                // 2 composables in Layout content so its size can be calculated
+                Layout(
+                    content = {
+                        Column {
+                            authorName?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = authorColor ?: contentColor,
+                                    modifier = Modifier.padding(
+                                        start = 12.dp, top = 8.dp, end = 12.dp
+                                    ),
+                                    maxLines = 1,
+                                )
+                            }
+                            // Inline reply preview if this message is a reply
+                            replyPreview?.let { reply ->
+                                InlineReplyPreview(
+                                    replyPreview = reply, sentByYou = sentByYou
+                                )
+                            }
+                            if (hasMedia) {
+                                MediaMessage(
+                                    payloads = filteredPayloads.toPersistentList(),
+                                    fileId = fileId,
+                                    driveId = chatTargetDrive.alias,
+                                    previewThumbnail = previewThumbnail,
+                                    onMediaClick = onMediaClick,
+                                    keyHeader = keyHeader,
+                                    preserveAspectRatio = false,
+                                    onMediaLongPress = { _, _ -> handleLongClick() },
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                    messageId = messageId,
+                                    downloadingFiles = downloadingFiles,
+                                )
+                            }
+                            Row(
                                 modifier = Modifier.padding(
-                                    start = 12.dp, top = 8.dp, end = 12.dp
+                                    horizontal = 12.dp, vertical = 8.dp
                                 ),
-                                maxLines = 1,
-                            )
-                        }
-                        // Inline reply preview if this message is a reply
-                        replyPreview?.let { reply ->
-                            InlineReplyPreview(
-                                replyPreview = reply, sentByYou = sentByYou
-                            )
-                        }
-                        if (hasMedia) {
-                            MediaMessage(
-                                payloads = filteredPayloads,
-                                fileId = fileId,
-                                driveId = chatTargetDrive.alias,
-                                previewThumbnail = previewThumbnail,
-                                onMediaClick = onMediaClick,
-                                keyHeader = keyHeader,
-                                preserveAspectRatio = false,
-                                onMediaLongPress = { _, _ -> handleLongClick() },
-                                sharedTransitionScope = sharedTransitionScope,
-                                animatedVisibilityScope = animatedVisibilityScope,
-                                messageId = messageId,
-                                downloadingFiles = downloadingFiles
-                            )
+                            ) {
+
+                                if (emojiOnly) {
+                                    // Render emoji-only messages prominently
+                                    val size = if (text.length <= 6) 56.sp else 42.sp
+                                    Text(
+                                        text = text,
+                                        onTextLayout = { textLayoutResult = it },
+                                        fontSize = size,
+                                        style = MaterialTheme.typography.displaySmall,
+                                        color = contentColor
+                                    )
+                                } else {
+                                    // Display normal rich text
+                                    SelectionContainer {
+                                        RichText(
+                                            state = textState,
+                                            onTextLayout = { textLayoutResult = it },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = contentColor
+                                        )
+                                    }
+                                }
+                            }
                         }
                         Row(
                             modifier = Modifier.padding(
                                 horizontal = 12.dp, vertical = 8.dp
                             ),
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.End,
                         ) {
-                            if (emojiOnly) {
-                                // Render emoji-only messages prominently
-                                val size = if (text.length <= 6) 56.sp else 42.sp
-                                Text(
-                                    text = text,
-                                    onTextLayout = { textLayoutResult = it },
-                                    fontSize = size,
-                                    style = MaterialTheme.typography.displaySmall,
-                                    color = contentColor
-                                )
-                            } else {
-                                // Display normal rich text
-                                SelectionContainer {
-                                    RichText(
-                                        state = textState,
-                                        onTextLayout = { textLayoutResult = it },
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = contentColor
-                                    )
-                                }
+                            Text(
+                                text = messageInfoText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = contentColor.copy(alpha = 0.7f)
+                            )
+                            if (sentByYou) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                DeliveryStatus(deliveryStatus = deliveryStatus)
                             }
                         }
-                    }
-                    Row(
-                        modifier = Modifier.padding(
-                            horizontal = 12.dp, vertical = 8.dp
-                        ),
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        Text(
-                            text = messageInfoText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.7f)
-                        )
-                        if (sentByYou) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            DeliveryStatus(deliveryStatus = deliveryStatus)
-                        }
-                    }
-                }) { measurables, constraints ->
-                val textPlaceable = measurables[0].measure(constraints)
-                val timePlaceable = measurables[1].measure(constraints)
+                    }) { measurables, constraints ->
+                    val textPlaceable = measurables[0].measure(constraints)
+                    val timePlaceable = measurables[1].measure(constraints)
 
-                val layoutResult = textLayoutResult
-                var totalWidth: Int
-                var totalHeight: Int
-                var timeX: Int
-                var timeY: Int
+                    val layoutResult = textLayoutResult
+                    var totalWidth: Int
+                    var totalHeight: Int
+                    var timeX: Int
+                    var timeY: Int
 
-                if (layoutResult == null) {
-                    // Fallback if layout isn't ready yet
-                    totalWidth = textPlaceable.width
-                    totalHeight = textPlaceable.height
-                    timeX = 0
-                    timeY = 0
-                } else {
-                    val lastLineIndex = layoutResult.lineCount - 1
-                    val lastLineRight = layoutResult.getLineRight(lastLineIndex)
+                    if (layoutResult == null) {
+                        // Fallback if layout isn't ready yet
+                        totalWidth = textPlaceable.width
+                        totalHeight = textPlaceable.height
+                        timeX = 0
+                        timeY = 0
+                    } else {
+                        val lastLineIndex = layoutResult.lineCount - 1
+                        val lastLineRight = layoutResult.getLineRight(lastLineIndex)
 
                     // Determine if timestamp fits on the last line
                     // We add a small gap (8dp converted to px) between text and time
@@ -772,9 +782,10 @@ fun MessageBubble(
                     }
                 }
 
-                layout(totalWidth, totalHeight) {
-                    textPlaceable.placeRelative(0, 0)
-                    timePlaceable.placeRelative(timeX, timeY)
+                    layout(totalWidth, totalHeight) {
+                        textPlaceable.placeRelative(0, 0)
+                        timePlaceable.placeRelative(timeX, timeY)
+                    }
                 }
             }
         }

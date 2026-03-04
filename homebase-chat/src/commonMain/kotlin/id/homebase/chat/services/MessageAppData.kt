@@ -1,18 +1,19 @@
 package id.homebase.chat.services
 
+import androidx.compose.runtime.Immutable
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.RichText
 import id.homebase.api.client.drives.files.getPlainTextFromRichText
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
-import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlin.uuid.Uuid
 
 /** Data class representing chat message homebaseFile.AppData (parsed from JSON) */
 @Serializable
@@ -55,6 +56,7 @@ data class MessageAppData(
 }
 
 @Serializable
+@Immutable
 data class ReplyPreview(
     val replyUniqueId: Uuid, // FileId of the message that was replied to
     val authorOdinId: String, // frodo.baggins.demo.rocks

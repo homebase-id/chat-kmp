@@ -17,6 +17,7 @@ import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.ContactService
 import id.homebase.core.config.chatTargetDrive
+import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -249,7 +250,7 @@ class ChatMessageStream(
                         messageAppData = MessageAppData(),
                         reactionPreview = metadata.reactionPreview,
                         previewThumbnail = metadata.appData.previewThumbnail,
-                        payloads = metadata.payloads,
+                        payloads = metadata.payloads?.toPersistentList(),
                         keyHeader = header.keyHeader,
                         isDeleted = true,
                         versionTag = versionTag
@@ -281,7 +282,7 @@ class ChatMessageStream(
                     messageAppData = messageAppData,
                     reactionPreview = metadata.reactionPreview,
                     previewThumbnail = metadata.appData.previewThumbnail,
-                    payloads = metadata.payloads,
+                    payloads = metadata.payloads?.toPersistentList(),
                     keyHeader = header.keyHeader,
                     versionTag = versionTag
 
@@ -306,7 +307,7 @@ class ChatMessageStream(
                         messageAppData = MessageAppData(),
                         reactionPreview = metadata.reactionPreview,
                         previewThumbnail = metadata.appData.previewThumbnail,
-                        payloads = metadata.payloads,
+                        payloads = metadata.payloads?.toPersistentList(),
                         keyHeader = header.keyHeader,
                         versionTag = Uuid.NIL
                     )

@@ -1,9 +1,11 @@
 package id.homebase.api.client.drives.files
 
+import androidx.compose.runtime.Immutable
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import kotlinx.serialization.Serializable
 
 @Serializable
+@Immutable
 data class ThumbnailDescriptor(
     val pixelWidth: Int? = null,
     val pixelHeight: Int? = null,
