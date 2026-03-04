@@ -23,7 +23,22 @@ actual fun getUriHandler(): FileSystemHandler {
         }
 
         override fun openFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit) {
-            TODO("Not yet implemented")
+            try {
+                val javaFile = java.io.File(file.toString())
+                if (java.awt.Desktop.isDesktopSupported()) {
+                    val desktop = java.awt.Desktop.getDesktop()
+                    if (desktop.isSupported(java.awt.Desktop.Action.OPEN)) {
+                        desktop.open(javaFile)
+                    } else {
+                        onError(Exception("Desktop open action not supported"))
+                    }
+                } else {
+                    onError(Exception("Desktop not supported"))
+                }
+            } catch (e: Exception) {
+                Logger.e(TAG, e) { "Failed to open file: ${e.message}" }
+                onError(e)
+            }
         }
 
         override fun openFileBrowser(file: Path, onError: (Throwable) -> Unit) {
