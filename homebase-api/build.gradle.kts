@@ -89,9 +89,9 @@ kotlin {
             implementation(libs.filekit.dialogs.compose)
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.immutableCollections)
-            implementation("com.mayakapps.kache:kache:2.1.1")
-            implementation("com.mayakapps.kache:file-kache:2.1.1")
-            implementation("com.squareup.okio:okio:3.16.4")
+            implementation(libs.kache)
+            implementation(libs.kache.file)
+            implementation(libs.okio)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -107,7 +107,7 @@ kotlin {
             implementation(libs.androidx.media3.ui)
             implementation(libs.sqldelight.android.driver)
             implementation(libs.android.database.sqlcipher)
-            implementation("id.homebase.libs:ffmpeg-kit:1.0")
+            implementation(libs.ffmpeg.kit)
             implementation(libs.smart.exception.java)
         }
         nativeMain.dependencies {
@@ -124,9 +124,9 @@ kotlin {
 
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)
+            implementation(libs.ktor.server.html.builder)
 
-            implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.11.0")
-            implementation("io.ktor:ktor-server-html-builder:2.3.7")
+            implementation(libs.kotlinx.html.jvm)
 
         }
     }

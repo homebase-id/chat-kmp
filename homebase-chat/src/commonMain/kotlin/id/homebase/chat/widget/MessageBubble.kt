@@ -576,7 +576,7 @@ fun MessageBubble(
         RichTextState()
             .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
             .also {
-                it.setMarkdown(if (isDeleted) text else deletedText)
+                it.setMarkdown(if (isDeleted) deletedText else text)
             }
     }
 

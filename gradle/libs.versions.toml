@@ -15,42 +15,47 @@ androidx-testRunner = "1.7.0"
 androidx-testCore = "1.7.0"
 composeMultiplatform = "1.10.1"
 composeHotReload = "1.1.0-alpha05"
+ffmpegKit = "1.0"
 jetbrains-compose-material3 = "1.9.0"
 jetbrains-compose-material3-adaptive = "1.2.0"
 jetbrains-compose-ui-tooling-preview = "1.10.1"
+kache = "2.1.1"
+kotlinxHtmlJvm = "0.12.0"
 kotlinxSerializationJson = "1.10.0"
 materialIconsExtended = "1.7.3"
 multiplatformSettings = "1.3.0"
-coil3 = "3.3.0"
+coil3 = "3.4.0"
 sqlite-jdbc-crypt = "3.47.1.0"
 junit = "4.13.2"
 kotlin = "2.3.10"
 browser = "1.9.0"
+okio = "3.16.4"
 richeditorCompose = "1.0.0-rc13"
 sqldelight = "2.2.1"
 sqlcipher = "4.6.1"
 kotlinx-coroutines = "1.10.2"
 kotlinx-datetime = "0.7.1"
 kotlin-immutable-collections = "0.4.0"
-kotlinx-io = "0.8.2"
-ktor = "3.4.0"
-kermit = "2.0.8"
+kotlinx-io = "0.9.0"
+ktor = "3.4.1"
+kermit = "2.1.0"
 cryptography = "0.5.0"
 robolectric = "4.16.1"
 navigation = "2.9.2"
 koin = "4.1.1"
-filekit = "0.12.0"
+filekit = "0.13.0"
 atomicfu = "0.31.0"
 runner = "1.0.2"
 espressoCore = "3.0.2"
 appcompatV7 = "28.0.0"
-uiToolingPreview = "1.10.3"
+uiToolingPreview = "1.10.4"
 kotlinStdlib = "2.3.10"
 googleAccompanist = "0.37.3"
 kmpnotifier = "1.6.1"
 google-services = "4.4.4"
 
 [libraries]
+ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }
@@ -96,6 +101,7 @@ ktor-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "atomicfu" }
 kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 richeditor-compose = { module = "com.mohamedrejeb.richeditor:richeditor-compose", version.ref = "richeditorCompose" }
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
@@ -116,6 +122,7 @@ kotlinx-io-core-jvm = { module = "org.jetbrains.kotlinx:kotlinx-io-core-jvm", ve
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 kotlinx-immutableCollections = { group = "org.jetbrains.kotlinx", name = "kotlinx-collections-immutable", version.ref = "kotlin-immutable-collections" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+kotlinx-html-jvm = { module = "org.jetbrains.kotlinx:kotlinx-html-jvm", version.ref = "kotlinxHtmlJvm" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "navigation" }
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
@@ -142,6 +149,8 @@ kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", versio
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "googleAccompanist" }
 accompanist-systemuicontroller = { module = "com.google.accompanist:accompanist-systemuicontroller", version.ref = "googleAccompanist" }
 kmpnotifier = { module = "io.github.mirzemehdi:kmpnotifier", version.ref = "kmpnotifier" }
+kache-file = { module = "com.mayakapps.kache:file-kache", version.ref = "kache" }
+kache = { module = "com.mayakapps.kache:kache", version.ref = "kache" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
