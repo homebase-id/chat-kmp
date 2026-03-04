@@ -35,8 +35,8 @@ class ChatMessageSenderService(
         messageUniqueId: Uuid,
         conversationId: Uuid,
         messageText: String,
-        previousMessageUniqueId: Uuid?,
-        payloadBundle: PayloadBundle?
+        previousMessageUniqueId: Uuid? = null,
+        payloadBundle: PayloadBundle? = null
     ): SendMessageResult = deliverMessage(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
@@ -80,6 +80,7 @@ class ChatMessageSenderService(
         payloadBundle: PayloadBundle?
     ): SendMessageResult {
 
+        conversationService
         // distribute the conversation file if needed
         //        conversationWriterService.updateConversationRecipients(conversationId, )
 
@@ -141,9 +142,11 @@ class ChatMessageSenderService(
             payloads = encryptedBundle.payloads,
             thumbnails = encryptedBundle.thumbnails
         )
-        try {
 
-            outboxSync.tryEnqueue(
+        try {
+            conversationService.ensureRecipientsHaveConversation(conversationId)
+
+            val enqueued = outboxSync.tryEnqueue(
                 request.driveId,
                 messageUniqueId,
                 dependencyUniqueId = previousMessageUniqueId,
@@ -152,7 +155,9 @@ class ChatMessageSenderService(
                 json = OdinSystemSerializer.serialize(request),
             )
 
-            outboxSync.send()
+            if (enqueued) {
+                outboxSync.send()
+            }
 
             return SendMessageResult(uniqueId = messageUniqueId)
         } catch (t: Throwable) {
@@ -222,6 +227,9 @@ class ChatMessageSenderService(
         )
 
         try {
+
+            conversationService.ensureRecipientsHaveConversation(msg.conversationId)
+
             if (outboxSync.tryEnqueue(
                     request.driveId,
                     messageId,

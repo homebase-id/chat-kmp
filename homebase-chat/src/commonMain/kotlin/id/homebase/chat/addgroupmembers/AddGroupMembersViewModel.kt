@@ -89,11 +89,10 @@ class AddGroupMembersViewModel(
                             it.domainName != currentUserDomain
                         } + uiState.value.selectedContacts.map { it.odinId }
 
-                        conversationService.updateConversation(
+                        conversationService.updateGroupMembers(
                             conversationId = conversation.id,
-                            recipients = recipients,
-                            title = conversation.name,
-                            payloadBundle = null,
+                            add = recipients,
+                            remove = emptyList()
                         )
                         sendEvent(AddGroupMembersUiEvent.Back)
                     } catch (e: Exception) {

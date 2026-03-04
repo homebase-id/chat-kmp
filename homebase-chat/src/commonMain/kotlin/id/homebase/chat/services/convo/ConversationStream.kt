@@ -245,6 +245,11 @@ class ConversationStream(
         _conversations.value = result
     }
 
+    suspend fun ensureRecipientsHaveConversation(conversationId: Uuid) {
+        // just an ugly pass thru for #DI reasons
+        conversationService.ensureRecipientsHaveConversation(conversationId)
+    }
+
     suspend fun fetchConversations(): List<ConversationUiModel> {
         val result = dbm.chatReadCount.selectAllConversationPlusLastMessage()
         return result.map { conversationService.mapToConversationUi(it.conversation, it.message) }
