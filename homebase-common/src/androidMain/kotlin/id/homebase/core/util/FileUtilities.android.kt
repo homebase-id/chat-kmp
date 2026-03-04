@@ -32,7 +32,31 @@ actual fun getUriHandler(): FileSystemHandler {
             }
 
             override fun openFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit) {
-                TODO("Not yet implemented")
+                try {
+                    val javaFile = File(file.toString())
+                    val authority = "${context.packageName}.fileprovider"
+                    val uri = FileProvider.getUriForFile(context, authority, javaFile)
+                    val mimeType = detectContentTypeFromExtensionOrHint(javaFile.name)
+
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, mimeType)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+
+                    val finalIntent = if (showChooser) {
+                        Intent.createChooser(intent, null).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                    } else {
+                        intent
+                    }
+
+                    context.startActivity(finalIntent)
+                } catch (e: Exception) {
+                    Logger.e(TAG, e) { "Failed to open file: ${e.message}" }
+                    onError(e)
+                }
             }
 
             override fun openFileBrowser(file: Path, onError: (Throwable) -> Unit) {
