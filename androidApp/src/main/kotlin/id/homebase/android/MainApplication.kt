@@ -6,6 +6,7 @@ import com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfig
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.storage.SharedPreferences
 import id.homebase.api.sync.database.DatabaseDriverFactory
+import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.notifications.NotificationService
@@ -25,9 +26,13 @@ class MainApplication : Application(), KoinComponent {
         SharedPreferences.initialize(this) // TODO: Maybe we should use injectable UserPreferences
 
         runBlocking {
-            // DatabaseManager.wipe { DatabaseDriverFactory(applicationContext).createDriver() } //
+            val dbKey = DatabaseKeyManager.getOrGenerateKey()
+            // DatabaseManager.wipe { DatabaseDriverFactory(applicationContext).createDriver(dbKey)
+            // } //
             // <-- Uncomment to wipe database
-            DatabaseManager.initialize { DatabaseDriverFactory(applicationContext).createDriver() }
+            DatabaseManager.initialize {
+                DatabaseDriverFactory(applicationContext).createDriver(dbKey)
+            }
         }
 
         startKoin {
@@ -41,10 +46,11 @@ class MainApplication : Application(), KoinComponent {
 
         // Initialize KMPNotifier for push notifications
         NotifierManager.initialize(
-            configuration = NotificationPlatformConfiguration.Android(
-                notificationIconResId = R.mipmap.ic_launcher_foreground,
-                showPushNotification = true,
-            )
+            configuration =
+                NotificationPlatformConfiguration.Android(
+                    notificationIconResId = R.mipmap.ic_launcher_foreground,
+                    showPushNotification = true,
+                )
         )
 
         // Register notification listener immediately so tokens/pushes arriving
