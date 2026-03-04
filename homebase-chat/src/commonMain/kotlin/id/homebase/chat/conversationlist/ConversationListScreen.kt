@@ -53,10 +53,10 @@ import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @Composable
 fun ConversationListScreen(
@@ -304,14 +304,11 @@ fun ChatListUi(
             listPane = {
                 AnimatedPane(modifier = Modifier) {
                     ConversationListPane(
-                        listContent = uiState.conversationsContent,
+                        uiState = uiState,
                         selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                        filterByUnread = uiState.filterByUnread,
-                        isSearchActive = uiState.isSearchActive,
                         searchTextState = conversationSearchTextFieldState,
                         onProfileClick = onNavigateToSettingsScreen,
                         onUiAction = onUiAction,
-                        ownerSession = uiState.ownerSession
                     )
                 }
             },

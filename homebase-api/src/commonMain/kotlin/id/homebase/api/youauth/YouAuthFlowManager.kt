@@ -7,6 +7,7 @@ import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.http.UriBuilder
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.EccKeyPair
 import id.homebase.api.crypto.EccKeySize
@@ -19,31 +20,37 @@ import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.DriveSyncManager
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlin.io.encoding.Base64
-import id.homebase.api.common.OdinId
 
 /** Authentication state for the YouAuth flow. */
 @Immutable
-sealed class YouAuthState {
+sealed interface YouAuthState {
+    /** Initial state before stores state is loaded */
+    data object Initializing : YouAuthState
+
     /** User is not authenticated */
-    data object Unauthenticated : YouAuthState()
+    data object Unauthenticated : YouAuthState
 
     /** Authentication flow is in progress */
-    data object Authenticating : YouAuthState()
+    data object Authenticating : YouAuthState
 
     /** User is authenticated with valid tokens */
     data class Authenticated(
         val identity: OdinId,
         val clientAuthToken: String,
         val sharedSecret: String
-    ) : YouAuthState()
+    ) : YouAuthState
 
     /** Authentication failed with an error */
-    data class Error(val message: String) : YouAuthState()
+    data class Error(val message: String) : YouAuthState
 }
 
 /** Internal state for the auth code flow. */
@@ -63,61 +70,72 @@ class YouAuthFlowManager(
     private val driveSyncManager: DriveSyncManager,
     private val credentialsManager: CredentialsManager,
     private val httpClient: HttpClient,
-    private val driveFileProviderCached: DriveFileProviderCached
+    private val driveFileProviderCached: DriveFileProviderCached,
 ) {
-    private val _authState = MutableStateFlow<YouAuthState>(YouAuthState.Unauthenticated)
+    private val _authState = MutableStateFlow<YouAuthState>(YouAuthState.Initializing)
     val authState: StateFlow<YouAuthState> = _authState.asStateFlow()
 
-    private var authCodeFlowState: AuthCodeFlowState? = null
+    private val scope = CoroutineScope(Job() + Dispatchers.IO)
+
+    // Registry for callback routing
+    private val callbackRegistry = mutableMapOf<String, AuthCodeFlowState>()
 
     companion object {
-        private const val TAG = "YouAuthFlowManager"
+        private val TAG = "YouAuthFlowManager"
+    }
 
-        // Global registry for callback routing
-        private val callbackRegistry = mutableMapOf<String, YouAuthFlowManager>()
-
-        /** Handle an authorization callback URL. */
-        suspend fun handleCallback(url: String) {
+    init {
+        scope.launch {
             try {
-                Logger.d(TAG) { "Received callback: $url" }
-
-                val query = url.substringAfter("?", "")
-                if (query.isEmpty()) {
-                    Logger.e(TAG) { "Missing query params in callback URL" }
-                    return
-                }
-
-                val params =
-                    query.split("&").associate {
-                        val parts = it.split("=", limit = 2)
-                        parts[0] to (parts.getOrNull(1) ?: "")
-                    }
-
-                val state = decodeUrl(params["state"] ?: "")
-                if (state.isEmpty()) {
-                    Logger.e(TAG) { "Missing state parameter in callback URL" }
-                    return
-                }
-
-                val manager = callbackRegistry[state]
-                if (manager == null) {
-                    Logger.e(TAG) { "No manager registered for state: $state" }
-                    return
-                }
-
-                manager.completeAuth(url, state, params)
+                restoreSession()
             } catch (e: Exception) {
-                Logger.e(TAG, e) { "Error handling callback" }
+                Logger.e(TAG, e) { "Error checking existing session: ${e.message}" }
             }
         }
     }
 
+    /** Handle an authorization callback URL. */
+    suspend fun handleCallback(url: String) {
+        try {
+            Logger.d(TAG) { "Received callback: $url" }
+
+            val query = url.substringAfter("?", "")
+            if (query.isEmpty()) {
+                Logger.e(TAG) { "Missing query params in callback URL" }
+                return
+            }
+
+            val params =
+                query.split("&").associate {
+                    val parts = it.split("=", limit = 2)
+                    parts[0] to (parts.getOrNull(1) ?: "")
+                }
+
+            val state = decodeUrl(params["state"] ?: "")
+            if (state.isEmpty()) {
+                Logger.e(TAG) { "Missing state parameter in callback URL" }
+                return
+            }
+
+            completeAuth(url, state, params)
+        } catch (e: Exception) {
+            Logger.e(TAG, e) { "Error handling callback" }
+        }
+    }
+
     /** Check if there are stored credentials and restore session. */
-    suspend fun restoreSession(): Boolean {
+    suspend fun restoreSession() {
         if (CredentialStorage.hasStoredCredentials()) {
             val credentials = CredentialStorage.getCredentials()
             if (credentials != null) {
                 val identity = credentials.identity
+                val apiCredentials = ApiCredentials.create(
+                    identity,
+                    SecureStorage.get(YouAuthStorageKeys.CLIENT_AUTH_TOKEN)!!,
+                    SecureByteArray(SecureStorage.get(YouAuthStorageKeys.SHARED_SECRET)!!)
+                )
+                credentialsManager.setActiveCredentials(apiCredentials)
+
                 // We don't have the raw tokens here, but we know we're authenticated
                 _authState.value =
                     YouAuthState.Authenticated(
@@ -128,18 +146,12 @@ class YouAuthFlowManager(
                         sharedSecret = Base64.encode(credentials.sharedSecret.unsafeBytes)
                     )
                 Logger.i(TAG) { "Session restored for $identity" }
-
-                val apiCredentials = ApiCredentials.create(
-                    identity,
-                    SecureStorage.get(YouAuthStorageKeys.CLIENT_AUTH_TOKEN)!!,
-                    SecureByteArray(SecureStorage.get(YouAuthStorageKeys.SHARED_SECRET)!!)
-                )
-                credentialsManager.setActiveCredentials(apiCredentials)
-
-                return true
+                return
             }
         }
-        return false
+
+        // If we got here, we are not authenticated
+        _authState.value = YouAuthState.Unauthenticated
     }
 
     /**
@@ -153,7 +165,6 @@ class YouAuthFlowManager(
      */
     suspend fun authorize(
         identity: OdinId,
-        scope: CoroutineScope,
         appId: String,
         appName: String,
         drives: List<TargetDriveAccessRequest> = emptyList(),
@@ -178,17 +189,17 @@ class YouAuthFlowManager(
 
             // Generate unique state for CSRF protection and callback routing
             val state = generateUuidString()
-            authCodeFlowState = AuthCodeFlowState(identity, password, keyPair)
+            val authCodeFlowState = AuthCodeFlowState(identity, password, keyPair)
 
             // Register for callback
-            callbackRegistry[state] = this
+            callbackRegistry[state] = authCodeFlowState
 
             // Build redirect URI
             val redirectUri = RedirectConfig.buildRedirectUri(appId)
 
             // Build permission request
             val permissionRequest =
-                AppAuthorizationParams.Companion.create(
+                AppAuthorizationParams.create(
                     appName = appName,
                     appId = appId,
                     friendlyName = clientFriendlyName ?: "Homebase KMP App",
@@ -228,6 +239,7 @@ class YouAuthFlowManager(
 
     /** Complete the authentication flow after browser callback. */
     private suspend fun completeAuth(url: String, state: String, queryParams: Map<String, String>) {
+        val authCodeFlowState = callbackRegistry[state]
         if (authCodeFlowState == null) {
             Logger.e(TAG) { "No pending auth code flow state" }
             _authState.value = YouAuthState.Error("No pending auth code flow")
@@ -241,9 +253,7 @@ class YouAuthFlowManager(
 
             val identity = try {
                 OdinId(decodeUrl(queryParams["identity"] ?: ""))
-            }
-            catch (e: Exception)
-            {
+            } catch (_: Exception) {
                 throw Exception("Invalid query param: identity")
             }
 
@@ -254,14 +264,14 @@ class YouAuthFlowManager(
             if (salt.isEmpty()) throw Exception("Missing query param: salt")
 
             // Create unauthenticated client for token exchange
-            val provider = YouAuthProvider(httpClient, authCodeFlowState!!.identity)
+            val provider = YouAuthProvider(httpClient, authCodeFlowState.identity)
 
             // Finalize authentication
             val result =
                 provider.finalizeAuthentication(
                     identity = identity,
-                    keyPair = authCodeFlowState!!.keyPair,
-                    password = authCodeFlowState!!.password,
+                    keyPair = authCodeFlowState.keyPair,
+                    password = authCodeFlowState.password,
                     publicKey = publicKey,
                     salt = salt
                 )
@@ -273,6 +283,13 @@ class YouAuthFlowManager(
                 sharedSecret = Base64.decode(result.sharedSecret)
             )
 
+            val apiCredentials = ApiCredentials.create(
+                result.identity,
+                result.clientAuthToken,
+                SecureByteArray(result.sharedSecret)
+            )
+            credentialsManager.setActiveCredentials(apiCredentials)
+
             // Update state
             _authState.value =
                 YouAuthState.Authenticated(
@@ -281,19 +298,11 @@ class YouAuthFlowManager(
                     sharedSecret = result.sharedSecret
                 )
 
-            val apiCredentials = ApiCredentials.create(
-                result.identity,
-                result.clientAuthToken,
-                SecureByteArray(result.sharedSecret)
-            )
-            credentialsManager.setActiveCredentials(apiCredentials)
-
             Logger.i(TAG) { "Authentication completed successfully for ${result.identity}" }
         } catch (e: Exception) {
             Logger.e(TAG, e) { "Error completing auth" }
             _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
         } finally {
-            authCodeFlowState = null
             callbackRegistry.remove(state)
         }
     }
@@ -330,19 +339,9 @@ class YouAuthFlowManager(
     suspend fun cancelAuth() {
         if (_authState.value == YouAuthState.Authenticating) {
             Logger.i(TAG) { "Authentication cancelled by user" }
-
-            // Clean up any pending state
-            authCodeFlowState?.let { flowState ->
-                // Find and remove from callback registry
-                val stateToRemove = callbackRegistry.entries.find { it.value == this }?.key
-                stateToRemove?.let { callbackRegistry.remove(it) }
-            }
-            authCodeFlowState = null
-
+            callbackRegistry.clear()
             _authState.value = YouAuthState.Unauthenticated
-
             credentialsManager.removeActiveCredentials()
-
         }
     }
 

@@ -1,7 +1,5 @@
 package id.homebase.core.auth
 
-import kotlinx.coroutines.CoroutineScope
-
 /**
  * Platform-specific auth flow orchestration for OAuth/authentication flows.
  *
@@ -20,7 +18,7 @@ expect object BrowserLauncher {
      * callback handlers.
      *
      * @param url The authorization URL being opened
-     * @param scope CoroutineScope for async callback handling
+     * @param onCallbackUrl Callback for url handling
      */
-    fun onAuthBrowserOpened(url: String, scope: CoroutineScope)
+    fun onAuthBrowserOpened(url: String, onCallbackUrl: (String) -> Unit)
 }

@@ -1,7 +1,6 @@
 package id.homebase.api.browser
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.youauth.YouAuthFlowManager
 import io.ktor.http.ContentType
 import io.ktor.server.cio.CIO
 import io.ktor.server.cio.CIOApplicationEngine
@@ -10,10 +9,8 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
-import java.net.ServerSocket
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import java.net.ServerSocket
 
 /**
  * Local HTTP server for handling YouAuth callbacks on desktop.
@@ -32,7 +29,10 @@ object LocalCallbackServer {
         null
     private var currentPort: Int = 0
 
-    fun start(scope: CoroutineScope, preferredPort: Int = 0): Int {
+    private var onCallbackUrl: ((String) -> Unit)? = null
+
+    fun start(onCallbackUrl: (String) -> Unit, preferredPort: Int = 0): Int {
+        this.onCallbackUrl = onCallbackUrl
         if (server != null) return currentPort
 
         val portsToTry =
@@ -51,14 +51,7 @@ object LocalCallbackServer {
                                     "http://localhost:$port${call.request.local.uri}"
 
                                 Logger.d(TAG) { "Received callback: $fullUrl" }
-
-                                scope.launch {
-                                    try {
-                                        YouAuthFlowManager.handleCallback(fullUrl)
-                                    } catch (e: Exception) {
-                                        Logger.e(TAG) { "Callback error: ${e.message}" }
-                                    }
-                                }
+                                LocalCallbackServer.onCallbackUrl?.invoke(fullUrl)
 
                                 call.respondText(
                                     text = CALLBACK_HTML,
@@ -70,16 +63,11 @@ object LocalCallbackServer {
                             get("/focus") {
                                 Logger.d(TAG) { "Focus requested from browser" }
 
-                                scope.launch {
-                                    DesktopAppFocusManager.requestFocus()
-                                }
-
+                                DesktopAppFocusManager.requestFocus()
                                 call.respondText("OK", ContentType.Text.Plain)
 
-                                scope.launch {
-                                    delay(750)
-                                    stop()
-                                }
+                                delay(750)
+                                stop()
                             }
 
                             /** Health check */
@@ -131,6 +119,10 @@ object LocalCallbackServer {
             }
         }
         return -1
+    }
+
+    fun setCallBack(onCallbackUrl: (String) -> Unit) {
+        this.onCallbackUrl = onCallbackUrl
     }
 
     /* ---------------- HTML ---------------- */

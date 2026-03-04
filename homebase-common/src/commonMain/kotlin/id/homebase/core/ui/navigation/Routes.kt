@@ -7,6 +7,9 @@ import kotlinx.serialization.Serializable
 sealed class Route {
 
     @Serializable
+    @SerialName("app-loading")
+    data object AppLoading : Route()
+    @Serializable
     @SerialName("login")
     data object Login : Route()
 

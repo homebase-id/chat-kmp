@@ -6,9 +6,9 @@ import com.mmk.kmpnotifier.notification.PayloadData
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.util.Platform
-import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 /**
  * Central notification service that wraps KMPNotifier and handles incoming push/local
@@ -17,6 +17,10 @@ import kotlinx.coroutines.launch
 class NotificationService(private val api: PushNotificationApi, private val scope: CoroutineScope) {
 
     private var isListening = false
+
+    init {
+        startListening()
+    }
 
     /**
      * Initializes notification listeners. Call after NotifierManager.initialize() has been called

@@ -42,7 +42,7 @@ fun ConnectionRequestHeaderBanner(
             color = ExtendedColors.OnRequestBanner
         )
         Spacer(modifier = Modifier.weight(1f))
-        Icon(Icons.Default.ChevronRight, contentDescription = null)
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = ExtendedColors.OnRequestBanner)
     }
 
 }
