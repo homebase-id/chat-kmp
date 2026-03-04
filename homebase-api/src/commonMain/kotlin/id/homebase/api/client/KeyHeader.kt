@@ -85,6 +85,18 @@ class KeyHeader(
     }
 
 
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || other !is KeyHeader) return false
+        return iv.contentEquals(other.iv) && aesKey == other.aesKey
+    }
+
+    override fun hashCode(): Int {
+        var result = iv.contentHashCode()
+        result = 31 * result + aesKey.hashCode()
+        return result
+    }
+
     companion object {
         /**
          * Creates a KeyHeader from combined bytes (IV + key)

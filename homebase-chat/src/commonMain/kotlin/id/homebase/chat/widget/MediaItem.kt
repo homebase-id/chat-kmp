@@ -98,22 +98,26 @@ fun MediaItem(
     when {
         contentType.startsWith("image/") -> {
             // Render image via HomebaseImage
-            val payloadIv = Base64.decode(
-                payload.iv ?: throw IllegalStateException("encrypted payload requires key header")
-            )
+            // Remember the image data to avoid creating a new instance on every recomposition,
+            // which would cause Coil to restart the image loading pipeline and cause flickering.
             val imageData =
-                HomebaseImageData(
-                    driveId = driveId,
-                    fileId = fileId,
-                    payloadKey = payload.key,
-                    previewThumbnail =
-                        payload.previewThumbnail?.toEmbeddedThumb()
-                            ?: previewThumbnail,
-                    requestedSize = imageSize,
-                    lastModified = payload.lastModified,
-                    isEncrypted = true,
-                    keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
-                )
+                remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
+                    val payloadIv = Base64.decode(
+                        payload.iv ?: throw IllegalStateException("encrypted payload requires key header")
+                    )
+                    HomebaseImageData(
+                        driveId = driveId,
+                        fileId = fileId,
+                        payloadKey = payload.key,
+                        previewThumbnail =
+                            payload.previewThumbnail?.toEmbeddedThumb()
+                                ?: previewThumbnail,
+                        requestedSize = imageSize,
+                        lastModified = payload.lastModified,
+                        isEncrypted = true,
+                        keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
+                    )
+                }
 
             HomebaseImage(
                 imageData = imageData,

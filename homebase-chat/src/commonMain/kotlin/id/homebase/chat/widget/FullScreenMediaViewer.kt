@@ -286,9 +286,14 @@ fun FullScreenMediaViewer(
                     ) {
                         items(data.payloads) { payload ->
                             payload.iv?.let { iv ->
-                                val payloadIv = Base64.decode(iv)
-                                HomebaseImage(
-                                    imageData = HomebaseImageData(
+                                val thumbImageData = remember(
+                                    data.driveId,
+                                    data.fileId,
+                                    payload.key,
+                                    payload.lastModified
+                                ) {
+                                    val payloadIv = Base64.decode(iv)
+                                    HomebaseImageData(
                                         driveId = data.driveId,
                                         fileId = data.fileId,
                                         payloadKey = payload.key,
@@ -298,7 +303,10 @@ fun FullScreenMediaViewer(
                                             iv = payloadIv,
                                             aesKey = data.keyHeader.aesKey
                                         )
-                                    ),
+                                    )
+                                }
+                                HomebaseImage(
+                                    imageData = thumbImageData,
                                     modifier = Modifier
                                         .size(60.dp)
                                         .clip(RoundedCornerShape(8.dp))
