@@ -277,6 +277,14 @@ fun ConversationContent(
                                 )
                             )
                         },
+                        onIntroduceEveryone = {
+                            showConversationMenu = false
+                            onUiAction(
+                                ConversationListUiAction.IntroduceEveryone(
+                                    conversation.id
+                                )
+                            )
+                        }
                     )
                 },
                 colors =

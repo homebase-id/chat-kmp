@@ -28,6 +28,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
@@ -48,6 +49,7 @@ class ConversationService(
     private val dbm: DatabaseManager,
     private val contactService: ContactService,
     private val introductionProvider: ConnectionIntroductionProvider,
+    private val chatMessageSenderService: ChatMessageSenderService,
     private val scope: CoroutineScope
 ) {
 
@@ -110,7 +112,13 @@ class ConversationService(
         driveUploadProvider.uploadFile(request)
 
         if (isGroup) {
-            trySendIntroductions(recipients)
+            trySendIntroductions(recipients, "$domain has added you to a group chat")
+
+            chatMessageSenderService.sendSystemMessage(
+                messageUniqueId = Uuid.random(),
+                conversationId = newConversationId,
+                messageText = "$domain started this group titled $title"
+            )
         }
 
         return newConversationId
@@ -149,7 +157,7 @@ class ConversationService(
         if (anyRecipientMissingConversation) {
             redistributeConversation(conversationId)
             if (filteredRecipients.size > 1) {
-                trySendIntroductions(filteredRecipients)
+                trySendIntroductions(filteredRecipients, "$self has added you to a group chat")
             }
         }
     }
@@ -158,7 +166,7 @@ class ConversationService(
 
         val conversation = requireConversation(conversationId)
 
-        updateConversation(
+        updateConversationInternal(
             conversationId = conversationId,
             title = conversation.name,
             recipients = conversation.participants
@@ -170,10 +178,9 @@ class ConversationService(
         add: List<OdinId> = emptyList(),
         remove: List<OdinId> = emptyList()
     ) {
-
         val conversation = requireConversation(conversationId)
 
-        val self = credentialsManager.requireActiveDomain()
+        val domain = credentialsManager.requireActiveDomain()
         val current = conversation.participants.toMutableSet()
 
         val removed = current.intersect(remove.toSet())
@@ -182,37 +189,95 @@ class ConversationService(
         val added = add.filterNot { current.contains(it) }
         current.addAll(added)
 
-        val normalized = (current + self).distinct()
+        val normalized = (current + domain).distinct()
 
-        updateConversation(
+        updateConversationInternal(
             conversationId = conversationId,
             title = conversation.name,
             recipients = normalized
         )
 
-        trySendIntroductions(added)
-    }
+        trySendIntroductions(added, "$domain has added you to a group chat")
 
-    private suspend fun trySendIntroductions(
-        added: List<OdinId>
-    ) {
-        try {
-            val credentials = credentialsManager.requireActiveCredentials()
-            val self = credentials.domain
-
-            // send introductions
-            introductionProvider.sendIntroductions(
-                group = IntroductionGroup(
-                    recipients = added,
-                    message = "$self has added you to a group chat"
-                )
+        var previousMessageId: Uuid? = null
+        added.forEach { user ->
+            val messageId = Uuid.random()
+            chatMessageSenderService.sendSystemMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                messageText = "$domain added ${user.domainName}",
+                previousMessageUniqueId = previousMessageId
             )
-        } catch (t: Throwable) {
-            Logger.e("Failed sending introductions", t)
+
+            previousMessageId = messageId
+        }
+
+        removed.forEach { user ->
+            val messageId = Uuid.random()
+            chatMessageSenderService.sendSystemMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                messageText = "$domain removed ${user.domainName}",
+                previousMessageUniqueId = previousMessageId
+            )
+
+            previousMessageId = messageId
         }
     }
 
+    suspend fun introduceEveryone(conversationId: Uuid, message: String?) {
+        val conversation = requireConversation(conversationId)
+        trySendIntroductions(conversation.participants, message ?: "")
+    }
+
     suspend fun updateConversation(
+        conversationId: Uuid,
+        title: String?,
+        payloadBundle: PayloadBundle? = null
+    ) {
+
+        val conversation = requireConversation(conversationId)
+        val domain = credentialsManager.requireActiveDomain()
+
+        var previousMessageId: Uuid? = null
+
+        updateConversationInternal(
+            conversationId = conversationId,
+            title = title,
+            recipients = conversation.participants,
+            payloadBundle = payloadBundle
+        )
+
+        if (title != null && title != conversation.name) {
+
+            val messageId = Uuid.random()
+
+            chatMessageSenderService.sendSystemMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                messageText = "$domain changed the conversation title to \"$title\"",
+                previousMessageUniqueId = previousMessageId
+            )
+
+            previousMessageId = messageId
+        }
+
+        if (payloadBundle != null) {
+
+            val messageId = Uuid.random()
+
+            chatMessageSenderService.sendSystemMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                messageText = "$domain updated the conversation photo",
+                previousMessageUniqueId = previousMessageId
+            )
+
+            previousMessageId = messageId
+        }
+    }
+
+    private suspend fun updateConversationInternal(
         conversationId: Uuid,
         title: String?,
         recipients: List<OdinId>,
@@ -484,6 +549,24 @@ class ConversationService(
                     previewThumbnail = previewThumb
                 )
         )
+
+
+    private suspend fun trySendIntroductions(
+        recipients: List<OdinId>,
+        message: String
+    ) {
+        try {
+            // send introductions
+            introductionProvider.sendIntroductions(
+                group = IntroductionGroup(
+                    recipients = recipients,
+                    message = message
+                )
+            )
+        } catch (t: Throwable) {
+            Logger.e("Failed sending introductions", t)
+        }
+    }
 
     private suspend fun prepareUpdateBundle(
         conversationId: Uuid,

@@ -246,7 +246,8 @@ fun SentMessageBubble(
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     messageId = message.id,
-                    downloadingFiles = downloadingFiles
+                    downloadingFiles = downloadingFiles,
+                    isSystemMessage = message.isSystemMessage
                 )
                 message.reactionPreview?.let { reactionSummary ->
                     ReactionList(
@@ -364,7 +365,8 @@ fun ReceivedMessageBubble(
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         messageId = message.id,
-                        downloadingFiles = downloadingFiles
+                        downloadingFiles = downloadingFiles,
+                        isSystemMessage = message.isSystemMessage
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(
@@ -492,6 +494,7 @@ fun MessageBubble(
     sentByYou: Boolean,
     isEdited: Boolean,
     isDeleted: Boolean,
+    isSystemMessage: Boolean,
     deliveryStatus: Int,
     payloads: List<PayloadDescriptor>? = null,
     fileId: Uuid,
@@ -507,6 +510,29 @@ fun MessageBubble(
     messageId: Uuid,
     downloadingFiles: Set<String>,
 ) {
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.weight(1f).height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant)
+        )
+
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Box(
+            Modifier.weight(1f).height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant)
+        )
+    }
+
     val filteredPayloads = payloads?.filter {
         !listOf(
             ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,

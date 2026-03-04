@@ -63,7 +63,6 @@ class EditConversationGroupViewModel(
                         if (conversation == null ||name.isBlank()) return@launch
                         _uiState.update { it.copy(isLoading = true) }
 
-                        val currentUserDomain = credentialsManager.requireActiveCredentials().domain.domainName
                         val groupImage = uiState.value.groupImage
 
                         val bundle = if (groupImage != null) {
@@ -82,7 +81,6 @@ class EditConversationGroupViewModel(
 
                         conversationService.updateConversation(
                             conversationId = conversation.id,
-                            recipients = conversation.participants.filter { it.domainName != currentUserDomain },
                             title = name,
                             payloadBundle = bundle,
                         )

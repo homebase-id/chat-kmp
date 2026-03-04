@@ -35,7 +35,10 @@ data class MessageUiModel(
 
     val keyHeader: KeyHeader,
     val isDeleted: Boolean = false,
-    val versionTag: Uuid
+    val versionTag: Uuid,
+
+    /** Indicates if this was created by the app/system and should be rendered differently **/
+    val isSystemMessage: Boolean = false
 ) {
     fun isCurrentUser(domain: OdinId?): Boolean = (originalAuthor == domain)
 }

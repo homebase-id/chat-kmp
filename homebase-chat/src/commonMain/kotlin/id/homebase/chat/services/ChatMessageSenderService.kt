@@ -37,7 +37,7 @@ class ChatMessageSenderService(
         messageText: String,
         previousMessageUniqueId: Uuid? = null,
         payloadBundle: PayloadBundle? = null
-    ): SendMessageResult = deliverMessage(
+    ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
         content = MessageAppData(
@@ -51,6 +51,27 @@ class ChatMessageSenderService(
         payloadBundle = payloadBundle
     )
 
+    suspend fun sendSystemMessage(
+        messageUniqueId: Uuid,
+        conversationId: Uuid,
+        messageText: String,
+        previousMessageUniqueId: Uuid? = null,
+        payloadBundle: PayloadBundle? = null
+    ): SendMessageResult = sendMessageInternal(
+        messageUniqueId = messageUniqueId,
+        conversationId = conversationId,
+        content = MessageAppData(
+            replyId = null,
+            replyPreview = null,
+            message = JsonPrimitive(messageText),
+            deliveryStatus = ChatDeliveryStatus.Sent.value
+        ),
+        notificationText = "You have a new message",
+        previousMessageUniqueId = previousMessageUniqueId,
+        payloadBundle = payloadBundle,
+        isSystemMessage = true
+    )
+
     suspend fun replyToMessage(
         messageUniqueId: Uuid,
         conversationId: Uuid,
@@ -58,7 +79,7 @@ class ChatMessageSenderService(
         messageText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
-    ): SendMessageResult = deliverMessage(
+    ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
         content = MessageAppData(
@@ -71,29 +92,6 @@ class ChatMessageSenderService(
         payloadBundle = payloadBundle
     )
 
-    private suspend fun deliverMessage(
-        messageUniqueId: Uuid,
-        conversationId: Uuid,
-        content: MessageAppData,
-        notificationText: String,
-        previousMessageUniqueId: Uuid?,
-        payloadBundle: PayloadBundle?
-    ): SendMessageResult {
-
-        conversationService
-        // distribute the conversation file if needed
-        //        conversationWriterService.updateConversationRecipients(conversationId, )
-
-        val result = sendMessageInternal(
-            messageUniqueId,
-            conversationId,
-            content,
-            notificationText,
-            previousMessageUniqueId,
-            payloadBundle
-        )
-        return result
-    }
 
     private suspend fun sendMessageInternal(
         messageUniqueId: Uuid,
@@ -101,7 +99,8 @@ class ChatMessageSenderService(
         content: MessageAppData,
         notificationText: String,
         previousMessageUniqueId: Uuid?,
-        payloadBundle: PayloadBundle?
+        payloadBundle: PayloadBundle?,
+        isSystemMessage: Boolean = false
     ): SendMessageResult {
 
         val keyHeader = KeyHeader.newRandom16()
@@ -116,6 +115,7 @@ class ChatMessageSenderService(
                 allowDistribution = true, isEncrypted = true, appData = UploadAppFileMetaData(
                     uniqueId = messageUniqueId.toString(),
                     groupId = conversationId.toString(),
+                    dataType = if (isSystemMessage) ChatProtocol.SystemMessageDataType else null,
                     fileType = ChatProtocol.MessageFileType,
                     userDate = UnixTimeUtc.now().milliseconds,
                     content = OdinSystemSerializer.serialize(content),
@@ -175,6 +175,10 @@ class ChatMessageSenderService(
         // grab the existing message
         val msg = chatMessageStream.getMessage(messageId)
             ?: throw IllegalArgumentException("message not found")
+
+        if (msg.isSystemMessage) {
+            throw IllegalArgumentException("Cannot delete system message")
+        }
 
         val keyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16),

@@ -218,8 +218,14 @@ class ChatMessageStream(
             }
         ): MessageUiModel? {
 
+            // When data type == system-message (101)
+            // it is a chat message but is to be rendered different
+            // it cannot be edited but users can react and reply like normal
+            // this gets injected by various services (like adding a member to a group)
+
             val metadata = header.fileMetadata
             val appData = metadata.appData
+            val isSystemMessage = appData.dataType == ChatProtocol.SystemMessageDataType
 
             try {
                 // TODO - if this fails app crashes
@@ -232,6 +238,7 @@ class ChatMessageStream(
 
                 val isDeleted = header.fileState == FileState.Deleted ||
                         header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
+
 
                 if (isDeleted) {
                     return MessageUiModel(
@@ -252,8 +259,8 @@ class ChatMessageStream(
                         payloads = metadata.payloads,
                         keyHeader = header.keyHeader,
                         isDeleted = true,
-                        versionTag = versionTag
-
+                        versionTag = versionTag,
+                        isSystemMessage = isSystemMessage
                     )
                 }
 
@@ -283,8 +290,8 @@ class ChatMessageStream(
                     previewThumbnail = metadata.appData.previewThumbnail,
                     payloads = metadata.payloads,
                     keyHeader = header.keyHeader,
-                    versionTag = versionTag
-
+                    versionTag = versionTag,
+                    isSystemMessage = isSystemMessage
                 )
             } catch (t: Throwable) {
 
@@ -308,7 +315,8 @@ class ChatMessageStream(
                         previewThumbnail = metadata.appData.previewThumbnail,
                         payloads = metadata.payloads,
                         keyHeader = header.keyHeader,
-                        versionTag = Uuid.NIL
+                        versionTag = Uuid.NIL,
+                        isSystemMessage = isSystemMessage
                     )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {

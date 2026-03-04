@@ -99,6 +99,11 @@ class ChatMessageActionService(
         deleteForEveryone: Boolean
     ) {
         val msg = chatMessageStream.getMessage(messageId) ?: return
+
+        if (msg.isSystemMessage) {
+            throw IllegalArgumentException("Cannot delete system message")
+        }
+
         val conversation = conversationService.getConversation(msg.conversationId) ?: return
         val fileId = requireFileId(messageId)
 
