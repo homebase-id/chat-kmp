@@ -20,7 +20,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import id.homebase.chat.services.LinkPreview
+import id.homebase.api.client.link.LinkPreview
 import id.homebase.core.ui.theme.Dimens
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
