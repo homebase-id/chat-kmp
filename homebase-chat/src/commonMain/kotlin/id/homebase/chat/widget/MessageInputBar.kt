@@ -1,4 +1,5 @@
 package id.homebase.chat.widget
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -39,6 +40,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +72,8 @@ import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
+import id.homebase.api.client.link.LinkPreview
+import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
@@ -82,7 +86,13 @@ import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.collapse
 import id.homebase.resources.expand
+import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
+
+private val URL_REGEX = Regex(
+    "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
+)
 
 @Composable
 fun MessageInputBar(
@@ -101,6 +111,47 @@ fun MessageInputBar(
     val isHovered by interactionSource.collectIsHoveredAsState()
     var showExpanded by remember { mutableStateOf(false) }
 
+    val linkPreviewProvider: LinkPreviewProvider = koinInject()
+    var linkPreviewData by remember { mutableStateOf<LinkPreview?>(null) }
+    var cancelledUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var lastFetchedUrl by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(textFieldState.annotatedString.text) {
+        val text = textFieldState.annotatedString.text
+        val match = URL_REGEX.find(text)
+
+        if (match != null) {
+            val url = match.value
+
+            // If the user modifies the URL, immediately hide the old preview while we
+            // wait to fetch the new one.
+            if (linkPreviewData != null && linkPreviewData?.url != url) {
+                linkPreviewData = null
+            }
+
+            if (url !in cancelledUrls && url != lastFetchedUrl) {
+                delay(500) // Debounce 500ms
+                lastFetchedUrl = url
+                try {
+                    val preview = linkPreviewProvider.getLinkPreview(url)
+                    // Ensure the URL wasn't cancelled during the network
+                    // request delay
+                    if (preview != null && url !in cancelledUrls) {
+                        linkPreviewData = preview
+                    }
+                } catch (e: Exception) {
+                    // Ignore API errors, but because it's in lastFetchedUrl, we
+                    // won't spam retry it on every keystroke
+                }
+            }
+        } else {
+            // URL was completely removed, so clean up preview and state
+            linkPreviewData = null
+            cancelledUrls = emptySet()
+            lastFetchedUrl = null
+        }
+    }
+
     fun sendMessage() {
         if (textFieldState.annotatedString.isNotBlank()) {
             onSendMessage(textFieldState.toMarkdown())
@@ -113,27 +164,21 @@ fun MessageInputBar(
     ) {
         if (isDesktopOrWeb()) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
+                modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center
             ) {
                 Box(
-                    modifier = Modifier
-                        .alpha(if (isHovered) 1f else 0f)
-                        .size(32.dp)
-                        .clickable(
-                            enabled = isHovered,
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {
-                                showExpanded = !showExpanded
-                            }
-                        )
-                        .pointerHoverIcon(PointerIcon.Hand),
-                    contentAlignment = Alignment.Center
+                    modifier = Modifier.alpha(if (isHovered) 1f else 0f).size(32.dp)
+                        .clickable(enabled = isHovered, interactionSource = remember {
+                            MutableInteractionSource()
+                        }, indication = null, onClick = {
+                            showExpanded = !showExpanded
+                        }).pointerHoverIcon(PointerIcon.Hand), contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (showExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                        contentDescription = if (showExpanded) stringResource(MR.string.collapse) else stringResource(MR.string.expand),
+                        imageVector = if (showExpanded) Icons.Default.KeyboardArrowDown
+                        else Icons.Default.KeyboardArrowUp,
+                        contentDescription = if (showExpanded) stringResource(MR.string.collapse)
+                        else stringResource(MR.string.expand),
                         modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
                     )
@@ -142,28 +187,35 @@ fun MessageInputBar(
         }
         if (showExpanded) {
             MessageTextFieldExpanded(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp)
-                    .focusRequester(focusRequester),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    .padding(bottom = 16.dp).focusRequester(focusRequester),
                 state = textFieldState,
+                linkPreviewData = linkPreviewData,
+                onCancelLinkPreview = {
+                    linkPreviewData?.let { preview ->
+                        cancelledUrls = cancelledUrls + preview.url
+                    }
+                    linkPreviewData = null
+                },
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 sendMessage = {
                     showExpanded = false
                     sendMessage()
-                }
-            )
+                })
         } else {
             MessageTextFieldCompact(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp)
-                    .focusRequester(focusRequester),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    .padding(bottom = 16.dp).focusRequester(focusRequester),
                 state = textFieldState,
+                linkPreviewData = linkPreviewData,
+                onCancelLinkPreview = {
+                    linkPreviewData?.let { preview ->
+                        cancelledUrls = cancelledUrls + preview.url
+                    }
+                    linkPreviewData = null
+                },
                 showingEmojiSheet = showingEmojiSheet,
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
@@ -181,33 +233,41 @@ fun MessageInputBar(
 fun MessageTextFieldExpanded(
     modifier: Modifier = Modifier,
     state: RichTextState,
+    linkPreviewData: LinkPreview?,
+    onCancelLinkPreview: () -> Unit,
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onFocused: () -> Unit = {},
     sendMessage: () -> Unit
 ) {
-    Column(
-        modifier = modifier
-    ) {
+    Column(modifier = modifier) {
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
             state = state,
         )
+        if (linkPreviewData != null) {
+            LinkPreviewCard(
+                linkPreview = linkPreviewData,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                isCompact = true,
+                onCancel = onCancelLinkPreview
+            )
+        }
         RichTextEditor(
             state = state,
-            modifier = Modifier.fillMaxWidth()
-                .onFocusChanged { focusState ->
-                    if (focusState.isFocused) {
-                        onFocused()
-                    }
-                },
-            placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    onFocused()
+                }
+            },
+            placeholder = {
+                Text(stringResource(MR.string.chat_new_message_placeholder))
+            },
             shape = RoundedCornerShape(12.dp),
             minLines = 10,
             maxLines = 10,
             keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Sentences,
-                imeAction = ImeAction.Default
+                capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default
             ),
             colors = RichTextEditorDefaults.richTextEditorColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -218,14 +278,12 @@ fun MessageTextFieldExpanded(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Row(
-            modifier = Modifier
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
         ) {
             IconButton(onClick = onEmojiClick) {
                 Icon(
-                    imageVector = Icons.Default.EmojiEmotions,
-                    contentDescription = "Emoji"
+                    imageVector = Icons.Default.EmojiEmotions, contentDescription = "Emoji"
                 )
             }
             Box {
@@ -233,17 +291,15 @@ fun MessageTextFieldExpanded(
                     onClick = onAddAttachmentClick,
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(MR.string.chat_message_attachment_options)
+                        imageVector = Icons.Default.Add, contentDescription = stringResource(
+                            MR.string.chat_message_attachment_options
+                        )
                     )
                 }
             }
             Spacer(modifier = Modifier.weight(1f))
             IconButton(
-                onClick = {
-                    sendMessage()
-                },
-                colors = IconButtonDefaults.iconButtonColors(
+                onClick = { sendMessage() }, colors = IconButtonDefaults.iconButtonColors(
                     containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                     contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                 )
@@ -262,6 +318,8 @@ fun MessageTextFieldExpanded(
 fun MessageTextFieldCompact(
     modifier: Modifier = Modifier,
     state: RichTextState,
+    linkPreviewData: LinkPreview?,
+    onCancelLinkPreview: () -> Unit,
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
@@ -270,53 +328,62 @@ fun MessageTextFieldCompact(
     onFocused: () -> Unit = {},
     onSendMessage: () -> Unit
 ) {
-    Column(
-        modifier = modifier
-    ) {
+    Column(modifier = modifier) {
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
             state = state,
         )
+        if (linkPreviewData != null) {
+            LinkPreviewCard(
+                linkPreview = linkPreviewData,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                isCompact = true,
+                onCancel = onCancelLinkPreview
+            )
+        }
         Row(
-            modifier = Modifier
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val showSendButton = state.annotatedString.isNotBlank()
             RichTextEditor(
                 state = state,
-                modifier = Modifier.weight(1f)
-                    .onFocusChanged { focusState ->
-                        if (focusState.isFocused) {
-                            onFocused()
-                        }
+                modifier = Modifier.weight(1f).onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        onFocused()
                     }
-                    .onPreviewKeyEvent { keyEvent ->
-                        if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                            if (keyEvent.isCtrlPressed) {
-                                onSendMessage()
-                                true
-                            } else {
-                                false
-                            }
+                }.onPreviewKeyEvent { keyEvent ->
+                    if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                        if (keyEvent.isCtrlPressed) {
+                            onSendMessage()
+                            true
                         } else {
                             false
                         }
-                    },
-                placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+                    } else {
+                        false
+                    }
+                },
+                placeholder = {
+                    Text(stringResource(MR.string.chat_new_message_placeholder))
+                },
                 leadingIcon = {
                     if (!showingEmojiSheet) {
                         IconButton(onClick = onEmojiClick) {
                             Icon(
                                 imageVector = Icons.Default.EmojiEmotions,
-                                contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                contentDescription = stringResource(
+                                    MR.string.chat_message_emoji_options
+                                )
                             )
                         }
                     } else {
                         IconButton(onClick = onKeyboardClick) {
                             Icon(
                                 imageVector = Icons.Default.Keyboard,
-                                contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                contentDescription = stringResource(
+                                    MR.string.chat_message_emoji_options
+                                )
                             )
                         }
                     }
@@ -328,7 +395,9 @@ fun MessageTextFieldCompact(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
-                                contentDescription = stringResource(MR.string.chat_message_attachment_options)
+                                contentDescription = stringResource(
+                                    MR.string.chat_message_attachment_options
+                                )
                             )
                         }
                     } else if (isMobile()) {
@@ -350,35 +419,35 @@ fun MessageTextFieldCompact(
                 minLines = 1,
                 maxLines = 3,
                 keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    imeAction = ImeAction.Default
+                    capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default
                 )
             )
             Spacer(modifier = Modifier.width(8.dp))
             if (showSendButton) {
                 IconButton(
-                    onClick = onSendMessage,
-                    colors = IconButtonDefaults.iconButtonColors(
+                    onClick = onSendMessage, colors = IconButtonDefaults.iconButtonColors(
                         containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                         contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = stringResource(MR.string.chat_send_message_button),
+                        contentDescription = stringResource(
+                            MR.string.chat_send_message_button
+                        ),
                     )
                 }
             } else {
                 IconButton(
-                    onClick = onAddAttachmentClick,
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor =  HomebaseTheme.extendedColors.bubbleSentSurface,
+                    onClick = onAddAttachmentClick, colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                         contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(MR.string.chat_message_attachment_options)
+                        imageVector = Icons.Default.Add, contentDescription = stringResource(
+                            MR.string.chat_message_attachment_options
+                        )
                     )
                 }
             }
@@ -397,39 +466,39 @@ fun MessageTextFieldForAttachment(
     val isKeyboardVisible by keyboardAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    Column(
-        modifier = modifier
-    ) {
+    Column(modifier = modifier) {
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
             state = state,
         )
         Row(
-            modifier = Modifier
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RichTextEditor(
                 state = state,
-                modifier = Modifier.weight(1f)
-                    .onPreviewKeyEvent { keyEvent ->
-                        if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                            if (keyEvent.isCtrlPressed) {
-                                onSendMessage()
-                                true
-                            } else {
-                                false
-                            }
+                modifier = Modifier.weight(1f).onPreviewKeyEvent { keyEvent ->
+                    if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                        if (keyEvent.isCtrlPressed) {
+                            onSendMessage()
+                            true
                         } else {
                             false
                         }
-                    },
-                placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+                    } else {
+                        false
+                    }
+                },
+                placeholder = {
+                    Text(stringResource(MR.string.chat_new_message_placeholder))
+                },
                 leadingIcon = {
                     IconButton(onClick = onSmileyClick) {
                         Icon(
                             imageVector = Icons.Default.EmojiEmotions,
-                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                            contentDescription = stringResource(
+                                MR.string.chat_message_emoji_options
+                            )
                         )
                     }
                 },
@@ -443,37 +512,36 @@ fun MessageTextFieldForAttachment(
                 minLines = 1,
                 maxLines = 3,
                 keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    imeAction = ImeAction.Default
+                    capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default
                 )
             )
             Spacer(modifier = Modifier.width(8.dp))
             if (!isKeyboardVisible) {
                 IconButton(
-                    onClick = onSendMessage,
-                    colors = IconButtonDefaults.iconButtonColors(
+                    onClick = onSendMessage, colors = IconButtonDefaults.iconButtonColors(
                         containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                         contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = stringResource(MR.string.chat_send_message_button),
+                        contentDescription = stringResource(
+                            MR.string.chat_send_message_button
+                        ),
                     )
                 }
             } else {
                 IconButton(
-                    onClick = {
-                        keyboardController?.hide()
-                    },
+                    onClick = { keyboardController?.hide() },
                     colors = IconButtonDefaults.iconButtonColors(
-                        containerColor =  HomebaseTheme.extendedColors.bubbleSentSurface,
+                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                         contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = stringResource(MR.string.chat_message_hide_keyboard)
+                        imageVector = Icons.Default.Check, contentDescription = stringResource(
+                            MR.string.chat_message_hide_keyboard
+                        )
                     )
                 }
             }
@@ -482,21 +550,13 @@ fun MessageTextFieldForAttachment(
 }
 
 @Composable
-fun RichTextEditorButtons(
-    modifier: Modifier = Modifier,
-    state: RichTextState
-) {
-    LazyRow(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-    ) {
+fun RichTextEditorButtons(modifier: Modifier = Modifier, state: RichTextState) {
+    LazyRow(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
         item {
             RichTextStyleButton(
                 onClick = {
                     state.toggleSpanStyle(
-                        SpanStyle(
-                            fontWeight = FontWeight.Bold
-                        )
+                        SpanStyle(fontWeight = FontWeight.Bold)
                     )
                 },
                 isSelected = state.currentSpanStyle.fontWeight == FontWeight.Bold,
@@ -508,9 +568,7 @@ fun RichTextEditorButtons(
             RichTextStyleButton(
                 onClick = {
                     state.toggleSpanStyle(
-                        SpanStyle(
-                            fontStyle = FontStyle.Italic
-                        )
+                        SpanStyle(fontStyle = FontStyle.Italic)
                     )
                 },
                 isSelected = state.currentSpanStyle.fontStyle == FontStyle.Italic,
@@ -522,13 +580,11 @@ fun RichTextEditorButtons(
             RichTextStyleButton(
                 onClick = {
                     state.toggleSpanStyle(
-                        SpanStyle(
-                            textDecoration = TextDecoration.Underline
-                        )
+                        SpanStyle(textDecoration = TextDecoration.Underline)
                     )
-                },
-                isSelected = state.currentSpanStyle.textDecoration?.contains(TextDecoration.Underline) == true,
-                icon = Icons.Outlined.FormatUnderlined
+                }, isSelected = state.currentSpanStyle.textDecoration?.contains(
+                    TextDecoration.Underline
+                ) == true, icon = Icons.Outlined.FormatUnderlined
             )
         }
 
@@ -540,26 +596,17 @@ fun RichTextEditorButtons(
                             textDecoration = TextDecoration.LineThrough
                         )
                     )
-                },
-                isSelected = state.currentSpanStyle.textDecoration?.contains(TextDecoration.LineThrough) == true,
-                icon = Icons.Outlined.FormatStrikethrough
+                }, isSelected = state.currentSpanStyle.textDecoration?.contains(
+                    TextDecoration.LineThrough
+                ) == true, icon = Icons.Outlined.FormatStrikethrough
             )
         }
 
-        item {
-            Box(
-                Modifier
-                    .height(24.dp)
-                    .width(1.dp)
-                    .background(Color(0xFF393B3D))
-            )
-        }
+        item { Box(Modifier.height(24.dp).width(1.dp).background(Color(0xFF393B3D))) }
 
         item {
             RichTextStyleButton(
-                onClick = {
-                    state.toggleUnorderedList()
-                },
+                onClick = { state.toggleUnorderedList() },
                 isSelected = state.isUnorderedList,
                 icon = Icons.AutoMirrored.Outlined.FormatListBulleted,
             )
@@ -567,30 +614,28 @@ fun RichTextEditorButtons(
 
         item {
             RichTextStyleButton(
-                onClick = {
-                    state.toggleOrderedList()
-                },
+                onClick = { state.toggleOrderedList() },
                 isSelected = state.isOrderedList,
                 icon = Icons.Outlined.FormatListNumbered,
             )
         }
 
-//            item {
-//                Box(
-//                    Modifier
-//                        .height(24.dp)
-//                        .width(1.dp)
-//                        .background(Color(0xFF393B3D))
-//                )
-//            }
-//            item {
-//                RichTextStyleButton(
-//                    onClick = {
-//                        state.toggleCodeSpan()
-//                    },
-//                    isSelected = state.isCodeSpan,
-//                    icon = Icons.Outlined.Code,
-//                )
-//            }
+        //            item {
+        //                Box(
+        //                    Modifier
+        //                        .height(24.dp)
+        //                        .width(1.dp)
+        //                        .background(Color(0xFF393B3D))
+        //                )
+        //            }
+        //            item {
+        //                RichTextStyleButton(
+        //                    onClick = {
+        //                        state.toggleCodeSpan()
+        //                    },
+        //                    isSelected = state.isCodeSpan,
+        //                    icon = Icons.Outlined.Code,
+        //                )
+        //            }
     }
 }
