@@ -105,8 +105,8 @@ kotlin {
             implementation(libs.androidx.media3.exoplayer)
             implementation(libs.androidx.media3.exoplayer.hls)
             implementation(libs.androidx.media3.ui)
-            implementation(libs.ktor.client.okhttp)
             implementation(libs.sqldelight.android.driver)
+            implementation(libs.android.database.sqlcipher)
             implementation("id.homebase.libs:ffmpeg-kit:1.0")
             implementation(libs.smart.exception.java)
         }
@@ -140,6 +140,7 @@ kotlin {
 }
 
 sqldelight {
+    linkSqlite.set(false)
     databases {
         create("OdinDatabase") {
             packageName.set("id.homebase.api.sync.database")
