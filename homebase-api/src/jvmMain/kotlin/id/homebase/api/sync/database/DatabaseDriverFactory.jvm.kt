@@ -6,11 +6,16 @@ import java.util.Properties
 
 actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
-        return if (passphrase.isNullOrEmpty()) {
-            JdbcSqliteDriver("jdbc:sqlite:odin.db")
+        val dbFileName = "odin.db"
+        val jdbcUrl = if (passphrase.isNullOrEmpty()) {
+            "jdbc:sqlite:$dbFileName"
         } else {
-            val properties = Properties().apply { setProperty("key", passphrase) }
-            JdbcSqliteDriver("jdbc:sqlite:odin.db", properties)
+            val encodedPassword = java.net.URLEncoder.encode(
+                passphrase, java.nio.charset.StandardCharsets.UTF_8.name()
+            )
+            "jdbc:sqlite:file:$dbFileName?cipher=sqlcipher&legacy=4&key=$encodedPassword"
         }
+
+        return JdbcSqliteDriver(jdbcUrl, Properties())
     }
 }
