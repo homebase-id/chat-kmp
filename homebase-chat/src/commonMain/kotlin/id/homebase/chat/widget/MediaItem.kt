@@ -20,6 +20,9 @@ import androidx.compose.ui.layout.ContentScale
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.LinkPreview
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -59,10 +62,11 @@ fun MediaItem(
     preserveAspectRatio: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(
-        topStart = Dimens.Message.cornerRadius,
-        topEnd = Dimens.Message.cornerRadius
-    ),
+    shape: Shape =
+        RoundedCornerShape(
+            topStart = Dimens.Message.cornerRadius,
+            topEnd = Dimens.Message.cornerRadius
+        ),
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     isDownloading: Boolean = false,
@@ -102,17 +106,19 @@ fun MediaItem(
             // which would cause Coil to restart the image loading pipeline and cause flickering.
             val imageData =
                 remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
-                    val payloadIv = Base64.decode(
-                        payload.iv
-                            ?: throw IllegalStateException("encrypted payload requires key header")
-                    )
+                    val payloadIv =
+                        Base64.decode(
+                            payload.iv
+                                ?: throw IllegalStateException(
+                                    "encrypted payload requires key header"
+                                )
+                        )
                     HomebaseImageData(
                         driveId = driveId,
                         fileId = fileId,
                         payloadKey = payload.key,
-                        previewThumbnail =
-                            payload.previewThumbnail?.toEmbeddedThumb()
-                                ?: previewThumbnail,
+                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                            ?: previewThumbnail,
                         requestedSize = imageSize,
                         lastModified = payload.lastModified,
                         isEncrypted = true,
@@ -132,8 +138,31 @@ fun MediaItem(
             )
         }
 
-        contentType.startsWith("video/") ||
-                contentType == "application/vnd.apple.mpegurl" -> {
+        payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
+            // Render link preview
+            val linkPreview =
+                remember(payload.descriptorContent) {
+                    payload.descriptorContent?.let { content ->
+                        try {
+                            OdinSystemSerializer.deserialize<List<LinkPreview>>(content)
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                }
+
+            if (linkPreview != null) {
+                LinkPreviewCard(linkPreview = linkPreview[0], modifier = baseModifier)
+            } else {
+                MediaPlaceholder(
+                    emoji = "🔗",
+                    label = "Link",
+                    modifier = baseModifier,
+                )
+            }
+        }
+
+        contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
             // TODO: Implement video player/thumbnail
             MediaPlaceholder(
                 emoji = "📹",
