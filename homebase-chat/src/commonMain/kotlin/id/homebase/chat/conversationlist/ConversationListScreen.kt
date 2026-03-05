@@ -47,12 +47,15 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.resources.MR
+import id.homebase.resources.action_cannot_be_undone
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_delete_dialog_title
 import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
+import id.homebase.resources.chat_message_discard_draft
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
+import id.homebase.resources.discard
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
@@ -176,6 +179,35 @@ fun ConversationListScreen(
                     Text(
                         modifier = Modifier.padding(16.dp),
                         text = stringResource(MR.string.chat_message_delete_dialog_title),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
+        }
+        is ConversationListUiDialog.DiscardDraft -> {
+            Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
+                DialogCard(
+                    buttons = {
+                        DialogButtons(
+                            primaryText = stringResource(MR.string.discard),
+                            onPrimaryClick = {
+                                viewModel.onAction(ConversationListUiAction.EditMessage(dialog.messageId, ignoreDraft = true))
+                                viewModel.dialogClosed()
+                            },
+                            secondaryText = stringResource(MR.string.cancel),
+                            onSecondaryClick = {
+                                viewModel.dialogClosed()
+                            },
+                        )
+                    }) {
+                    Text(
+                        modifier = Modifier.padding(16.dp),
+                        text = stringResource(MR.string.chat_message_discard_draft),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                    Text(
+                        modifier = Modifier.padding(16.dp),
+                        text = stringResource(MR.string.action_cannot_be_undone),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -329,6 +361,7 @@ fun ChatListUi(
                                     textFieldState = messageInputTextFieldState,
                                     messages = uiState.currentConversationMessages,
                                     isLoadingNewMessage = uiState.loadingNewMessage,
+                                    editExistingMode = uiState.isEditingMessageId != null,
                                     fullScreenOverlay = uiState.fullScreenOverlay,
                                     savedScrollPosition = uiState.conversationScrollPosition,
                                     showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,

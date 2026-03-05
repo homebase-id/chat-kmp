@@ -141,7 +141,7 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
             val contentType = file.mimeType()?.toString() ?: file.extension
             CachedImage(bytes = bytes, contentType = contentType, size = null)
         } catch (e: Exception) {
-            Logger.e(TAG) { "Failed to load pending file: ${e.message}" }
+            Logger.e(tag = TAG) { "Failed to load pending file: ${e.message}" }
             null
         }
     }

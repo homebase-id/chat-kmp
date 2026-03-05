@@ -11,12 +11,12 @@ import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.EmojiReaction
 import io.github.vinceglb.filekit.PlatformFile
-import kotlin.time.Instant
-import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.datetime.LocalDate
 import org.jetbrains.compose.resources.StringResource
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 @Immutable
 data class ConversationListUiState(
@@ -29,6 +29,7 @@ data class ConversationListUiState(
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
     val loadingNewMessage: Boolean = false,
+    val isEditingMessageId: Uuid? = null,
     val filterByUnread: Boolean = false,
     val isSearchActive: Boolean = false,
     val ownerSession: OwnerSession? = null,

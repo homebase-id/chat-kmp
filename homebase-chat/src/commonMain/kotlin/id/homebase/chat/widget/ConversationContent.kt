@@ -79,7 +79,6 @@ import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import kotlin.time.Clock
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.datetime.DateTimeUnit
@@ -91,6 +90,7 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -100,6 +100,7 @@ fun ConversationContent(
     listState: LazyListState,
     isLoadingNewMessage: Boolean,
     isScrollPositionReady: Boolean,
+    editExistingMode: Boolean,
     messages: ImmutableList<MessageListContentModel>,
     showBackButton: Boolean,
     onBackClick: () -> Unit,
@@ -204,15 +205,6 @@ fun ConversationContent(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            //                            if
-                            // (conversation.isGroupConversation) {
-                            //                                Text(
-                            //                                    text =
-                            // conversation.participants.joinToString { it.domainName },
-                            //                                    style =
-                            // MaterialTheme.typography.labelSmall,
-                            //                                )
-                            //                            }
                         }
                     }
                 }, navigationIcon = {
@@ -371,16 +363,22 @@ fun ConversationContent(
                     MessageInputBar(
                         textFieldState = textFieldState,
                         focusRequester = focusRequester,
+                        editExistingMode = editExistingMode,
                         showingEmojiSheet = showEmojiSheet,
                         onSendMessage = { text, linkPreview ->
                             if (text.isNotBlank()) {
-                                onUiAction(
-                                    ConversationListUiAction.SendMessage(
-                                        conversationId = conversation.id, linkPreview = linkPreview
+                                if (editExistingMode) {
+                                    onUiAction(
+                                        ConversationListUiAction.SendMessage(
+                                            conversationId = conversation.id,
+                                            linkPreview = linkPreview,
+                                        )
                                     )
-                                )
-                                // Scroll to bottom will happen automatically when the message
-                                // is added to UI state
+                                } else {
+                                    onUiAction(
+                                        ConversationListUiAction.SendMessage(conversation.id)
+                                    )
+                                }
                             }
                         },
                         onEmojiClick = {
@@ -431,7 +429,9 @@ fun ConversationContent(
                                 showAttachmentSheet = true
                             }
                         },
-                        onCameraClick = { cameraLauncher.launch() })
+                        onCameraClick = { cameraLauncher.launch() },
+                        onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) }
+                    )
 
                     EmojiSelectorSheet(
                         modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),

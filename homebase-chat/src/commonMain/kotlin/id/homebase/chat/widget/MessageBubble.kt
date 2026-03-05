@@ -77,6 +77,7 @@ import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.getOdinIdColor
 import id.homebase.core.util.ifTrue
+import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.widget.EmojiSelectorDialog
@@ -144,7 +145,7 @@ fun SentMessageBubble(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row {
-                if (onMessageInfo != null) {
+                if (onMessageInfo != null && isDesktop()) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -157,7 +158,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onReply != null) {
+                if (onReply != null && isDesktop()) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply.invoke() },
@@ -170,7 +171,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onAddReaction != null) {
+                if (onAddReaction != null && isDesktop()) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -378,7 +379,7 @@ fun ReceivedMessageBubble(
                 }
             }
             Row {
-                if (onAddReaction != null) {
+                if (onAddReaction != null && isDesktop()) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -391,7 +392,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onReply != null) {
+                if (onReply != null && isDesktop()) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply() },
@@ -404,7 +405,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onMessageInfo != null) {
+                if (onMessageInfo != null && isDesktop()) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -642,7 +643,7 @@ fun MessageBubble(
                             Text(
                                 text = messageInfoText,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = HomebaseTheme.extendedColors.bubbleSentSurface.copy(alpha = 0.7f)
+                                color = HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
                             )
                             if (sentByYou) {
                                 Spacer(modifier = Modifier.width(4.dp))

@@ -25,6 +25,7 @@
     <string name="contacts">Kontakter</string>
     <string name="members">Medlemmer</string>
     <string name="remove">Fjern</string>
+    <string name="discard">Kassér</string>
     <string name="details">Detaljer</string>
     <string name="you">Dig</string>
     <string name="recipients">Modtagere</string>
@@ -32,6 +33,7 @@
     <string name="updated">Opdateret</string>
     <string name="loading">Indlæser...</string>
     <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
+    <string name="action_cannot_be_undone">Denne handling kan ikke fortrydes.</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -130,6 +132,7 @@
     <string name="chat_message_reply">Svar</string>
     <string name="chat_message_reaction">Reaktion'</string>
     <string name="chat_message_edit">Redigér</string>
+    <string name="chat_message_edit_message">Redigér besked</string>
     <string name="chat_message_delete_for_everyone">Slet for alle</string>
     <string name="chat_message_delete_for_me">Slet for mig</string>
     <string name="chat_message_options">Besked menu</string>
@@ -139,6 +142,7 @@
     <string name="chat_message_add_gallery_image">Fjern billede</string>
     <string name="chat_message_remove_gallery_image">Tilføj billede</string>
     <string name="chat_message_hide_keyboard">Skjul tastatur</string>
+    <string name="chat_message_discard_draft">Kassér kladde?</string>
 
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Søg efter emoji</string>

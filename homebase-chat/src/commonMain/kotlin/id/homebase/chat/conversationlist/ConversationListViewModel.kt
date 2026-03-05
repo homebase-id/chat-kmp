@@ -41,6 +41,7 @@ import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +54,7 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
+@OptIn(FlowPreview::class)
 class ConversationListViewModel(
     savedStateHandle: SavedStateHandle,
     private val credentialsManager: CredentialsManager,
@@ -228,13 +230,46 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.EditMessage -> {
-                val hasMessage = !messageInputTextState.annotatedString.isBlank()
-                if (hasMessage) {
+                viewModelScope.launch {
+                    try {
+                        if (!action.ignoreDraft && messageInputTextState.annotatedString.isNotBlank()) {
+                            _uiState.update {
+                                it.copy(
+                                    uiDialog = ConversationListUiDialog.DiscardDraft(action.messageId)
+                                )
+                            }
+                            return@launch
+                        }
 
-                    val content = messageInputTextState.toMarkdown()
-                    editMessage(messageId = action.messageId, content = content)
-                    messageInputTextState.clear()
+                        chatMessageStream.getMessage(action.messageId)?.let { message ->
+                            _uiState.update { it.copy(isEditingMessageId = action.messageId) }
+                            messageInputTextState.setMarkdown(message.content)
+                        }
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                            "Failed to edit message: ${e.message}"
+                        }
+                        sendEvent(
+                            ConversationListUiEvent.ShowErrorMessage(
+                                "Failed to edit message: ${e.message}"
+                            )
+                        )
+                    }
                 }
+            }
+
+            is ConversationListUiAction.EditMessageSave -> {
+                uiState.value.isEditingMessageId?.let { messageId ->
+                    editMessage(
+                        messageId = messageId,
+                        content = messageInputTextState.annotatedString.toString(),
+                    )
+                }
+            }
+
+            is ConversationListUiAction.CancelEditMessage -> {
+                messageInputTextState.clear()
+                _uiState.update { it.copy(isEditingMessageId = null) }
             }
 
             is ConversationListUiAction.DeleteMessage -> {
@@ -291,7 +326,7 @@ class ConversationListViewModel(
                             )
                         }
                     } catch (e: Exception) {
-                        Logger.e("ConversationListViewModel", e) {
+                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
                             "Failed to share media: ${e.message}"
                         }
                         sendEvent(
@@ -439,20 +474,11 @@ class ConversationListViewModel(
             is ConversationListUiAction.ToggleReaction -> {
                 viewModelScope.launch {
                     try {
-                        val result = chatMessageActionService.toggleReaction(
+                        chatMessageActionService.toggleReaction(
                             action.conversationId,
                             action.messageId,
                             action.reaction
                         )
-
-                        // Anders - TODO:
-//                        if (result.resultType == ToggleReactionResultType.Added) {
-//
-//                        }
-//                        else if (result.resultType == ToggleReactionResultType.Deleted)
-//
-//                        }
-
                     } catch (e: Exception) {
                         sendEvent(
                             ConversationListUiEvent.ShowErrorMessage(
@@ -921,7 +947,11 @@ class ConversationListViewModel(
     private fun editMessage(messageId: Uuid, content: String) {
         viewModelScope.launch {
             try {
-                chatMessageSenderService.updateMessage(messageId = messageId, content = content)
+                chatMessageSenderService.updateMessage(
+                    messageId = messageId,
+                    content = content
+                )
+                _uiState.update { it.copy(isEditingMessageId = null) }
             } catch (e: Exception) {
                 sendEvent(
                     ConversationListUiEvent.ShowErrorMessage(
