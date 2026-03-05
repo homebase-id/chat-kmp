@@ -74,17 +74,16 @@ fun ConversationListScreen(
     onNavigateToMessageInfo: (conversationId: Uuid, messageId: Uuid, fileId: Uuid) -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val conversationsUiState by viewModel.uiState.collectAsState()
+    val messagesUiState by viewModel.messagesUiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-
-    val ownerSession by viewModel.ownerSession.collectAsState()
     val fileSystemHandler = getUriHandler()
     // Check for missing permissions and show dialog if needed
     ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
-    LaunchedEffect(uiState.uiEvent) {
-        when (val event = uiState.uiEvent) {
+    LaunchedEffect(conversationsUiState.uiEvent) {
+        when (val event = conversationsUiState.uiEvent) {
             is ConversationListUiEvent.NavigateBack -> {
                 viewModel.eventConsumed()
                 onNavigateBack()
@@ -138,12 +137,11 @@ fun ConversationListScreen(
                 viewModel.eventConsumed()
                 fileSystemHandler.openFile(Path(event.filePath), showChooser = true)
             }
-
             null -> {}
         }
     }
 
-    when (val dialog = uiState.uiDialog) {
+    when (val dialog = conversationsUiState.uiDialog) {
         null -> {}
         is ConversationListUiDialog.DeleteMessage -> {
             Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
@@ -215,9 +213,10 @@ fun ConversationListScreen(
         }
     }
 
-    ChatListUi(
+    ConversationListUi(
         snackbarHostState = snackbarHostState,
-        uiState = uiState,
+        uiState = conversationsUiState,
+        messagesUiState = messagesUiState,
         conversationSearchTextFieldState = viewModel.conversationSearchTextState,
         messageInputTextFieldState = viewModel.messageInputTextState,
         onUiAction = viewModel::onAction,
@@ -228,9 +227,10 @@ fun ConversationListScreen(
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalComposeUiApi::class)
 @Composable
-fun ChatListUi(
+fun ConversationListUi(
     snackbarHostState: SnackbarHostState,
     uiState: ConversationListUiState,
+    messagesUiState: MessageListUiState,
     conversationSearchTextFieldState: TextFieldState,
     messageInputTextFieldState: RichTextState,
     onUiAction: (ConversationListUiAction) -> Unit,
@@ -325,7 +325,7 @@ fun ChatListUi(
 
     @Suppress("DEPRECATION") BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {
-            if (uiState.fullScreenOverlay != null) {
+            if (messagesUiState.fullScreenOverlay != null) {
                 onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
             } else {
                 scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
@@ -358,12 +358,9 @@ fun ChatListUi(
                             key(conversation.id) {
                                 ConversationMessagesPane(
                                     conversation = conversation,
+                                    uiState = messagesUiState,
                                     textFieldState = messageInputTextFieldState,
-                                    messages = uiState.currentConversationMessages,
-                                    isLoadingNewMessage = uiState.loadingNewMessage,
-                                    editExistingMode = uiState.isEditingMessageId != null,
-                                    fullScreenOverlay = uiState.fullScreenOverlay,
-                                    savedScrollPosition = uiState.conversationScrollPosition,
+
                                     showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
                                     onBackClick = {
                                         scope.launch {
@@ -373,10 +370,6 @@ fun ChatListUi(
                                         }
                                     },
                                     onUiAction = onUiAction,
-                                    currentOdinId = uiState.currentOdinId,
-                                    replyToMessage = uiState.replyToMessage,
-                                    messageReactions = uiState.messageReactions,
-                                    downloadingFiles = uiState.downloadingFiles
                                 )
                             }
                         } else {
@@ -422,11 +415,12 @@ fun ChatListUi(
 
 @Preview
 @Composable
-fun ChatListUiPreview() {
+fun ConversationListUiPreview() {
     HomebaseTheme {
-        ChatListUi(
+        ConversationListUi(
             snackbarHostState = SnackbarHostState(),
             uiState = ConversationListUiState(),
+            messagesUiState = MessageListUiState(),
             conversationSearchTextFieldState = TextFieldState(),
             messageInputTextFieldState = RichTextState(),
             onUiAction = {},

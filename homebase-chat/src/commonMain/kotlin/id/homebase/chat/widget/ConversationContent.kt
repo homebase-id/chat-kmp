@@ -23,11 +23,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,7 +47,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -60,15 +57,13 @@ import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.MessageListContentModel
+import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.data.ConversationUiModel
-import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
-import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
-import id.homebase.core.widget.EmojiReaction
 import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
@@ -80,7 +75,6 @@ import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -97,21 +91,15 @@ import kotlin.time.Clock
 @Composable
 fun ConversationContent(
     conversation: ConversationUiModel,
+    uiState: MessageListUiState,
     textFieldState: RichTextState,
     listState: LazyListState,
-    isLoadingNewMessage: Boolean,
     isScrollPositionReady: Boolean,
-    editExistingMode: Boolean,
-    messages: ImmutableList<MessageListContentModel>,
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
-    currentOdinId: String,
-    replyToMessage: MessageUiModel?,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
-    messageReactions: List<EmojiReaction>?,
-    downloadingFiles: Set<String>,
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -158,7 +146,7 @@ fun ConversationContent(
     }
 
     @Suppress("DEPRECATION")
-    BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || editExistingMode) {
+    BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
         showEmojiSheet = false
         showAttachmentSheet = false
         keyboardController?.hide()
@@ -199,7 +187,7 @@ fun ConversationContent(
             }
         }
 
-    messageReactions?.let {
+    uiState.messageReactions?.let {
         EmojiSummary(it, onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) })
     }
 
@@ -320,15 +308,19 @@ fun ConversationContent(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                                         .padding(bottom = 16.dp),
                                     // TODO - how to get list of nice display names
-                                    participantNames = conversation.participants.filter { it.domainName != currentOdinId }
-                                        .map { it.domainName }.toPersistentList(),
+                                    participantNames =
+                                        conversation
+                                            .participants
+                                            .filter { it.domainName != uiState.ownerSession?.odinId?.domainName }
+                                            .map { it.domainName }
+                                            .toPersistentList(),
                                 )
                             }
                         }
-                        if (messages.isEmpty()) {
+                        if (uiState.messages.isEmpty()) {
                             item { EmptyListItem(stringResource(MR.string.chat_no_messages)) }
                         }
-                        items(messages, key = { message -> message.id }) { messageItem ->
+                        items(uiState.messages, key = { message -> message.id }) { messageItem ->
                             when (messageItem) {
                                 is MessageListContentModel.Section -> {
                                     MessagesSection(text = getDateSectionLabel(messageItem.date))
@@ -337,33 +329,13 @@ fun ConversationContent(
                                 is MessageListContentModel.Message -> {
                                     MessageItem(
                                         message = messageItem.message,
-                                        currentOdinId = currentOdinId,
+                                        currentOdinId = uiState.ownerSession?.odinId?.domainName ?: "",
                                         renderAuthorName = conversation.isGroupConversation,
                                         animatedVisibilityScope = animatedVisibilityScope,
                                         sharedTransitionScope = sharedTransitionScope,
                                         onUiAction = onUiAction,
-                                        downloadingFiles = downloadingFiles
+                                        downloadingFiles = uiState.downloadingFiles
                                     )
-                                }
-                            }
-                        }
-
-                        if (isLoadingNewMessage) {
-                            item {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    horizontalArrangement = Arrangement.End,
-                                ) {
-                                    Box(
-                                        modifier = Modifier.width(140.dp)
-                                            .clip(RoundedCornerShape(Dimens.Message.cornerRadius))
-                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                            .padding(16.dp)
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.align(Alignment.Center)
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -376,7 +348,7 @@ fun ConversationContent(
             }
             Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
                 Column(modifier = Modifier.animateContentSize()) {
-                    replyToMessage?.let { msg ->
+                    uiState.replyToMessage?.let { msg ->
                         ReplyPreviewBar(
                             message = msg, onDismiss = {
                                 onUiAction(ConversationListUiAction.CancelReplyToMessage)
@@ -386,20 +358,20 @@ fun ConversationContent(
                         textFieldState = textFieldState,
                         conversationId = conversation.id,
                         focusRequester = focusRequester,
-                        editExistingMode = editExistingMode,
+                        editExistingMode = uiState.isEditingMessageId != null,
                         showingEmojiSheet = showEmojiSheet,
                         onSendMessage = { text, linkPreview ->
                             if (text.isNotBlank()) {
-                                if (editExistingMode) {
+                                if (uiState.isEditingMessageId != null) {
+                                    onUiAction(
+                                        ConversationListUiAction.SendMessage(conversation.id)
+                                    )
+                                } else {
                                     onUiAction(
                                         ConversationListUiAction.SendMessage(
                                             conversationId = conversation.id,
                                             linkPreview = linkPreview,
                                         )
-                                    )
-                                } else {
-                                    onUiAction(
-                                        ConversationListUiAction.SendMessage(conversation.id)
                                     )
                                 }
                             }

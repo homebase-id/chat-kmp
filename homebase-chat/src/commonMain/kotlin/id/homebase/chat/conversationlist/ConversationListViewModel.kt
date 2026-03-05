@@ -9,7 +9,6 @@ import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -57,7 +56,6 @@ import kotlinx.datetime.toLocalDateTime
 @OptIn(FlowPreview::class)
 class ConversationListViewModel(
     savedStateHandle: SavedStateHandle,
-    private val credentialsManager: CredentialsManager,
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
@@ -76,19 +74,19 @@ class ConversationListViewModel(
     private val _uiState = MutableStateFlow(ConversationListUiState())
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
+    private val _messagesUiState = MutableStateFlow(MessageListUiState())
+    val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
+
     val conversationSearchTextState = TextFieldState()
     val messageInputTextState = RichTextState().applyDefaultStyling()
     var currentConversationJob: Job? = null
+    var pendingMessageId: Uuid? = null
 
     init {
         viewModelScope.launch {
-            val domain = credentialsManager.requireActiveCredentials().domain.domainName
-            _uiState.update { it.copy(currentOdinId = domain) }
-        }
-
-        viewModelScope.launch {
             ownerSessionRepository.user.collect { session ->
                 _uiState.update { it.copy(ownerSession = session) }
+                _messagesUiState.update { it.copy(ownerSession = session) }
             }
         }
 
@@ -188,7 +186,7 @@ class ConversationListViewModel(
                 val hasMessage = !messageInputTextState.annotatedString.isBlank()
                 if (hasMessage) {
                     val content = messageInputTextState.toMarkdown()
-                    val replyTo = _uiState.value.replyToMessage
+                    val replyTo = _messagesUiState.value.replyToMessage
                     if (replyTo != null) {
                         replyToMessage(
                             conversationId = action.conversationId,
@@ -196,7 +194,7 @@ class ConversationListViewModel(
                             content = content,
                             linkPreview = action.linkPreview
                         )
-                        _uiState.update { it.copy(replyToMessage = null) }
+                        _messagesUiState.update { it.copy(replyToMessage = null) }
                     } else {
                         addMessage(
                             conversationId = action.conversationId,
@@ -209,9 +207,9 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.SaveScrollPosition -> {
-                _uiState.update {
+                _messagesUiState.update {
                     it.copy(
-                        conversationScrollPosition = ScrollPosition(
+                        scrollPosition = ScrollPosition(
                             firstVisibleItemIndex = action.firstVisibleItemIndex,
                             firstVisibleItemScrollOffset = action.firstVisibleItemScrollOffset,
                         )
@@ -242,7 +240,7 @@ class ConversationListViewModel(
                         }
 
                         chatMessageStream.getMessage(action.messageId)?.let { message ->
-                            _uiState.update { it.copy(isEditingMessageId = action.messageId) }
+                            _messagesUiState.update { it.copy(isEditingMessageId = action.messageId) }
                             messageInputTextState.setMarkdown(message.content)
                         }
                     } catch (e: Exception) {
@@ -259,7 +257,7 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.EditMessageSave -> {
-                uiState.value.isEditingMessageId?.let { messageId ->
+                _messagesUiState.value.isEditingMessageId?.let { messageId ->
                     editMessage(
                         messageId = messageId,
                         content = messageInputTextState.annotatedString.toString(),
@@ -269,16 +267,16 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.CancelEditMessage -> {
                 messageInputTextState.clear()
-                _uiState.update { it.copy(isEditingMessageId = null) }
+                _messagesUiState.update { it.copy(isEditingMessageId = null) }
             }
 
             is ConversationListUiAction.DeleteMessage -> {
-                val messages = uiState.value.currentConversationMessages.mapNotNull {
+                val messages = _messagesUiState.value.messages.mapNotNull {
                     if (it is MessageListContentModel.Message) it.message else null
                 }
                 val message = messages.firstOrNull { it.id == action.messageId } ?: return
                 val isCurrentUserMessage =
-                    message.originalAuthor?.domainName == _uiState.value.currentOdinId
+                    message.originalAuthor?.domainName == _uiState.value.ownerSession?.odinId?.domainName
                 _uiState.update {
                     it.copy(
                         uiDialog = ConversationListUiDialog.DeleteMessage(
@@ -293,7 +291,7 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val messageModel =
-                            _uiState.value.currentConversationMessages.filterIsInstance<MessageListContentModel.Message>()
+                            _messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
                                 .find { it.message.id == action.messageId } ?: return@launch
                         val message = messageModel.message
                         val payload =
@@ -363,7 +361,7 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.DownloadMedia -> {
                 val message =
-                    _uiState.value.currentConversationMessages.filterIsInstance<MessageListContentModel.Message>()
+                    _messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
                         .map { it.message }.find { it.id == action.messageId } ?: return
 
                 val fileKey = "${message.id}_${action.payloadKey}"
@@ -492,10 +490,9 @@ class ConversationListViewModel(
             is ConversationListUiAction.SendFile -> {
                 viewModelScope.launch {
                     try {
-                        _uiState.update {
+                        _messagesUiState.update {
                             it.copy(
-                                loadingNewMessage = true,
-                                conversationScrollPosition = null,
+                                scrollPosition = null,
                                 fullScreenOverlay = null,
                             )
                         }
@@ -555,7 +552,6 @@ class ConversationListViewModel(
                             payloadBundle = bundle,
                         )
                         messageInputTextState.clear()
-                        _uiState.update { it.copy(loadingNewMessage = false) }
                     } catch (e: Exception) {
                         Logger.e("Failed to send file(s)", e)
                         sendEvent(
@@ -579,7 +575,7 @@ class ConversationListViewModel(
                         }
                         if (newFiles.isEmpty() || conversation == null) return@launch
 
-                        val overlay = _uiState.value.fullScreenOverlay
+                        val overlay = _messagesUiState.value.fullScreenOverlay
                         val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
                             overlay.copy(
                                 attachments = overlay.attachments + newFiles,
@@ -593,10 +589,9 @@ class ConversationListViewModel(
                             )
                         }
 
-                        _uiState.update {
+                        _messagesUiState.update {
                             it.copy(
                                 fullScreenOverlay = newOverlay,
-                                loadingNewMessage = false,
                             )
                         }
                     } catch (e: Exception) {
@@ -621,7 +616,7 @@ class ConversationListViewModel(
                         }
                         if (newFiles.isEmpty() || conversation == null) return@launch
 
-                        val overlay = _uiState.value.fullScreenOverlay
+                        val overlay = _messagesUiState.value.fullScreenOverlay
                         val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
                             overlay.copy(
                                 attachments = overlay.attachments + newFiles,
@@ -635,10 +630,9 @@ class ConversationListViewModel(
                             )
                         }
 
-                        _uiState.update {
+                        _messagesUiState.update {
                             it.copy(
                                 fullScreenOverlay = newOverlay,
-                                loadingNewMessage = false,
                             )
                         }
                     } catch (e: Exception) {
@@ -655,13 +649,13 @@ class ConversationListViewModel(
             is ConversationListUiAction.UnAttachFile -> {
                 viewModelScope.launch {
                     try {
-                        val fullScreenOverlay = _uiState.value.fullScreenOverlay
+                        val fullScreenOverlay = _messagesUiState.value.fullScreenOverlay
                         if (fullScreenOverlay == null || fullScreenOverlay !is FullScreenOverlay.AttachmentData) return@launch
 
                         val newFiles = fullScreenOverlay.attachments.filter {
                             it.attachmentId != action.id
                         }
-                        _uiState.update {
+                        _messagesUiState.update {
                             it.copy(
                                 fullScreenOverlay = fullScreenOverlay.copy(attachments = newFiles),
                             )
@@ -688,7 +682,7 @@ class ConversationListViewModel(
                             contentType.startsWith("image/") -> {
                                 Logger.d("Image clicked: ${action.message.id}:${action.payloadKey}")
 
-                                _uiState.update {
+                                _messagesUiState.update {
                                     it.copy(
                                         fullScreenOverlay = FullScreenOverlay.ViewMessageData(
                                             messageId = action.message.id,
@@ -740,7 +734,7 @@ class ConversationListViewModel(
             }
 
             ConversationListUiAction.CloseFullScreenOverlay -> {
-                _uiState.update { it.copy(fullScreenOverlay = null) }
+                _messagesUiState.update { it.copy(fullScreenOverlay = null) }
             }
 
             //            is ConversationListUiAction.ArchiveConversation -> TODO()
@@ -750,11 +744,11 @@ class ConversationListViewModel(
             //            is ConversationListUiAction.StarMessage -> TODO()
 
             is ConversationListUiAction.ReplyToMessage -> {
-                _uiState.update { it.copy(replyToMessage = action.message) }
+                _messagesUiState.update { it.copy(replyToMessage = action.message) }
             }
 
             is ConversationListUiAction.CancelReplyToMessage -> {
-                _uiState.update { it.copy(replyToMessage = null) }
+                _messagesUiState.update { it.copy(replyToMessage = null) }
             }
 
             is ConversationListUiAction.ShowReactionDetails -> {
@@ -762,12 +756,12 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.HideReactionDetails -> {
-                _uiState.update { it.copy(messageReactions = null) }
+                _messagesUiState.update { it.copy(messageReactions = null) }
             }
 
             is ConversationListUiAction.ShowContactInfo -> {
                 // ignore if click on own contact
-                if (action.odinId == uiState.value.currentOdinId) return
+                if (action.odinId == uiState.value.ownerSession?.odinId?.domainName) return
                 _uiState.update {
                     it.copy(
                         uiEvent = ConversationListUiEvent.NavigateToContactInfo((action.odinId))
@@ -883,11 +877,11 @@ class ConversationListViewModel(
     private fun loadReactionDetails(messageId: Uuid) {
         viewModelScope.launch {
             val messageReactions = chatMessageActionService.getReactions(messageId)
-            _uiState.update { it.copy(messageReactions = messageReactions) }
+            _messagesUiState.update { it.copy(messageReactions = messageReactions) }
         }
     }
 
-    private fun loadMessagesForConversation(conversationId: Uuid, messageId: Uuid?) {
+    private fun loadMessagesForConversation(conversationId: Uuid, messageIdForScroll: Uuid?) {
         // When loading message for newly selected conversation, cancel any previous job to
         // avoid observing multiple messageStreams
         currentConversationJob?.cancel()
@@ -902,7 +896,7 @@ class ConversationListViewModel(
                         val date = message.created.toLocalDateTime(timezone).date
                         date
                     }
-                    val messages: List<MessageListContentModel> =
+                    val messagesModels: List<MessageListContentModel> =
                         groupedMessages.flatMap { (date, messages) ->
                             listOf(MessageListContentModel.Section(date)) + messages.map {
                                 MessageListContentModel.Message(
@@ -911,20 +905,35 @@ class ConversationListViewModel(
                             }
                         }
 
-                    val indexOfMessageForScroll = if (messageId == null) null
-                    else messages.indexOfLast {
-                        it is MessageListContentModel.Message && it.message.id == messageId
-                    } + 1 // +1 for header
+                    // Scroll handling, either use new message id, click message id or null
+                    val newMessageId = messages.firstOrNull { it.id == pendingMessageId }?.id
+                    pendingMessageId = null
+                    val indexOfMessageForScroll = if (newMessageId != null) {
+                        Logger.i("Resetting scroll position, new message seen")
+                        messagesModels.indexOfLast {
+                            it is MessageListContentModel.Message && it.message.id == newMessageId
+                        } + 1
+                    } else {
+                        if (messageIdForScroll == null) null
+                        else messagesModels.indexOfLast {
+                            it is MessageListContentModel.Message && it.message.id == messageIdForScroll
+                        } + 1
+                    }
 
                     _uiState.value = _uiState.value.copy(
                         selectedConversationId = conversationId,
-                        currentConversationMessages = messages.toPersistentList(),
-                        conversationScrollPosition = if (indexOfMessageForScroll == null) {
-                            getScrollPosition(conversationId)
-                        } else {
-                            ScrollPosition(indexOfMessageForScroll, 0)
-                        },
                     )
+
+                    _messagesUiState.update {
+                        it.copy(
+                            messages = messagesModels.toPersistentList(),
+                            scrollPosition = if (indexOfMessageForScroll == null) {
+                                getScrollPosition(conversationId)
+                            } else {
+                                ScrollPosition(indexOfMessageForScroll, 0)
+                            },
+                        )
+                    }
                 }
             } catch (_: CancellationException) {
                 // ignore
@@ -964,7 +973,7 @@ class ConversationListViewModel(
                     messageId = messageId,
                     content = content
                 )
-                _uiState.update { it.copy(isEditingMessageId = null) }
+                _messagesUiState.update { it.copy(isEditingMessageId = null) }
             } catch (e: Exception) {
                 sendEvent(
                     ConversationListUiEvent.ShowErrorMessage(
@@ -986,8 +995,10 @@ class ConversationListViewModel(
                     LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
                 }
 
+                val newMessageId = Uuid.random()
+                pendingMessageId = newMessageId
                 chatMessageSenderService.sendNewMessage(
-                    messageUniqueId = Uuid.random(),
+                    messageUniqueId = newMessageId,
                     conversationId = conversationId,
                     messageText = content,
                     previousMessageUniqueId = null,
@@ -1021,8 +1032,10 @@ class ConversationListViewModel(
                     message = replyTo.content.truncateToCodePoints(80),
                     previewThumbnail = replyTo.previewThumbnail
                 )
+                val newMessageId = Uuid.random()
+                pendingMessageId = newMessageId
                 chatMessageSenderService.replyToMessage(
-                    messageUniqueId = Uuid.random(),
+                    messageUniqueId = newMessageId,
                     conversationId = conversationId,
                     replyTo = replyPreview,
                     messageText = content,

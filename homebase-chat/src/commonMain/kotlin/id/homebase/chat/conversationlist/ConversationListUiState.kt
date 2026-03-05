@@ -23,22 +23,26 @@ data class ConversationListUiState(
     val activeConversations: ImmutableList<ConversationUiModel> = persistentListOf(),
     val conversationsContent: ConversationListContentState = ConversationListContentState.Empty,
     val selectedConversationId: Uuid? = null,
-    val currentConversationMessages: ImmutableList<MessageListContentModel> = persistentListOf(),
-    val conversationScrollPosition: ScrollPosition? = null,
-    val currentOdinId: String = "",
-    val fullScreenOverlay: FullScreenOverlay? = null,
-    val replyToMessage: MessageUiModel? = null,
-    val loadingNewMessage: Boolean = false,
-    val isEditingMessageId: Uuid? = null,
     val filterByUnread: Boolean = false,
     val isSearchActive: Boolean = false,
     val ownerSession: OwnerSession? = null,
-    val messageReactions: List<EmojiReaction>? = null,
     val downloadingFiles: Set<String> = emptySet(),
     val driveIsConnected: Boolean = false,
     val driveIsSyncing: Boolean = false,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
+)
+
+@Immutable
+data class MessageListUiState(
+    val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
+    val scrollPosition: ScrollPosition? = null,
+    val fullScreenOverlay: FullScreenOverlay? = null,
+    val replyToMessage: MessageUiModel? = null,
+    val isEditingMessageId: Uuid? = null,
+    val ownerSession: OwnerSession? = null,
+    val messageReactions: List<EmojiReaction>? = null,
+    val downloadingFiles: Set<String> = emptySet()
 )
 
 @Immutable
