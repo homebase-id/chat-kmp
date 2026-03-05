@@ -94,6 +94,7 @@ import id.homebase.resources.expand
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlin.uuid.Uuid
 
 private val URL_REGEX = Regex(
     "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
@@ -103,6 +104,7 @@ private val URL_REGEX = Regex(
 fun MessageInputBar(
     modifier: Modifier = Modifier,
     textFieldState: RichTextState,
+    conversationId: Uuid,
     focusRequester: FocusRequester,
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
@@ -112,7 +114,6 @@ fun MessageInputBar(
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
     onSendMessage: (String, LinkPreview?) -> Unit,
-    onSendMessage: (String) -> Unit,
     onCancelEdit: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -219,6 +220,7 @@ fun MessageInputBar(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                     .padding(bottom = 16.dp).focusRequester(focusRequester),
                 state = textFieldState,
+                conversationId = conversationId,
                 editExistingMode = editExistingMode,
                 linkPreviewData = linkPreviewData,
                 onCancelLinkPreview = {
@@ -350,6 +352,7 @@ fun MessageTextFieldCompact(
     state: RichTextState,
     linkPreviewData: LinkPreview?,
     onCancelLinkPreview: () -> Unit,
+    conversationId: Uuid,
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
@@ -360,7 +363,19 @@ fun MessageTextFieldCompact(
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
-    Column(modifier = modifier) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var isFirstComposition by remember(conversationId) { mutableStateOf(true) }
+
+    LaunchedEffect(conversationId) {
+        isFirstComposition = true
+        keyboardController?.hide()
+        kotlinx.coroutines.delay(100)
+        isFirstComposition = false
+    }
+
+    Column(
+        modifier = modifier
+    ) {
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
             state = state,
@@ -407,7 +422,12 @@ fun MessageTextFieldCompact(
                         .fillMaxWidth()
                         .onFocusChanged { focusState ->
                             if (focusState.isFocused) {
-                                onFocused()
+                                if (isFirstComposition) {
+                                    // Hide keyboard on initial focus
+                                    keyboardController?.hide()
+                                } else {
+                                    onFocused()
+                                }
                             }
                         }
                         .onPreviewKeyEvent { keyEvent ->

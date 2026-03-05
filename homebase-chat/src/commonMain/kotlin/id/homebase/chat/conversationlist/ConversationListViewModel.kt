@@ -514,6 +514,18 @@ class ConversationListViewModel(
                                     )
                                 }
 
+                                is AttachmentPendingFile.FileImage -> {
+                                    attachments.add(
+                                        AttachmentInput(
+                                            filePath = attachment.file.toString(),
+                                            contentType = detectContentTypeFromExtensionOrHint(
+                                                attachment.file.name
+                                            ),
+                                            displayName = attachment.file.name,
+                                        )
+                                    )
+                                }
+
                                 is AttachmentPendingFile.Gallery -> {
                                     attachments.add(
                                         AttachmentInput(
@@ -559,7 +571,8 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val newFiles = action.files.map {
-                            AttachmentPendingFile.File(Uuid.generateV7(), it)
+                            if (action.isImage) AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+                            else AttachmentPendingFile.File(Uuid.generateV7(), it)
                         }
                         val conversation = _uiState.value.activeConversations.find {
                             it.id == action.conversationId

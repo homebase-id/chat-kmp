@@ -86,6 +86,7 @@ sealed interface FullScreenOverlay {
 }
 
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {
+    data class FileImage(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
 }

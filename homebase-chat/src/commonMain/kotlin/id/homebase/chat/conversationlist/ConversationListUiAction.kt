@@ -35,8 +35,9 @@ sealed interface ConversationListUiAction {
     data class AttachPlatformFile(
         val conversationId: Uuid,
         val files: List<PlatformFile>,
+        val isImage: Boolean = false,
     ) : ConversationListUiAction
-
+    
     data class UnAttachFile(
         val conversationId: Uuid,
         val id: Uuid,

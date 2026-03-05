@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -140,18 +141,37 @@ fun ConversationContent(
         }
     }
 
-    @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible) {
+    DisposableEffect(conversation.id) {
+        focusManager.clearFocus()
+        keyboardController?.hide()
+
+        onDispose {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
+
+    LaunchedEffect(conversation.id) {
+        kotlinx.coroutines.delay(50) // Small delay to ensure composition is complete
+        focusManager.clearFocus()
+        keyboardController?.hide()
+    }
+
+    @Suppress("DEPRECATION")
+    BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || editExistingMode) {
         showEmojiSheet = false
         showAttachmentSheet = false
         keyboardController?.hide()
+        onUiAction(ConversationListUiAction.CancelEditMessage)
     }
 
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
-                    conversation.id,
-                    listOf(file),
+                    conversationId = conversation.id,
+                    files = listOf(file),
+                    isImage = true,
                 )
             )
         }
@@ -160,22 +180,24 @@ fun ConversationContent(
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
-                    conversation.id,
-                    listOf(file),
+                    conversationId = conversation.id,
+                    files = listOf(file),
                 )
             )
         }
     }
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversation.id,
-                    listOf(file),
+    val galleryLauncher =
+        rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
+            file?.let {
+                onUiAction(
+                    ConversationListUiAction.AttachPlatformFile(
+                        conversationId = conversation.id,
+                        files = listOf(file),
+                        isImage = true,
+                    )
                 )
-            )
+            }
         }
-    }
 
     messageReactions?.let {
         EmojiSummary(it, onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) })
@@ -362,6 +384,7 @@ fun ConversationContent(
                     }
                     MessageInputBar(
                         textFieldState = textFieldState,
+                        conversationId = conversation.id,
                         focusRequester = focusRequester,
                         editExistingMode = editExistingMode,
                         showingEmojiSheet = showEmojiSheet,
