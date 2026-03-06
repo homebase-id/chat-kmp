@@ -75,10 +75,11 @@ fun MediaItem(
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
 
     // Calculate aspect ratio if available
+    val aspectRatioThumbnail = payload.thumbnails?.lastOrNull() ?: payload.previewThumbnail
     val aspectRatio =
-        remember(payload.previewThumbnail) {
-            val width = payload.previewThumbnail?.pixelWidth
-            val height = payload.previewThumbnail?.pixelHeight
+        remember(aspectRatioThumbnail) {
+            val width = aspectRatioThumbnail?.pixelWidth
+            val height = aspectRatioThumbnail?.pixelHeight
             if (width != null && height != null && width > 0 && height > 0) {
                 width.toFloat() / height.toFloat()
             } else {
