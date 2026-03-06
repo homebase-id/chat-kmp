@@ -33,12 +33,12 @@ fun encodeUrl(value: String): String {
     for (byte in bytes) {
         val b = byte.toInt() and 0xFF
         if ((b >= 48 && b <= 57) ||
-                        (b >= 65 && b <= 90) ||
-                        (b >= 97 && b <= 122) ||
-                        b == 45 ||
-                        b == 46 ||
-                        b == 95 ||
-                        b == 126
+            (b >= 65 && b <= 90) ||
+            (b >= 97 && b <= 122) ||
+            b == 45 ||
+            b == 46 ||
+            b == 95 ||
+            b == 126
         ) { // unreserved characters
             sb.append(b.toChar())
         } else {
@@ -60,7 +60,7 @@ fun decodeUrl(value: String): String {
         if (c == '%') {
             if (i + 2 >= value.length) {
                 throw IllegalArgumentException(
-                        "Invalid URL encoding: incomplete percent sequence at position $i"
+                    "Invalid URL encoding: incomplete percent sequence at position $i"
                 )
             }
             val hex = value.substring(i + 1, i + 3)
@@ -70,8 +70,8 @@ fun decodeUrl(value: String): String {
                 i += 3
             } catch (e: NumberFormatException) {
                 throw IllegalArgumentException(
-                        "Invalid URL encoding: invalid hex sequence '$hex' at position $i",
-                        e
+                    "Invalid URL encoding: invalid hex sequence '$hex' at position $i",
+                    e
                 )
             }
         } else if (c == '+') {

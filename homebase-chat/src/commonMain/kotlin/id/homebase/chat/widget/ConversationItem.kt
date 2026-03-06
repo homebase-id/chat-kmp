@@ -37,6 +37,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
@@ -48,6 +49,7 @@ import id.homebase.resources.chat_message_audio
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_file
 import id.homebase.resources.chat_message_image
+import id.homebase.resources.chat_message_link
 import id.homebase.resources.chat_message_multiple_media
 import id.homebase.resources.chat_message_video
 import id.homebase.resources.chat_no_messages
@@ -200,6 +202,12 @@ fun ConversationItem(
                             previewText = stringResource(MR.string.chat_message_audio)
                             iconRes = Icons.Default.PlayArrow
                         }
+
+                        firstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
+                            previewText = stringResource(MR.string.chat_message_link)
+                            iconRes = Icons.Default.Description
+                        }
+
                         // Assume link identification or default fallback
                         else -> {
                             previewText = stringResource(MR.string.chat_message_file)

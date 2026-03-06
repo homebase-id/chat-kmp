@@ -212,8 +212,7 @@ fun SentMessageBubble(
                         onShare = {
                             popupMode = MessagePopupMode.None
                             onShare()
-                        }
-                    )
+                        })
                 }
             }
             if (showEmojiPicker) {

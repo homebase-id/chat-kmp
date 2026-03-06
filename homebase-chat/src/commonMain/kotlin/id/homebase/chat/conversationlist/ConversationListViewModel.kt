@@ -13,6 +13,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
@@ -22,6 +23,7 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
+import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -35,6 +37,8 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.name
+import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -48,8 +52,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
-import kotlin.io.encoding.Base64
-import kotlin.uuid.Uuid
 
 class ConversationListViewModel(
     savedStateHandle: SavedStateHandle,
@@ -189,11 +191,16 @@ class ConversationListViewModel(
                         replyToMessage(
                             conversationId = action.conversationId,
                             replyTo = replyTo,
-                            content = content
+                            content = content,
+                            linkPreview = action.linkPreview
                         )
                         _uiState.update { it.copy(replyToMessage = null) }
                     } else {
-                        addMessage(conversationId = action.conversationId, content = content)
+                        addMessage(
+                            conversationId = action.conversationId,
+                            content = content,
+                            linkPreview = action.linkPreview
+                        )
                     }
                     messageInputTextState.clear()
                 }
@@ -225,10 +232,7 @@ class ConversationListViewModel(
                 if (hasMessage) {
 
                     val content = messageInputTextState.toMarkdown()
-                    editMessage(
-                        messageId = action.messageId,
-                        content = content
-                    )
+                    editMessage(messageId = action.messageId, content = content)
                     messageInputTextState.clear()
                 }
             }
@@ -390,8 +394,7 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId,
-                            deleteForEveryone = true
+                            action.messageId, deleteForEveryone = true
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -407,8 +410,7 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         chatMessageActionService.deleteMessage(
-                            action.messageId,
-                            deleteForEveryone = false
+                            action.messageId, deleteForEveryone = false
                         )
                     } catch (e: Exception) {
                         sendEvent(
@@ -916,16 +918,10 @@ class ConversationListViewModel(
         _uiState.update { it.copy(uiEvent = event) }
     }
 
-    private fun editMessage(
-        messageId: Uuid,
-        content: String
-    ) {
+    private fun editMessage(messageId: Uuid, content: String) {
         viewModelScope.launch {
             try {
-                chatMessageSenderService.updateMessage(
-                    messageId = messageId,
-                    content = content
-                )
+                chatMessageSenderService.updateMessage(messageId = messageId, content = content)
             } catch (e: Exception) {
                 sendEvent(
                     ConversationListUiEvent.ShowErrorMessage(
@@ -936,18 +932,24 @@ class ConversationListViewModel(
         }
     }
 
-    private fun addMessage(conversationId: Uuid, content: String) {
+    private fun addMessage(
+        conversationId: Uuid,
+        content: String,
+        linkPreview: LinkPreview? = null
+    ) {
         viewModelScope.launch {
             try {
+                val payloadBundle = linkPreview?.let {
+                    LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
+                }
+
                 chatMessageSenderService.sendNewMessage(
                     messageUniqueId = Uuid.random(),
                     conversationId = conversationId,
                     messageText = content,
                     previousMessageUniqueId = null,
-                    payloadBundle = null,
+                    payloadBundle = payloadBundle,
                 )
-
-                // you can also use chatMessageSenderService.replyToMessage
             } catch (e: Exception) {
                 sendEvent(
                     ConversationListUiEvent.ShowErrorMessage(
@@ -958,9 +960,18 @@ class ConversationListViewModel(
         }
     }
 
-    private fun replyToMessage(conversationId: Uuid, replyTo: MessageUiModel, content: String) {
+    private fun replyToMessage(
+        conversationId: Uuid,
+        replyTo: MessageUiModel,
+        content: String,
+        linkPreview: LinkPreview? = null
+    ) {
         viewModelScope.launch {
             try {
+                val payloadBundle = linkPreview?.let {
+                    LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
+                }
+
                 val replyPreview = ReplyPreview(
                     replyUniqueId = replyTo.id,
                     authorOdinId = replyTo.originalAuthor?.domainName ?: "null",
@@ -973,7 +984,7 @@ class ConversationListViewModel(
                     replyTo = replyPreview,
                     messageText = content,
                     previousMessageUniqueId = null,
-                    payloadBundle = null
+                    payloadBundle = payloadBundle
                 )
             } catch (e: Exception) {
                 sendEvent(

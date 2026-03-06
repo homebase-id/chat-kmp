@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.client.link.LinkPreview
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage
@@ -17,7 +18,9 @@ sealed interface ConversationListUiAction {
     data object ClearSelection : ConversationListUiAction
     data object FilterByUnreadClicked : ConversationListUiAction
     data object ClearFilterByUnreadClicked : ConversationListUiAction
-    data class SendMessage(val conversationId: Uuid) : ConversationListUiAction
+    data class SendMessage(val conversationId: Uuid, val linkPreview: LinkPreview? = null) :
+        ConversationListUiAction
+
     data class SendFile(
         val conversationId: Uuid,
         val message: String,
@@ -39,12 +42,10 @@ sealed interface ConversationListUiAction {
         val id: Uuid,
     ) : ConversationListUiAction
 
-    data class ShareMedia(val messageId: Uuid, val payloadKey: String) :
-        ConversationListUiAction
+    data class ShareMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
 
     data class ShareMessage(val message: MessageUiModel) : ConversationListUiAction
-    data class DownloadMedia(val messageId: Uuid, val payloadKey: String) :
-        ConversationListUiAction
+    data class DownloadMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
 
     data class SaveFile(val file: AttachmentPendingFile) : ConversationListUiAction
 
@@ -70,6 +71,7 @@ sealed interface ConversationListUiAction {
     data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction
     data object CancelReplyToMessage : ConversationListUiAction
     data class EditMessage(val conversationId: Uuid, val messageId: Uuid) : ConversationListUiAction
+
     data class DeleteMessage(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForMe(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForEveryone(val messageId: Uuid) : ConversationListUiAction
