@@ -240,7 +240,7 @@ class ConversationListViewModel(
                         }
 
                         chatMessageStream.getMessage(action.messageId)?.let { message ->
-                            _messagesUiState.update { it.copy(isEditingMessageId = action.messageId) }
+                            _messagesUiState.update { it.copy(isEditingMessageId = action.messageId, replyToMessage = null) }
                             messageInputTextState.setMarkdown(message.content)
                         }
                     } catch (e: Exception) {
@@ -742,7 +742,6 @@ class ConversationListViewModel(
             //            is ConversationListUiAction.ArchiveConversation -> TODO()
             //            is ConversationListUiAction.ClearConversation -> TODO()
             //            is ConversationListUiAction.DeleteConversation -> TODO()
-            //            is ConversationListUiAction.EditMessage -> TODO()
             //            is ConversationListUiAction.StarMessage -> TODO()
 
             is ConversationListUiAction.ReplyToMessage -> {
