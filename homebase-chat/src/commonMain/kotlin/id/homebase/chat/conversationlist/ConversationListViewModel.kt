@@ -13,6 +13,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
@@ -934,7 +935,7 @@ class ConversationListViewModel(
     private fun addMessage(
         conversationId: Uuid,
         content: String,
-        linkPreview: id.homebase.api.client.link.LinkPreview? = null
+        linkPreview: LinkPreview? = null
     ) {
         viewModelScope.launch {
             try {
@@ -963,7 +964,7 @@ class ConversationListViewModel(
         conversationId: Uuid,
         replyTo: MessageUiModel,
         content: String,
-        linkPreview: id.homebase.api.client.link.LinkPreview? = null
+        linkPreview: LinkPreview? = null
     ) {
         viewModelScope.launch {
             try {

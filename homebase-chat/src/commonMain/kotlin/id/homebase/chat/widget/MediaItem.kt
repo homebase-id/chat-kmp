@@ -20,9 +20,9 @@ import androidx.compose.ui.layout.ContentScale
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -99,27 +99,43 @@ fun MediaItem(
             baseModifier
         }
 
-
-
     when {
         payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
             // Render link preview
-            val linkPreview =
-                remember(payload.descriptorContent) {
-                    payload.descriptorContent?.let { content ->
-                        try {
-                            OdinSystemSerializer.deserialize<List<LinkPreview>>(content)
-                        } catch (e: Exception) {
-                            null
-                        }
+            val linkDescriptors = remember(payload.descriptorContent) {
+                payload.descriptorContent?.let { content ->
+                    try {
+                        OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(
+                            content
+                        )
+                    } catch (e: Exception) {
+                        null
                     }
                 }
+            }
 
-            if (linkPreview != null) {
-                LinkPreviewCard(linkPreview = linkPreview[0], modifier = baseModifier)
+            val payloadIv =
+                Base64.decode(
+                    payload.iv
+                        ?: throw IllegalStateException(
+                            "encrypted payload requires key header"
+                        )
+                )
+
+            if (linkDescriptors != null) {
+                LinkPreviewCard(
+                    descriptor = linkDescriptors[0],
+                    fileId = fileId,
+                    driveId = driveId,
+                    payloadKey = payload.key,
+                    keyHeader = KeyHeader(payloadIv, keyHeader.aesKey),
+                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                        ?: previewThumbnail,
+                    modifier = baseModifier,
+                )
             } else {
                 MediaPlaceholder(
-                    emoji = "🔗",
+                    emoji = "\uD83D\uDD17",
                     label = "Link",
                     modifier = baseModifier,
                 )
@@ -163,7 +179,6 @@ fun MediaItem(
                 animatedVisibilityScope = animatedVisibilityScope,
             )
         }
-
 
         contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
             // TODO: Implement video player/thumbnail

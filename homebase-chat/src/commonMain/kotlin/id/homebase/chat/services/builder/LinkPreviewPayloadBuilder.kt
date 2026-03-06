@@ -17,23 +17,28 @@ object LinkPreviewPayloadBuilder {
     suspend fun build(
         linkPreview: LinkPreview, fileOperationsProvider: FileOperationsProvider
     ): PayloadBundle {
-        // 1. Build descriptorContent (stripped JSON, no image base64, ≤1024 bytes)
-        var descriptorContent = buildDescriptorJson(linkPreview, maxDescLen = null)
-        if (descriptorContent.encodeToByteArray().size > ChatProtocol.MAX_PAYLOAD_DESCRIPTOR_BYTES) {
-            descriptorContent = buildDescriptorJson(linkPreview, maxDescLen = 100)
-        }
-
-        // 2. Extract image bytes or use empty
         val imageUrl = linkPreview.imageUrl
-        val hasImage = imageUrl != null && imageUrl.contains("base64,")
+        val hasBase64 = imageUrl != null && imageUrl.contains("base64,")
 
-        val imageBytes = if (hasImage && imageUrl != null) {
-            Base64.decode(imageUrl.substringAfter("base64,"))
+        val imageBytes = if (hasBase64 && imageUrl.isNotEmpty()) {
+            try {
+                Base64.decode(imageUrl.substringAfter("base64,"))
+            } catch (e: Exception) {
+                ByteArray(0)
+            }
         } else {
             ByteArray(0)
         }
 
-        val mimeType = if (hasImage && imageUrl != null) {
+        val actualHasImage = imageBytes.isNotEmpty()
+
+        // 1. Build descriptorContent (stripped JSON, no image base64, ≤1024 bytes)
+        var descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxDescLen = null)
+        if (descriptorContent.encodeToByteArray().size > ChatProtocol.MAX_PAYLOAD_DESCRIPTOR_BYTES) {
+            descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxDescLen = 100)
+        }
+
+        val mimeType = if (actualHasImage && imageUrl != null) {
             imageUrl.substringAfter("data:").substringBefore(";")
         } else {
             "application/octet-stream"
@@ -45,7 +50,7 @@ object LinkPreviewPayloadBuilder {
         )
 
         // 4. Generate tinyThumb if image exists
-        val tinyThumb: EmbeddedThumb? = if (hasImage && imageBytes.isNotEmpty()) {
+        val tinyThumb: EmbeddedThumb? = if (actualHasImage) {
             try {
                 val (_, thumb, _) = createThumbnails(imageBytes, ChatProtocol.PAYLOAD_KEY_LINKS)
                 thumb
@@ -69,12 +74,14 @@ object LinkPreviewPayloadBuilder {
         )
     }
 
-    private fun buildDescriptorJson(linkPreview: LinkPreview, maxDescLen: Int?): String {
+    private fun buildDescriptorJson(
+        linkPreview: LinkPreview, hasImage: Boolean, maxDescLen: Int?
+    ): String {
         val descriptor = LinkPreviewDescriptor(
             url = linkPreview.url,
-            hasImage = linkPreview.imageUrl != null,
-            imageWidth = linkPreview.imageWidth,
-            imageHeight = linkPreview.imageHeight,
+            hasImage = hasImage,
+            imageWidth = if (hasImage) linkPreview.imageWidth else null,
+            imageHeight = if (hasImage) linkPreview.imageHeight else null,
             description = if (maxDescLen != null) {
                 linkPreview.description.take(maxDescLen)
             } else {
