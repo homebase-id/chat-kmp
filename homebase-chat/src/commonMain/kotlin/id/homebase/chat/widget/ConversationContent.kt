@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -198,16 +199,22 @@ fun ConversationContent(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ConversationAvatar(
-                            avatarModel = conversation.avatarModel, options = AvatarOptions(
-                                size = 32.dp, fontSize = 12.sp, onClick = {
-                                    onUiAction(
-                                        ConversationListUiAction.ShowConversationSettings(
-                                            conversation
+                            modifier = Modifier.focusable(), // to avoid textfield focus
+                            avatarModel = conversation.avatarModel,
+                            options =
+                                AvatarOptions(
+                                    size = 32.dp,
+                                    fontSize = 12.sp,
+                                    onClick = {
+                                        onUiAction(
+                                            ConversationListUiAction
+                                                .ShowConversationSettings(
+                                                    conversation
+                                                )
                                         )
                                     )
                                 })
                         )
-
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
                             Text(

@@ -42,7 +42,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -363,16 +362,6 @@ fun MessageTextFieldCompact(
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
-    val keyboardController = LocalSoftwareKeyboardController.current
-    var isFirstComposition by remember(conversationId) { mutableStateOf(true) }
-
-    LaunchedEffect(conversationId) {
-        isFirstComposition = true
-        keyboardController?.hide()
-        kotlinx.coroutines.delay(100)
-        isFirstComposition = false
-    }
-
     Column(
         modifier = modifier
     ) {
@@ -420,16 +409,6 @@ fun MessageTextFieldCompact(
                     state = state,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onFocusChanged { focusState ->
-                            if (focusState.isFocused) {
-                                if (isFirstComposition) {
-                                    // Hide keyboard on initial focus
-                                    keyboardController?.hide()
-                                } else {
-                                    onFocused()
-                                }
-                            }
-                        }
                         .onPreviewKeyEvent { keyEvent ->
                             if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
                                 if (keyEvent.isCtrlPressed) {
