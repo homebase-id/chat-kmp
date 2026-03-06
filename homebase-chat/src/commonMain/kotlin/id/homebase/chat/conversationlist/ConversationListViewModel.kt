@@ -544,8 +544,10 @@ class ConversationListViewModel(
                                 "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
                             })
 
+                        val newMessageId = Uuid.random()
+                        pendingMessageId = newMessageId
                         chatMessageSenderService.sendNewMessage(
-                            messageUniqueId = Uuid.random(),
+                            messageUniqueId = newMessageId,
                             conversationId = action.conversationId,
                             messageText = action.message,
                             previousMessageUniqueId = null,

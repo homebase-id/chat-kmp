@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -62,36 +63,75 @@ fun DialogButtons(
     secondaryText: String? = null,
     onTertiaryClick: (() -> Unit)? = null,
     tertiaryText: String? = null,
+    showButtonsVertically: Boolean = false,
 ) {
-    FlowRow(
-        modifier = Modifier
-            .fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (onTertiaryClick != null && tertiaryText != null) {
-            TextButton(
-                onClick = onTertiaryClick,
-            ) {
-                Text(tertiaryText)
+    if (showButtonsVertically) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.End,
+        ) {
+            if (onPrimaryClick != null && primaryText != null) {
+                TextButton(onClick = onPrimaryClick) {
+                    Text(primaryText)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
             }
-            Spacer(modifier = Modifier.width(8.dp))
+            if (onSecondaryClick != null && secondaryText != null) {
+                TextButton(onClick = onSecondaryClick) {
+                    Text(secondaryText)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+            if (onTertiaryClick != null && tertiaryText != null) {
+                TextButton(onClick = onTertiaryClick) {
+                    Text(tertiaryText)
+                }
+            }
         }
-        if (onSecondaryClick != null && secondaryText != null) {
-            TextButton(
-                onClick = onSecondaryClick,
-            ) {
-                Text(secondaryText)
+    } else {
+        FlowRow(
+            modifier = Modifier
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (onTertiaryClick != null && tertiaryText != null) {
+                TextButton(onClick = onTertiaryClick) {
+                    Text(tertiaryText)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
             }
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-        if (onPrimaryClick != null && primaryText != null) {
-            TextButton(
-                onClick = onPrimaryClick,
-            ) {
-                Text(primaryText)
+            if (onSecondaryClick != null && secondaryText != null) {
+                TextButton(onClick = onSecondaryClick) {
+                    Text(secondaryText)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
             }
-            Spacer(modifier = Modifier.width(8.dp))
+            if (onPrimaryClick != null && primaryText != null) {
+                TextButton(onClick = onPrimaryClick) {
+                    Text(primaryText)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+            }
         }
     }
+}
+
+@Composable
+fun DialogTitle(modifier: Modifier = Modifier.padding(16.dp), text: String) {
+    Text(
+        modifier = modifier,
+        text = text,
+        style = MaterialTheme.typography.titleLarge,
+    )
+}
+
+@Composable
+fun DialogText(modifier: Modifier = Modifier.padding(16.dp), text: String) {
+    Text(
+        modifier = modifier,
+        text = text,
+        style = MaterialTheme.typography.bodyLarge,
+    )
 }

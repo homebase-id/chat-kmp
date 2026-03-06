@@ -2,14 +2,11 @@ package id.homebase.chat.conversationlist
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDragHandle
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
@@ -46,6 +43,8 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
+import id.homebase.core.widget.DialogText
+import id.homebase.core.widget.DialogTitle
 import id.homebase.resources.MR
 import id.homebase.resources.action_cannot_be_undone
 import id.homebase.resources.cancel
@@ -137,6 +136,7 @@ fun ConversationListScreen(
                 viewModel.eventConsumed()
                 fileSystemHandler.openFile(Path(event.filePath), showChooser = true)
             }
+
             null -> {}
         }
     }
@@ -165,23 +165,24 @@ fun ConversationListScreen(
                                 if (dialog.allowDeleteForEveryone) {
                                     viewModel.onAction(
                                         ConversationListUiAction.DeleteMessageForEveryone(
-                                                dialog.messageId
-                                            )
+                                            dialog.messageId
+                                        )
                                     )
                                     viewModel.dialogClosed()
                                 }
                             },
                             tertiaryText = stringResource(MR.string.cancel),
-                            onTertiaryClick = { viewModel.dialogClosed() })
+                            onTertiaryClick = { viewModel.dialogClosed() },
+                            showButtonsVertically = true
+                        )
                     }) {
-                    Text(
-                        modifier = Modifier.padding(16.dp),
+                    DialogTitle(
                         text = stringResource(MR.string.chat_message_delete_dialog_title),
-                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
             }
         }
+
         is ConversationListUiDialog.DiscardDraft -> {
             Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
                 DialogCard(
@@ -189,7 +190,12 @@ fun ConversationListScreen(
                         DialogButtons(
                             primaryText = stringResource(MR.string.discard),
                             onPrimaryClick = {
-                                viewModel.onAction(ConversationListUiAction.EditMessage(dialog.messageId, ignoreDraft = true))
+                                viewModel.onAction(
+                                    ConversationListUiAction.EditMessage(
+                                        dialog.messageId,
+                                        ignoreDraft = true
+                                    )
+                                )
                                 viewModel.dialogClosed()
                             },
                             secondaryText = stringResource(MR.string.cancel),
@@ -198,15 +204,11 @@ fun ConversationListScreen(
                             },
                         )
                     }) {
-                    Text(
-                        modifier = Modifier.padding(16.dp),
+                    DialogTitle(
                         text = stringResource(MR.string.chat_message_discard_draft),
-                        style = MaterialTheme.typography.titleLarge,
                     )
-                    Text(
-                        modifier = Modifier.padding(16.dp),
+                    DialogText(
                         text = stringResource(MR.string.action_cannot_be_undone),
-                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
             }
