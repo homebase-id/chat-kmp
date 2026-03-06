@@ -226,7 +226,7 @@ fun SentMessageBubble(
             }
 
             Box {
-                MessageBubble(
+                MessageBubbleRaw(
                     modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
                     text = message.content,
                     timestamp = formatMessageTimestamp(message.created),
@@ -337,7 +337,7 @@ fun ReceivedMessageBubble(
                     )
                 }
                 Box {
-                    MessageBubble(
+                    MessageBubbleRaw(
                         modifier = Modifier.padding(
                             bottom = if (message.reactionPreview == null) 0.dp
                             else 26.dp
@@ -685,7 +685,6 @@ fun MessageBubble(
                                     previewThumbnail = previewThumbnail,
                                     onMediaClick = onMediaClick,
                                     keyHeader = keyHeader,
-                                    preserveAspectRatio = false,
                                     onMediaLongPress = { _, _ -> handleLongClick() },
                                     sharedTransitionScope = sharedTransitionScope,
                                     animatedVisibilityScope = animatedVisibilityScope,
@@ -759,29 +758,29 @@ fun MessageBubble(
                         val lastLineIndex = layoutResult.lineCount - 1
                         val lastLineRight = layoutResult.getLineRight(lastLineIndex)
 
-                    // Determine if timestamp fits on the last line
-                    // We add a small gap (8dp converted to px) between text and time
-                    val horizontalGap = 8.dp.toPx()
-                    val fitsOnLastLine =
-                        (constraints.maxWidth - lastLineRight) > (timePlaceable.width + horizontalGap)
+                        // Determine if timestamp fits on the last line
+                        // We add a small gap (8dp converted to px) between text and time
+                        val horizontalGap = 8.dp.toPx()
+                        val fitsOnLastLine =
+                            (constraints.maxWidth - lastLineRight) > (timePlaceable.width + horizontalGap)
 
-                    if (fitsOnLastLine) {
-                        // Fits on the same line
-                        totalWidth = maxOf(
-                            textPlaceable.width,
-                            (lastLineRight + horizontalGap + timePlaceable.width).toInt()
-                        )
-                        totalHeight = textPlaceable.height
-                        timeX = totalWidth - timePlaceable.width
-                        timeY = totalHeight - timePlaceable.height
-                    } else {
-                        // Needs a new line
-                        totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
-                        totalHeight = textPlaceable.height + timePlaceable.height
-                        timeX = totalWidth - timePlaceable.width
-                        timeY = totalHeight - timePlaceable.height
+                        if (fitsOnLastLine) {
+                            // Fits on the same line
+                            totalWidth = maxOf(
+                                textPlaceable.width,
+                                (lastLineRight + horizontalGap + timePlaceable.width).toInt()
+                            )
+                            totalHeight = textPlaceable.height
+                            timeX = totalWidth - timePlaceable.width
+                            timeY = totalHeight - timePlaceable.height
+                        } else {
+                            // Needs a new line
+                            totalWidth = maxOf(textPlaceable.width, timePlaceable.width)
+                            totalHeight = textPlaceable.height + timePlaceable.height
+                            timeX = totalWidth - timePlaceable.width
+                            timeY = totalHeight - timePlaceable.height
+                        }
                     }
-                }
 
                     layout(totalWidth, totalHeight) {
                         textPlaceable.placeRelative(0, 0)
@@ -824,7 +823,7 @@ fun DeliveryStatus(deliveryStatus: Int) {
     }
 }
 
-private fun String.hasContent(): Boolean {
+fun String.hasContent(): Boolean {
     if (this.isBlank()) return false
     if (this.lines().all { it.isBlank() }) return false
     if (this == "<br>") return false
@@ -844,7 +843,7 @@ private fun String.hasContent(): Boolean {
  */
 @OptIn(ExperimentalResourceApi::class)
 @Composable
-private fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
+fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
     val accentColor = if (sentByYou) {
         HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
     } else {
