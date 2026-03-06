@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.link.LinkPreview
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage

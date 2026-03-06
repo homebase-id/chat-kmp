@@ -105,7 +105,7 @@ fun MessageInputBar(
     onFocused: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
-    onSendMessage: (String) -> Unit,
+    onSendMessage: (String, LinkPreview?) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -130,7 +130,7 @@ fun MessageInputBar(
             }
 
             if (url !in cancelledUrls && url != lastFetchedUrl) {
-                delay(500) // Debounce 500ms
+                delay(250)
                 lastFetchedUrl = url
                 try {
                     val preview = linkPreviewProvider.getLinkPreview(url)
@@ -154,7 +154,8 @@ fun MessageInputBar(
 
     fun sendMessage() {
         if (textFieldState.annotatedString.isNotBlank()) {
-            onSendMessage(textFieldState.toMarkdown())
+            onSendMessage(textFieldState.toMarkdown(), linkPreviewData)
+            linkPreviewData = null
             textFieldState.clear()
         }
     }
@@ -163,16 +164,14 @@ fun MessageInputBar(
         modifier = modifier.hoverable(interactionSource),
     ) {
         if (isDesktopOrWeb()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 Box(
-                    modifier = Modifier.alpha(if (isHovered) 1f else 0f).size(32.dp)
-                        .clickable(enabled = isHovered, interactionSource = remember {
-                            MutableInteractionSource()
-                        }, indication = null, onClick = {
-                            showExpanded = !showExpanded
-                        }).pointerHoverIcon(PointerIcon.Hand), contentAlignment = Alignment.Center
+                    modifier = Modifier.alpha(if (isHovered) 1f else 0f).size(32.dp).clickable(
+                        enabled = isHovered,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { showExpanded = !showExpanded })
+                        .pointerHoverIcon(PointerIcon.Hand), contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (showExpanded) Icons.Default.KeyboardArrowDown

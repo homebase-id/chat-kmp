@@ -99,7 +99,33 @@ fun MediaItem(
             baseModifier
         }
 
+
+
     when {
+        payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
+            // Render link preview
+            val linkPreview =
+                remember(payload.descriptorContent) {
+                    payload.descriptorContent?.let { content ->
+                        try {
+                            OdinSystemSerializer.deserialize<List<LinkPreview>>(content)
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                }
+
+            if (linkPreview != null) {
+                LinkPreviewCard(linkPreview = linkPreview[0], modifier = baseModifier)
+            } else {
+                MediaPlaceholder(
+                    emoji = "🔗",
+                    label = "Link",
+                    modifier = baseModifier,
+                )
+            }
+        }
+
         contentType.startsWith("image/") -> {
             // Render image via HomebaseImage
             // Remember the image data to avoid creating a new instance on every recomposition,
@@ -138,29 +164,6 @@ fun MediaItem(
             )
         }
 
-        payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
-            // Render link preview
-            val linkPreview =
-                remember(payload.descriptorContent) {
-                    payload.descriptorContent?.let { content ->
-                        try {
-                            OdinSystemSerializer.deserialize<List<LinkPreview>>(content)
-                        } catch (e: Exception) {
-                            null
-                        }
-                    }
-                }
-
-            if (linkPreview != null) {
-                LinkPreviewCard(linkPreview = linkPreview[0], modifier = baseModifier)
-            } else {
-                MediaPlaceholder(
-                    emoji = "🔗",
-                    label = "Link",
-                    modifier = baseModifier,
-                )
-            }
-        }
 
         contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
             // TODO: Implement video player/thumbnail
