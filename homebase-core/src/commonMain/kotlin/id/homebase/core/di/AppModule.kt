@@ -23,6 +23,7 @@ import id.homebase.chat.services.convo.ConversationRepository
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.ConversationUpdater
+import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.image.HomebaseImageLoader
@@ -46,6 +47,7 @@ val appModule = module {
     singleOf(::AuthConnectionCoordinator)
 
     factoryOf(::PayloadBundleEncryptionService)
+    factoryOf(::OptimisticWriter)
     singleOf(::ContactService)
 
     singleOf(::ConversationRepository)

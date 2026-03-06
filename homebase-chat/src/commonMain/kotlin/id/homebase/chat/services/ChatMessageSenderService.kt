@@ -115,8 +115,8 @@ class ChatMessageSenderService(
         val metadata =
             UploadFileMetadata(
                 allowDistribution = true, isEncrypted = true, appData = UploadAppFileMetaData(
-                    uniqueId = messageUniqueId.toString(),
-                    groupId = conversationId.toString(),
+                    uniqueId = messageUniqueId,
+                    groupId = conversationId,
                     dataType = if (isSystemMessage) ChatProtocol.SystemMessageDataType else null,
                     fileType = ChatProtocol.MessageFileType,
                     userDate = UnixTimeUtc.now().milliseconds,
@@ -198,8 +198,8 @@ class ChatMessageSenderService(
             isEncrypted = true,
             versionTag = msg.versionTag,
             appData = UploadAppFileMetaData(
-                uniqueId = messageId.toString(),
-                groupId = msg.conversationId.toString(),
+                uniqueId = messageId,
+                groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
                 userDate = UnixTimeUtc.now().milliseconds,
                 content = OdinSystemSerializer.serialize(msgContent),

@@ -18,6 +18,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
@@ -35,9 +36,8 @@ class ConversationUpdater(
         conversationId: Uuid,
         title: String?,
         recipients: List<OdinId>,
-        payloadBundle: PayloadBundle? = null
+        unencryptedPayloadBundle: PayloadBundle? = null
     ) {
-
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
 
@@ -47,18 +47,17 @@ class ConversationUpdater(
 
         val normalizedRecipients = normalizeRecipients(recipients, domain)
 
-        val keyHeader =
-            KeyHeader(
-                iv = ByteArrayUtil.getRndByteArray(16),
-                aesKey = conversationFile.keyHeader.aesKey
-            )
+        val keyHeader = KeyHeader(
+            iv = ByteArrayUtil.getRndByteArray(16),
+            aesKey = conversationFile.keyHeader.aesKey
+        )
 
         val content = buildConversationContent(title, normalizedRecipients)
 
-        val bundle =
+        val encryptedBundle =
             prepareUpdateBundle(
                 conversationId,
-                payloadBundle,
+                unencryptedPayloadBundle,
                 keyHeader.aesKey,
                 conversationFile.fileMetadata.appData.previewThumbnail
             )
@@ -67,30 +66,19 @@ class ConversationUpdater(
             buildConversationMetadata(
                 conversationId,
                 content,
-                bundle.previewThumb,
+                encryptedBundle.previewThumb,
                 conversationFile.fileMetadata.versionTag
             )
 
-        val instructions =
-            FileUpdateInstructionSet(
-                transferIv = ByteArrayUtil.getRndByteArray(16),
-                locale = UpdateLocale.Local,
-                recipients = recipients,
-                manifest = bundle.manifest
-            )
-
-        val request =
-            UpdateFileByUniqueIdRequest(
-                driveId = chatDrive,
-                uniqueId = conversationId,
-                keyHeader = keyHeader,
-                instructions = instructions,
-                metadata = metadata.encryptContent(keyHeader),
-                payloads = bundle.payloads,
-                thumbnails = bundle.thumbnails
-            )
-
-        conversationRepository.updateConversationFile(conversationId, request)
+        conversationRepository.updateConversationFile(
+            conversationId = conversationId,
+            dependencyUniqueId = null,
+            keyHeader = keyHeader,
+            unencryptedMetadata = metadata,
+            unencryptedPayloadBundle = unencryptedPayloadBundle,
+            recipients = normalizedRecipients,
+            scope = scope
+        )
     }
 
     private fun normalizeRecipients(
@@ -119,7 +107,7 @@ class ConversationUpdater(
             isEncrypted = true,
             versionTag = versionTag,
             appData = UploadAppFileMetaData(
-                uniqueId = conversationId.toString(),
+                uniqueId = conversationId,
                 fileType = ChatProtocol.ConversationFileType,
                 content = OdinSystemSerializer.serialize(content),
                 previewThumbnail = previewThumb

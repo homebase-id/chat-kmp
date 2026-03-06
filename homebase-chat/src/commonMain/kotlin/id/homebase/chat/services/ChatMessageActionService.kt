@@ -59,7 +59,7 @@ class ChatMessageActionService(
             driveId = chatDrive,
             fileId = requireFileId(messageId),
             reaction = OdinSystemSerializer.serialize(content),
-            recipients = getRecipients(conversationId)
+            recipients = conversationRepository.getRecipients(conversationId)
         )
     }
 
@@ -75,7 +75,7 @@ class ChatMessageActionService(
             driveId = chatDrive,
             fileId = requireFileId(messageId),
             reaction = OdinSystemSerializer.serialize(content),
-            recipients = getRecipients(conversationId)
+            recipients = conversationRepository.getRecipients(conversationId)
         )
     }
 
@@ -88,7 +88,7 @@ class ChatMessageActionService(
             driveId = chatDrive,
             fileId = requireFileId(messageId),
             reaction = OdinSystemSerializer.serialize(content),
-            recipients = getRecipients(conversationId)
+            recipients = conversationRepository.getRecipients(conversationId)
         )
     }
 
@@ -159,8 +159,8 @@ class ChatMessageActionService(
             isEncrypted = true,
             versionTag = msg.versionTag,
             appData = UploadAppFileMetaData(
-                uniqueId = messageId.toString(),
-                groupId = msg.conversationId.toString(),
+                uniqueId = messageId,
+                groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
                 userDate = UnixTimeUtc.now().milliseconds,
                 content = OdinSystemSerializer.serialize(msgContent),
@@ -257,14 +257,6 @@ class ChatMessageActionService(
     }
 
     private fun isValidEmoji(input: String?): Boolean = !input.isNullOrBlank() && input.length <= 8
-
-    private suspend fun getRecipients(conversationId: Uuid): List<OdinId> {
-        val credentials = credentialsManager.requireActiveCredentials()
-        val conversation = conversationRepository.requireConversation(conversationId)
-        val recipients =
-            conversation.participants.filterNot { odinId -> odinId == credentials.domain }
-        return recipients
-    }
 
     suspend fun getPayloadBytes(
         fileId: Uuid, payloadKey: String, keyHeader: KeyHeader

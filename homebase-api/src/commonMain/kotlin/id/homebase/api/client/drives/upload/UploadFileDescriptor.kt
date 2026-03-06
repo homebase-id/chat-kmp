@@ -8,6 +8,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.prototype.lib.serialization.Base64ByteArraySerializer
+import id.homebase.api.serialization.UuidSerializer
 import kotlin.io.encoding.Base64
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -28,12 +29,12 @@ data class EmbeddedThumb(
 /** Application file metadata for uploads. */
 @Serializable
 data class UploadAppFileMetaData(
-    val uniqueId: String? = null,
-    val tags: List<String>? = null,
+    @Serializable(with = UuidSerializer::class) val uniqueId: Uuid? = null,
+    val tags: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
     val fileType: Int? = null,
     val dataType: Int? = null,
     val userDate: Long? = null,
-    val groupId: String? = null,
+    @Serializable(with = UuidSerializer::class) val groupId: Uuid? = null,
     val archivalStatus: ArchivalStatus? = null,
     val content: String? = null,
     val previewThumbnail: EmbeddedThumb? = null

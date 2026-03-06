@@ -151,7 +151,7 @@ class OutboxSync(
             return true
 
         } catch (t: Throwable) {
-            Logger.e("OutboxSync - Failed to Enqueue", t)
+            Logger.e("OutboxSync - Failed to Enqueue: ${t.message}", t)
         }
 
         return false

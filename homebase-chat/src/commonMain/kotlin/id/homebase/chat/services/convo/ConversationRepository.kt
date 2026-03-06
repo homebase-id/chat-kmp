@@ -11,9 +11,11 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.DriveOutboxUploader
-import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
-import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
+import id.homebase.api.client.drives.upload.TransitOptions
+import id.homebase.api.client.drives.upload.UploadAppFileMetaData
+import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
@@ -21,10 +23,13 @@ import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.PayloadBundle
+import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import kotlinx.coroutines.CoroutineScope
 import kotlin.io.encoding.Base64
 
 class ConversationRepository(
@@ -32,41 +37,76 @@ class ConversationRepository(
     private val introductionProvider: ConnectionIntroductionProvider,
     private val contactService: ContactService,
     private val outboxSync: OutboxSync,
-    private val dbm: DatabaseManager
-
+    private val dbm: DatabaseManager,
+    private val optimisticWriter: OptimisticWriter
 ) {
-
     private val chatDrive = chatTargetDrive.alias
 
-    suspend fun createConversationFile(conversationId: Uuid, request: UploadFileRequest) {
-        val enqueued = outboxSync.tryEnqueue(
-            request.driveId,
-            conversationId,
+    suspend fun createConversationFile(
+        conversationId: Uuid,
+        title: String?,
+        recipients: List<OdinId>,
+        payloadBundle: PayloadBundle?,
+        scope: CoroutineScope
+    ) {
+        val keyHeader = KeyHeader.newRandom16()
+        val domain = credentialsManager.requireActiveDomain()
+        val normalizedRecipients = (recipients + domain).distinct()
+
+        val content = buildConversationContent(title, normalizedRecipients)
+
+        val previewThumb = selectPreviewThumb(payloadBundle?.previewThumbs ?: emptyList())
+
+        val metadata =
+            buildConversationMetadata(
+                conversationId,
+                content,
+                previewThumb
+            )
+
+        val enqueued = optimisticWriter.tryEnqueueCreateNewFile(
+            chatDrive,
+            uniqueId = conversationId,
             dependencyUniqueId = null,
-            priority = 1,
-            uploadType = DriveOutboxUploader.UploadNewFile,
-            json = OdinSystemSerializer.serialize(request),
+            keyHeader = keyHeader,
+            unecryptedMetadata = metadata,
+            transitOptions = TransitOptions(
+                recipients = recipients,
+                useAppNotification = false
+            ),
+            unencryptedPayloadBundle = payloadBundle,
+            scope = scope
         )
 
-        if (enqueued) {
-            outboxSync.send()
+        if (!enqueued) {
+            throw IllegalStateException("conversation not enqueued in outbox")
         }
     }
 
-    suspend fun updateConversationFile(conversationId: Uuid, request: UpdateFileByUniqueIdRequest) {
-        val enqueued = outboxSync.tryEnqueue(
-            request.driveId,
-            conversationId,
-            dependencyUniqueId = null,
-            priority = 1,
-            uploadType = DriveOutboxUploader.UpdateFile,
-            json = OdinSystemSerializer.serialize(request),
+    suspend fun updateConversationFile(
+        conversationId: Uuid,
+        keyHeader: KeyHeader,
+        dependencyUniqueId: Uuid?,
+        unencryptedMetadata: UploadFileMetadata,
+        unencryptedPayloadBundle: PayloadBundle?,
+        recipients: List<OdinId>,
+        scope: CoroutineScope
+    ) {
+
+        val enqueued = optimisticWriter.tryEnqueueUpdateFileByUniqueId(
+            driveId = chatDrive,
+            uniqueId = conversationId,
+            dependencyUniqueId = dependencyUniqueId,
+            keyHeader = keyHeader,
+            recipients = recipients,
+            unecryptedMetadata = unencryptedMetadata,
+            unencryptedPayloadBundle = unencryptedPayloadBundle,
+            scope = scope
         )
 
-        if (enqueued) {
-            outboxSync.send()
+        if (!enqueued) {
+            throw IllegalStateException("Failed to enqueue file update operation")
         }
-
     }
 
     suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
@@ -192,6 +232,42 @@ class ConversationRepository(
 
         return ui
     }
+
+    private fun buildConversationContent(
+        title: String?,
+        recipients: List<OdinId>
+    ) =
+        ConversationAppDataJson(
+            title = title ?: "",
+            recipients = recipients,
+            version = 1
+        )
+
+
+    private fun selectPreviewThumb(
+        thumbs: List<EmbeddedThumb>
+    ): EmbeddedThumb? =
+        thumbs.minByOrNull { it.pixelWidth }
+
+    private fun buildConversationMetadata(
+        conversationId: Uuid,
+        content: ConversationAppDataJson,
+        previewThumb: EmbeddedThumb?,
+        versionTag: Uuid? = null
+    ): UploadFileMetadata =
+        UploadFileMetadata(
+            allowDistribution = true,
+            isEncrypted = true,
+            versionTag = versionTag,
+            appData =
+                UploadAppFileMetaData(
+                    uniqueId = conversationId,
+                    fileType = ChatProtocol.ConversationFileType,
+                    content = OdinSystemSerializer.serialize(content),
+                    previewThumbnail = previewThumb
+                )
+        )
+
 
     private suspend fun resolveDisplayName(file: HomebaseFile): String {
         val author = file.fileMetadata.originalAuthor ?: return ""

@@ -1,20 +1,12 @@
 package id.homebase.chat.services.convo
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.IntroductionGroup
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.client.drives.upload.TransitOptions
-import id.homebase.api.client.drives.upload.UploadAppFileMetaData
-import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.OdinId
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatMessageSenderService
-import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.XorIdUtil
@@ -42,7 +34,6 @@ class ConversationService(
     ): Uuid {
 
         val domain = credentialsManager.requireActiveDomain()
-        val keyHeader = KeyHeader.newRandom16()
         val isGroup = recipients.size > 1
 
         val newConversationId: Uuid =
@@ -57,49 +48,22 @@ class ConversationService(
             return newConversationId
         }
 
-        val normalizedRecipients = normalizeRecipients(recipients, domain)
-
-        val content = buildConversationContent(title, normalizedRecipients)
-
-        val encryptedBundle =
-            payloadBundleEncryptionService.encryptBundle(
-                newConversationId,
-                payloadBundle,
-                keyHeader.aesKey,
-                scope
-            )
-
-        val previewThumb = selectPreviewThumb(encryptedBundle.previewThumbs)
-
-        val metadata =
-            buildConversationMetadata(
-                newConversationId,
-                content,
-                previewThumb
-            )
-
-        val request =
-            UploadFileRequest(
-                driveId = chatDrive,
-                keyHeader = keyHeader,
-                metadata = metadata.encryptContent(keyHeader),
-                transitOptions =
-                    TransitOptions(recipients = recipients, useAppNotification = false),
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails
-            )
-
-        conversationRepository.createConversationFile(newConversationId, request)
+        conversationRepository.createConversationFile(
+            newConversationId,
+            title,
+            recipients,
+            payloadBundle,
+            scope
+        )
 
         if (isGroup) {
             trySendIntroductions(recipients, "$domain has added you to a group chat")
 
-            // this wont work here because we've got a timing issue with sync
-//            chatMessageSenderService.sendSystemMessage(
-//                messageUniqueId = Uuid.random(),
-//                conversationId = newConversationId,
-//                messageText = "$domain started this group titled $title"
-//            )
+            chatMessageSenderService.sendSystemMessage(
+                messageUniqueId = Uuid.random(),
+                conversationId = newConversationId,
+                messageText = "$domain started this group titled $title"
+            )
         }
 
         return newConversationId
@@ -220,7 +184,7 @@ class ConversationService(
             conversationId = conversationId,
             title = title,
             recipients = recipients,
-            payloadBundle = payloadBundle
+            unencryptedPayloadBundle = payloadBundle
         )
     }
 
@@ -229,46 +193,6 @@ class ConversationService(
         val author = file.fileMetadata.originalAuthor ?: return ""
         return contactService.resolveByOdinId(author)?.name ?: author.domainName
     }
-
-    private fun normalizeRecipients(
-        recipients: List<OdinId>,
-        self: OdinId
-    ): List<OdinId> =
-        (recipients + self).distinct()
-
-    private fun buildConversationContent(
-        title: String?,
-        recipients: List<OdinId>
-    ) =
-        ConversationAppDataJson(
-            title = title ?: "",
-            recipients = recipients,
-            version = 1
-        )
-
-    private fun selectPreviewThumb(
-        thumbs: List<EmbeddedThumb>
-    ): EmbeddedThumb? =
-        thumbs.minByOrNull { it.pixelWidth }
-
-    private fun buildConversationMetadata(
-        conversationId: Uuid,
-        content: ConversationAppDataJson,
-        previewThumb: EmbeddedThumb?,
-        versionTag: Uuid? = null
-    ): UploadFileMetadata =
-        UploadFileMetadata(
-            allowDistribution = true,
-            isEncrypted = true,
-            versionTag = versionTag,
-            appData =
-                UploadAppFileMetaData(
-                    uniqueId = conversationId.toString(),
-                    fileType = ChatProtocol.ConversationFileType,
-                    content = OdinSystemSerializer.serialize(content),
-                    previewThumbnail = previewThumb
-                )
-        )
 
 
     suspend fun trySendIntroductions(
