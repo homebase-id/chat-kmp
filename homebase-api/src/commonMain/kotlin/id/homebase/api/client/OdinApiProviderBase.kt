@@ -21,10 +21,13 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.content.TextContent
 import io.ktor.http.contentType
 import id.homebase.api.common.OdinId
+import io.ktor.client.plugins.onUpload
 import io.ktor.client.request.delete
 import io.ktor.client.request.parameter
 import io.ktor.utils.io.charsets.Charsets
 import io.ktor.utils.io.charsets.name
+
+typealias UploadProgress = suspend (bytesSent: Long, totalBytes: Long?) -> Unit
 
 data class ByteApiResponse(
     val status: Int,
@@ -200,7 +203,8 @@ abstract class OdinApiProviderBase(
     protected suspend fun plainPostMultipart(
         url: String,
         token: String,
-        formData: MultiPartFormDataContent
+        formData: MultiPartFormDataContent,
+        onProgress: UploadProgress? = null
     ): ApiResponse {
         requireHostInUrl(url)
 
@@ -209,6 +213,10 @@ abstract class OdinApiProviderBase(
                 httpClient.post(url) {
                     bearerAuth(token)
                     setBody(formData)
+
+                    onUpload { sent, total ->
+                        onProgress?.invoke(sent, total)
+                    }
                 }
             },
             secret = null
@@ -218,7 +226,8 @@ abstract class OdinApiProviderBase(
     protected suspend fun plainPatchMultipart(
         url: String,
         token: String,
-        formData: MultiPartFormDataContent
+        formData: MultiPartFormDataContent,
+        onProgress: UploadProgress? = null
     ): ApiResponse {
         requireHostInUrl(url)
 
@@ -227,6 +236,10 @@ abstract class OdinApiProviderBase(
                 httpClient.patch(url) {
                     bearerAuth(token)
                     setBody(formData)
+
+                    onUpload { sent, total ->
+                        onProgress?.invoke(sent, total)
+                    }
                 }
             },
             secret = null

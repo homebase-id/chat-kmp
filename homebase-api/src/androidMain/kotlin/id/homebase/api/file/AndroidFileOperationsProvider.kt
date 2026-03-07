@@ -55,7 +55,23 @@ class AndroidFileOperationsProvider(
 
     override fun getCacheDirectory(): String = context.cacheDir.absolutePath
 
-    override fun getFileSize(path: String): Long = File(path).length()
+    override fun getFileSize(path: String): Long {
+        if (path.startsWith("content://") || path.startsWith("content:")) {
+            val uri = path.toUri()
+
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+
+                if (sizeIndex >= 0 && cursor.moveToFirst()) {
+                    return cursor.getLong(sizeIndex)
+                }
+            }
+
+            return 0L
+        }
+
+        return File(path).length()
+    }
 
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray, prefix: String, suffix: String

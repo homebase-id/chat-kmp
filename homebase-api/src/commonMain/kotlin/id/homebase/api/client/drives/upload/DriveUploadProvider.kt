@@ -15,6 +15,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.EncryptedKeyHeader
+import id.homebase.api.client.UploadProgress
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
@@ -98,6 +99,7 @@ class DriveUploadProvider(
 
     suspend fun uploadFile(
         request: UploadFileRequest,
+        onProgress: UploadProgress? = null,
         onVersionConflict: (suspend () -> CreateFileResult?)? = null
     ): CreateFileResult? {
 
@@ -133,7 +135,25 @@ class DriveUploadProvider(
                 fileOperationsProvider = fileOperationsProvider
             )
 
-        val result = pureUpload(request.driveId, data, request.fileSystemType, onVersionConflict)
+        val totalUploadSize = calculateUploadSize(
+            request.payloads,
+            request.thumbnails,
+            sharedSecretEncryptedDescriptor,
+            fileOperationsProvider
+        )
+
+        val wrappedProgress = onProgress?.let { progress ->
+            suspend { sent: Long, _: Long? ->
+                progress(sent, totalUploadSize)
+            }
+        }
+
+        val result =
+            pureUpload(
+                request.driveId, data, request.fileSystemType,
+                wrappedProgress,
+                onVersionConflict
+            )
 
         if (result != null) {
             cleanupPayloadTempFiles(request.payloads)
@@ -144,6 +164,7 @@ class DriveUploadProvider(
 
     suspend fun updateFileByFileId(
         request: UpdateFileByFileIdRequest,
+        onProgress: UploadProgress? = null,
         onVersionConflict: (suspend () -> UpdateFileResult?)? = null
     ): UpdateFileResult? {
 
@@ -168,8 +189,21 @@ class DriveUploadProvider(
                 fileOperationsProvider = fileOperationsProvider
             )
 
+        val totalUploadSize = calculateUploadSize(
+            request.payloads,
+            request.thumbnails,
+            sharedSecretEncryptedDescriptor,
+            fileOperationsProvider
+        )
+
+        val wrappedProgress = onProgress?.let { progress ->
+            suspend { sent: Long, _: Long? ->
+                progress(sent, totalUploadSize)
+            }
+        }
+
         val path = "/drives/${request.driveId}/files/${request.fileId}"
-        val result = pureUpdate(data, path, onVersionConflict)
+        val result = pureUpdate(data, path, wrappedProgress, onVersionConflict)
 
         if (result != null) {
             cleanupPayloadTempFiles(request.payloads)
@@ -180,6 +214,7 @@ class DriveUploadProvider(
 
     suspend fun updateFileByUniqueId(
         request: UpdateFileByUniqueIdRequest,
+        onProgress: UploadProgress? = null,
         onVersionConflict: (suspend () -> UpdateFileResult?)? = null
     ): UpdateFileResult? {
 
@@ -204,7 +239,7 @@ class DriveUploadProvider(
             )
 
         val path = "/drives/${request.driveId}/files/by-uid/${request.uniqueId}"
-        val result = pureUpdate(data, path, onVersionConflict)
+        val result = pureUpdate(data, path, onProgress, onVersionConflict)
 
         if (result != null) {
             cleanupPayloadTempFiles(request.payloads)
@@ -314,6 +349,7 @@ class DriveUploadProvider(
         driveId: Uuid,
         data: MultiPartFormDataContent,
         fileSystemType: FileSystemType? = null,
+        onProgress: UploadProgress? = null,
         onVersionConflict: (suspend () -> CreateFileResult?)? = null
     ): CreateFileResult? {
 
@@ -348,7 +384,8 @@ class DriveUploadProvider(
             plainPostMultipart(
                 url = url,
                 token = credentials.accessToken,
-                formData = data
+                formData = data,
+                onProgress = onProgress
             )
 
         if (response.status in 200..299) {
@@ -363,6 +400,7 @@ class DriveUploadProvider(
     suspend fun pureUpdate(
         data: MultiPartFormDataContent,
         path: String,
+        onProgress: UploadProgress? = null,
         onVersionConflict: (suspend () -> UpdateFileResult?)? = null
     ): UpdateFileResult? {
         val credentials = requireCreds()
@@ -372,7 +410,8 @@ class DriveUploadProvider(
             plainPatchMultipart(
                 url = url,
                 token = credentials.accessToken,
-                formData = data
+                formData = data,
+                onProgress = onProgress
             )
 
         if (response.status in 200..299) {

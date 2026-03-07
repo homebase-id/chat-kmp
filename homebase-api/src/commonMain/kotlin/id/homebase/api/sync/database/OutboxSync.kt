@@ -120,10 +120,19 @@ class OutboxSync(
                     "Failed upload for ${outboxRecord.uniqueId}, retry in $n seconds (attempt ${outboxRecord.checkOutCount + 1})",
                     e
                 )
+
                 databaseManager.outbox.checkInFailed(
                     outboxRecord.checkOutStamp!!,
                     UnixTimeUtc.now().addSeconds(n).seconds
                 )
+
+                eventBus.emit(
+                    BackendEvent.OutboxEvent.ItemFailed(
+                        outboxRecord.driveId,
+                        outboxRecord.uniqueId
+                    )
+                )
+
                 eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
             }
         }
@@ -146,6 +155,13 @@ class OutboxSync(
                 uploadType = uploadType,
                 json = json.toUtf8ByteArray(),
                 filePaths = null
+            )
+
+            eventBus.emit(
+                BackendEvent.OutboxEvent.ItemEnqueued(
+                    driveId,
+                    uniqueId
+                )
             )
 
             return true
