@@ -25,6 +25,7 @@ import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.chatTargetDrive
@@ -41,6 +42,7 @@ import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +55,7 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
+@OptIn(FlowPreview::class)
 class ConversationListViewModel(
     savedStateHandle: SavedStateHandle,
     private val credentialsManager: CredentialsManager,
@@ -60,6 +63,7 @@ class ConversationListViewModel(
     private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
     private val chatMessageActionService: ChatMessageActionService,
+    private val conversationService: ConversationService,
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
@@ -764,9 +768,21 @@ class ConversationListViewModel(
                 }
             }
 
+            is ConversationListUiAction.IntroduceEveryone -> {
+                introduceEveryone(action.conversationId)
+            }
+
             else -> {
                 println("Unhandled action: $action")
             }
+        }
+    }
+
+    private fun introduceEveryone(conversationId: Uuid) {
+        viewModelScope.launch {
+            val defaultMessage = "${_uiState.value.currentOdinId} has added you to group chat"
+            conversationService.introduceEveryone(conversationId, defaultMessage)
+            //TODO: Anders or Bishwa - please show a confirmation the action was taken
         }
     }
 

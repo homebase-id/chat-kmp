@@ -22,7 +22,7 @@ class ConnectionIntroductionProvider(
     // GET /introductions
     // ------------------------------------------------------------
 
-    suspend fun getIntroductions(): List<IntroductionResponse> {
+    suspend fun getIntroductions(): List<IntroductionResult> {
 
         val creds = requireCreds()
 
@@ -44,7 +44,7 @@ class ConnectionIntroductionProvider(
 
     suspend fun sendIntroductions(
         group: IntroductionGroup
-    ): List<IntroductionResponse> {
+    ): IntroductionResult {
 
         require(group.recipients.isNotEmpty()) {
             "Recipients cannot be empty"
@@ -63,46 +63,6 @@ class ConnectionIntroductionProvider(
 
         throwForFailure(response)
         return deserialize(response.body)
-    }
-
-    // ------------------------------------------------------------
-    // POST /introductions/process
-    // ------------------------------------------------------------
-
-    suspend fun processIncomingIntroductions() {
-
-        val creds = requireCreds()
-
-        val endpoint = "/connections/introductions/process"
-
-        val response = encryptedPostJson(
-            url = apiUrl(creds.domain, endpoint),
-            token = creds.accessToken,
-            jsonBody = "{}",
-            secret = creds.secret
-        )
-
-        throwForFailure(response)
-    }
-
-    // ------------------------------------------------------------
-    // POST /introductions/auto-accept
-    // ------------------------------------------------------------
-
-    suspend fun autoAcceptEligibleIntroductions() {
-
-        val creds = requireCreds()
-
-        val endpoint = "/connections/introductions/auto-accept"
-
-        val response = encryptedPostJson(
-            url = apiUrl(creds.domain, endpoint),
-            token = creds.accessToken,
-            jsonBody = "{}",
-            secret = creds.secret
-        )
-
-        throwForFailure(response)
     }
 
     // ------------------------------------------------------------

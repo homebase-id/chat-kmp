@@ -8,13 +8,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.chat.createconversation.ContactGroup
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.selectmembers.filterAndGroup
-import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.convo.ContactService
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.ui.navigation.Route
@@ -35,7 +33,6 @@ class AddGroupMembersViewModel(
     savedStateHandle: SavedStateHandle,
     private val contactService: ContactService,
     private val conversationService: ConversationService,
-    private val credentialsManager: CredentialsManager,
 ) : ViewModel() {
     val route = savedStateHandle.toRoute<Route.GroupAddMembers>()
     private val _uiState = MutableStateFlow(AddGroupMembersUiState())
@@ -82,19 +79,14 @@ class AddGroupMembersViewModel(
                     try {
                         val conversation = uiState.value.conversation ?: return@launch
                         _uiState.update { it.copy(isLoading = true) }
-                        val currentUserDomain =
-                            credentialsManager.requireActiveCredentials().domain.domainName
 
-                        val recipients = conversation.participants.filter {
-                            it.domainName != currentUserDomain
-                        } + uiState.value.selectedContacts.map { it.odinId }
-
-                        conversationService.updateConversation(
+                        val newRecipients = uiState.value.selectedContacts.map { it.odinId }
+                        conversationService.updateGroupMembers(
                             conversationId = conversation.id,
-                            recipients = recipients,
-                            title = conversation.name,
-                            payloadBundle = null,
+                            add = newRecipients,
+                            remove = emptyList()
                         )
+
                         sendEvent(AddGroupMembersUiEvent.Back)
                     } catch (e: Exception) {
                         sendEvent(AddGroupMembersUiEvent.Error("Failed to update conversation: ${e.message}"))
