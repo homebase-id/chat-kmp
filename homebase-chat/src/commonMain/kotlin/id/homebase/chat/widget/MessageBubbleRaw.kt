@@ -68,6 +68,32 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
+/**
+ * Core message bubble composable that renders message content with smart layout.
+ *
+ * Features:
+ * - Renders rich HTML text content with proper formatting
+ * - Displays media attachments (images, videos, etc.)
+ * - Smart timestamp positioning: fits on last line of text when space permits, otherwise creates
+ * new line
+ * - Long-press animation with spring physics on mobile devices
+ * - Gradient overlay on media-only messages for timestamp readability
+ * - Different styling for sent vs received messages
+ *
+ * @param modifier Modifier to be applied to the message bubble surface.
+ * @param text The message text content (can be HTML formatted).
+ * @param timestamp The formatted timestamp string to display.
+ * @param sentByYou Whether this message was sent by the current user (affects styling).
+ * @param payloads Optional list of media/file attachments associated with the message.
+ * @param fileId The unique identifier for the message file.
+ * @param previewThumbnail Optional embedded thumbnail for media preview.
+ * @param replyPreview Optional reply preview data for the message.
+ * @param keyHeader The key header for the message.
+ * @param onLongClick Callback invoked when user performs a long-press on the bubble.
+ * @param onMediaClick Callback invoked when user clicks on a media attachment.
+ * @param sharedTransitionScope The shared transition scope for animations.
+ * @param animatedVisibilityScope The animated visibility scope for animations.
+ */
 @Composable
 fun MessageBubbleRaw(
     modifier: Modifier = Modifier,
