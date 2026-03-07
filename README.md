@@ -36,9 +36,6 @@ Add signing key password to environment variable `HOMEBASE_KEYSTORE_PASS` first.
 
 **iOS**
 Configure signing and user in Xcode. 
-```
-./gradlew androidApp:assembleRelease
-```
 
 **Desktop**
 ```

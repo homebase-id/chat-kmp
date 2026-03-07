@@ -1,28 +1,26 @@
 package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.ByteApiResponse
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.crypto.AesCbc
-import id.homebase.api.crypto.EncryptedKeyHeader
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerFile
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.upload.TransferUploadStatus
-import id.homebase.api.common.SecureByteArray
+import id.homebase.api.common.OdinId
+import id.homebase.api.crypto.AesCbc
+import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
-import io.ktor.client.request.*
-import io.ktor.http.*
+import io.ktor.client.request.options
+import io.ktor.http.Headers
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
-import id.homebase.api.common.OdinId
 
 /** Options for payload operations with range support. */
 data class PayloadOperationOptions(
@@ -329,7 +327,7 @@ public class DriveFileProvider(
             val decryptedBytes = keyHeader.decrypt(encryptedBytes)
             decryptedBytes.decodeToString()
         } catch (e: Exception) {
-            Logger.e(TAG) { "[odin-kt:decryptJsonContent] ${e.message}" }
+            Logger.e(tag = TAG) { "[odin-kt:decryptJsonContent] ${e.message}" }
             null
         }
     }

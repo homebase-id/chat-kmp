@@ -117,6 +117,17 @@ fun FullScreenAttachmentEditor(
                             Text(attachment.file.name)
                         }
                     }
+                    is AttachmentPendingFile.FileImage -> {
+                        AsyncImage(
+                            imageLoader = imageLoader,
+                            model = attachment.file.toString(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp)),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
                     is AttachmentPendingFile.Gallery -> {
                         AsyncImage(
                             imageLoader = imageLoader,
@@ -186,6 +197,15 @@ fun FullScreenAttachmentEditor(
                                     ) {
                                         Icon(Icons.Default.UploadFile, contentDescription = null)
                                     }
+                                }
+                                is AttachmentPendingFile.FileImage -> {
+                                    AsyncImage(
+                                        imageLoader = imageLoader,
+                                        model = attachment.file.toString(),
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
                                 }
                                 is AttachmentPendingFile.Gallery -> {
                                     AsyncImage(

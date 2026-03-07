@@ -21,11 +21,12 @@ object ImageFormatDetector {
                     0xE1 -> "EXIF"
                     0xDB -> "DQT"
                     else -> {
-                        val hex = (bytes[3].toInt() and 0xFF).toString(16).uppercase().padStart(2, '0')
+                        val hex =
+                            (bytes[3].toInt() and 0xFF).toString(16).uppercase().padStart(2, '0')
                         "Unknown JPEG variant (0x$hex)"
                     }
                 }
-                Logger.d("ImageFormatDetector") { "Detected JPEG marker: $marker" }
+                Logger.d(tag = "ImageFormatDetector") { "Detected JPEG marker: $marker" }
                 "image/jpeg"
             }
             // PNG: 89 50 4E 47
@@ -65,31 +66,35 @@ object ImageFormatDetector {
      * Logs detailed information about image byte array
      */
     fun logImageInfo(bytes: ByteArray, tag: String = "ImageFormatDetector") {
-        Logger.d(tag) { "Image data: ${bytes.size} bytes" }
+        Logger.d(tag = tag) { "Image data: ${bytes.size} bytes" }
 
         val format = detectFormat(bytes)
-        Logger.d(tag) { "Detected format: $format" }
+        Logger.d(tag = tag) { "Detected format: $format" }
 
         // If it's a JPEG, validate it
         if (format == "image/jpeg") {
             val isValid = validateJpeg(bytes)
-            Logger.d(tag) { "JPEG validation: ${if (isValid) "VALID" else "INVALID (missing end marker)"}" }
+            Logger.d(tag = tag) { "JPEG validation: ${if (isValid) "VALID" else "INVALID (missing end marker)"}" }
 
             if (!isValid) {
-                Logger.w(tag) { "JPEG appears truncated or corrupted - missing FFD9 end marker" }
+                Logger.w(tag = tag) { "JPEG appears truncated or corrupted - missing FFD9 end marker" }
             }
         }
 
         // Log first and last bytes
-        Logger.d(tag) {
-            "First 32 bytes: ${bytes.take(32).joinToString(" ") {
-                (it.toInt() and 0xFF).toString(16).uppercase().padStart(2, '0')
-            }}"
+        Logger.d(tag = tag) {
+            "First 32 bytes: ${
+                bytes.take(32).joinToString(" ") {
+                    (it.toInt() and 0xFF).toString(16).uppercase().padStart(2, '0')
+                }
+            }"
         }
-        Logger.d(tag) {
-            "Last 32 bytes: ${bytes.takeLast(32).joinToString(" ") {
-                (it.toInt() and 0xFF).toString(16).uppercase().padStart(2, '0')
-            }}"
+        Logger.d(tag = tag) {
+            "Last 32 bytes: ${
+                bytes.takeLast(32).joinToString(" ") {
+                    (it.toInt() and 0xFF).toString(16).uppercase().padStart(2, '0')
+                }
+            }"
         }
     }
 }

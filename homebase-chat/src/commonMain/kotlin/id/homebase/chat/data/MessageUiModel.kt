@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.MessageAppData
+import kotlinx.collections.immutable.ImmutableList
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -31,7 +32,7 @@ data class MessageUiModel(
     /** Tiny blurry preview thumbnail of the file */
     val previewThumbnail: EmbeddedThumb?,
     /** List of payload descriptors with metadata */
-    val payloads: List<PayloadDescriptor>?,
+    val payloads: ImmutableList<PayloadDescriptor>?,
 
     val keyHeader: KeyHeader,
     val isDeleted: Boolean = false,

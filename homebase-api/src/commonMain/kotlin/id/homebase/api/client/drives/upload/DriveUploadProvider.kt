@@ -1,27 +1,27 @@
 package id.homebase.api.client.drives.upload
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.ApiResponse
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.OdinErrorResponse
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.EncryptedKeyHeader
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.FileSystemType
-import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
-import io.ktor.client.request.forms.*
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -342,7 +342,7 @@ class DriveUploadProvider(
                 }
             )
 
-        Logger.i(TAG) { "drive upload url: [${url}]" }
+        Logger.i(tag = TAG) { "drive upload url: [${url}]" }
 
         val response =
             plainPostMultipart(
@@ -485,7 +485,7 @@ class DriveUploadProvider(
 
         // Optional warning if handler not provided
         if (errorResponse?.errorCode == OdinClientErrorCode.VersionTagMismatch) {
-            Logger.w(TAG) {
+            Logger.w(tag = TAG) {
                 "VersionTagMismatch encountered with no onVersionConflict handler"
             }
         }
@@ -499,21 +499,24 @@ class DriveUploadProvider(
 
         payloads?.forEach { payload ->
             val path = payload.filePath
-            Logger.d(TAG) { "Attempting to delete temp payload file $path" }
+            Logger.d(tag = TAG) { "Attempting to delete temp payload file $path" }
 
             val deleted =
                 runCatching {
                     fileOperationsProvider.deleteTempFile(path)
                 }.getOrElse { e ->
-                    Logger.w(TAG, e) { "Exception while deleting temp file: $path" }
+                    Logger.w(
+                        throwable = e,
+                        tag = TAG
+                    ) { "Exception while deleting temp file: $path" }
                     false
                 }
 
             if (deleted) {
-                Logger.d(TAG) { "Deleted temp payload file $path" }
+                Logger.d(tag = TAG) { "Deleted temp payload file $path" }
 
             } else {
-                Logger.w(TAG) { "Temp file could not be deleted (best-effort): $path" }
+                Logger.w(tag = TAG) { "Temp file could not be deleted (best-effort): $path" }
             }
         }
     }

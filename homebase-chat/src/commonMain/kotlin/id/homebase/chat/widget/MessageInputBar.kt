@@ -23,6 +23,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -48,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -79,7 +82,9 @@ import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
+import id.homebase.resources.chat_message_edit_message
 import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_hide_keyboard
 import id.homebase.resources.chat_new_message_placeholder
@@ -99,6 +104,7 @@ fun MessageInputBar(
     modifier: Modifier = Modifier,
     textFieldState: RichTextState,
     focusRequester: FocusRequester,
+    editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
@@ -106,6 +112,7 @@ fun MessageInputBar(
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
     onSendMessage: (String, LinkPreview?) -> Unit,
+    onCancelEdit: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -139,7 +146,7 @@ fun MessageInputBar(
                     if (preview != null && url !in cancelledUrls) {
                         linkPreviewData = preview
                     }
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     // Ignore API errors, but because it's in lastFetchedUrl, we
                     // won't spam retry it on every keystroke
                 }
@@ -196,18 +203,22 @@ fun MessageInputBar(
                     }
                     linkPreviewData = null
                 },
+                editExistingMode = editExistingMode,
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 sendMessage = {
                     showExpanded = false
                     sendMessage()
-                })
+                },
+                onCancelEdit = onCancelEdit
+            )
         } else {
             MessageTextFieldCompact(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                     .padding(bottom = 16.dp).focusRequester(focusRequester),
                 state = textFieldState,
+                editExistingMode = editExistingMode,
                 linkPreviewData = linkPreviewData,
                 onCancelLinkPreview = {
                     linkPreviewData?.let { preview ->
@@ -222,6 +233,7 @@ fun MessageInputBar(
                 onAddAttachmentClick = onAddAttachmentClick,
                 onCameraClick = onCameraClick,
                 onSendMessage = { sendMessage() },
+                onCancelEdit = onCancelEdit
             )
         }
     }
@@ -232,18 +244,23 @@ fun MessageInputBar(
 fun MessageTextFieldExpanded(
     modifier: Modifier = Modifier,
     state: RichTextState,
+    editExistingMode: Boolean,
     linkPreviewData: LinkPreview?,
     onCancelLinkPreview: () -> Unit,
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onFocused: () -> Unit = {},
-    sendMessage: () -> Unit
+    sendMessage: () -> Unit,
+    onCancelEdit: () -> Unit,
 ) {
     Column(modifier = modifier) {
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
             state = state,
         )
+        if (editExistingMode) {
+            MessageEditMessageInfo()
+        }
         if (linkPreviewData != null) {
             LinkPreviewCard(
                 linkPreview = linkPreviewData,
@@ -254,15 +271,14 @@ fun MessageTextFieldExpanded(
         }
         RichTextEditor(
             state = state,
-            modifier = Modifier.fillMaxWidth().onFocusChanged { focusState ->
-                if (focusState.isFocused) {
-                    onFocused()
-                }
-            },
-            placeholder = {
-                Text(stringResource(MR.string.chat_new_message_placeholder))
-            },
-            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        onFocused()
+                    }
+                },
+            placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+            shape = if (editExistingMode) RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp) else RoundedCornerShape(12.dp),
             minLines = 10,
             maxLines = 10,
             keyboardOptions = KeyboardOptions(
@@ -285,7 +301,7 @@ fun MessageTextFieldExpanded(
                     imageVector = Icons.Default.EmojiEmotions, contentDescription = "Emoji"
                 )
             }
-            Box {
+            if (!editExistingMode) {
                 IconButton(
                     onClick = onAddAttachmentClick,
                 ) {
@@ -297,6 +313,20 @@ fun MessageTextFieldExpanded(
                 }
             }
             Spacer(modifier = Modifier.weight(1f))
+            if (editExistingMode) {
+                IconButton(
+                onClick = onCancelEdit,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(MR.string.cancel),
+                    )
+                }
+            }
             IconButton(
                 onClick = { sendMessage() }, colors = IconButtonDefaults.iconButtonColors(
                     containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
@@ -304,7 +334,7 @@ fun MessageTextFieldExpanded(
                 )
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    imageVector = if(editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
                     contentDescription = stringResource(MR.string.chat_send_message_button),
                 )
             }
@@ -319,15 +349,19 @@ fun MessageTextFieldCompact(
     state: RichTextState,
     linkPreviewData: LinkPreview?,
     onCancelLinkPreview: () -> Unit,
+    editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
     onFocused: () -> Unit = {},
-    onSendMessage: () -> Unit
+    onSendMessage: () -> Unit,
+    onCancelEdit: () -> Unit,
 ) {
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier
+    ) {
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
             state = state,
@@ -341,107 +375,129 @@ fun MessageTextFieldCompact(
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
         ) {
             val showSendButton = state.annotatedString.isNotBlank()
-            RichTextEditor(
-                state = state,
-                modifier = Modifier.weight(1f).onFocusChanged { focusState ->
-                    if (focusState.isFocused) {
-                        onFocused()
-                    }
-                }.onPreviewKeyEvent { keyEvent ->
-                    if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                        if (keyEvent.isCtrlPressed) {
-                            onSendMessage()
-                            true
+            if (editExistingMode) {
+                IconButton(
+                    onClick = onCancelEdit,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(MR.string.cancel),
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                if (editExistingMode) {
+                    MessageEditMessageInfo()
+                }
+                RichTextEditor(
+                    state = state,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                onFocused()
+                            }
+                        }
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                                if (keyEvent.isCtrlPressed) {
+                                    onSendMessage()
+                                    true
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        },
+                    placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+                    leadingIcon = {
+                        if (!showingEmojiSheet) {
+                            IconButton(onClick = onEmojiClick) {
+                                Icon(
+                                    imageVector = Icons.Default.EmojiEmotions,
+                                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                )
+                            }
                         } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                },
-                placeholder = {
-                    Text(stringResource(MR.string.chat_new_message_placeholder))
-                },
-                leadingIcon = {
-                    if (!showingEmojiSheet) {
-                        IconButton(onClick = onEmojiClick) {
-                            Icon(
-                                imageVector = Icons.Default.EmojiEmotions,
-                                contentDescription = stringResource(
-                                    MR.string.chat_message_emoji_options
+                            IconButton(onClick = onKeyboardClick) {
+                                Icon(
+                                    imageVector = Icons.Default.Keyboard,
+                                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
                                 )
-                            )
+                            }
                         }
-                    } else {
-                        IconButton(onClick = onKeyboardClick) {
-                            Icon(
-                                imageVector = Icons.Default.Keyboard,
-                                contentDescription = stringResource(
-                                    MR.string.chat_message_emoji_options
-                                )
-                            )
+                    },
+                    trailingIcon = {
+                        if (!editExistingMode) {
+                            if (state.annotatedString.isNotBlank()) {
+                                IconButton(
+                                    onClick = onAddAttachmentClick,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = stringResource(MR.string.chat_message_attachment_options)
+                                    )
+                                }
+                            } else if (isMobile()) {
+                                IconButton(onClick = onCameraClick) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhotoCamera,
+                                        contentDescription = "Camera"
+                                    )
+                                }
+                            }
                         }
-                    }
-                },
-                trailingIcon = {
-                    if (state.annotatedString.isNotBlank()) {
-                        IconButton(
-                            onClick = onAddAttachmentClick,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = stringResource(
-                                    MR.string.chat_message_attachment_options
-                                )
-                            )
-                        }
-                    } else if (isMobile()) {
-                        IconButton(onClick = onCameraClick) {
-                            Icon(
-                                imageVector = Icons.Default.PhotoCamera,
-                                contentDescription = "Camera"
-                            )
-                        }
-                    }
-                },
-                shape = RoundedCornerShape(12.dp),
-                colors = RichTextEditorDefaults.richTextEditorColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                ),
-                minLines = 1,
-                maxLines = 3,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default
+                    },
+                    shape = if (editExistingMode) RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp) else RoundedCornerShape(12.dp),
+                    colors = RichTextEditorDefaults.richTextEditorColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
+                    minLines = 1,
+                    maxLines = 3,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Default
+                    )
                 )
-            )
+            }
             Spacer(modifier = Modifier.width(8.dp))
             if (showSendButton) {
                 IconButton(
                     onClick = onSendMessage, colors = IconButtonDefaults.iconButtonColors(
                         containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                         contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                    )
+                    ),
+                    modifier = Modifier.padding(bottom = 4.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = stringResource(
-                            MR.string.chat_send_message_button
-                        ),
+                        imageVector = if(editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
+                        contentDescription = stringResource(MR.string.chat_send_message_button),
                     )
                 }
-            } else {
+            } else if (!editExistingMode) {
                 IconButton(
                     onClick = onAddAttachmentClick, colors = IconButtonDefaults.iconButtonColors(
                         containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                         contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                    )
+                    ),
+                    modifier = Modifier.padding(bottom = 4.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add, contentDescription = stringResource(
@@ -451,6 +507,30 @@ fun MessageTextFieldCompact(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MessageEditMessageInfo() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .padding(horizontal = 16.dp)
+            .padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.Edit,
+            contentDescription = null,
+            Modifier.size(14.dp)
+        )
+        Text(
+            text = stringResource(MR.string.chat_message_edit_message),
+            modifier = Modifier.padding(8.dp),
+            style = MaterialTheme.typography.labelSmall,
+        )
     }
 }
 

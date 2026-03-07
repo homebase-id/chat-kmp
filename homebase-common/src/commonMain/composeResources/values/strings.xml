@@ -27,6 +27,7 @@
     <string name="contacts">Contacts</string>
     <string name="members">Members</string>
     <string name="remove">Remove</string>
+    <string name="discard">Discard</string>
     <string name="details">Details</string>
     <string name="you">You</string>
     <string name="recipients">Recipients</string>
@@ -34,6 +35,7 @@
     <string name="updated">Updated</string>
     <string name="loading">Loading...</string>
     <string name="connection_requests_banner">%1$s connection request(s)</string>
+    <string name="action_cannot_be_undone">This action can´t be undone.</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -132,6 +134,7 @@
     <string name="chat_message_reply">Reply</string>
     <string name="chat_message_reaction">Reaction</string>
     <string name="chat_message_edit">Edit</string>
+    <string name="chat_message_edit_message">Edit message</string>
     <string name="chat_message_delete_for_everyone">Delete for everyone</string>
     <string name="chat_message_delete_for_me">Delete for me</string>
     <string name="chat_message_options">Message options</string>
@@ -157,6 +160,7 @@
     <string name="chat_message_add_gallery_image">Add image</string>
     <string name="chat_message_remove_gallery_image">Remove image</string>
     <string name="chat_message_hide_keyboard">Hide keyboard</string>
+    <string name="chat_message_discard_draft">Discard draft?</string>
 
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Search emoji</string>

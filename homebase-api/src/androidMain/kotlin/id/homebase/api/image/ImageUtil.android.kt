@@ -1,17 +1,16 @@
 package id.homebase.api.image
 
-import androidx.compose.ui.graphics.ImageBitmap
-
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.scale
 import co.touchlab.kermit.Logger
 import java.io.ByteArrayOutputStream
-import androidx.core.graphics.scale
 
 /**
  * Android implementation: Convert ByteArray to ImageBitmap using Android's BitmapFactory
@@ -23,7 +22,7 @@ import androidx.core.graphics.scale
  * using ImageFormatDetector in common code.
  */
 actual fun ByteArray.toImageBitmap(): ImageBitmap? {
-    Logger.d("toImageBitmap") { "Android: Converting ${this.size} bytes to ImageBitmap" }
+    Logger.d(tag = "toImageBitmap") { "Android: Converting ${size} bytes to ImageBitmap" }
 
     return try {
         // Configure BitmapFactory to avoid hardware bitmaps
@@ -35,17 +34,19 @@ actual fun ByteArray.toImageBitmap(): ImageBitmap? {
 
         val bitmap = BitmapFactory.decodeByteArray(this, 0, this.size, options)
         if (bitmap == null) {
-            Logger.e("toImageBitmap") { "Android: BitmapFactory.decodeByteArray returned null" }
-            Logger.e("toImageBitmap") {
-                "First 16 bytes: ${this.take(16).joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }}"
+            Logger.e(tag = "toImageBitmap") { "Android: BitmapFactory.decodeByteArray returned null" }
+            Logger.e(tag = "toImageBitmap") {
+                "First 16 bytes: ${
+                    take(16).joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }
+                }"
             }
             return null
         }
 
-        Logger.d("toImageBitmap") { "Android: Successfully decoded ${bitmap.width}x${bitmap.height}, config=${bitmap.config}" }
+        Logger.d(tag = "toImageBitmap") { "Android: Successfully decoded ${bitmap.width}x${bitmap.height}, config=${bitmap.config}" }
         bitmap.asImageBitmap()
     } catch (e: Exception) {
-        Logger.e("toImageBitmap", e) { "Android: Decoding failed - ${e.message}" }
+        Logger.e(throwable = e, tag = "toImageBitmap") { "Android: Decoding failed - ${e.message}" }
         null
     }
 }

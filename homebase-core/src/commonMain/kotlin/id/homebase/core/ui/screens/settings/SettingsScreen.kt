@@ -44,6 +44,8 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
+import id.homebase.core.widget.DialogText
+import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.SettingsItemAction
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
@@ -101,15 +103,11 @@ fun SettingsScreen(
                             },
                         )
                     }) {
-                    Text(
-                        modifier = Modifier.padding(16.dp),
+                    DialogTitle(
                         text = stringResource(MR.string.settings_delete_account_dialog_title),
-                        style = MaterialTheme.typography.titleLarge,
                     )
-                    Text(
-                        modifier = Modifier.padding(16.dp),
+                    DialogText(
                         text = stringResource(MR.string.settings_delete_account_dialog_text),
-                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
             }

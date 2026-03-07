@@ -33,7 +33,7 @@ class NotificationService(private val api: PushNotificationApi, private val scop
         NotifierManager.addListener(object : NotifierManager.Listener {
             override fun onNewToken(token: String) {
                 super.onNewToken(token)
-                Logger.i("NotificationService") { "New push token: $token" }
+                Logger.i(tag = "NotificationService") { "New push token: $token" }
                 registerToken(token)
             }
 
@@ -41,20 +41,20 @@ class NotificationService(private val api: PushNotificationApi, private val scop
                 title: String?, body: String?, data: PayloadData
             ) {
                 super.onPushNotificationWithPayloadData(title, body, data)
-                Logger.i("NotificationService") {
+                Logger.i(tag = "NotificationService") {
                     "Push received — title=$title body=$body data=$data"
                 }
                 handleIncomingPayload(data)
             }
 
             override fun onNotificationClicked(data: PayloadData) {
-                Logger.i("NotificationService") { "Notification clicked: $data" }
+                Logger.i(tag = "NotificationService") { "Notification clicked: $data" }
                 // TODO: Navigate to relevant screen based on payload
             }
 
             override fun onPushNotification(title: String?, body: String?) {
                 super.onPushNotification(title, body)
-                Logger.i("NotificationService") {
+                Logger.i(tag = "NotificationService") {
                     "Push received — title=$title body=$body"
                 }
                 // TODO: onPushNotificationHandle
@@ -62,12 +62,12 @@ class NotificationService(private val api: PushNotificationApi, private val scop
 
             override fun onPayloadData(data: PayloadData) {
                 super.onPayloadData(data)
-                Logger.i("NotificationService") { "Payload received: $data" }
+                Logger.i(tag = "NotificationService") { "Payload received: $data" }
                 // TODO: onPayloadDataHandle
             }
         })
 
-        NotifierManager.setLogger { message -> Logger.d("KMPNotifier") { message } }
+        NotifierManager.setLogger { message -> Logger.d(tag = "KMPNotifier") { message } }
     }
 
     private fun registerToken(token: String) {
@@ -76,15 +76,15 @@ class NotificationService(private val api: PushNotificationApi, private val scop
                 val platformName = Platform.osName
                 val friendlyName = "${Platform.osName} | ${Platform.osVersion}"
 
-                Logger.i("NotificationService") {
+                Logger.i(tag = "NotificationService") {
                     "Registering token with server... ($friendlyName)"
                 }
                 api.subscribe(
                     deviceToken = token, devicePlatform = platformName, friendlyName = friendlyName
                 )
-                Logger.i("NotificationService") { "Token registered successfully" }
+                Logger.i(tag = "NotificationService") { "Token registered successfully" }
             } catch (e: Exception) {
-                Logger.e("NotificationService") { "Failed to register token: ${e.message}" }
+                Logger.e(tag = "NotificationService") { "Failed to register token: ${e.message}" }
             }
         }
     }
@@ -106,7 +106,7 @@ class NotificationService(private val api: PushNotificationApi, private val scop
 
             showLocalNotification(title = appName, body = bodyText, data = data)
         } catch (e: Exception) {
-            Logger.e("NotificationService") { "Failed to parse notification: ${e.message}" }
+            Logger.e(tag = "NotificationService") { "Failed to parse notification: ${e.message}" }
         }
     }
 
@@ -130,7 +130,7 @@ class NotificationService(private val api: PushNotificationApi, private val scop
         return try {
             NotifierManager.getPushNotifier().getToken()
         } catch (e: Exception) {
-            Logger.w("NotificationService") { "Failed to get push token: ${e.message}" }
+            Logger.w(tag = "NotificationService") { "Failed to get push token: ${e.message}" }
             null
         }
     }
@@ -138,12 +138,12 @@ class NotificationService(private val api: PushNotificationApi, private val scop
     /** Deletes the current push notification token and unsubscribes from server. */
     suspend fun deleteToken() {
         try {
-            Logger.i("NotificationService") { "Unsubscribing token..." }
+            Logger.i(tag = "NotificationService") { "Unsubscribing token..." }
             api.unsubscribe()
             NotifierManager.getPushNotifier().deleteMyToken()
-            Logger.i("NotificationService") { "Token deleted and unsubscribed" }
+            Logger.i(tag = "NotificationService") { "Token deleted and unsubscribed" }
         } catch (e: Exception) {
-            Logger.w("NotificationService") { "Failed to delete token/unsubscribe: ${e.message}" }
+            Logger.w(tag = "NotificationService") { "Failed to delete token/unsubscribe: ${e.message}" }
         }
     }
 

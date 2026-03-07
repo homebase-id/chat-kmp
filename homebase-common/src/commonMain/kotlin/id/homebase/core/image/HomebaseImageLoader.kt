@@ -7,8 +7,6 @@ import id.homebase.api.client.withRetry
 import io.github.vinceglb.filekit.extension
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.readBytes
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 /** Image data container */
 // TODO: Rename to memoryImage?
@@ -143,7 +141,7 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
             val contentType = file.mimeType()?.toString() ?: file.extension
             CachedImage(bytes = bytes, contentType = contentType, size = null)
         } catch (e: Exception) {
-            Logger.e(TAG) { "Failed to load pending file: ${e.message}" }
+            Logger.e(tag = TAG) { "Failed to load pending file: ${e.message}" }
             null
         }
     }

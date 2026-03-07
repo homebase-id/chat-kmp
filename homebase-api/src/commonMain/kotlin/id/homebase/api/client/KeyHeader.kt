@@ -1,5 +1,6 @@
 package id.homebase.api.client
 
+import androidx.compose.runtime.Immutable
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
@@ -10,6 +11,7 @@ import kotlinx.serialization.Serializable
  * Represents a cryptographic key header containing an IV and AES key
  */
 @Serializable
+@Immutable
 class KeyHeader(
     var iv: ByteArray,
     var aesKey: SecureByteArray

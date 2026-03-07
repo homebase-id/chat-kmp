@@ -8,8 +8,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import co.touchlab.kermit.Logger
-import java.io.File
 import kotlinx.io.files.Path
+import java.io.File
 
 private const val TAG = "getUriHandler"
 
@@ -54,7 +54,7 @@ actual fun getUriHandler(): FileSystemHandler {
 
                     context.startActivity(finalIntent)
                 } catch (e: Exception) {
-                    Logger.e(TAG, e) { "Failed to open file: ${e.message}" }
+                    Logger.e(throwable = e, tag = TAG) { "Failed to open file: ${e.message}" }
                     onError(e)
                 }
             }
@@ -79,7 +79,7 @@ actual fun getUriHandler(): FileSystemHandler {
                     val chooser = Intent.createChooser(intent, null)
                     context.startActivity(chooser)
                 } catch (e: Exception) {
-                    Logger.e(TAG, e) { "Failed to share file: ${e.message}" }
+                    Logger.e(throwable = e, tag = TAG) { "Failed to share file: ${e.message}" }
                     onError(e)
                 }
             }
@@ -94,7 +94,7 @@ actual fun getUriHandler(): FileSystemHandler {
                     chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(chooser)
                 } catch (e: Exception) {
-                    Logger.e(TAG, e) { "Failed to share text: ${e.message}" }
+                    Logger.e(throwable = e, tag = TAG) { "Failed to share text: ${e.message}" }
                     onError(e)
                 }
             }

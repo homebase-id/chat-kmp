@@ -1,8 +1,10 @@
 package id.homebase.api.client.link
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 
 @Serializable
+@Immutable
 data class LinkPreview(
     val title: String,
     val url: String,

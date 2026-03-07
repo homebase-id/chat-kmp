@@ -83,13 +83,13 @@ suspend fun <T> withRetryResult(
             val result = block(attempt)
             if (result != null) {
                 if (attempt > 0) {
-                    Logger.d(logTag) { "Succeeded on attempt ${attempt + 1}" }
+                    Logger.d(tag = logTag) { "Succeeded on attempt ${attempt + 1}" }
                 }
                 return RetryResult.Success(result)
             }
             // Result was null - treat as retriable failure
             if (attempt < config.maxRetries) {
-                Logger.w(logTag) {
+                Logger.w(tag = logTag) {
                     "Attempt ${attempt + 1}/${config.maxRetries + 1} returned null, retrying in ${currentDelay}ms"
                 }
                 delay(currentDelay)
@@ -105,19 +105,19 @@ suspend fun <T> withRetryResult(
             // Check if we should retry this specific exception
             val shouldRetry = config.retryOn?.invoke(e) ?: true
             if (!shouldRetry) {
-                Logger.e(logTag) { "Non-retriable exception: ${e.message}" }
+                Logger.e(tag = logTag) { "Non-retriable exception: ${e.message}" }
                 return RetryResult.Failure(e, attempt + 1)
             }
 
             if (attempt < config.maxRetries) {
-                Logger.w(logTag) {
+                Logger.w(tag = logTag) {
                     "Attempt ${attempt + 1}/${config.maxRetries + 1} failed: ${e.message}, retrying in ${currentDelay}ms"
                 }
                 delay(currentDelay)
                 currentDelay = (currentDelay * config.backoffMultiplier).toLong()
                     .coerceAtMost(config.maxDelayMs)
             } else {
-                Logger.e(logTag) { "All ${config.maxRetries + 1} attempts failed: ${e.message}" }
+                Logger.e(tag = logTag) { "All ${config.maxRetries + 1} attempts failed: ${e.message}" }
             }
         }
     }
