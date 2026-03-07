@@ -36,7 +36,6 @@ class ConversationRepository(
     private val credentialsManager: CredentialsManager,
     private val introductionProvider: ConnectionIntroductionProvider,
     private val contactService: ContactService,
-    private val outboxSync: OutboxSync,
     private val dbm: DatabaseManager,
     private val optimisticWriter: OptimisticWriter
 ) {

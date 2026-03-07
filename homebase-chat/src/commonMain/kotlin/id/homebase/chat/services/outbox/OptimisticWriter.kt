@@ -152,6 +152,7 @@ class OptimisticWriter(
                 thumbnails = encryptedBundle.thumbnails
             )
 
+
         // enqueue the encrypted request
         val enqueued = outboxSync.tryEnqueue(
             driveId,

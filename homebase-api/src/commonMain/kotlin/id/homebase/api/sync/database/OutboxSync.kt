@@ -125,6 +125,12 @@ class OutboxSync(
                     UnixTimeUtc.now().addSeconds(n).seconds
                 )
                 eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
+                eventBus.emit(
+                    BackendEvent.OutboxEvent.ItemFailed(
+                        outboxRecord.driveId,
+                        outboxRecord.uniqueId
+                    )
+                )
             }
         }
     }
@@ -138,6 +144,12 @@ class OutboxSync(
         json: String
     ): Boolean {
         try {
+
+            val existing = databaseManager.outbox.getByDriveAndUniqueId(driveId, uniqueId)
+            if (existing == null) {
+
+            }
+
             databaseManager.outbox.insert(
                 driveId,
                 uniqueId,
@@ -147,6 +159,8 @@ class OutboxSync(
                 json = json.toUtf8ByteArray(),
                 filePaths = null
             )
+
+            eventBus.emit(BackendEvent.OutboxEvent.ItemEnqueued(driveId, uniqueId))
 
             return true
 

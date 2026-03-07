@@ -98,3 +98,23 @@ WHERE checkOutStamp = ?;
 -- Get count
 count:
 SELECT count(*) FROM Outbox;
+
+-- Get item by drive and unique id
+getByDriveAndUniqueId:
+SELECT
+  rowId,
+  driveId,
+  uniqueId,
+  dependencyUniqueId,
+  priority,
+  lastAttempt,
+  nextRunTime,
+  checkOutCount,
+  checkOutStamp,
+  uploadType,
+  json,
+  files
+FROM Outbox
+WHERE driveId = ?
+  AND uniqueId = ?
+LIMIT 1;

@@ -45,6 +45,14 @@ class OutboxWrapper(
 
     fun count(): Long = delegate.count().executeAsOne()
 
+    fun getByDriveAndUniqueId(
+        driveId: Uuid,
+        uniqueId: Uuid
+    ): Outbox? {
+        return delegate.getByDriveAndUniqueId(driveId, uniqueId)
+            .executeAsOneOrNull()
+    }
+
     suspend fun insert(
         driveId: Uuid,
         uniqueId: Uuid, //rename to uniqueId; be sure to update the c (and select by uniqueid)

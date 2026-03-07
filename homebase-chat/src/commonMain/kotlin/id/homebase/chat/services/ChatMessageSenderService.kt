@@ -4,20 +4,19 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
-import id.homebase.api.client.drives.upload.PushNotificationOptions
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.convo.ConversationDistributor
 import id.homebase.chat.services.convo.ConversationRepository
+import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
@@ -29,7 +28,8 @@ class ChatMessageSenderService(
     private val conversationDistributor: ConversationDistributor,
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
     private val scope: CoroutineScope,
-    private val chatMessageStream: ChatMessageStream
+    private val chatMessageStream: ChatMessageStream,
+    private val optimisticWriter: OptimisticWriter
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -108,58 +108,78 @@ class ChatMessageSenderService(
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationRepository.getRecipients(conversationId)
 
-        val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
-            messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
-        )
+//        val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
+//            messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
+//        )
 
-        val metadata =
+        val unecryptedMetadata =
             UploadFileMetadata(
-                allowDistribution = true, isEncrypted = true, appData = UploadAppFileMetaData(
+                allowDistribution = true,
+                isEncrypted = true,
+                appData = UploadAppFileMetaData(
                     uniqueId = messageUniqueId,
                     groupId = conversationId,
                     dataType = if (isSystemMessage) ChatProtocol.SystemMessageDataType else null,
                     fileType = ChatProtocol.MessageFileType,
                     userDate = UnixTimeUtc.now().milliseconds,
                     content = OdinSystemSerializer.serialize(content),
-                    previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
+                    previewThumbnail = payloadBundle?.previewThumbs?.minByOrNull {
                         it.pixelWidth
                     })
             )
 
-        val request = UploadFileRequest(
-            driveId = chatDrive,
-            keyHeader = keyHeader,
-            metadata = metadata.encryptContent(keyHeader),
-            transitOptions = TransitOptions(
-                recipients = recipients,
-                useAppNotification = true,
-                appNotificationOptions = PushNotificationOptions(
-                    appId = ChatProtocol.ChatAppId.toString(),
-                    typeId = conversationId.toString(),
-                    tagId = messageUniqueId.toString(),
-                    silent = false,
-                    unEncryptedMessage = notificationText
-                )
-            ),
-            payloads = encryptedBundle.payloads,
-            thumbnails = encryptedBundle.thumbnails
-        )
+//        val request = UploadFileRequest(
+//            driveId = chatDrive,
+//            keyHeader = keyHeader,
+//            metadata = metadata.encryptContent(keyHeader),
+//            transitOptions = TransitOptions(
+//                recipients = recipients,
+//                useAppNotification = true,
+//                appNotificationOptions = PushNotificationOptions(
+//                    appId = ChatProtocol.ChatAppId.toString(),
+//                    typeId = conversationId.toString(),
+//                    tagId = messageUniqueId.toString(),
+//                    silent = false,
+//                    unEncryptedMessage = notificationText
+//                )
+//            ),
+//            payloads = encryptedBundle.payloads,
+//            thumbnails = encryptedBundle.thumbnails
+//        )
 
         try {
             conversationDistributor.ensureRecipientsHaveConversation(conversationId)
 
-            val enqueued = outboxSync.tryEnqueue(
-                request.driveId,
-                messageUniqueId,
+            val enqueued = optimisticWriter.tryEnqueueCreateNewFile(
+                chatDrive,
+                uniqueId = messageUniqueId,
                 dependencyUniqueId = previousMessageUniqueId,
-                priority = 1,
-                uploadType = DriveOutboxUploader.UploadNewFile,
-                json = OdinSystemSerializer.serialize(request),
+                keyHeader = keyHeader,
+                unecryptedMetadata = unecryptedMetadata,
+                transitOptions = TransitOptions(
+                    recipients = recipients,
+                    useAppNotification = false
+                ),
+                unencryptedPayloadBundle = payloadBundle,
+                scope = scope
             )
 
-            if (enqueued) {
-                outboxSync.send()
+            if (!enqueued) {
+                error("new message not enqueued")
             }
+//
+//            val enqueued = outboxSync.tryEnqueue(
+//                request.driveId,
+//                messageUniqueId,
+//                dependencyUniqueId = previousMessageUniqueId,
+//                priority = 1,
+//                uploadType = DriveOutboxUploader.UploadNewFile,
+//                json = OdinSystemSerializer.serialize(request),
+//            )
+//
+//            if (enqueued) {
+//                outboxSync.send()
+//            }
 
             return SendMessageResult(uniqueId = messageUniqueId)
         } catch (t: Throwable) {

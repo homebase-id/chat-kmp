@@ -80,6 +80,11 @@ sealed interface BackendEvent {
             val errorMessage: String?  // Or add throwable: Throwable
         ) : OutboxEvent
 
+        data class ItemEnqueued(
+            val driveId: Uuid,
+            val uniqueId: Uuid
+        ) : OutboxEvent
+
         // When beginning to send an item we guarantee itemStarted event (0%)
         data class ItemStarted(
             val driveId: Uuid,
@@ -95,10 +100,15 @@ sealed interface BackendEvent {
             val bytesSent: Long? = null
         ) : OutboxEvent  // New: For ongoing upload progress updates
 
+        data class ItemFailed(
+            val driveId: Uuid,
+            val uniqueId: Uuid
+        ) : OutboxEvent
+
         // When the item has been delivered we guarantee itemCompleted event (100%)
         data class ItemCompleted(
             val driveId: Uuid,
-            val fileId: Uuid
+            val uniqueId: Uuid
         ) : OutboxEvent  // Only raised by Drive.sync()
 
     }
