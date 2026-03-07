@@ -15,12 +15,7 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.EncryptedKeyHeader
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.UploadProgress
-import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.FileSystemType
-import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
