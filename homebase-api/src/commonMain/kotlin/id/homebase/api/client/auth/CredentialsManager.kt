@@ -66,4 +66,9 @@ class CredentialsManager {
         activeCredentials
             ?: throw IllegalStateException("No active credentials set")
     }
+
+    suspend fun requireActiveDomain(): OdinId = mutex.withLock {
+        activeCredentials?.domain
+            ?: throw IllegalStateException("No active credentials set")
+    }
 }

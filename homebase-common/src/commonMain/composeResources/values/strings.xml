@@ -126,6 +126,8 @@
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
+    <string name="chat_group_introduce_everyone">Introduce Everyone</string>
+
 
     <!-- Conversation message -->
     <string name="chat_message_info">Message info</string>
