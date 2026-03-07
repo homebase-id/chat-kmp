@@ -89,7 +89,10 @@ class YouAuthFlowManager(
             try {
                 restoreSession()
             } catch (e: Exception) {
-                Logger.e(TAG, e) { "Error checking existing session: ${e.message}" }
+                Logger.e(
+                    throwable = e,
+                    tag = TAG
+                ) { "Error checking existing session: ${e.message}" }
             }
         }
     }
@@ -97,11 +100,11 @@ class YouAuthFlowManager(
     /** Handle an authorization callback URL. */
     suspend fun handleCallback(url: String) {
         try {
-            Logger.d(TAG) { "Received callback: $url" }
+            Logger.d(tag = TAG) { "Received callback: $url" }
 
             val query = url.substringAfter("?", "")
             if (query.isEmpty()) {
-                Logger.e(TAG) { "Missing query params in callback URL" }
+                Logger.e(tag = TAG) { "Missing query params in callback URL" }
                 return
             }
 
@@ -113,13 +116,13 @@ class YouAuthFlowManager(
 
             val state = decodeUrl(params["state"] ?: "")
             if (state.isEmpty()) {
-                Logger.e(TAG) { "Missing state parameter in callback URL" }
+                Logger.e(tag = TAG) { "Missing state parameter in callback URL" }
                 return
             }
 
             completeAuth(url, state, params)
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Error handling callback" }
+            Logger.e(throwable = e, tag = TAG) { "Error handling callback" }
         }
     }
 
@@ -145,7 +148,7 @@ class YouAuthFlowManager(
                         // needed since OdinClient is configured
                         sharedSecret = Base64.encode(credentials.sharedSecret.unsafeBytes)
                     )
-                Logger.i(TAG) { "Session restored for $identity" }
+                Logger.i(tag = TAG) { "Session restored for $identity" }
                 return
             }
         }
@@ -177,7 +180,7 @@ class YouAuthFlowManager(
         if (_authState.value == YouAuthState.Authenticating ||
             _authState.value is YouAuthState.Authenticated
         ) {
-            Logger.e(TAG) { "Already authenticating or authenticated" }
+            Logger.e(tag = TAG) { "Already authenticating or authenticated" }
             return ""
         }
 
@@ -231,7 +234,7 @@ class YouAuthFlowManager(
 
             return authorizeUrl
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Error starting authorization" }
+            Logger.e(throwable = e, tag = TAG) { "Error starting authorization" }
             _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
         }
         return ""
@@ -241,7 +244,7 @@ class YouAuthFlowManager(
     private suspend fun completeAuth(url: String, state: String, queryParams: Map<String, String>) {
         val authCodeFlowState = callbackRegistry[state]
         if (authCodeFlowState == null) {
-            Logger.e(TAG) { "No pending auth code flow state" }
+            Logger.e(tag = TAG) { "No pending auth code flow state" }
             _authState.value = YouAuthState.Error("No pending auth code flow")
             return
         }
@@ -298,9 +301,9 @@ class YouAuthFlowManager(
                     sharedSecret = result.sharedSecret
                 )
 
-            Logger.i(TAG) { "Authentication completed successfully for ${result.identity}" }
+            Logger.i(tag = TAG) { "Authentication completed successfully for ${result.identity}" }
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Error completing auth" }
+            Logger.e(throwable = e, tag = TAG) { "Error completing auth" }
             _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
         } finally {
             callbackRegistry.remove(state)
@@ -316,12 +319,12 @@ class YouAuthFlowManager(
                 provider.logout()
             }
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Error during logout" }
+            Logger.e(throwable = e, tag = TAG) { "Error during logout" }
         }
 
         CredentialStorage.clearCredentials()
         _authState.value = YouAuthState.Unauthenticated
-        Logger.i(TAG) { "User logged out" }
+        Logger.i(tag = TAG) { "User logged out" }
 
         credentialsManager.removeActiveCredentials()
         driveSyncManager.clearStorage()
@@ -338,7 +341,7 @@ class YouAuthFlowManager(
      */
     suspend fun cancelAuth() {
         if (_authState.value == YouAuthState.Authenticating) {
-            Logger.i(TAG) { "Authentication cancelled by user" }
+            Logger.i(tag = TAG) { "Authentication cancelled by user" }
             callbackRegistry.clear()
             _authState.value = YouAuthState.Unauthenticated
             credentialsManager.removeActiveCredentials()
@@ -358,7 +361,7 @@ class YouAuthFlowManager(
 
             // If still authenticating, assume user cancelled
             if (_authState.value == YouAuthState.Authenticating) {
-                Logger.i(TAG) { "App resumed without auth callback, assuming user cancelled" }
+                Logger.i(tag = TAG) { "App resumed without auth callback, assuming user cancelled" }
                 cancelAuth()
             }
         }

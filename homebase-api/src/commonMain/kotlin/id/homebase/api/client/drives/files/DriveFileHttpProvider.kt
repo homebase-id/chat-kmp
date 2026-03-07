@@ -2,16 +2,19 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ByteApiResponse
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
-import id.homebase.api.client.KeyHeader
-import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
-import io.ktor.client.request.*
-import io.ktor.http.*
+import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
@@ -302,7 +305,7 @@ public class DriveFileHttpProvider(
             val decryptedBytes = keyHeader.decrypt(encryptedBytes)
             decryptedBytes.decodeToString()
         } catch (e: Exception) {
-            Logger.e(TAG) { "[odin-kt:decryptJsonContent] ${e.message}" }
+            Logger.e(tag = TAG) { "[odin-kt:decryptJsonContent] ${e.message}" }
             null
         }
     }

@@ -48,7 +48,7 @@ class PermissionExtensionManager(
     ): MissingPermissionsResult? {
         val context = securityContextProvider.getSecurityContext()
         if (context == null) {
-            Logger.w(TAG) { "Could not fetch security context" }
+            Logger.w(tag = TAG) { "Could not fetch security context" }
             return null
         }
 
