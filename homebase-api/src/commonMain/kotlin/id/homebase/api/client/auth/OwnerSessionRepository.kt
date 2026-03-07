@@ -34,7 +34,7 @@ class OwnerSessionRepository(
         val response = try {
             httpClient.get(url)
         } catch (e: Exception) {
-            Logger.e("OwnerSessionRepository") { "Fetching $url failed: ${e.message}"}
+            Logger.e(tag = "OwnerSessionRepository") { "Fetching $url failed: ${e.message}" }
             null
         }
 

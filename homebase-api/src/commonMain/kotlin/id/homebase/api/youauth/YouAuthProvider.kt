@@ -1,8 +1,9 @@
 package id.homebase.api.youauth
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.crypto.AesCbc
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EccKeyPair
 import id.homebase.api.crypto.EccKeySize
 import id.homebase.api.crypto.HashUtil
@@ -18,7 +19,6 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlin.io.encoding.Base64
-import id.homebase.api.common.OdinId
 
 data class AuthResult(
     val clientAuthToken: String,
@@ -47,7 +47,7 @@ class YouAuthProvider(
                 else -> null
             }
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Token verification failed" }
+            Logger.e(throwable = e, tag = TAG) { "Token verification failed" }
             null
         }
 
@@ -156,7 +156,7 @@ class YouAuthProvider(
             httpClient.post("$baseApiUrl/api/apps/v1/auth/logout")
             true
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Logout failed" }
+            Logger.e(throwable = e, tag = TAG) { "Logout failed" }
             false
         }
 
@@ -165,7 +165,7 @@ class YouAuthProvider(
             httpClient.post("$baseApiUrl/api/apps/v1/notify/preauth")
             true
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "PreAuth failed" }
+            Logger.e(throwable = e, tag = TAG) { "PreAuth failed" }
             false
         }
 

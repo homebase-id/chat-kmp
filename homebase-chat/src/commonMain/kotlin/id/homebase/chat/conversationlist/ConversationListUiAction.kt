@@ -35,6 +35,7 @@ sealed interface ConversationListUiAction {
     data class AttachPlatformFile(
         val conversationId: Uuid,
         val files: List<PlatformFile>,
+        val isImage: Boolean = false,
     ) : ConversationListUiAction
 
     data class UnAttachFile(
@@ -72,8 +73,9 @@ sealed interface ConversationListUiAction {
     data class ShowMessageInfo(val message: MessageUiModel) : ConversationListUiAction
     data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction
     data object CancelReplyToMessage : ConversationListUiAction
-    data class EditMessage(val conversationId: Uuid, val messageId: Uuid) : ConversationListUiAction
-
+    data class EditMessage(val messageId: Uuid, val ignoreDraft: Boolean) : ConversationListUiAction
+    data object EditMessageSave : ConversationListUiAction
+    data object CancelEditMessage : ConversationListUiAction
     data class DeleteMessage(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForMe(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForEveryone(val messageId: Uuid) : ConversationListUiAction

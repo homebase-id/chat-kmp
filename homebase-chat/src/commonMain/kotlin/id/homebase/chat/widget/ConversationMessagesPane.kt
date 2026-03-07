@@ -27,15 +27,11 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.SendFile
 import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
-import id.homebase.chat.conversationlist.MessageListContentModel
+import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.data.ConversationUiModel
-import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.HomebaseConstants
-import id.homebase.core.util.ScrollPosition
-import id.homebase.core.widget.EmojiReaction
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -44,25 +40,22 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 @Composable
 fun ConversationMessagesPane(
     conversation: ConversationUiModel,
+    uiState: MessageListUiState,
     textFieldState: RichTextState,
-    messages: ImmutableList<MessageListContentModel>,
-    isLoadingNewMessage: Boolean,
-    savedScrollPosition: ScrollPosition?,
-    fullScreenOverlay: FullScreenOverlay?,
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
-    currentOdinId: String,
-    replyToMessage: MessageUiModel?,
-    messageReactions: List<EmojiReaction>?,
-    downloadingFiles: Set<String>,
 ) {
+    var isRestoringScrollPosition by remember { mutableStateOf(false) }
     var currentGalleryPage by remember { mutableStateOf(0) }
+
     val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
-                    conversation.id, listOf(file)
+                    conversationId = conversation.id,
+                    files = listOf(file),
+                    isImage = true,
                 )
             )
         }
@@ -81,11 +74,11 @@ fun ConversationMessagesPane(
     val listState = remember(conversation.id) {
         val conversationId = conversation.id
 
-        if (savedScrollPosition != null) {
-            Logger.i("Pre-initializing scroll position: id=$conversationId -> ${savedScrollPosition.firstVisibleItemIndex}:${savedScrollPosition.firstVisibleItemScrollOffset}")
+        if (uiState.scrollPosition != null) {
+            Logger.i("Pre-initializing scroll position: id=$conversationId -> ${uiState.scrollPosition.firstVisibleItemIndex}:${uiState.scrollPosition.firstVisibleItemScrollOffset}")
             LazyListState(
-                firstVisibleItemIndex = savedScrollPosition.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = savedScrollPosition.firstVisibleItemScrollOffset
+                firstVisibleItemIndex = uiState.scrollPosition.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = uiState.scrollPosition.firstVisibleItemScrollOffset
             )
         } else {
             Logger.i("Pre-initializing scroll position at bottom: id=$conversationId")
@@ -95,37 +88,37 @@ fun ConversationMessagesPane(
     }
 
     // Restore scroll position after groupedMessages are ready
-    LaunchedEffect(conversation.id, messages) {
-        val totalItems = messages.size + 1 // +1 for header item
+    LaunchedEffect(conversation.id, uiState.messages) {
+        isRestoringScrollPosition = true
+        val totalItems = uiState.messages.size + 1 // +1 for header item
         val conversationId = conversation.id
         val currentIndex = listState.firstVisibleItemIndex
 
         // Only scroll if necessary
-        if (savedScrollPosition == null && currentIndex >= totalItems) {
+        if (uiState.scrollPosition == null && currentIndex >= totalItems) {
             // Was initialized with Int.MAX_VALUE, now scroll to actual bottom
             Logger.i("Correcting scroll to bottom: id=$conversationId (totalItems=$totalItems)")
             listState.scrollToItem(index = (totalItems - 1).coerceAtLeast(0), scrollOffset = 0)
-        } else if (savedScrollPosition != null && currentIndex != savedScrollPosition.firstVisibleItemIndex) {
+        } else if (uiState.scrollPosition != null && currentIndex != uiState.scrollPosition.firstVisibleItemIndex) {
             // Saved position was outside bounds, re-scroll with proper coercion
-            Logger.i("Correcting saved scroll position: id=$conversationId -> ${savedScrollPosition.firstVisibleItemIndex}:${savedScrollPosition.firstVisibleItemScrollOffset} (totalItems=$totalItems)")
+            Logger.i("Correcting saved scroll position: id=$conversationId -> ${uiState.scrollPosition.firstVisibleItemIndex}:${uiState.scrollPosition.firstVisibleItemScrollOffset} (totalItems=$totalItems)")
             listState.scrollToItem(
-                index = savedScrollPosition.firstVisibleItemIndex.coerceIn(0, totalItems - 1),
-                scrollOffset = savedScrollPosition.firstVisibleItemScrollOffset
+                index = uiState.scrollPosition.firstVisibleItemIndex.coerceIn(0, totalItems - 1),
+                scrollOffset = uiState.scrollPosition.firstVisibleItemScrollOffset
             )
         }
+        isRestoringScrollPosition = false
     }
 
     // Save scroll position when it changes
     LaunchedEffect(conversation.id) {
         val currentConversationId = conversation.id
-
         snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.debounce(
             300
         ) // Only save after 300ms of no scrolling
             .distinctUntilChanged().collect { (index, offset) ->
                 // Only save if we're still viewing the same conversation, messages are loaded,
                 // and not restoring
-
                 Logger.i("Scroll changed: id=${currentConversationId} -> $index:$offset")
                 onUiAction(
                     SaveScrollPosition(
@@ -137,54 +130,60 @@ fun ConversationMessagesPane(
             }
     }
 
-    //    // Track the previous viewport height and scroll position before height change
-    //    val previousViewportHeight = remember(conversation.id) { mutableStateOf(0) }
-    //    val scrollPositionBeforeDecrease =
-    //        remember(conversation.id) { mutableStateOf<Pair<Int, Int>?>(null) }
-    //
-    //    // Adjust scroll position when viewport height changes
-    //    LaunchedEffect(conversation.id) {
-    //        snapshotFlow { listState.layoutInfo.viewportSize.height }
-    //            .distinctUntilChanged()
-    //            .collect { currentHeight ->
-    //                val previousHeight = previousViewportHeight.value
-    //
-    //                if (previousHeight > 0 && !isRestoringScrollPosition &&
-    // listState.layoutInfo.totalItemsCount > 0) {
-    //                    when {
-    //                        currentHeight < previousHeight -> {
-    //                            // Height decreased (e.g., keyboard opened)
-    //                            // Save current position before adjusting
-    //                            scrollPositionBeforeDecrease.value =
-    //                                listState.firstVisibleItemIndex to
-    // listState.firstVisibleItemScrollOffset
-    //
-    //                            val heightDiff = previousHeight - currentHeight
-    //
-    //                            // Calculate new scroll position to maintain visual position
-    //                            val newOffset = listState.firstVisibleItemScrollOffset +
-    // heightDiff
-    //                            listState.scrollToItem(listState.firstVisibleItemIndex, newOffset)
-    //                        }
-    //
-    //                        currentHeight > previousHeight && scrollPositionBeforeDecrease.value
-    // != null -> {
-    //                            // Height increased (e.g., keyboard closed)
-    //                            val (savedIndex, savedOffset) =
-    // scrollPositionBeforeDecrease.value!!
-    //                            listState.scrollToItem(savedIndex, savedOffset)
-    //                            scrollPositionBeforeDecrease.value = null
-    //                        }
-    //                    }
-    //                }
-    //
-    //                previousViewportHeight.value = currentHeight
-    //            }
-    //    }
+//    // Track the previous viewport height and scroll position before height change
+//    val previousViewportHeight = remember(conversation.id) { mutableStateOf(0) }
+//    val scrollPositionBeforeDecrease =
+//        remember(conversation.id) { mutableStateOf<Pair<Int, Int>?>(null) }
+//
+//    // Adjust scroll position when viewport height changes
+//    LaunchedEffect(conversation.id) {
+//        snapshotFlow { listState.layoutInfo.viewportSize.height }
+//            .distinctUntilChanged()
+//            .collect { currentHeight ->
+//                val previousHeight = previousViewportHeight.value
+//
+//                if (previousHeight > 0 && !isRestoringScrollPosition &&
+//                    listState.layoutInfo.totalItemsCount > 0
+//                ) {
+//                    when {
+//                        currentHeight < previousHeight -> {
+//                            // Height decreased (e.g., keyboard opened)
+//                            // Save current position before adjusting
+//                            scrollPositionBeforeDecrease.value =
+//                                listState.firstVisibleItemIndex to
+//                                        listState.firstVisibleItemScrollOffset
+//
+//                            val heightDiff = previousHeight - currentHeight
+//
+//                            // Calculate new scroll position to maintain visual position
+//                            val newOffset = listState.firstVisibleItemScrollOffset +
+//                                    heightDiff
+//                            listState.scrollToItem(listState.firstVisibleItemIndex, newOffset)
+//                        }
+//
+//                        currentHeight > previousHeight -> {
+//                            // Height increased (e.g., keyboard closed)
+//                            if (scrollPositionBeforeDecrease.value != null) {
+//                                val (savedIndex, savedOffset) = scrollPositionBeforeDecrease.value!!
+//                                listState.scrollToItem(savedIndex, savedOffset)
+//                                scrollPositionBeforeDecrease.value = null
+//                            } else {
+//                                // If no saved position, adjust by the height difference to maintain position
+//                                val heightDiff = currentHeight - previousHeight
+//                                val newOffset = (listState.firstVisibleItemScrollOffset - heightDiff).coerceAtLeast(0)
+//                                listState.scrollToItem(listState.firstVisibleItemIndex, newOffset)
+//                            }
+//                        }
+//                    }
+//                }
+//
+//                previousViewportHeight.value = currentHeight
+//            }
+//    }
 
     SharedTransitionLayout {
         AnimatedContent(
-            targetState = fullScreenOverlay, transitionSpec = {
+            targetState = uiState.fullScreenOverlay, transitionSpec = {
                 if (targetState != null) {
                     // Entering full-screen: fade in viewer over fading out conversation
                     fadeIn(
@@ -212,20 +211,15 @@ fun ConversationMessagesPane(
             if (data == null) {
                 ConversationContent(
                     conversation = conversation,
+                    uiState = uiState,
                     textFieldState = textFieldState,
                     listState = listState,
-                    isLoadingNewMessage = isLoadingNewMessage,
                     isScrollPositionReady = true,
-                    messages = messages,
                     showBackButton = showBackButton,
                     onBackClick = onBackClick,
                     onUiAction = onUiAction,
-                    currentOdinId = currentOdinId,
-                    replyToMessage = replyToMessage,
                     animatedVisibilityScope = this@AnimatedContent,
                     sharedTransitionScope = this@SharedTransitionLayout,
-                    messageReactions = messageReactions,
-                    downloadingFiles = downloadingFiles
                 )
             } else {
                 when (data) {

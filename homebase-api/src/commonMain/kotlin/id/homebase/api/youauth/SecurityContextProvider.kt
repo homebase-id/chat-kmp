@@ -49,7 +49,7 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
             throwForFailure(response)
             parseSecurityContext(response.body)
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Error fetching security context: ${e.message}" }
+            Logger.e(throwable = e, tag = TAG) { "Error fetching security context: ${e.message}" }
             null
         }
     }

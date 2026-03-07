@@ -51,7 +51,10 @@ class AppViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.e("AppViewModel", e) { "Failed to collect incoming requests: ${e.message}" }
+                Logger.e(
+                    throwable = e,
+                    tag = "AppViewModel"
+                ) { "Failed to collect incoming requests: ${e.message}" }
             }
         }
     }

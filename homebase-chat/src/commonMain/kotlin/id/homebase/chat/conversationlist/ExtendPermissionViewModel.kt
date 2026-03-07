@@ -39,7 +39,7 @@ class ExtendPermissionViewModel(
             val result = manager.getMissingPermissions(config)
 
             if (result != null && result.hasMissingPermissions) {
-                Logger.i(TAG) {
+                Logger.i(tag = TAG) {
                     "Missing permissions detected: drives=${result.missingDrives.size}, permissions=${result.missingPermissions.size}, allConnected=${result.missingAllConnectedCircle}"
                 }
                 _uiState.value =
@@ -48,10 +48,10 @@ class ExtendPermissionViewModel(
                                 appName = config.appName
                         )
             } else {
-                Logger.d(TAG) { "All permissions are granted" }
+                Logger.d(tag = TAG) { "All permissions are granted" }
             }
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Error checking permissions: ${e.message}" }
+            Logger.e(throwable = e, tag = TAG) { "Error checking permissions: ${e.message}" }
         }
     }
 

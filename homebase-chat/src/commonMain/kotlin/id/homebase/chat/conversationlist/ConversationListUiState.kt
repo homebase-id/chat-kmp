@@ -11,33 +11,38 @@ import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.EmojiReaction
 import io.github.vinceglb.filekit.PlatformFile
-import kotlin.time.Instant
-import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.datetime.LocalDate
 import org.jetbrains.compose.resources.StringResource
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 @Immutable
 data class ConversationListUiState(
     val activeConversations: ImmutableList<ConversationUiModel> = persistentListOf(),
     val conversationsContent: ConversationListContentState = ConversationListContentState.Empty,
     val selectedConversationId: Uuid? = null,
-    val currentConversationMessages: ImmutableList<MessageListContentModel> = persistentListOf(),
-    val conversationScrollPosition: ScrollPosition? = null,
-    val currentOdinId: String = "",
-    val fullScreenOverlay: FullScreenOverlay? = null,
-    val replyToMessage: MessageUiModel? = null,
-    val loadingNewMessage: Boolean = false,
     val filterByUnread: Boolean = false,
     val isSearchActive: Boolean = false,
     val ownerSession: OwnerSession? = null,
-    val messageReactions: List<EmojiReaction>? = null,
     val downloadingFiles: Set<String> = emptySet(),
     val driveIsConnected: Boolean = false,
     val driveIsSyncing: Boolean = false,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
+)
+
+@Immutable
+data class MessageListUiState(
+    val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
+    val scrollPosition: ScrollPosition? = null,
+    val fullScreenOverlay: FullScreenOverlay? = null,
+    val replyToMessage: MessageUiModel? = null,
+    val isEditingMessageId: Uuid? = null,
+    val ownerSession: OwnerSession? = null,
+    val messageReactions: List<EmojiReaction>? = null,
+    val downloadingFiles: Set<String> = emptySet()
 )
 
 @Immutable
@@ -85,6 +90,7 @@ sealed interface FullScreenOverlay {
 }
 
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {
+    data class FileImage(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
 }

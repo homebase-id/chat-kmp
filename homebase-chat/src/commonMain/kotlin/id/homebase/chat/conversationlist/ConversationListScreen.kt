@@ -2,14 +2,11 @@ package id.homebase.chat.conversationlist
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDragHandle
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
@@ -46,13 +43,18 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
+import id.homebase.core.widget.DialogText
+import id.homebase.core.widget.DialogTitle
 import id.homebase.resources.MR
+import id.homebase.resources.action_cannot_be_undone
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_delete_dialog_title
 import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
+import id.homebase.resources.chat_message_discard_draft
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
+import id.homebase.resources.discard
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
@@ -71,17 +73,16 @@ fun ConversationListScreen(
     onNavigateToMessageInfo: (conversationId: Uuid, messageId: Uuid, fileId: Uuid) -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val conversationsUiState by viewModel.uiState.collectAsState()
+    val messagesUiState by viewModel.messagesUiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-
-    val ownerSession by viewModel.ownerSession.collectAsState()
     val fileSystemHandler = getUriHandler()
     // Check for missing permissions and show dialog if needed
     ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
-    LaunchedEffect(uiState.uiEvent) {
-        when (val event = uiState.uiEvent) {
+    LaunchedEffect(conversationsUiState.uiEvent) {
+        when (val event = conversationsUiState.uiEvent) {
             is ConversationListUiEvent.NavigateBack -> {
                 viewModel.eventConsumed()
                 onNavigateBack()
@@ -140,7 +141,7 @@ fun ConversationListScreen(
         }
     }
 
-    when (val dialog = uiState.uiDialog) {
+    when (val dialog = conversationsUiState.uiDialog) {
         null -> {}
         is ConversationListUiDialog.DeleteMessage -> {
             Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
@@ -164,28 +165,60 @@ fun ConversationListScreen(
                                 if (dialog.allowDeleteForEveryone) {
                                     viewModel.onAction(
                                         ConversationListUiAction.DeleteMessageForEveryone(
-                                                dialog.messageId
-                                            )
+                                            dialog.messageId
+                                        )
                                     )
                                     viewModel.dialogClosed()
                                 }
                             },
                             tertiaryText = stringResource(MR.string.cancel),
-                            onTertiaryClick = { viewModel.dialogClosed() })
+                            onTertiaryClick = { viewModel.dialogClosed() },
+                            showButtonsVertically = true
+                        )
                     }) {
-                    Text(
-                        modifier = Modifier.padding(16.dp),
+                    DialogTitle(
                         text = stringResource(MR.string.chat_message_delete_dialog_title),
-                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
+        }
+
+        is ConversationListUiDialog.DiscardDraft -> {
+            Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
+                DialogCard(
+                    buttons = {
+                        DialogButtons(
+                            primaryText = stringResource(MR.string.discard),
+                            onPrimaryClick = {
+                                viewModel.onAction(
+                                    ConversationListUiAction.EditMessage(
+                                        dialog.messageId,
+                                        ignoreDraft = true
+                                    )
+                                )
+                                viewModel.dialogClosed()
+                            },
+                            secondaryText = stringResource(MR.string.cancel),
+                            onSecondaryClick = {
+                                viewModel.dialogClosed()
+                            },
+                        )
+                    }) {
+                    DialogTitle(
+                        text = stringResource(MR.string.chat_message_discard_draft),
+                    )
+                    DialogText(
+                        text = stringResource(MR.string.action_cannot_be_undone),
                     )
                 }
             }
         }
     }
 
-    ChatListUi(
+    ConversationListUi(
         snackbarHostState = snackbarHostState,
-        uiState = uiState,
+        uiState = conversationsUiState,
+        messagesUiState = messagesUiState,
         conversationSearchTextFieldState = viewModel.conversationSearchTextState,
         messageInputTextFieldState = viewModel.messageInputTextState,
         onUiAction = viewModel::onAction,
@@ -196,9 +229,10 @@ fun ConversationListScreen(
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalComposeUiApi::class)
 @Composable
-fun ChatListUi(
+fun ConversationListUi(
     snackbarHostState: SnackbarHostState,
     uiState: ConversationListUiState,
+    messagesUiState: MessageListUiState,
     conversationSearchTextFieldState: TextFieldState,
     messageInputTextFieldState: RichTextState,
     onUiAction: (ConversationListUiAction) -> Unit,
@@ -293,7 +327,7 @@ fun ChatListUi(
 
     @Suppress("DEPRECATION") BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {
-            if (uiState.fullScreenOverlay != null) {
+            if (messagesUiState.fullScreenOverlay != null) {
                 onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
             } else {
                 scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
@@ -326,11 +360,9 @@ fun ChatListUi(
                             key(conversation.id) {
                                 ConversationMessagesPane(
                                     conversation = conversation,
+                                    uiState = messagesUiState,
                                     textFieldState = messageInputTextFieldState,
-                                    messages = uiState.currentConversationMessages,
-                                    isLoadingNewMessage = uiState.loadingNewMessage,
-                                    fullScreenOverlay = uiState.fullScreenOverlay,
-                                    savedScrollPosition = uiState.conversationScrollPosition,
+
                                     showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
                                     onBackClick = {
                                         scope.launch {
@@ -340,10 +372,6 @@ fun ChatListUi(
                                         }
                                     },
                                     onUiAction = onUiAction,
-                                    currentOdinId = uiState.currentOdinId,
-                                    replyToMessage = uiState.replyToMessage,
-                                    messageReactions = uiState.messageReactions,
-                                    downloadingFiles = uiState.downloadingFiles
                                 )
                             }
                         } else {
@@ -389,11 +417,12 @@ fun ChatListUi(
 
 @Preview
 @Composable
-fun ChatListUiPreview() {
+fun ConversationListUiPreview() {
     HomebaseTheme {
-        ChatListUi(
+        ConversationListUi(
             snackbarHostState = SnackbarHostState(),
             uiState = ConversationListUiState(),
+            messagesUiState = MessageListUiState(),
             conversationSearchTextFieldState = TextFieldState(),
             messageInputTextFieldState = RichTextState(),
             onUiAction = {},

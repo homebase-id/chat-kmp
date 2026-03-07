@@ -52,6 +52,7 @@ import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
+import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.MinimalTextField
 import id.homebase.core.widget.RoundedIcon
 import id.homebase.core.widget.RoundedIconFromFile
@@ -125,10 +126,8 @@ fun CreateConversationGroupScreen(
                             onPrimaryClick = { viewModel.dialogClosed() },
                         )
                     }) {
-                    Text(
-                        modifier = Modifier.padding(16.dp),
+                    DialogTitle(
                         text = stringResource(MR.string.chat_group_remove_member_warning),
-                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
             }
@@ -150,13 +149,11 @@ fun CreateConversationGroupScreen(
                             onSecondaryClick = { viewModel.dialogClosed() }
                         )
                     }) {
-                    Text(
-                        modifier = Modifier.padding(16.dp),
+                    DialogTitle(
                         text = stringResource(
                             MR.string.chat_group_remove_member,
                             dialog.contact.name
                         ),
-                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
             }
