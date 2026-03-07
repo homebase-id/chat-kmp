@@ -20,6 +20,9 @@ import androidx.compose.ui.layout.ContentScale
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -59,10 +62,11 @@ fun MediaItem(
     preserveAspectRatio: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(
-        topStart = Dimens.Message.cornerRadius,
-        topEnd = Dimens.Message.cornerRadius
-    ),
+    shape: Shape =
+        RoundedCornerShape(
+            topStart = Dimens.Message.cornerRadius,
+            topEnd = Dimens.Message.cornerRadius
+        ),
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     isDownloading: Boolean = false,
@@ -96,23 +100,67 @@ fun MediaItem(
         }
 
     when {
+        payload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
+            // Render link preview
+            val linkDescriptors = remember(payload.descriptorContent) {
+                payload.descriptorContent?.let { content ->
+                    try {
+                        OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(
+                            content
+                        )
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+            }
+
+            val payloadIv =
+                Base64.decode(
+                    payload.iv
+                        ?: throw IllegalStateException(
+                            "encrypted payload requires key header"
+                        )
+                )
+
+            if (linkDescriptors != null) {
+                LinkPreviewCard(
+                    descriptor = linkDescriptors[0],
+                    fileId = fileId,
+                    driveId = driveId,
+                    payloadKey = payload.key,
+                    keyHeader = KeyHeader(payloadIv, keyHeader.aesKey),
+                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                        ?: previewThumbnail,
+                    modifier = baseModifier,
+                )
+            } else {
+                MediaPlaceholder(
+                    emoji = "\uD83D\uDD17",
+                    label = "Link",
+                    modifier = baseModifier,
+                )
+            }
+        }
+
         contentType.startsWith("image/") -> {
             // Render image via HomebaseImage
             // Remember the image data to avoid creating a new instance on every recomposition,
             // which would cause Coil to restart the image loading pipeline and cause flickering.
             val imageData =
                 remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
-                    val payloadIv = Base64.decode(
-                        payload.iv
-                            ?: throw IllegalStateException("encrypted payload requires key header")
-                    )
+                    val payloadIv =
+                        Base64.decode(
+                            payload.iv
+                                ?: throw IllegalStateException(
+                                    "encrypted payload requires key header"
+                                )
+                        )
                     HomebaseImageData(
                         driveId = driveId,
                         fileId = fileId,
                         payloadKey = payload.key,
-                        previewThumbnail =
-                            payload.previewThumbnail?.toEmbeddedThumb()
-                                ?: previewThumbnail,
+                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                            ?: previewThumbnail,
                         requestedSize = imageSize,
                         lastModified = payload.lastModified,
                         isEncrypted = true,
@@ -132,8 +180,7 @@ fun MediaItem(
             )
         }
 
-        contentType.startsWith("video/") ||
-                contentType == "application/vnd.apple.mpegurl" -> {
+        contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
             // TODO: Implement video player/thumbnail
             MediaPlaceholder(
                 emoji = "📹",

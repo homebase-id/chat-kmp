@@ -7,6 +7,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.sync.database.DatabaseDriverFactory
+import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.App
 import id.homebase.core.di.allModules
@@ -54,7 +55,10 @@ fun main() = application {
         height = maxOf(config.windowHeightDp, minHeight.dp), // Minimum height
     )
 
-    runBlocking { DatabaseManager.initialize { DatabaseDriverFactory().createDriver() } }
+    runBlocking {
+        val dbKey = DatabaseKeyManager.getOrGenerateKey()
+        DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
+    }
 
     Window(
         onCloseRequest = {
