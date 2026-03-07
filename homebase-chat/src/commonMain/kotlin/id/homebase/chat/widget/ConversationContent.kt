@@ -267,6 +267,14 @@ fun ConversationContent(
                                 )
                             )
                         },
+                        onIntroduceEveryone = {
+                            showConversationMenu = false
+                            onUiAction(
+                                ConversationListUiAction.IntroduceEveryone(
+                                    conversation.id
+                                )
+                            )
+                        }
                     )
                 }, colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,

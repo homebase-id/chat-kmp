@@ -15,7 +15,9 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PeopleAlt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -38,6 +40,7 @@ import id.homebase.resources.chat_clear
 import id.homebase.resources.chat_delete
 import id.homebase.resources.chat_filter_by_unread_button
 import id.homebase.resources.chat_filter_by_unread_clear_button
+import id.homebase.resources.chat_group_introduce_everyone
 import id.homebase.resources.chat_group_settings
 import id.homebase.resources.chat_mark_all_as_read
 import id.homebase.resources.chat_message_edit
@@ -59,6 +62,7 @@ fun ConversationMenu(
     onDelete: () -> Unit,
     onArchive: () -> Unit,
     onClear: () -> Unit,
+    onIntroduceEveryone: () -> Unit
 ) {
     DropdownMenu(
         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
@@ -98,6 +102,26 @@ fun ConversationMenu(
             onClick = onClear,
             text = { Text(text = stringResource(MR.string.chat_clear)) },
             leadingIcon = { Icon(imageVector = Icons.Filled.Clear, contentDescription = null) })
+
+
+        if(isGroup) {
+            HorizontalDivider()
+
+            DropdownMenuItem(
+                onClick = onIntroduceEveryone,
+                text = {
+                    Text(
+                        text = stringResource(MR.string.chat_group_introduce_everyone)
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Handshake,
+                        contentDescription = null
+                    )
+                }
+            )
+        }
     }
 }
 

@@ -1,7 +1,10 @@
 package id.homebase.chat.services.convo
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.connections.ConnectionIntroductionProvider
+import id.homebase.api.client.connections.IntroductionGroup
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -43,6 +46,7 @@ class ConversationService(
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
     private val dbm: DatabaseManager,
     private val contactService: ContactService,
+    private val introductionProvider: ConnectionIntroductionProvider,
     private val scope: CoroutineScope
 ) {
     private val chatDrive = chatTargetDrive.alias
@@ -53,15 +57,15 @@ class ConversationService(
         payloadBundle: PayloadBundle?
     ): Uuid {
 
-        val credentials = credentialsManager.requireActiveCredentials()
-        val domain = credentials.domain
+        val domain = credentialsManager.requireActiveDomain()
+        val isGroup = recipients.size > 1
         val keyHeader = KeyHeader.newRandom16()
 
         val newConversationId: Uuid =
-            if (recipients.size == 1) {
-                XorIdUtil.getNewXorId(domain.domainName, recipients.first().domainName)
-            } else {
+            if (isGroup) {
                 Uuid.random()
+            } else {
+                XorIdUtil.getNewXorId(domain.domainName, recipients.first().domainName)
             }
 
         val existingConversation = getConversation(newConversationId)
@@ -113,12 +117,17 @@ class ConversationService(
             )
 
         driveUploadProvider.uploadFile(request)
+
+        if (isGroup) {
+            trySendIntroductions(recipients, "$domain has added you to a group chat")
+        }
+
         return newConversationId
     }
 
     suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
         return getConversation(conversationId)
-            ?: throw IllegalStateException("No conversation for Id")
+            ?: throw IllegalStateException("No conversation found")
     }
 
     suspend fun getConversation(conversationId: Uuid): ConversationUiModel? {
@@ -126,83 +135,65 @@ class ConversationService(
         return mapToConversationUi(file, null)
     }
 
-    suspend fun updateConversationRecipients(conversationId: Uuid, recipients: List<OdinId>) {
-        val conversationFile =
-            getConversationHomebaseFile(conversationId) ?: error("No conversation found")
+//    //** sends out the conversation file
+//    suspend fun redistributeConversation(conversationId: Uuid) {
+//        val conversation = requireConversation(conversationId)
+//        updateConversationInternal(
+//            conversationId = conversationId,
+//            title = conversation.name,
+//            recipients = conversation.participants
+//        )
+//    }
 
-        val credentials = credentialsManager.requireActiveCredentials()
-        val domain = credentials.domain
+    suspend fun updateGroupMembers(
+        conversationId: Uuid,
+        add: List<OdinId> = emptyList(),
+        remove: List<OdinId> = emptyList()
+    ) {
+        val conversation = requireConversation(conversationId)
 
-        val normalizedRecipients = (recipients + domain).distinct()
+        val domain = credentialsManager.requireActiveDomain()
+        val current = conversation.participants.toMutableSet()
 
-        val keyHeader = KeyHeader.newRandom16()
+        val removed = current.intersect(remove.toSet())
+        current.removeAll(remove)
 
-        val existingAppData =
-            OdinSystemSerializer.deserialize<ConversationAppDataJson>(
-                conversationFile.fileMetadata.appData.content ?: ""
-            )
-        val content =
-            ConversationAppDataJson(
-                title = existingAppData.title,
-                recipients = normalizedRecipients,
-                version = existingAppData.version
-            )
+        val added = add.filterNot { current.contains(it) }
+        current.addAll(added)
 
-        val manifest =
-            UpdateManifest.build(
-                payloads = null,
-                toDeletePayloads = null,
-                thumbnails = null,
-                generatePayloadIv = false
-            )
+        val normalized = (current + domain).distinct()
 
-        val metadata =
-            UploadFileMetadata(
-                allowDistribution = true, // todo: base on transfer history as optimization
-                isEncrypted = true,
-                versionTag = conversationFile.fileMetadata.versionTag,
-                appData =
-                    UploadAppFileMetaData(
-                        uniqueId = conversationId.toString(),
-                        fileType = ChatProtocol.ConversationFileType,
-                        content = OdinSystemSerializer.serialize(content),
-                        previewThumbnail =
-                            conversationFile
-                                .fileMetadata
-                                .appData
-                                .previewThumbnail
-                    )
-            )
-
-        val instructions =
-            FileUpdateInstructionSet(
-                transferIv = ByteArrayUtil.getRndByteArray(16),
-                locale = UpdateLocale.Local,
-                recipients = recipients,
-                manifest = manifest
-            )
-
-        val request =
-            UpdateFileByUniqueIdRequest(
-                driveId = chatDrive,
-                uniqueId = conversationId,
-                keyHeader = keyHeader,
-                instructions = instructions,
-                metadata = metadata.encryptContent(keyHeader),
-                payloads = null,
-                thumbnails = null
-            )
-
-        driveUploadProvider.updateFileByUniqueId(
-            request = request,
-            onVersionConflict = {
-                // caller decides retry strategy; surface conflict cleanly
-                null
-            }
+        updateConversationInternal(
+            conversationId = conversationId,
+            title = conversation.name,
+            recipients = normalized
         )
+
+        trySendIntroductions(added, "$domain has added you to a group chat")
+
+        //TODO: send a chat message for each member added or removed
     }
 
     suspend fun updateConversation(
+        conversationId: Uuid,
+        title: String?,
+        payloadBundle: PayloadBundle? = null
+    ) {
+
+        val conversation = requireConversation(conversationId)
+
+        updateConversationInternal(
+            conversationId = conversationId,
+            title = title,
+            recipients = conversation.participants,
+            payloadBundle = payloadBundle
+        )
+
+        //TODO: notify via chat messages the conversation changed
+//        val domain = credentialsManager.requireActiveDomain()
+    }
+
+    suspend fun updateConversationInternal(
         conversationId: Uuid,
         title: String?,
         recipients: List<OdinId>,
@@ -214,7 +205,7 @@ class ConversationService(
         val conversationFile =
             getConversationHomebaseFile(conversationId) ?: error("No conversation found")
 
-        // Always include self, never distribute to self
+        // Always include self but remember to never distribute to self
         val normalizedRecipients = (recipients + domain).distinct()
         val keyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16),
@@ -227,7 +218,6 @@ class ConversationService(
                 recipients = normalizedRecipients,
                 version = 1 // logical version; server enforces via versionTag
             )
-
 
         var manifest: UpdateManifest
         var previewThumb: EmbeddedThumb?
@@ -290,7 +280,7 @@ class ConversationService(
             FileUpdateInstructionSet(
                 transferIv = ByteArrayUtil.getRndByteArray(16),
                 locale = UpdateLocale.Local,
-                recipients = recipients,
+                recipients = recipients.filterNot { it == domain },
                 manifest = manifest
             )
 
@@ -312,6 +302,28 @@ class ConversationService(
                 null
             }
         )
+    }
+
+    suspend fun introduceEveryone(conversationId: Uuid, message: String?) {
+        val conversation = requireConversation(conversationId)
+        trySendIntroductions(conversation.participants, message ?: "")
+    }
+
+    private suspend fun trySendIntroductions(
+        recipients: List<OdinId>,
+        message: String
+    ) {
+        try {
+            // send introductions
+            introductionProvider.sendIntroductions(
+                group = IntroductionGroup(
+                    recipients = recipients,
+                    message = message
+                )
+            )
+        } catch (t: Throwable) {
+            Logger.e("Failed sending introductions", t)
+        }
     }
 
     private suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
