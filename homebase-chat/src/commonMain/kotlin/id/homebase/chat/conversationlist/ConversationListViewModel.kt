@@ -812,7 +812,7 @@ class ConversationListViewModel(
 
     private fun introduceEveryone(conversationId: Uuid) {
         viewModelScope.launch {
-            val defaultMessage = "${_uiState.value.currentOdinId} has added you to group chat"
+            val defaultMessage = "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
             conversationService.introduceEveryone(conversationId, defaultMessage)
             //TODO: Anders or Bishwa - please show a confirmation the action was taken
         }
