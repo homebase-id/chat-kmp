@@ -24,6 +24,9 @@ class DriveOutboxUploader(
             driveUploadProvider.uploadFile(
                 request,
                 onProgress = { sent, total ->
+
+                    println("Upload: Sent $sent | Total: $total")
+
                     val percent =
                         if (total != null && total > 0)
                             (sent.toFloat() / total.toFloat()) * 100f

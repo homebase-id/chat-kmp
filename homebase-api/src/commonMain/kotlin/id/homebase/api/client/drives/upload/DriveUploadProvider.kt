@@ -135,10 +135,23 @@ class DriveUploadProvider(
                 fileOperationsProvider = fileOperationsProvider
             )
 
+        val totalUploadSize = calculateUploadSize(
+            request.payloads,
+            request.thumbnails,
+            sharedSecretEncryptedDescriptor,
+            fileOperationsProvider
+        )
+
+        val wrappedProgress = onProgress?.let { progress ->
+            suspend { sent: Long, _: Long? ->
+                progress(sent, totalUploadSize)
+            }
+        }
+
         val result =
             pureUpload(
                 request.driveId, data, request.fileSystemType,
-                onProgress,
+                wrappedProgress,
                 onVersionConflict
             )
 
@@ -176,8 +189,21 @@ class DriveUploadProvider(
                 fileOperationsProvider = fileOperationsProvider
             )
 
+        val totalUploadSize = calculateUploadSize(
+            request.payloads,
+            request.thumbnails,
+            sharedSecretEncryptedDescriptor,
+            fileOperationsProvider
+        )
+
+        val wrappedProgress = onProgress?.let { progress ->
+            suspend { sent: Long, _: Long? ->
+                progress(sent, totalUploadSize)
+            }
+        }
+
         val path = "/drives/${request.driveId}/files/${request.fileId}"
-        val result = pureUpdate(data, path, onProgress, onVersionConflict)
+        val result = pureUpdate(data, path, wrappedProgress, onVersionConflict)
 
         if (result != null) {
             cleanupPayloadTempFiles(request.payloads)

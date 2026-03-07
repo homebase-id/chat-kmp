@@ -94,6 +94,25 @@ fun buildUploadFormData(
     )
 }
 
+suspend fun calculateUploadSize(
+    payloads: List<PayloadFile>?,
+    thumbnails: List<ThumbnailFile>?,
+    descriptor: ByteArray?,
+    fileOps: FileOperationsProvider
+): Long {
+
+    val payloadBytes =
+        payloads?.sumOf { fileOps.getFileSize(it.filePath) } ?: 0L
+
+    val thumbnailBytes =
+        thumbnails?.sumOf { it.thumbnailBytes.size.toLong() } ?: 0L
+
+    val descriptorBytes =
+        descriptor?.size?.toLong() ?: 0L
+
+    return payloadBytes + thumbnailBytes + descriptorBytes
+}
+
 /**
  * Builds a MultiPartFormDataContent for updating files.
  *
