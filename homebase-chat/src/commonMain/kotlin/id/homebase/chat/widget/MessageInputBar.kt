@@ -42,6 +42,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,7 +94,6 @@ import id.homebase.resources.expand
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import kotlin.uuid.Uuid
 
 private val URL_REGEX = Regex(
     "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
@@ -103,7 +103,6 @@ private val URL_REGEX = Regex(
 fun MessageInputBar(
     modifier: Modifier = Modifier,
     textFieldState: RichTextState,
-    conversationId: Uuid,
     focusRequester: FocusRequester,
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
@@ -147,7 +146,7 @@ fun MessageInputBar(
                     if (preview != null && url !in cancelledUrls) {
                         linkPreviewData = preview
                     }
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     // Ignore API errors, but because it's in lastFetchedUrl, we
                     // won't spam retry it on every keystroke
                 }
@@ -219,7 +218,6 @@ fun MessageInputBar(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                     .padding(bottom = 16.dp).focusRequester(focusRequester),
                 state = textFieldState,
-                conversationId = conversationId,
                 editExistingMode = editExistingMode,
                 linkPreviewData = linkPreviewData,
                 onCancelLinkPreview = {
@@ -351,7 +349,6 @@ fun MessageTextFieldCompact(
     state: RichTextState,
     linkPreviewData: LinkPreview?,
     onCancelLinkPreview: () -> Unit,
-    conversationId: Uuid,
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
     onEmojiClick: () -> Unit,
@@ -409,6 +406,11 @@ fun MessageTextFieldCompact(
                     state = state,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                onFocused()
+                            }
+                        }
                         .onPreviewKeyEvent { keyEvent ->
                             if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
                                 if (keyEvent.isCtrlPressed) {

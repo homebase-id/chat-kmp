@@ -207,13 +207,12 @@ fun ConversationContent(
                                     fontSize = 12.sp,
                                     onClick = {
                                         onUiAction(
-                                            ConversationListUiAction
-                                                .ShowConversationSettings(
-                                                    conversation
-                                                )
+                                            ConversationListUiAction.ShowConversationSettings(
+                                                conversation
+                                            )
                                         )
-                                    )
-                                })
+                                    }
+                                )
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
@@ -363,7 +362,6 @@ fun ConversationContent(
                     }
                     MessageInputBar(
                         textFieldState = textFieldState,
-                        conversationId = conversation.id,
                         focusRequester = focusRequester,
                         editExistingMode = uiState.isEditingMessageId != null,
                         showingEmojiSheet = showEmojiSheet,
