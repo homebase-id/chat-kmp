@@ -148,7 +148,7 @@ class OptimisticWriter(
 
         val file = existingFile.copy(
             keyHeader = keyHeader,
-            fileMetadata = FileMetadata(
+            fileMetadata = existingFile.fileMetadata.copy(
                 appData = AppFileMetaData(
                     uniqueId = unecryptedMetadata.appData.uniqueId,
                     tags = unecryptedMetadata.appData.tags,
@@ -161,7 +161,6 @@ class OptimisticWriter(
                     archivalStatus = unecryptedMetadata.appData.archivalStatus
                 ),
                 localAppData = newLocalAppData,
-                created = existingFile.fileMetadata.created,
                 updated = lastModified,
             ),
             serverMetadata = ServerMetadata(

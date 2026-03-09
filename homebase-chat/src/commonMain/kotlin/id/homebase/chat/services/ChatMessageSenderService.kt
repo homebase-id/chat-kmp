@@ -22,7 +22,6 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonPrimitive
 
 class ChatMessageSenderService(
@@ -146,7 +145,6 @@ class ChatMessageSenderService(
                 )
             }
 
-            delay(500)
             outboxSync.send()
 
             return SendMessageResult(uniqueId = messageUniqueId)
@@ -239,7 +237,6 @@ class ChatMessageSenderService(
                     unecryptedMetadata = unecryptedMetadata
                 )
 
-                delay(500)
                 outboxSync.send()
             }
 

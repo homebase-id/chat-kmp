@@ -413,7 +413,7 @@ fun MessageBubbleRaw(
                         val lastLineRight = layoutResult.getLineRight(lastLineIndex)
                         val horizontalGap = 8.dp.roundToPx()
 
-                        val textRowPadding = 12.dp.roundToPx()
+                        val textRowPadding = 12.dp.roundToPx() + if (showDot) 16.dp.roundToPx() else 0
                         val availableWidth =
                             if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                         val lastLineEnd = textRowPadding + lastLineRight.toInt()
