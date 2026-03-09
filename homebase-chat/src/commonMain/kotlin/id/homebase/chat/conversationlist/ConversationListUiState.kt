@@ -4,7 +4,6 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.link.LinkPreview
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage
@@ -63,7 +62,7 @@ sealed interface ConversationListContentModel {
 @Immutable
 sealed class MessageListContentModel(val id: String) {
     data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
-    data class Message(val message: MessageUiModel) : MessageListContentModel(message.id.toString())
+    data class Message(val message: MessageUiModel) : MessageListContentModel(message.id.toString() + message.versionTag.toString())
 }
 
 @Immutable

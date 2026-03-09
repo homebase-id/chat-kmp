@@ -377,7 +377,7 @@ fun ConversationContent(
                             if (text.isNotBlank()) {
                                 if (uiState.isEditingMessageId != null) {
                                     onUiAction(
-                                        ConversationListUiAction.SendMessage(conversation.id)
+                                        ConversationListUiAction.EditMessageSave
                                     )
                                 } else {
                                     onUiAction(
