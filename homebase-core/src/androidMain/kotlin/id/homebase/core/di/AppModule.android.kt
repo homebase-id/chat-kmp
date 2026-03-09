@@ -4,6 +4,8 @@ import coil3.ImageLoader
 import coil3.memory.MemoryCache
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.audio.AndroidAudioRecorder
+import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.gallery.AndroidGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
@@ -19,6 +21,7 @@ actual fun platformModule(): Module = module {
     single { createSettings(androidContext()) }
     single<PlatformGalleryManager> { AndroidGalleryManager(androidContext()) }
     single<PlatformInfo> { AndroidPlatformInfo(androidContext()) }
+    single<AudioRecorder> { AndroidAudioRecorder(androidContext()) }
     single {
         ImageLoader.Builder(androidContext())
                 .components { add(HomebaseImageFetcher.Factory(get())) }

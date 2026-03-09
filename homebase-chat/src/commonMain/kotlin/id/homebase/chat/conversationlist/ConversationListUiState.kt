@@ -42,7 +42,8 @@ data class MessageListUiState(
     val isEditingVersionTag: Uuid? = null,
     val ownerSession: OwnerSession? = null,
     val messageReactions: List<EmojiReaction>? = null,
-    val downloadingFiles: Set<String> = emptySet()
+    val downloadingFiles: Set<String> = emptySet(),
+    val recordingData: RecordingData? = null,
 )
 
 @Immutable
@@ -95,3 +96,10 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
 }
+
+
+@Immutable
+data class RecordingData(
+    val path: String,
+    val durationSeconds: Int,
+)

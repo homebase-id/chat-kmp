@@ -36,6 +36,7 @@
     <string name="loading">Loading...</string>
     <string name="connection_requests_banner">%1$s connection request(s)</string>
     <string name="action_cannot_be_undone">This action can´t be undone.</string>
+    <string name="slide_to_cancel">Slide to cancel</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -127,7 +128,10 @@
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
     <string name="chat_group_introduce_everyone">Introduce Everyone</string>
+    <string name="chat_group_introduce_everyone_status">Introductions has been sent</string>
 
+    <!-- Audio recording -->
+    <string name="chat_message_audio_recording_help">Tap and hold to record a voice message, release to send</string>
 
     <!-- Conversation message -->
     <string name="chat_message_info">Message info</string>

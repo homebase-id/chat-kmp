@@ -34,6 +34,7 @@
     <string name="loading">Indlæser...</string>
     <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
     <string name="action_cannot_be_undone">Denne handling kan ikke fortrydes.</string>
+    <string name="slide_to_cancel">Træk for at annullere</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -127,7 +128,10 @@
     <string name="chat_message_edited">Redigeret</string>
     <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
     <string name="chat_group_introduce_everyone">Introducer alle</string>
+    <string name="chat_group_introduce_everyone_status">Indtroduktioner er blevet afsendt</string>
 
+    <!-- Audio recording -->
+    <string name="chat_message_audio_recording_help">Tryk og hold for at optage en lydbesked, slip for sende</string>
 
     <!-- Conversation message -->
     <string name="chat_message_info">Besked info</string>

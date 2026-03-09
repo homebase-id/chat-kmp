@@ -15,6 +15,19 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.conversationlist.ConversationListUiDialog.DeleteMessage
+import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
+import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
+import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToContactInfo
+import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToConversationSettings
+import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToGroupSettings
+import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToMessageInfo
+import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToNewConversation
+import id.homebase.chat.conversationlist.ConversationListUiEvent.OpenFile
+import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
+import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
+import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
+import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -34,11 +47,11 @@ import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.resources.MR
+import id.homebase.resources.chat_group_introduce_everyone_status
+import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.name
-import kotlin.io.encoding.Base64
-import kotlin.uuid.Uuid
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -53,6 +66,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 
 @OptIn(FlowPreview::class)
 class ConversationListViewModel(
@@ -151,35 +166,35 @@ class ConversationListViewModel(
                 loadMessagesForConversation(action.conversationId, action.messageId)
             }
 
-            ConversationListUiAction.BackClicked -> {
-                sendEvent(ConversationListUiEvent.NavigateBack)
+            is ConversationListUiAction.BackClicked -> {
+                sendEvent(NavigateBack)
             }
 
-            ConversationListUiAction.SearchClicked -> {
+            is ConversationListUiAction.SearchClicked -> {
                 _uiState.update { it.copy(isSearchActive = true) }
             }
 
-            ConversationListUiAction.SearchBackClicked -> {
+            is ConversationListUiAction.SearchBackClicked -> {
                 _uiState.update { it.copy(isSearchActive = false) }
             }
 
-            ConversationListUiAction.NewConversationClicked -> {
+            is ConversationListUiAction.NewConversationClicked -> {
                 _uiState.value = _uiState.value.copy(
-                    uiEvent = ConversationListUiEvent.NavigateToNewConversation
+                    uiEvent = NavigateToNewConversation
                 )
             }
 
-            ConversationListUiAction.ClearSelection -> {
+            is ConversationListUiAction.ClearSelection -> {
                 // Clear the selected conversation when user navigates back to list
                 _uiState.update { it.copy(selectedConversationId = null) }
             }
 
-            ConversationListUiAction.FilterByUnreadClicked -> {
+            is ConversationListUiAction.FilterByUnreadClicked -> {
                 _uiState.update { it.copy(filterByUnread = true) }
                 updateListContent()
             }
 
-            ConversationListUiAction.ClearFilterByUnreadClicked -> {
+            is ConversationListUiAction.ClearFilterByUnreadClicked -> {
                 _uiState.update { it.copy(filterByUnread = false) }
                 updateListContent()
             }
@@ -235,7 +250,7 @@ class ConversationListViewModel(
                         if (!action.ignoreDraft && messageInputTextState.annotatedString.isNotBlank()) {
                             _uiState.update {
                                 it.copy(
-                                    uiDialog = ConversationListUiDialog.DiscardDraft(action.messageId, action.versionTag)
+                                    uiDialog = DiscardDraft(action.messageId, action.versionTag)
                                 )
                             }
                             return@launch
@@ -253,7 +268,7 @@ class ConversationListViewModel(
                             "Failed to edit message: ${e.message}"
                         }
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to edit message: ${e.message}"
                             )
                         )
@@ -285,7 +300,7 @@ class ConversationListViewModel(
                     message.originalAuthor?.domainName == _uiState.value.ownerSession?.odinId?.domainName
                 _uiState.update {
                     it.copy(
-                        uiDialog = ConversationListUiDialog.DeleteMessage(
+                        uiDialog = DeleteMessage(
                             messageId = action.messageId,
                             allowDeleteForEveryone = isCurrentUserMessage
                         )
@@ -321,10 +336,10 @@ class ConversationListViewModel(
                             val tempPath = fileOperationsProvider.writeBytesToTempFile(
                                 bytes, "share_", ".$extension"
                             )
-                            sendEvent(ConversationListUiEvent.ShareFile(tempPath))
+                            sendEvent(ShareFile(tempPath))
                         } else {
                             sendEvent(
-                                ConversationListUiEvent.ShowErrorMessage(
+                                ShowErrorMessage(
                                     "Failed to download file for sharing"
                                 )
                             )
@@ -334,7 +349,7 @@ class ConversationListViewModel(
                             "Failed to share media: ${e.message}"
                         }
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to share: ${e.message}"
                             )
                         )
@@ -360,7 +375,7 @@ class ConversationListViewModel(
                     // Text-only message
                     val text = message.content
                     if (text.isNotBlank()) {
-                        sendEvent(ConversationListUiEvent.ShareText(text))
+                        sendEvent(ShareText(text))
                     }
                 }
             }
@@ -402,17 +417,17 @@ class ConversationListViewModel(
                             val tempFile = fileOperationsProvider.writeBytesToTempFile(
                                 fileBytes, fileName, ".$extension"
                             )
-                            sendEvent(ConversationListUiEvent.OpenFile(tempFile))
+                            sendEvent(OpenFile(tempFile))
                         } else {
                             sendEvent(
-                                ConversationListUiEvent.ShowErrorMessage(
+                                ShowErrorMessage(
                                     "Could not download file"
                                 )
                             )
                         }
                     } catch (e: Exception) {
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Error downloading file: ${e.message}"
                             )
                         )
@@ -426,7 +441,7 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.SaveFile -> {
-                sendEvent(ConversationListUiEvent.ShowErrorMessage("Not implemented yet"))
+                sendEvent(ShowErrorMessage("Not implemented yet"))
             }
 
             is ConversationListUiAction.DeleteMessageForEveryone -> {
@@ -437,7 +452,7 @@ class ConversationListViewModel(
                         )
                     } catch (e: Exception) {
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to delete message for everyone: ${e.message}"
                             )
                         )
@@ -453,7 +468,7 @@ class ConversationListViewModel(
                         )
                     } catch (e: Exception) {
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to delete message for me: ${e.message}"
                             )
                         )
@@ -467,7 +482,7 @@ class ConversationListViewModel(
                         chatMessageActionService.markAsRead(listOf(action.messageId))
                     } catch (e: Exception) {
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to mark message as read: ${e.message}"
                             )
                         )
@@ -485,7 +500,7 @@ class ConversationListViewModel(
                         )
                     } catch (e: Exception) {
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to toggle reaction: ${e.message}"
                             )
                         )
@@ -563,7 +578,7 @@ class ConversationListViewModel(
                     } catch (e: Exception) {
                         Logger.e("Failed to send file(s)", e)
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to send file(s): ${e.message}"
                             )
                         )
@@ -575,7 +590,10 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val newFiles = action.files.map {
-                            if (action.isImage) AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+                            if (action.isImage) AttachmentPendingFile.FileImage(
+                                Uuid.generateV7(),
+                                it
+                            )
                             else AttachmentPendingFile.File(Uuid.generateV7(), it)
                         }
                         val conversation = _uiState.value.activeConversations.find {
@@ -605,7 +623,7 @@ class ConversationListViewModel(
                     } catch (e: Exception) {
                         Logger.e("Failed to attach file(s)", e)
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to attach file(s): ${e.message}"
                             )
                         )
@@ -646,7 +664,7 @@ class ConversationListViewModel(
                     } catch (e: Exception) {
                         Logger.e("Failed to attach file(s)", e)
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to attach file(s): ${e.message}"
                             )
                         )
@@ -671,7 +689,7 @@ class ConversationListViewModel(
                     } catch (e: Exception) {
                         Logger.e("Failed to unattach file", e)
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to unattach file: ${e.message}"
                             )
                         )
@@ -733,7 +751,7 @@ class ConversationListViewModel(
                     } catch (e: Exception) {
                         Logger.e("Failed to handle media click", e)
                         sendEvent(
-                            ConversationListUiEvent.ShowErrorMessage(
+                            ShowErrorMessage(
                                 "Failed to handle media click: ${e.message}"
                             )
                         )
@@ -741,14 +759,9 @@ class ConversationListViewModel(
                 }
             }
 
-            ConversationListUiAction.CloseFullScreenOverlay -> {
+            is ConversationListUiAction.CloseFullScreenOverlay -> {
                 _messagesUiState.update { it.copy(fullScreenOverlay = null) }
             }
-
-            //            is ConversationListUiAction.ArchiveConversation -> TODO()
-            //            is ConversationListUiAction.ClearConversation -> TODO()
-            //            is ConversationListUiAction.DeleteConversation -> TODO()
-            //            is ConversationListUiAction.StarMessage -> TODO()
 
             is ConversationListUiAction.ReplyToMessage -> {
                 _messagesUiState.update { it.copy(replyToMessage = action.message) }
@@ -771,16 +784,25 @@ class ConversationListViewModel(
                 if (action.odinId == uiState.value.ownerSession?.odinId?.domainName) return
                 _uiState.update {
                     it.copy(
-                        uiEvent = ConversationListUiEvent.NavigateToContactInfo((action.odinId))
+                        uiEvent = NavigateToContactInfo((action.odinId))
                     )
                 }
             }
 
+            is ConversationListUiAction.ShowMessageInfo -> {
+                _uiState.update {
+                    it.copy(
+                        uiEvent = NavigateToMessageInfo((action.message))
+                    )
+                }
+            }
+
+            /* Conversation options */
             is ConversationListUiAction.ShowConversationSettings -> {
                 if (action.conversation.isGroupConversation) {
                     _uiState.update {
                         it.copy(
-                            uiEvent = ConversationListUiEvent.NavigateToGroupSettings(
+                            uiEvent = NavigateToGroupSettings(
                                 (action.conversation.id.toString())
                             )
                         )
@@ -788,7 +810,7 @@ class ConversationListViewModel(
                 } else {
                     _uiState.update {
                         it.copy(
-                            uiEvent = ConversationListUiEvent.NavigateToConversationSettings(
+                            uiEvent = NavigateToConversationSettings(
                                 (action.conversation.id.toString())
                             )
                         )
@@ -796,29 +818,51 @@ class ConversationListViewModel(
                 }
             }
 
-            is ConversationListUiAction.ShowMessageInfo -> {
-                _uiState.update {
-                    it.copy(
-                        uiEvent = ConversationListUiEvent.NavigateToMessageInfo((action.message))
-                    )
-                }
-            }
-
             is ConversationListUiAction.IntroduceEveryone -> {
                 introduceEveryone(action.conversationId)
             }
 
-            else -> {
-                println("Unhandled action: $action")
+            is ConversationListUiAction.ArchiveConversation -> {
+                // TODO
+                println("Unhandled: $action")
+            }
+
+            is ConversationListUiAction.ClearConversation -> {
+                // TODO
+                println("Unhandled: $action")
+            }
+
+            is ConversationListUiAction.DeleteConversation -> {
+                // TODO
+                println("Unhandled: $action")
+            }
+
+            /* Audio recording */
+            is ConversationListUiAction.ShowRecordingHelp -> {
+                sendEvent(ShowInfoMessage(MR.string.chat_message_audio_recording_help))
+            }
+
+            is ConversationListUiAction.StartRecording -> {
+                _messagesUiState.update { it.copy(recordingData = RecordingData(path = "", durationSeconds = 0)) }
+            }
+
+            is ConversationListUiAction.StopRecording -> {
+                // TODO - send recording to server
+                _messagesUiState.update { it.copy(recordingData = null) }
+            }
+
+            is ConversationListUiAction.CancelRecording -> {
+                _messagesUiState.update { it.copy(recordingData = null) }
             }
         }
     }
 
     private fun introduceEveryone(conversationId: Uuid) {
         viewModelScope.launch {
-            val defaultMessage = "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
+            val defaultMessage =
+                "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
             conversationService.introduceEveryone(conversationId, defaultMessage)
-            //TODO: Anders or Bishwa - please show a confirmation the action was taken
+            sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
         }
     }
 
@@ -884,11 +928,7 @@ class ConversationListViewModel(
                     }
                 }
             } catch (e: Exception) {
-                sendEvent(
-                    ConversationListUiEvent.ShowErrorMessage(
-                        "Failed to load conversations: ${e.message}"
-                    )
-                )
+                sendEvent(ShowErrorMessage("Failed to load conversations: ${e.message}"))
             }
         }
     }
@@ -957,11 +997,7 @@ class ConversationListViewModel(
             } catch (_: CancellationException) {
                 // ignore
             } catch (e: Exception) {
-                sendEvent(
-                    ConversationListUiEvent.ShowErrorMessage(
-                        "Failed to load messages: ${e.message}"
-                    )
-                )
+                sendEvent(ShowErrorMessage("Failed to load messages: ${e.message}"))
             }
         }
     }
@@ -995,11 +1031,7 @@ class ConversationListViewModel(
                 )
                 _messagesUiState.update { it.copy(isEditingMessageId = null, isEditingVersionTag = null) }
             } catch (e: Exception) {
-                sendEvent(
-                    ConversationListUiEvent.ShowErrorMessage(
-                        "Failed to edit message: ${e.message}"
-                    )
-                )
+                sendEvent(ShowErrorMessage("Failed to edit message: ${e.message}"))
             }
         }
     }
@@ -1025,11 +1057,7 @@ class ConversationListViewModel(
                     payloadBundle = payloadBundle,
                 )
             } catch (e: Exception) {
-                sendEvent(
-                    ConversationListUiEvent.ShowErrorMessage(
-                        "Failed to send message: ${e.message}"
-                    )
-                )
+                sendEvent(ShowErrorMessage("Failed to send message: ${e.message}"))
             }
         }
     }
@@ -1063,11 +1091,7 @@ class ConversationListViewModel(
                     payloadBundle = payloadBundle
                 )
             } catch (e: Exception) {
-                sendEvent(
-                    ConversationListUiEvent.ShowErrorMessage(
-                        "Failed to send reply: ${e.message}"
-                    )
-                )
+                sendEvent(ShowErrorMessage("Failed to send reply: ${e.message}"))
             }
         }
     }

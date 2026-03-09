@@ -59,6 +59,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
@@ -94,6 +95,7 @@ fun ConversationContent(
     conversation: ConversationUiModel,
     uiState: MessageListUiState,
     textFieldState: RichTextState,
+    recordingData: RecordingData?,
     listState: LazyListState,
     isScrollPositionReady: Boolean,
     showBackButton: Boolean,
@@ -370,6 +372,7 @@ fun ConversationContent(
                     }
                     MessageInputBar(
                         textFieldState = textFieldState,
+                        recordingData = recordingData,
                         focusRequester = focusRequester,
                         editExistingMode = uiState.isEditingMessageId != null,
                         showingEmojiSheet = showEmojiSheet,
@@ -438,6 +441,10 @@ fun ConversationContent(
                             }
                         },
                         onCameraClick = { cameraLauncher.launch() },
+                        onRecordingStarted = { onUiAction(ConversationListUiAction.StartRecording) },
+                        onRecordingStopped = { onUiAction(ConversationListUiAction.StopRecording) },
+                        onRecordingCancelled = { onUiAction(ConversationListUiAction.CancelRecording) },
+                        onRecordingHelp = { onUiAction(ConversationListUiAction.ShowRecordingHelp) },
                         onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) }
                     )
 

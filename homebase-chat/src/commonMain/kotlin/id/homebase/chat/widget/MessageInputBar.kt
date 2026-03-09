@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.outlined.FormatItalic
@@ -39,6 +41,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,6 +58,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -63,6 +67,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -71,12 +76,14 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.client.link.LinkPreviewProvider
+import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
@@ -91,9 +98,12 @@ import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.collapse
 import id.homebase.resources.expand
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlin.time.Clock
 
 private val URL_REGEX = Regex(
     "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
@@ -103,6 +113,7 @@ private val URL_REGEX = Regex(
 fun MessageInputBar(
     modifier: Modifier = Modifier,
     textFieldState: RichTextState,
+    recordingData: RecordingData?,
     focusRequester: FocusRequester,
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
@@ -111,7 +122,12 @@ fun MessageInputBar(
     onFocused: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
+    onRecordingStarted: () -> Unit,
+    onRecordingStopped: () -> Unit,
+    onRecordingCancelled: () -> Unit,
+    onRecordingHelp: () -> Unit,
     onSendMessage: (String, LinkPreview?) -> Unit,
+
     onCancelEdit: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -220,6 +236,7 @@ fun MessageInputBar(
                 state = textFieldState,
                 editExistingMode = editExistingMode,
                 linkPreviewData = linkPreviewData,
+                recordingData = recordingData,
                 onCancelLinkPreview = {
                     linkPreviewData?.let { preview ->
                         cancelledUrls = cancelledUrls + preview.url
@@ -232,6 +249,10 @@ fun MessageInputBar(
                 onKeyboardClick = onKeyboardClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 onCameraClick = onCameraClick,
+                onRecordingStarted = onRecordingStarted,
+                onRecordingStopped = onRecordingStopped,
+                onRecordingCancelled = onRecordingCancelled,
+                onRecordingHelp = onRecordingHelp,
                 onSendMessage = { sendMessage() },
                 onCancelEdit = onCancelEdit
             )
@@ -278,7 +299,10 @@ fun MessageTextFieldExpanded(
                     }
                 },
             placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
-            shape = if (editExistingMode) RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp) else RoundedCornerShape(12.dp),
+            shape = if (editExistingMode) RoundedCornerShape(
+                bottomStart = 12.dp,
+                bottomEnd = 12.dp
+            ) else RoundedCornerShape(12.dp),
             minLines = 10,
             maxLines = 10,
             keyboardOptions = KeyboardOptions(
@@ -315,11 +339,11 @@ fun MessageTextFieldExpanded(
             Spacer(modifier = Modifier.weight(1f))
             if (editExistingMode) {
                 IconButton(
-                onClick = onCancelEdit,
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
+                    onClick = onCancelEdit,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
@@ -334,7 +358,7 @@ fun MessageTextFieldExpanded(
                 )
             ) {
                 Icon(
-                    imageVector = if(editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
+                    imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
                     contentDescription = stringResource(MR.string.chat_send_message_button),
                 )
             }
@@ -348,6 +372,7 @@ fun MessageTextFieldCompact(
     modifier: Modifier = Modifier,
     state: RichTextState,
     linkPreviewData: LinkPreview?,
+    recordingData: RecordingData?,
     onCancelLinkPreview: () -> Unit,
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
@@ -355,10 +380,64 @@ fun MessageTextFieldCompact(
     onKeyboardClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
+    onRecordingStarted: () -> Unit,
+    onRecordingStopped: () -> Unit,
+    onRecordingCancelled: () -> Unit,
+    onRecordingHelp: () -> Unit,
     onFocused: () -> Unit = {},
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
+    var isMicrophonePressed by remember { mutableStateOf(false) }
+    val micInteractionSource = remember { MutableInteractionSource() }
+    val hapticFeedback = LocalHapticFeedback.current
+
+    LaunchedEffect(micInteractionSource) {
+        var pressStartTime = 0L
+        var recordingStartJob: Job? = null
+
+        micInteractionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is PressInteraction.Press -> {
+                    isMicrophonePressed = true
+                    pressStartTime = Clock.System.now().toEpochMilliseconds()
+
+                    // Trigger haptic feedback on press
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+
+                    // Delay starting recording to distinguish from quick tap
+                    recordingStartJob = launch {
+                        delay(300)
+                        onRecordingStarted()
+                        Logger.d("Recording started")
+                    }
+                }
+
+                is PressInteraction.Release -> {
+                    isMicrophonePressed = false
+                    recordingStartJob?.cancel()
+
+                    val pressDuration = Clock.System.now().toEpochMilliseconds() - pressStartTime
+                    if (pressDuration < 200) {
+                        // Quick tap - show help
+                        Logger.d("Recording help")
+                        onRecordingHelp()
+                    } else {
+                        // Long press - stop recording
+                        Logger.d("Recording ended")
+                        onRecordingStopped()
+                    }
+                }
+
+                is PressInteraction.Cancel -> {
+                    isMicrophonePressed = false
+                    Logger.d("Recording ended")
+                    onRecordingStopped()
+                }
+            }
+        }
+    }
+
     Column(
         modifier = modifier
     ) {
@@ -453,16 +532,35 @@ fun MessageTextFieldCompact(
                                     )
                                 }
                             } else if (isMobile()) {
-                                IconButton(onClick = onCameraClick) {
-                                    Icon(
-                                        imageVector = Icons.Default.PhotoCamera,
-                                        contentDescription = "Camera"
-                                    )
+                                Row {
+                                    IconButton(onClick = onCameraClick) {
+                                        Icon(
+                                            imageVector = Icons.Default.PhotoCamera,
+                                            contentDescription = "Camera"
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {},
+                                        interactionSource = micInteractionSource,
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Mic,
+                                            contentDescription = "Microphone",
+                                            tint = if (isMicrophonePressed) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                LocalContentColor.current
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
                     },
-                    shape = if (editExistingMode) RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp) else RoundedCornerShape(12.dp),
+                    shape = if (editExistingMode) RoundedCornerShape(
+                        bottomStart = 12.dp,
+                        bottomEnd = 12.dp
+                    ) else RoundedCornerShape(12.dp),
                     colors = RichTextEditorDefaults.richTextEditorColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         focusedIndicatorColor = Color.Transparent,
@@ -487,7 +585,7 @@ fun MessageTextFieldCompact(
                     modifier = Modifier.padding(bottom = 4.dp)
                 ) {
                     Icon(
-                        imageVector = if(editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
+                        imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
                         contentDescription = stringResource(MR.string.chat_send_message_button),
                     )
                 }
@@ -718,3 +816,4 @@ fun RichTextEditorButtons(modifier: Modifier = Modifier, state: RichTextState) {
         //            }
     }
 }
+
