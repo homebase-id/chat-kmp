@@ -39,6 +39,7 @@ data class MessageListUiState(
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
     val isEditingMessageId: Uuid? = null,
+    val isEditingVersionTag: Uuid? = null,
     val ownerSession: OwnerSession? = null,
     val messageReactions: List<EmojiReaction>? = null,
     val downloadingFiles: Set<String> = emptySet()
@@ -62,7 +63,8 @@ sealed interface ConversationListContentModel {
 @Immutable
 sealed class MessageListContentModel(val id: String) {
     data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
-    data class Message(val message: MessageUiModel) : MessageListContentModel(message.id.toString() + message.versionTag.toString())
+    data class Message(val message: MessageUiModel) :
+        MessageListContentModel(message.id.toString() + message.versionTag.toString())
 }
 
 @Immutable

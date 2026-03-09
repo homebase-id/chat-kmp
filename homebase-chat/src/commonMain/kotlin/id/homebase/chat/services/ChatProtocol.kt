@@ -17,6 +17,10 @@ object ChatProtocol {
     const val ConversationFileType = 8888
     const val MessageFileType = 7878
 
+
+    /** Indicates a file was optimistically written and not coming from the server */
+    val isPendingSendTag = Uuid.parse("6e87beb3-412a-4a8c-aaec-b21a7ec620a7")
+
     const val ARCHIVAL_STATUS_DELETED = 2
 
     const val DEFAULT_PAYLOAD_DESCRIPTOR_KEY = "pld_desc"

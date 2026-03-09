@@ -36,7 +36,12 @@ data class MessageUiModel(
 
     val keyHeader: KeyHeader,
     val isDeleted: Boolean = false,
-    val versionTag: Uuid
+    val versionTag: Uuid,
+
+    /** When true the item exists in the local-sync database only, most likey because it
+     * was optimistically written but not yet sent */
+    val isPendingSend: Boolean
 ) {
     fun isCurrentUser(domain: OdinId?): Boolean = (originalAuthor == domain)
+
 }

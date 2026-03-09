@@ -37,7 +37,7 @@ fun MessageItem(
 
 
     if (message.isCurrentUser(odinId)) {
-        val onEdit = remember(message.id) { { onUiAction(ConversationListUiAction.EditMessage(messageId = message.id, ignoreDraft = false)) } }
+        val onEdit = remember(message.id) { { onUiAction(ConversationListUiAction.EditMessage(messageId = message.id, versionTag = message.versionTag, ignoreDraft = false)) } }
 
         SentMessageBubble(
             message = message,

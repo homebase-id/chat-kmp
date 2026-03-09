@@ -22,6 +22,7 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonPrimitive
 
 class ChatMessageSenderService(
@@ -134,42 +135,18 @@ class ChatMessageSenderService(
                 json = OdinSystemSerializer.serialize(request),
             )
 
-
-
             if (enqueued) {
-
-                val enqueableMetadata =
-                    UploadFileMetadata(
-                        allowDistribution = true,
-                        isEncrypted = true,
-                        appData = UploadAppFileMetaData(
-                            uniqueId = messageUniqueId,
-                            groupId = conversationId,
-                            fileType = ChatProtocol.MessageFileType,
-                            userDate = UnixTimeUtc.now().milliseconds,
-                            content = OdinSystemSerializer.serialize(
-                                MessageAppData(
-                                    replyId = null,
-                                    replyPreview = null,
-                                    message = JsonPrimitive("-->" + content.message),
-                                    deliveryStatus = ChatDeliveryStatus.Sent.value
-                                )
-                            ),
-                            previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
-                                it.pixelWidth
-                            })
-                    )
-
                 // optimistic write after we know it will be sent
                 optimisticWriter.writeNewFile(
                     driveId = chatDrive,
                     keyHeader = keyHeader,
-                    unecryptedMetadata = enqueableMetadata,
+                    unecryptedMetadata = unecryptedMetadata,
                     originalRecipientCount = recipients.size,
                     fileSystemType = FileSystemType.Standard
                 )
             }
 
+            delay(500)
             outboxSync.send()
 
             return SendMessageResult(uniqueId = messageUniqueId)
@@ -182,6 +159,7 @@ class ChatMessageSenderService(
 
     suspend fun updateMessage(
         messageId: Uuid,
+        versionTag: Uuid, // the version of message you're currently editing
         content: String,
     ): UpdateMessageResult {
 
@@ -189,7 +167,9 @@ class ChatMessageSenderService(
         val msg = chatMessageStream.getMessage(messageId)
             ?: throw IllegalArgumentException("message not found")
 
-        val versionTag = msg.versionTag //todo: need to have this passed in
+        if (msg.versionTag != versionTag) {
+            error("VersionTag mismatch")
+        }
 
         val keyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16),
@@ -252,14 +232,17 @@ class ChatMessageSenderService(
                     json = OdinSystemSerializer.serialize(request),
                 )
             ) {
+
+                optimisticWriter.writeUpdate(
+                    driveId = chatDrive,
+                    keyHeader = keyHeader,
+                    unecryptedMetadata = unecryptedMetadata
+                )
+
+                delay(500)
                 outboxSync.send()
             }
 
-            optimisticWriter.writeUpdate(
-                driveId = chatDrive,
-                keyHeader = keyHeader,
-                unecryptedMetadata = unecryptedMetadata
-            )
 
             return UpdateMessageResult(uniqueId = messageId)
 

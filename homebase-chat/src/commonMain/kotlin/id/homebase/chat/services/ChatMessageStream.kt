@@ -222,6 +222,11 @@ class ChatMessageStream(
             val metadata = header.fileMetadata
             val appData = metadata.appData
 
+
+            val isPendingSend =
+                metadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag)
+                    ?: false
+
             try {
                 // TODO - if this fails app crashes
                 require(appData.fileType == ChatProtocol.MessageFileType)
@@ -230,9 +235,7 @@ class ChatMessageStream(
 //                }
 
                 val versionTag = header.fileMetadata.versionTag ?: Uuid.NIL
-
                 val content = appData.content
-
                 val isDeleted = header.fileState == FileState.Deleted ||
                         header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
 
@@ -255,8 +258,8 @@ class ChatMessageStream(
                         payloads = metadata.payloads?.toPersistentList(),
                         keyHeader = header.keyHeader,
                         isDeleted = true,
-                        versionTag = versionTag
-
+                        versionTag = versionTag,
+                        isPendingSend = isPendingSend
                     )
                 }
 
@@ -286,7 +289,8 @@ class ChatMessageStream(
                     previewThumbnail = metadata.appData.previewThumbnail,
                     payloads = metadata.payloads?.toPersistentList(),
                     keyHeader = header.keyHeader,
-                    versionTag = versionTag
+                    versionTag = versionTag,
+                    isPendingSend = isPendingSend
 
                 )
             } catch (t: Throwable) {
@@ -311,7 +315,8 @@ class ChatMessageStream(
                         previewThumbnail = metadata.appData.previewThumbnail,
                         payloads = metadata.payloads?.toPersistentList(),
                         keyHeader = header.keyHeader,
-                        versionTag = Uuid.NIL
+                        versionTag = Uuid.NIL,
+                        isPendingSend = false
                     )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {

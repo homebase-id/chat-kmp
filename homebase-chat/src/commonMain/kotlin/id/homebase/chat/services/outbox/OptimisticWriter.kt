@@ -12,6 +12,7 @@ import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.FileMetadata
+import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -19,6 +20,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.QueryBatch
+import id.homebase.chat.services.ChatProtocol
 import kotlin.uuid.Uuid
 
 class OptimisticWriter(
@@ -59,6 +61,9 @@ class OptimisticWriter(
                     content = unecryptedMetadata.appData.content,
                     previewThumbnail = unecryptedMetadata.appData.previewThumbnail,
                     archivalStatus = unecryptedMetadata.appData.archivalStatus
+                ),
+                localAppData = LocalAppMetadata(
+                    tags = listOf(ChatProtocol.isPendingSendTag)
                 ),
                 created = created,
                 updated = UnixTimeUtc.ZeroTime,
@@ -132,6 +137,15 @@ class OptimisticWriter(
             ?: throw IllegalStateException("no file by uid")
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+
+        val existing = existingFile.fileMetadata.localAppData
+
+        val newLocalAppData = existing?.copy(
+            tags = existing.tags.orEmpty() + ChatProtocol.isPendingSendTag
+        ) ?: LocalAppMetadata(
+            tags = listOf(ChatProtocol.isPendingSendTag)
+        )
+
         val file = existingFile.copy(
             keyHeader = keyHeader,
             fileMetadata = FileMetadata(
@@ -146,6 +160,7 @@ class OptimisticWriter(
                     previewThumbnail = unecryptedMetadata.appData.previewThumbnail,
                     archivalStatus = unecryptedMetadata.appData.archivalStatus
                 ),
+                localAppData = newLocalAppData,
                 created = existingFile.fileMetadata.created,
                 updated = lastModified,
             ),

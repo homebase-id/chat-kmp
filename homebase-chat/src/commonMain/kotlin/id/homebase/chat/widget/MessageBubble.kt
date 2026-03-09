@@ -215,7 +215,8 @@ fun SentMessageBubble(
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     messageId = message.id,
-                    downloadingFiles = downloadingFiles
+                    downloadingFiles = downloadingFiles,
+                    showDot = message.isPendingSend
                 )
                 message.reactionPreview?.let { reactionSummary ->
                     ReactionList(

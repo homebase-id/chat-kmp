@@ -8,6 +8,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.websockets.OdinWebSocketClient
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.config.syncDrives
@@ -25,6 +26,7 @@ class AuthConnectionCoordinator(
     private val ownerSessionRepository: OwnerSessionRepository,
     private val youAuthFlowManager: YouAuthFlowManager,
     private val driveSyncManager: DriveSyncManager,
+    private val outboxSync: OutboxSync,
     private val eventBus: EventBus
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
@@ -95,6 +97,7 @@ class AuthConnectionCoordinator(
                     scope.launch {
                         driveSyncManager.syncAll()
                         _connectionState.update { it.copy(isDoingInitialConnection = false) }
+                        outboxSync.send()
                     }
                 },
                 onDisconnected = {
