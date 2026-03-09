@@ -225,9 +225,11 @@ class ChatMessageStream(
             try {
                 // TODO - if this fails app crashes
                 require(appData.fileType == ChatProtocol.MessageFileType)
-                val versionTag = requireNotNull(header.fileMetadata.versionTag) {
-                    "versionTag missing in fileMetadata"
-                }
+//                val versionTag = requireNotNull(header.fileMetadata.versionTag) {
+//                    "versionTag missing in fileMetadata"
+//                }
+
+                val versionTag = header.fileMetadata.versionTag ?: Uuid.NIL
 
                 val content = appData.content
 
