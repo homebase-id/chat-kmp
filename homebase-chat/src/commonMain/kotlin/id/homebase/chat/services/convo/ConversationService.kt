@@ -94,7 +94,7 @@ class ConversationService(
                 isEncrypted = true,
                 appData =
                     UploadAppFileMetaData(
-                        uniqueId = newConversationId.toString(),
+                        uniqueId = newConversationId,
                         fileType = ChatProtocol.ConversationFileType,
                         content = OdinSystemSerializer.serialize(content),
                         previewThumbnail =
@@ -269,7 +269,7 @@ class ConversationService(
                 versionTag = conversationFile.fileMetadata.versionTag,
                 appData =
                     UploadAppFileMetaData(
-                        uniqueId = conversationId.toString(),
+                        uniqueId = conversationId,
                         fileType = ChatProtocol.ConversationFileType,
                         content = OdinSystemSerializer.serialize(content),
                         previewThumbnail = previewThumb

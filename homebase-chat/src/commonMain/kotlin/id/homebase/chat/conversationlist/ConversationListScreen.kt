@@ -192,7 +192,8 @@ fun ConversationListScreen(
                             onPrimaryClick = {
                                 viewModel.onAction(
                                     ConversationListUiAction.EditMessage(
-                                        dialog.messageId,
+                                        messageId = dialog.messageId,
+                                        versionTag = dialog.versionTag,
                                         ignoreDraft = true
                                     )
                                 )

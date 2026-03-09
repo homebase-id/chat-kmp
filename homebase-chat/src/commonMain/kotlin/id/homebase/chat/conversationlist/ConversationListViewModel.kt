@@ -235,14 +235,17 @@ class ConversationListViewModel(
                         if (!action.ignoreDraft && messageInputTextState.annotatedString.isNotBlank()) {
                             _uiState.update {
                                 it.copy(
-                                    uiDialog = ConversationListUiDialog.DiscardDraft(action.messageId)
+                                    uiDialog = ConversationListUiDialog.DiscardDraft(action.messageId, action.versionTag)
                                 )
                             }
                             return@launch
                         }
 
                         chatMessageStream.getMessage(action.messageId)?.let { message ->
-                            _messagesUiState.update { it.copy(isEditingMessageId = action.messageId, replyToMessage = null) }
+                            _messagesUiState.update { it.copy(
+                                isEditingMessageId = action.messageId,
+                                isEditingVersionTag = action.versionTag,
+                                replyToMessage = null) }
                             messageInputTextState.setMarkdown(message.content)
                         }
                     } catch (e: Exception) {
@@ -262,6 +265,7 @@ class ConversationListViewModel(
                 _messagesUiState.value.isEditingMessageId?.let { messageId ->
                     editMessage(
                         messageId = messageId,
+                        versionTag = _messagesUiState.value.isEditingVersionTag ?: Uuid.NIL,
                         content = messageInputTextState.annotatedString.toString(),
                     )
                 }
@@ -269,7 +273,7 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.CancelEditMessage -> {
                 messageInputTextState.clear()
-                _messagesUiState.update { it.copy(isEditingMessageId = null) }
+                _messagesUiState.update { it.copy(isEditingMessageId = null, isEditingVersionTag = null) }
             }
 
             is ConversationListUiAction.DeleteMessage -> {
@@ -981,14 +985,15 @@ class ConversationListViewModel(
         _uiState.update { it.copy(uiEvent = event) }
     }
 
-    private fun editMessage(messageId: Uuid, content: String) {
+    private fun editMessage(messageId: Uuid, versionTag: Uuid, content: String) {
         viewModelScope.launch {
             try {
                 chatMessageSenderService.updateMessage(
                     messageId = messageId,
+                    versionTag = versionTag,
                     content = content
                 )
-                _messagesUiState.update { it.copy(isEditingMessageId = null) }
+                _messagesUiState.update { it.copy(isEditingMessageId = null, isEditingVersionTag = null) }
             } catch (e: Exception) {
                 sendEvent(
                     ConversationListUiEvent.ShowErrorMessage(
