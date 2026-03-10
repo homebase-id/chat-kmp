@@ -3,7 +3,6 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
-import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.PushNotificationOptions
 import id.homebase.api.client.drives.upload.TransitOptions
@@ -26,7 +25,7 @@ import kotlinx.serialization.json.JsonPrimitive
 
 class ChatMessageSenderService(
     private val outboxSync: OutboxSync,
-    private val conversationService: ConversationStream,
+    private val conversationStream: ConversationStream,
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
     private val scope: CoroutineScope,
     private val chatMessageStream: ChatMessageStream,
@@ -74,17 +73,39 @@ class ChatMessageSenderService(
         payloadBundle = payloadBundle
     )
 
+    suspend fun sendStatusMessage(
+        messageUniqueId: Uuid,
+        conversationId: Uuid,
+        messageText: String,
+        previousMessageUniqueId: Uuid? = null,
+        payloadBundle: PayloadBundle? = null
+    ): SendMessageResult = sendMessageInternal(
+        messageUniqueId = messageUniqueId,
+        conversationId = conversationId,
+        content = MessageAppData(
+            replyId = null,
+            replyPreview = null,
+            message = JsonPrimitive(messageText),
+            deliveryStatus = ChatDeliveryStatus.Sent.value
+        ),
+        notificationText = "",
+        previousMessageUniqueId = previousMessageUniqueId,
+        payloadBundle = payloadBundle,
+        isStatusMessage = true
+    )
+
     private suspend fun sendMessageInternal(
         messageUniqueId: Uuid,
         conversationId: Uuid,
         content: MessageAppData,
         notificationText: String,
         previousMessageUniqueId: Uuid?,
-        payloadBundle: PayloadBundle?
+        payloadBundle: PayloadBundle?,
+        isStatusMessage: Boolean = false
     ): SendMessageResult {
 
         val keyHeader = KeyHeader.newRandom16()
-        val recipients = conversationService.getRecipients(conversationId)
+        val recipients = conversationStream.getRecipients(conversationId)
 
         val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
             messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
@@ -98,6 +119,7 @@ class ChatMessageSenderService(
                     uniqueId = messageUniqueId,
                     groupId = conversationId,
                     fileType = ChatProtocol.MessageFileType,
+                    dataType = if (isStatusMessage) ChatProtocol.ChatStatusMessageDataType else null,
                     userDate = UnixTimeUtc.now().milliseconds,
                     content = OdinSystemSerializer.serialize(content),
                     previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
@@ -111,7 +133,7 @@ class ChatMessageSenderService(
             metadata = unecryptedMetadata.encryptContent(keyHeader),
             transitOptions = TransitOptions(
                 recipients = recipients,
-                useAppNotification = true,
+                useAppNotification = !isStatusMessage,
                 appNotificationOptions = PushNotificationOptions(
                     appId = ChatProtocol.ChatAppId.toString(),
                     typeId = conversationId.toString(),
@@ -126,12 +148,9 @@ class ChatMessageSenderService(
         try {
 
             val enqueued = outboxSync.tryEnqueue(
-                request.driveId,
-                messageUniqueId,
-                dependencyUniqueId = previousMessageUniqueId,
+                request,
                 priority = 1,
-                uploadType = DriveOutboxUploader.UploadNewFile,
-                json = OdinSystemSerializer.serialize(request),
+                dependencyUniqueId = previousMessageUniqueId,
             )
 
             if (enqueued) {
@@ -174,7 +193,7 @@ class ChatMessageSenderService(
             aesKey = msg.keyHeader.aesKey
         )
 
-        val recipients = conversationService.getRecipients(msg.conversationId)
+        val recipients = conversationStream.getRecipients(msg.conversationId)
 
         val msgContent = msg.messageAppData.copy(
             deliveryStatus = ChatDeliveryStatus.Sending.value,
@@ -221,15 +240,13 @@ class ChatMessageSenderService(
         )
 
         try {
-            if (outboxSync.tryEnqueue(
-                    request.driveId,
-                    messageId,
-                    dependencyUniqueId = null,
-                    priority = 1,
-                    uploadType = DriveOutboxUploader.UpdateFile,
-                    json = OdinSystemSerializer.serialize(request),
-                )
-            ) {
+            val enqueued = outboxSync.tryEnqueue(
+                request,
+                priority = 1,
+                dependencyUniqueId = null,
+            )
+
+            if (enqueued) {
 
                 optimisticWriter.writeUpdate(
                     driveId = chatDrive,

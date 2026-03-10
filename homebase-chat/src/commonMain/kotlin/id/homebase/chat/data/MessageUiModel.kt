@@ -40,7 +40,10 @@ data class MessageUiModel(
 
     /** When true the item exists in the local-sync database only, most likey because it
      * was optimistically written but not yet sent */
-    val isPendingSend: Boolean
+    val isPendingSend: Boolean,
+
+    /** Indicates if this was created by the app/system and should be rendered differently **/
+    val isSystemMessage: Boolean = false
 ) {
     fun isCurrentUser(domain: OdinId?): Boolean = (originalAuthor == domain)
 

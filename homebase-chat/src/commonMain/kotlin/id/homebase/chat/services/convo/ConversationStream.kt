@@ -24,7 +24,6 @@ import kotlinx.coroutines.launch
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
-    private val conversationService: ConversationService,
     private val contactService: ContactService,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
@@ -34,6 +33,11 @@ class ConversationStream(
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow<List<ConversationUiModel>>(emptyList())
     private var isSyncing = false // Track if chat drive sync is in progress
+
+    private val mapper: ConversationMapper = ConversationMapper(
+        credentialsManager = credentialsManager,
+        contactService = contactService
+    )
 
     val conversations: StateFlow<List<ConversationUiModel>> = _conversations.asStateFlow()
 
@@ -178,7 +182,7 @@ class ConversationStream(
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingConversations =
             conversationFiles.map { file ->
-                conversationService.mapToConversationUi(file, null)
+                mapper.mapToConversationUi(file, null)
             }
 
         for (c in incomingConversations) {
@@ -248,7 +252,7 @@ class ConversationStream(
 
     suspend fun fetchConversations(): List<ConversationUiModel> {
         val result = dbm.chatReadCount.selectAllConversationPlusLastMessage()
-        return result.map { conversationService.mapToConversationUi(it.conversation, it.message) }
+        return result.map { mapper.mapToConversationUi(it.conversation, it.message) }
     }
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {

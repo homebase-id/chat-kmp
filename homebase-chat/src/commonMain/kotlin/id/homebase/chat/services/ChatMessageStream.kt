@@ -221,6 +221,7 @@ class ChatMessageStream(
 
             val metadata = header.fileMetadata
             val appData = metadata.appData
+            val isSystemMessage = appData.dataType == ChatProtocol.ChatStatusMessageDataType
 
             val isPendingSend =
                 metadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag)
@@ -258,7 +259,8 @@ class ChatMessageStream(
                         keyHeader = header.keyHeader,
                         isDeleted = true,
                         versionTag = versionTag,
-                        isPendingSend = isPendingSend
+                        isPendingSend = isPendingSend,
+                        isSystemMessage = isSystemMessage
                     )
                 }
 
@@ -289,7 +291,8 @@ class ChatMessageStream(
                     payloads = metadata.payloads?.toPersistentList(),
                     keyHeader = header.keyHeader,
                     versionTag = versionTag,
-                    isPendingSend = isPendingSend
+                    isPendingSend = isPendingSend,
+                    isSystemMessage = isSystemMessage
 
                 )
             } catch (t: Throwable) {
@@ -315,7 +318,8 @@ class ChatMessageStream(
                         payloads = metadata.payloads?.toPersistentList(),
                         keyHeader = header.keyHeader,
                         versionTag = Uuid.NIL,
-                        isPendingSend = false
+                        isPendingSend = false,
+                        isSystemMessage = isSystemMessage
                     )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {
