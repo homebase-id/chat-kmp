@@ -77,7 +77,8 @@ class ConversationService(
             ConversationAppDataJson(
                 title = title ?: "",
                 recipients = (recipients + domain).distinct(),
-                version = 1
+                version = 1,
+                admins = listOf(domain)
             )
 
         val encryptedBundle =
@@ -135,15 +136,45 @@ class ConversationService(
         return mapToConversationUi(file, null)
     }
 
-//    //** sends out the conversation file
-//    suspend fun redistributeConversation(conversationId: Uuid) {
-//        val conversation = requireConversation(conversationId)
-//        updateConversationInternal(
-//            conversationId = conversationId,
-//            title = conversation.name,
-//            recipients = conversation.participants
-//        )
-//    }
+    suspend fun updateAdmins(
+        conversationId: Uuid,
+        add: List<OdinId> = emptyList(),
+        remove: List<OdinId> = emptyList()
+    ) {
+        val conversation = requireConversation(conversationId)
+        val domain = credentialsManager.requireActiveDomain()
+
+        requireCallerIsGroupAdmin(conversation)
+
+        val recipients = conversation.participants
+        val admins = conversation.admins.toMutableSet()
+
+        // additions must already be participants
+        require(add.all { recipients.contains(it) }) {
+            "Admins must be recipients"
+        }
+
+        admins.addAll(add)
+        admins.removeAll(remove)
+
+        if (admins.isEmpty()) {
+            throw IllegalStateException("Conversation must have at least one admin")
+        }
+
+        // forbid removing yourself if you would leave zero admins
+        if (remove.contains(domain) && !admins.contains(domain)) {
+            if (admins.size == 0) {
+                throw IllegalStateException("Cannot remove the last admin.  You must first add another to replace you")
+            }
+        }
+
+        updateConversationInternal(
+            conversationId = conversationId,
+            title = conversation.name,
+            recipients = recipients,
+            admins = admins
+        )
+    }
 
     suspend fun updateGroupMembers(
         conversationId: Uuid,
@@ -151,6 +182,7 @@ class ConversationService(
         remove: List<OdinId> = emptyList()
     ) {
         val conversation = requireConversation(conversationId)
+        requireCallerIsGroupAdmin(conversation)
 
         val domain = credentialsManager.requireActiveDomain()
         val current = conversation.participants.toMutableSet()
@@ -179,8 +211,12 @@ class ConversationService(
         title: String?,
         payloadBundle: PayloadBundle? = null
     ) {
-
         val conversation = requireConversation(conversationId)
+
+        if(conversation.isGroupConversation)
+        {
+            requireCallerIsGroupAdmin(conversation)
+        }
 
         updateConversationInternal(
             conversationId = conversationId,
@@ -197,13 +233,16 @@ class ConversationService(
         conversationId: Uuid,
         title: String?,
         recipients: List<OdinId>,
+        admins: Set<OdinId>? = null,
         payloadBundle: PayloadBundle? = null
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
 
-        val conversationFile =
-            getConversationHomebaseFile(conversationId) ?: error("No conversation found")
+        val conversationFile = getConversationHomebaseFile(conversationId)
+            ?: error("No conversation found")
+
+        val conversation = requireConversation(conversationId)
 
         // Always include self but remember to never distribute to self
         val normalizedRecipients = (recipients + domain).distinct()
@@ -216,6 +255,7 @@ class ConversationService(
             ConversationAppDataJson(
                 title = title ?: "",
                 recipients = normalizedRecipients,
+                admins = admins?.toList() ?: conversation.admins.toList(),
                 version = 1 // logical version; server enforces via versionTag
             )
 
@@ -326,6 +366,18 @@ class ConversationService(
         }
     }
 
+    private suspend fun requireCallerIsGroupAdmin(conversation: ConversationUiModel) {
+        val domain = credentialsManager.requireActiveDomain()
+
+        if (!conversation.isGroupConversation) {
+            throw IllegalStateException("Must be a group conversations")
+        }
+
+        if (!conversation.admins.contains(domain)) {
+            throw IllegalStateException("Only group admins can perform this action")
+        }
+    }
+
     private suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
 
         val c = credentialsManager.requireActiveCredentials()
@@ -349,71 +401,97 @@ class ConversationService(
     }
 
     suspend fun mapToConversationUi(
-        conversation: HomebaseFile,
+        conversationFile: HomebaseFile,
         lastMsg: HomebaseFile?
     ): ConversationUiModel {
 
-        val metadata = conversation.fileMetadata
-        val appData = metadata.appData
+        return try {
 
-        if (appData.fileType != ChatProtocol.ConversationFileType) {
-            throw IllegalArgumentException("Not a conversation file")
-        }
+            val metadata = conversationFile.fileMetadata
+            val appData = metadata.appData
 
-        val appDataObj =
-            OdinSystemSerializer.deserialize<ConversationAppDataJson>(
-                appData.content ?: error("Conversation appData missing")
-            )
-
-        val domain = credentialsManager.getActiveDomain() ?: error("No active domain")
-
-        val localAppData =
-            metadata.localAppData?.content?.let {
-                OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it)
+            if (appData.fileType != ChatProtocol.ConversationFileType) {
+                throw IllegalArgumentException("Not a conversation file")
             }
 
-        val participants = appDataObj.recipients
+            val conversationData =
+                OdinSystemSerializer.deserialize<ConversationAppDataJson>(
+                    appData.content ?: error("Conversation appData missing")
+                )
 
-        val displayNames =
-            participants.map { odinId ->
-                contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+            val domain = credentialsManager.getActiveDomain() ?: error("No active domain")
+
+            val localAppData =
+                metadata.localAppData?.content?.let {
+                    OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it)
+                }
+
+            val participants = conversationData.recipients
+
+            val displayNames =
+                participants.map { odinId ->
+                    contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+                }
+
+            val title =
+                if (participants.size == 2) {
+                    val other = participants.first { it != domain }
+                    contactService.resolveByOdinId(other)?.name ?: "fracko"
+                } else {
+                    conversationData.title ?: displayNames.joinToString(", ")
+                }
+
+            val admins = (conversationData.admins ?: listOf(
+                conversationFile.fileMetadata.originalAuthor
+                    ?: error("Conversation missing original author")
+            )).toSet()
+
+            val avatarModel = buildConversationAvatarModel(conversationFile)
+
+            val ui =
+                ConversationUiModel(
+                    id = appData.uniqueId ?: error("Missing uniqueId"),
+                    name = title,
+                    lastMessage = " ",
+                    timestamp = UnixTimeUtc(0).toInstant(),
+                    unreadCount = 0,
+                    avatarTiny = appData.previewThumbnail,
+                    avatarInitials = "",
+                    avatarUrl = "",
+                    participants = participants,
+                    lastRead = localAppData?.lastReadTime?.toInstant()
+                        ?: UnixTimeUtc(0).toInstant(),
+                    avatarModel = avatarModel,
+                    admins = admins
+                )
+
+            if (lastMsg != null) {
+                ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
+                    ui.updateWithLatestMessage(it, domain)
+                }
             }
 
-        val title =
-            if (participants.size == 2) {
-                val other = participants.first { it != domain }
-                contactService.resolveByOdinId(other)?.name ?: "fracko"
-            } else {
-                appDataObj.title ?: displayNames.joinToString(", ")
-            }
+            ui
 
-        // -------- avatar initials selection (no derivation) --------
+        } catch (t: Throwable) {
 
-        val avatarModel = buildConversationAvatarModel(conversation)
+            Logger.e("Failed mapping conversation UI", t)
 
-        val ui =
             ConversationUiModel(
-                id = appData.uniqueId ?: error("Missing uniqueId"),
-                name = title,
-                lastMessage = " ",
+                id = conversationFile.fileMetadata.appData.uniqueId ?: Uuid.random(),
+                name = "",
+                lastMessage = "Failure loading conversation",
                 timestamp = UnixTimeUtc(0).toInstant(),
                 unreadCount = 0,
-                avatarTiny = appData.previewThumbnail,
                 avatarInitials = "",
                 avatarUrl = "",
-                participants = participants,
-                lastRead = localAppData?.lastReadTime?.toInstant()
-                    ?: UnixTimeUtc(0).toInstant(),
-                avatarModel = avatarModel
+                avatarTiny = null,
+                participants = emptyList(),
+                lastRead = UnixTimeUtc(0).toInstant(),
+                avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
+                admins = emptySet()
             )
-
-        if (lastMsg != null) {
-            ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
-                ui.updateWithLatestMessage(it, domain)
-            }
         }
-
-        return ui
     }
 
     private suspend fun resolveDisplayName(file: HomebaseFile): String {
@@ -421,6 +499,7 @@ class ConversationService(
 
         return contactService.resolveByOdinId(author)?.name ?: author.domainName
     }
+
 
     private suspend fun buildConversationAvatarModel(
         conversation: HomebaseFile

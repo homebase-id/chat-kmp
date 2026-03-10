@@ -7,5 +7,8 @@ import id.homebase.api.common.OdinId
 data class ConversationAppDataJson(
     val title: String? = "",
     val version: Int = 0,
-    val recipients: List<OdinId> = listOf()
+    val recipients: List<OdinId> = listOf(),
+
+    // this make come back as null
+    val admins: List<OdinId>? = null
 )

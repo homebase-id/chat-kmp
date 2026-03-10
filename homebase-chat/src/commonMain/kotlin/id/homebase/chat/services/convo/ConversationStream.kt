@@ -119,6 +119,7 @@ class ConversationStream(
                         name = "Pending...",
                         lastMessage = m.content,
                         timestamp = m.created,
+                        admins = (if (m.originalAuthor == null) emptySet<OdinId>() else listOf(m.originalAuthor)) as Set<OdinId>,
                         unreadCount = 0,
                         avatarTiny = null,
                         // Conversation has an image
