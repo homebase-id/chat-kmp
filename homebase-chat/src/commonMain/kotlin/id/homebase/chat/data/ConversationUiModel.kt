@@ -11,7 +11,8 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 @Immutable
-data class ConversationUiModel( // TODO: Move the data objects / classes into Conversation.kt ?
+data class ConversationUiModel(
+    // TODO: Move the data objects / classes into Conversation.kt ?
     val id: Uuid,
     val name: String,
     var lastMessage: String,
@@ -28,8 +29,13 @@ data class ConversationUiModel( // TODO: Move the data objects / classes into Co
     var lastMessageIsDeleted: Boolean = false,
     var lastMessageFirstPayload: PayloadDescriptor? = null,
     var lastMessageHasMultiplePayloads: Boolean = false,
-    var lastMessageIsFromActiveUser: Boolean = false
+    var lastMessageIsFromActiveUser: Boolean = false,
+    val admins: Set<OdinId>,
 ) {
+    fun isCurrentUserAdmin(odinId: OdinId): Boolean {
+        return admins.contains(odinId)
+    }
+
     /** True when there are multiple participants (i.e., a group conversation). */
     val isGroupConversation: Boolean
         get() = participants.size > 2

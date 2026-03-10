@@ -33,6 +33,22 @@ object XorIdUtil {
         }
     }
 
+    fun xorUuidV4(a: Uuid, b: Uuid): Uuid {
+        val aBytes = a.toByteArray()
+        val bBytes = b.toByteArray()
+
+        val result = ByteArray(16) { i ->
+            (aBytes[i].toInt() xor bBytes[i].toInt()).toByte()
+        }
+
+        // enforce UUID v4 version
+        result[6] = ((result[6].toInt() and 0x0F) or 0x40).toByte()
+
+        // enforce RFC-4122 variant
+        result[8] = ((result[8].toInt() and 0x3F) or 0x80).toByte()
+
+        return Uuid.fromByteArray(result)
+    }
 
     private fun xorByteArrays(a: ByteArray, b: ByteArray): ByteArray {
         val max = maxOf(a.size, b.size)

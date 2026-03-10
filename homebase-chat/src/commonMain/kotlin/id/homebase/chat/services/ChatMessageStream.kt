@@ -222,7 +222,6 @@ class ChatMessageStream(
             val metadata = header.fileMetadata
             val appData = metadata.appData
 
-
             val isPendingSend =
                 metadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag)
                     ?: false
