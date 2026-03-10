@@ -153,18 +153,18 @@ class ChatMessageSenderService(
                 dependencyUniqueId = previousMessageUniqueId,
             )
 
-            if (enqueued) {
-                // optimistic write after we know it will be sent
-                optimisticWriter.writeNewFile(
-                    driveId = chatDrive,
-                    keyHeader = keyHeader,
-                    unecryptedMetadata = unecryptedMetadata,
-                    originalRecipientCount = recipients.size,
-                    fileSystemType = FileSystemType.Standard
-                )
+            if (!enqueued) {
+                error("Failed to send chat message")
             }
 
-            outboxSync.send()
+            // optimistic write after we know it will be sent
+            optimisticWriter.writeNewFile(
+                driveId = chatDrive,
+                keyHeader = keyHeader,
+                unecryptedMetadata = unecryptedMetadata,
+                originalRecipientCount = recipients.size,
+                fileSystemType = FileSystemType.Standard
+            )
 
             return SendMessageResult(uniqueId = messageUniqueId)
         } catch (t: Throwable) {
@@ -246,17 +246,15 @@ class ChatMessageSenderService(
                 dependencyUniqueId = null,
             )
 
-            if (enqueued) {
-
-                optimisticWriter.writeUpdate(
-                    driveId = chatDrive,
-                    keyHeader = keyHeader,
-                    unecryptedMetadata = unecryptedMetadata
-                )
-
-                outboxSync.send()
+            if (!enqueued) {
+                error("Failed to update chat message")
             }
 
+            optimisticWriter.writeUpdate(
+                driveId = chatDrive,
+                keyHeader = keyHeader,
+                unecryptedMetadata = unecryptedMetadata
+            )
 
             return UpdateMessageResult(uniqueId = messageId)
 

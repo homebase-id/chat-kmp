@@ -166,6 +166,7 @@ class ConversationService(
             "Admins must be recipients"
         }
 
+        //TODO: reconcile the data here
         admins.addAll(add)
         admins.removeAll(remove)
 

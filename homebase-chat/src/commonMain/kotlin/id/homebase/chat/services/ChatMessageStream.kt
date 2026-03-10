@@ -260,7 +260,7 @@ class ChatMessageStream(
                         isDeleted = true,
                         versionTag = versionTag,
                         isPendingSend = isPendingSend,
-                        isSystemMessage = isSystemMessage
+                        isStatusMessage = isSystemMessage
                     )
                 }
 
@@ -292,7 +292,7 @@ class ChatMessageStream(
                     keyHeader = header.keyHeader,
                     versionTag = versionTag,
                     isPendingSend = isPendingSend,
-                    isSystemMessage = isSystemMessage
+                    isStatusMessage = isSystemMessage
 
                 )
             } catch (t: Throwable) {
@@ -319,7 +319,7 @@ class ChatMessageStream(
                         keyHeader = header.keyHeader,
                         versionTag = Uuid.NIL,
                         isPendingSend = false,
-                        isSystemMessage = isSystemMessage
+                        isStatusMessage = isSystemMessage
                     )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {
