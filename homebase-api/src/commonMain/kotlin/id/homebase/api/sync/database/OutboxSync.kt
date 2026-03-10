@@ -154,7 +154,7 @@ class OutboxSync(
                 ?: error("unique id required to place in outbox"),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
-            uploadType = DriveOutboxUploader.UploadNewFile,
+            uploadType = DriveOutboxUploader.UpdateFile,
             json = OdinSystemSerializer.serialize(request)
         )
 
