@@ -100,6 +100,6 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
 
 @Immutable
 data class RecordingData(
-    val path: String,
-    val durationSeconds: Int,
+    val file: PlatformFile,
+    val conversationId: Uuid,
 )

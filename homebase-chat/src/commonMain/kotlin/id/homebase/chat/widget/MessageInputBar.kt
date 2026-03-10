@@ -1,6 +1,8 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -96,6 +99,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.chat.conversationlist.RecordingData
+import id.homebase.core.audio.rememberRecordAudioPermissionState
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
@@ -115,7 +119,6 @@ import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.math.roundToInt
-import kotlin.time.Clock
 
 private val URL_REGEX = Regex(
     "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
@@ -410,6 +413,22 @@ fun MessageTextFieldCompact(
     val density = LocalDensity.current
     val cancelThresholdPx = with(density) { 200.dp.toPx() }
 
+    val recordAudioPermissionState = rememberRecordAudioPermissionState(
+        onPermissionGranted = {
+           Logger.d("Record audio permission granted")
+        }
+    )
+
+    val micButtonSize by animateDpAsState(
+        targetValue = if (isMicrophonePressed) 72.dp else 56.dp,
+        animationSpec = tween(durationMillis = 1000),
+        label = "micButtonSize"
+    )
+    val micButtonColor by animateColorAsState(
+        targetValue = if (isMicrophonePressed) Color.Red else MaterialTheme.colorScheme.surfaceContainerHighest,
+        animationSpec = tween(durationMillis = 1000),
+        label = "micButtonColor"
+    )
 
     // Counts up while recording is active.
     LaunchedEffect(isRecordingActive) {
@@ -427,7 +446,13 @@ fun MessageTextFieldCompact(
     LaunchedEffect(isMicrophonePressed) {
         if (isMicrophonePressed) {
             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-            delay(300)
+            delay(1000)
+
+            if (!recordAudioPermissionState.hasPermission) {
+                recordAudioPermissionState.requestPermission()
+                return@LaunchedEffect
+            }
+
             isRecordingActive = true
             onRecordingStarted()
             Logger.d("Recording started")
@@ -570,17 +595,14 @@ fun MessageTextFieldCompact(
                             // outside the recording overlay so Compose never cancels the pointer.
                             Box(
                                 modifier = Modifier
-                                    .size(56.dp)
-                                    //.padding(bottom = 4.dp)
-                                    .clip(RoundedCornerShape(bottomEnd = 12.dp, topEnd = 12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    .size(micButtonSize)
+                                    .clip(if (isMicrophonePressed) CircleShape else RoundedCornerShape(bottomEnd = 12.dp, topEnd = 12.dp))
+                                    .background(micButtonColor)
                                     .pointerInput(Unit) {
                                         awaitEachGesture {
                                             val down = awaitFirstDown()
                                             down.consume()
                                             isMicrophonePressed = true
-                                            val pressStartMs =
-                                                Clock.System.now().toEpochMilliseconds()
 
                                             // Track pointer until released.
                                             while (true) {
@@ -624,8 +646,6 @@ fun MessageTextFieldCompact(
                                             isRecordingActive = false
                                             dragOffset = 0f
 
-                                            val pressDuration = Clock.System.now()
-                                                .toEpochMilliseconds() - pressStartMs
                                             if (!wasRecording) {
                                                 Logger.d("Recording help (quick tap)")
                                                 onRecordingHelp()
@@ -640,12 +660,7 @@ fun MessageTextFieldCompact(
                                 Icon(
                                     imageVector = Icons.Default.Mic,
                                     contentDescription = "Microphone",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-//                                    tint = when {
-//                                        isRecordingActive -> Color.Red
-//                                        isMicrophonePressed -> MaterialTheme.colorScheme.primary
-//                                        else -> HomebaseTheme.extendedColors.bubbleSentOnSurface
-//                                    },
+                                    tint = if (isMicrophonePressed) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }

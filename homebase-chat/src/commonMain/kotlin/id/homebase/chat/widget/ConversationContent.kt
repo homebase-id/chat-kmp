@@ -441,7 +441,7 @@ fun ConversationContent(
                             }
                         },
                         onCameraClick = { cameraLauncher.launch() },
-                        onRecordingStarted = { onUiAction(ConversationListUiAction.StartRecording) },
+                        onRecordingStarted = { onUiAction(ConversationListUiAction.StartRecording(conversation.id)) },
                         onRecordingStopped = { onUiAction(ConversationListUiAction.StopRecording) },
                         onRecordingCancelled = { onUiAction(ConversationListUiAction.CancelRecording) },
                         onRecordingHelp = { onUiAction(ConversationListUiAction.ShowRecordingHelp) },

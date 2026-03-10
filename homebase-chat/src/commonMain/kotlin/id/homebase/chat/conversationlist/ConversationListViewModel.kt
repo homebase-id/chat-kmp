@@ -39,6 +39,8 @@ import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.core.audio.AudioPlayer
+import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
@@ -51,6 +53,10 @@ import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
+import io.github.vinceglb.filekit.FileKit
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.delete
+import io.github.vinceglb.filekit.filesDir
 import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
@@ -81,6 +87,8 @@ class ConversationListViewModel(
     private val fileOperationsProvider: FileOperationsProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val audioRecorder: AudioRecorder,
+    private val audioPlayer: AudioPlayer,
     private val eventBus: EventBus,
 ) : ViewModel() {
 
@@ -257,10 +265,13 @@ class ConversationListViewModel(
                         }
 
                         chatMessageStream.getMessage(action.messageId)?.let { message ->
-                            _messagesUiState.update { it.copy(
-                                isEditingMessageId = action.messageId,
-                                isEditingVersionTag = action.versionTag,
-                                replyToMessage = null) }
+                            _messagesUiState.update {
+                                it.copy(
+                                    isEditingMessageId = action.messageId,
+                                    isEditingVersionTag = action.versionTag,
+                                    replyToMessage = null
+                                )
+                            }
                             messageInputTextState.setMarkdown(message.content)
                         }
                     } catch (e: Exception) {
@@ -288,7 +299,12 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.CancelEditMessage -> {
                 messageInputTextState.clear()
-                _messagesUiState.update { it.copy(isEditingMessageId = null, isEditingVersionTag = null) }
+                _messagesUiState.update {
+                    it.copy(
+                        isEditingMessageId = null,
+                        isEditingVersionTag = null
+                    )
+                }
             }
 
             is ConversationListUiAction.DeleteMessage -> {
@@ -509,81 +525,14 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.SendFile -> {
-                viewModelScope.launch {
-                    try {
-                        _messagesUiState.update {
-                            it.copy(
-                                scrollPosition = null,
-                                fullScreenOverlay = null,
-                            )
-                        }
-                        val attachments = mutableListOf<AttachmentInput>()
-                        action.attachments.forEach { attachment ->
-                            when (attachment) {
-                                is AttachmentPendingFile.File -> {
-                                    attachments.add(
-                                        AttachmentInput(
-                                            filePath = attachment.file.toString(),
-                                            contentType = detectContentTypeFromExtensionOrHint(
-                                                attachment.file.name
-                                            ),
-                                            displayName = attachment.file.name,
-                                        )
-                                    )
-                                }
+                _messagesUiState.update { it.copy(scrollPosition = null, fullScreenOverlay = null) }
 
-                                is AttachmentPendingFile.FileImage -> {
-                                    attachments.add(
-                                        AttachmentInput(
-                                            filePath = attachment.file.toString(),
-                                            contentType = detectContentTypeFromExtensionOrHint(
-                                                attachment.file.name
-                                            ),
-                                            displayName = attachment.file.name,
-                                        )
-                                    )
-                                }
-
-                                is AttachmentPendingFile.Gallery -> {
-                                    attachments.add(
-                                        AttachmentInput(
-                                            filePath = attachment.image.file.toString(),
-                                            contentType = detectContentTypeFromExtensionOrHint(
-                                                attachment.image.fileName
-                                            ),
-                                            displayName = attachment.image.fileName,
-                                        )
-                                    )
-                                }
-                            }
-                        }
-
-                        val bundle = MessageAttachmentBuilder.build(
-                            attachments = attachments,
-                            fileOperationsProvider = fileOperationsProvider,
-                            payloadKeyFactory = { index, _ ->
-                                "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                            })
-
-                        val newMessageId = Uuid.random()
-                        pendingMessageId = newMessageId
-                        chatMessageSenderService.sendNewMessage(
-                            messageUniqueId = newMessageId,
-                            conversationId = action.conversationId,
-                            messageText = action.message,
-                            previousMessageUniqueId = null,
-                            payloadBundle = bundle,
-                        )
-                        messageInputTextState.clear()
-                    } catch (e: Exception) {
-                        Logger.e("Failed to send file(s)", e)
-                        sendEvent(
-                            ShowErrorMessage(
-                                "Failed to send file(s): ${e.message}"
-                            )
-                        )
-                    }
-                }
+                addMessageWithFiles(
+                    conversationId = action.conversationId,
+                    content = action.message,
+                    files = action.attachments,
+                )
+                messageInputTextState.clear()
             }
 
             is ConversationListUiAction.AttachPlatformFile -> {
@@ -843,16 +792,50 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.StartRecording -> {
-                _messagesUiState.update { it.copy(recordingData = RecordingData(path = "", durationSeconds = 0)) }
+                viewModelScope.launch {
+                    try {
+                        val file =
+                            PlatformFile(FileKit.filesDir, "recording-${Uuid.random()}.mp3")
+                        audioRecorder.startRecording(file.toString())
+                        _messagesUiState.update {
+                            it.copy(
+                                recordingData = RecordingData(file = file, conversationId = action.conversationId)
+                            )
+                        }
+                    } catch (e: Exception) {
+                        sendEvent(ShowErrorMessage("Failed to start recording: ${e.message}"))
+                    }
+                }
             }
 
             is ConversationListUiAction.StopRecording -> {
-                // TODO - send recording to server
-                _messagesUiState.update { it.copy(recordingData = null) }
+                viewModelScope.launch {
+                    try {
+                        audioRecorder.stopRecording()
+                        _messagesUiState.value.recordingData?.let { recordingData ->
+                            addMessageWithFiles(
+                                conversationId = recordingData.conversationId,
+                                content = "",
+                                files = listOf(AttachmentPendingFile.File(Uuid.random(), recordingData.file)),
+                            )
+                        }
+                    } catch (e: Exception) {
+                        sendEvent(ShowErrorMessage("Failed to send recording: ${e.message}"))
+                    }
+                    _messagesUiState.update { it.copy(recordingData = null) }
+                }
             }
 
             is ConversationListUiAction.CancelRecording -> {
-                _messagesUiState.update { it.copy(recordingData = null) }
+                viewModelScope.launch {
+                    try {
+                        audioRecorder.stopRecording()
+                        _messagesUiState.value.recordingData?.file?.delete(mustExist = false)
+                    } catch (_: Exception) {
+                        // ignore
+                    }
+                    _messagesUiState.update { it.copy(recordingData = null) }
+                }
             }
         }
     }
@@ -989,7 +972,7 @@ class ConversationListViewModel(
                             scrollPosition = if (indexOfMessageForScroll == null) {
                                 getScrollPosition(conversationId)
                             } else {
-                                ScrollPosition(indexOfMessageForScroll, 0)
+                                ScrollPosition(indexOfMessageForScroll)
                             },
                         )
                     }
@@ -1029,7 +1012,12 @@ class ConversationListViewModel(
                     versionTag = versionTag,
                     content = content
                 )
-                _messagesUiState.update { it.copy(isEditingMessageId = null, isEditingVersionTag = null) }
+                _messagesUiState.update {
+                    it.copy(
+                        isEditingMessageId = null,
+                        isEditingVersionTag = null
+                    )
+                }
             } catch (e: Exception) {
                 sendEvent(ShowErrorMessage("Failed to edit message: ${e.message}"))
             }
@@ -1092,6 +1080,81 @@ class ConversationListViewModel(
                 )
             } catch (e: Exception) {
                 sendEvent(ShowErrorMessage("Failed to send reply: ${e.message}"))
+            }
+        }
+    }
+
+    private fun addMessageWithFiles(
+        conversationId: Uuid,
+        content: String,
+        files: List<AttachmentPendingFile>
+    ) {
+        viewModelScope.launch {
+            try {
+                val attachments = mutableListOf<AttachmentInput>()
+                files.forEach { attachment ->
+                    when (attachment) {
+                        is AttachmentPendingFile.File -> {
+                            attachments.add(
+                                AttachmentInput(
+                                    filePath = attachment.file.toString(),
+                                    contentType = detectContentTypeFromExtensionOrHint(
+                                        attachment.file.name
+                                    ),
+                                    displayName = attachment.file.name,
+                                )
+                            )
+                        }
+
+                        is AttachmentPendingFile.FileImage -> {
+                            attachments.add(
+                                AttachmentInput(
+                                    filePath = attachment.file.toString(),
+                                    contentType = detectContentTypeFromExtensionOrHint(
+                                        attachment.file.name
+                                    ),
+                                    displayName = attachment.file.name,
+                                )
+                            )
+                        }
+
+                        is AttachmentPendingFile.Gallery -> {
+                            attachments.add(
+                                AttachmentInput(
+                                    filePath = attachment.image.file.toString(),
+                                    contentType = detectContentTypeFromExtensionOrHint(
+                                        attachment.image.fileName
+                                    ),
+                                    displayName = attachment.image.fileName,
+                                )
+                            )
+                        }
+                    }
+                }
+
+                val bundle = MessageAttachmentBuilder.build(
+                    attachments = attachments,
+                    fileOperationsProvider = fileOperationsProvider,
+                    payloadKeyFactory = { index, _ ->
+                        "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+                    })
+
+                val newMessageId = Uuid.random()
+                pendingMessageId = newMessageId
+                chatMessageSenderService.sendNewMessage(
+                    messageUniqueId = newMessageId,
+                    conversationId = conversationId,
+                    messageText = content,
+                    previousMessageUniqueId = null,
+                    payloadBundle = bundle,
+                )
+            } catch (e: Exception) {
+                Logger.e("Failed to send file(s)", e)
+                sendEvent(
+                    ShowErrorMessage(
+                        "Failed to send file(s): ${e.message}"
+                    )
+                )
             }
         }
     }

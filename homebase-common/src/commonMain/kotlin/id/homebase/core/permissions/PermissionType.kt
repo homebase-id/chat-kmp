@@ -5,4 +5,5 @@ enum class PermissionType {
     GALLERY,
     GALLERY_LIMITED,
     NOTIFICATION,
+    RECORD_AUDIO,
 }

@@ -4,7 +4,9 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
+import id.homebase.core.audio.JvmAudioPlayer
 import id.homebase.core.audio.JvmAudioRecorder
 import id.homebase.core.gallery.JvmGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
@@ -21,6 +23,7 @@ actual fun platformModule(): Module = module {
     single<PlatformGalleryManager> { JvmGalleryManager() }
     single<PlatformInfo> { JvmPlatformInfo() }
     single<AudioRecorder> { JvmAudioRecorder() }
+    single<AudioPlayer> { JvmAudioPlayer() }
     single {
         // Note: No disk cache - DriveFileProviderCached handles encrypted disk caching
         // Coil's memory cache is still enabled by default for fast UI redraws

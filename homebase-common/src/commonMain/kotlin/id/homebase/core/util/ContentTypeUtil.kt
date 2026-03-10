@@ -27,5 +27,13 @@ private val commonExtToMime: Map<String, String> = mapOf(
     "avif" to "image/avif",
     "webm" to "video/webm",
     "heic" to "image/heic",
-    "heif" to "image/heif"
+    "heif" to "image/heif",
+    "mp3" to "audio/mpeg",
+    "wav" to "audio/wav",
+    "ogg" to "audio/ogg",
+    "m4a" to "audio/mp4",
+    "flac" to "audio/flac",
+    "aac" to "audio/aac",
+    "opus" to "audio/opus",
+    "weba" to "audio/webm",
 )
