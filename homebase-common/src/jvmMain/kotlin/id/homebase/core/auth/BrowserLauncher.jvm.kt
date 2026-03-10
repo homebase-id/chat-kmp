@@ -22,14 +22,14 @@ actual object BrowserLauncher {
 
                 val actualPort = LocalCallbackServer.start(onCallbackUrl, preferredPort)
                 if (actualPort < 0) {
-                    Logger.e(TAG) {
+                    Logger.e(tag = TAG) {
                         "Failed to start OAuth callback server. No available ports found."
                     }
                     return
                 }
 
                 if (preferredPort > 0 && actualPort != preferredPort) {
-                    Logger.w(TAG) {
+                    Logger.w(tag = TAG) {
                         "Server started on port $actualPort instead of preferred $preferredPort"
                     }
                 }
@@ -39,7 +39,7 @@ actual object BrowserLauncher {
             }
             // System browser is launched by UI layer via AuthBrowserLauncher
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Failed to set up callback server: ${e.message}" }
+            Logger.e(throwable = e, tag = TAG) { "Failed to set up callback server: ${e.message}" }
         }
     }
 }

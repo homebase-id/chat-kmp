@@ -1,10 +1,14 @@
 package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.crypto.toUtf8ByteArray
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -136,6 +140,52 @@ class OutboxSync(
                 eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
             }
         }
+    }
+
+    public suspend fun tryEnqueue(
+        request: UpdateFileByUniqueIdRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val enqueued = tryEnqueue(
+            driveId = request.driveId,
+            uniqueId = request.metadata.appData.uniqueId
+                ?: error("unique id required to place in outbox"),
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.UploadNewFile,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
+    }
+
+    public suspend fun tryEnqueue(
+        request: UploadFileRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val enqueued = tryEnqueue(
+            driveId = request.driveId,
+            uniqueId = request.metadata.appData.uniqueId
+                ?: error("unique id required to place in outbox"),
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.UploadNewFile,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
     }
 
     public suspend fun tryEnqueue(

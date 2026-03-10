@@ -13,11 +13,11 @@ import org.jetbrains.skia.Rect
  * Desktop/JVM implementation: Convert ByteArray to ImageBitmap using Skia
  */
 actual fun ByteArray.toImageBitmap(): ImageBitmap? {
-    Logger.d("toImageBitmap") { "toImageBitmap starting" }
+    Logger.d(tag = "toImageBitmap") { "toImageBitmap starting" }
     return try {
         Image.makeFromEncoded(this).toComposeImageBitmap()
     } catch (e: Exception) {
-        Logger.e("toImageBitmap", e) { "toImageBitmap failed: ${e.message}" }
+        Logger.e(throwable = e, tag = "toImageBitmap") { "toImageBitmap failed: ${e.message}" }
         null
     }
 }

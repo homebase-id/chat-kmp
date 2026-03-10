@@ -9,6 +9,13 @@ data class ConversationAppDataJson(
     val version: Int = 0,
     val recipients: List<OdinId> = listOf(),
 
-    // this make come back as null
+    // this may come back as null
+    val admins: List<OdinId>? = null
+)
+
+
+@Serializable
+data class ConversationAdminContentJson(
+    // this may come back as null
     val admins: List<OdinId>? = null
 )

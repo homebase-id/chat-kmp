@@ -13,7 +13,7 @@ actual fun getUriHandler(): FileSystemHandler {
             try {
                 BrowserUtils.openSystemBrowser(url, enableClipboardFallback = false)
             } catch (e: Exception) {
-                Logger.e(TAG, e) { "Failed to open URL: ${e.message}" }
+                Logger.e(throwable = e, tag = TAG) { "Failed to open URL: ${e.message}" }
                 onError(e)
             }
         }
@@ -36,7 +36,7 @@ actual fun getUriHandler(): FileSystemHandler {
                     onError(Exception("Desktop not supported"))
                 }
             } catch (e: Exception) {
-                Logger.e(TAG, e) { "Failed to open file: ${e.message}" }
+                Logger.e(throwable = e, tag = TAG) { "Failed to open file: ${e.message}" }
                 onError(e)
             }
         }

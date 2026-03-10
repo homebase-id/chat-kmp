@@ -50,7 +50,7 @@ object LocalCallbackServer {
                                 val fullUrl =
                                     "http://localhost:$port${call.request.local.uri}"
 
-                                Logger.d(TAG) { "Received callback: $fullUrl" }
+                                Logger.d(tag = TAG) { "Received callback: $fullUrl" }
                                 LocalCallbackServer.onCallbackUrl?.invoke(fullUrl)
 
                                 call.respondText(
@@ -61,7 +61,7 @@ object LocalCallbackServer {
 
                             /** Bring desktop app to foreground */
                             get("/focus") {
-                                Logger.d(TAG) { "Focus requested from browser" }
+                                Logger.d(tag = TAG) { "Focus requested from browser" }
 
                                 DesktopAppFocusManager.requestFocus()
                                 call.respondText("OK", ContentType.Text.Plain)
@@ -81,14 +81,14 @@ object LocalCallbackServer {
                     }.start(wait = false)
 
                 currentPort = port
-                Logger.i(TAG) { "Callback server started on port $port" }
+                Logger.i(tag = TAG) { "Callback server started on port $port" }
                 return port
             } catch (_: Exception) {
                 server = null
             }
         }
 
-        Logger.e(TAG) { "Failed to start callback server" }
+        Logger.e(tag = TAG) { "Failed to start callback server" }
         return -1
     }
 
@@ -96,7 +96,7 @@ object LocalCallbackServer {
         server?.stop(1000, 2000)
         server = null
         currentPort = 0
-        Logger.i(TAG) { "Callback server stopped" }
+        Logger.i(tag = TAG) { "Callback server stopped" }
     }
 
     fun isRunning(): Boolean = server != null

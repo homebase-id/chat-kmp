@@ -26,10 +26,10 @@ object BrowserUtils {
                 Desktop.getDesktop().browse(URI(url))
                 return
             } catch (e: Exception) {
-                Logger.w(TAG, e) { "Desktop.browse() failed, trying fallback" }
+                Logger.w(throwable = e, tag = TAG) { "Desktop.browse() failed, trying fallback" }
             }
         } else {
-            Logger.i(TAG) { "Java AWT Desktop not supported, trying fallback browser launch" }
+            Logger.i(tag = TAG) { "Java AWT Desktop not supported, trying fallback browser launch" }
         }
 
         try {
@@ -41,15 +41,15 @@ object BrowserUtils {
                 else -> throw UnsupportedOperationException("Unsupported OS for browser fallback: $os")
             }
 
-            Logger.d(TAG) { "Attempting fallback browser launch with: ${cmd.joinToString(" ")}" }
+            Logger.d(tag = TAG) { "Attempting fallback browser launch with: ${cmd.joinToString(" ")}" }
             Runtime.getRuntime().exec(cmd)
-            Logger.i(TAG) { "Fallback browser launch initiated successfully" }
+            Logger.i(tag = TAG) { "Fallback browser launch initiated successfully" }
         } catch (e: Exception) {
-            Logger.e(TAG, e) { "Fallback browser launch failed: ${e.message}" }
-            
+            Logger.e(throwable = e, tag = TAG) { "Fallback browser launch failed: ${e.message}" }
+
             if (enableClipboardFallback) {
                 copyUrlToClipboard(url)
-                Logger.i(TAG) { "URL copied to clipboard as fallback: $url" }
+                Logger.i(tag = TAG) { "URL copied to clipboard as fallback: $url" }
             } else {
                 throw e
             }
