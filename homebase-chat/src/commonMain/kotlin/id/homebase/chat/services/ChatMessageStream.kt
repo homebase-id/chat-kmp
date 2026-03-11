@@ -1,6 +1,7 @@
 package id.homebase.chat.services
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 class ChatMessageStream(
@@ -191,22 +193,34 @@ class ChatMessageStream(
         )
     }
 
-    suspend fun loadFullMessage(messageId: Uuid): String? {
+    suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String? {
 
         val header = getMessage(messageId) ?: return null
 
-        val payloadKey =
-            header.payloads
-                ?.firstOrNull { it.key == ChatProtocol.DefaultPayloadKey }
-                ?.key ?: return null
+        val descriptor = header.payloads?.firstOrNull { it.key == ChatProtocol.DefaultPayloadKey }
 
-        return withRetry(tag = "ChatMessageStream") {
+        if(descriptor == null)
+        {
+            return null
+        }
+
+        val payloadIv = Base64.decode(
+            descriptor.iv ?: throw IllegalStateException(
+                "encrypted payload requires key header"
+            )
+        )
+
+        val fullMessage = withRetry(tag = "ChatMessageStream") {
+
 
             val response = driveFileProvider.getPayloadBytesDecrypted(
                 driveId = chatDrive,
                 fileId = header.fileId,
-                key = payloadKey,
-                keyHeader = header.keyHeader
+                key = descriptor.key,
+                keyHeader = KeyHeader(
+                    iv = payloadIv,
+                    aesKey = header.keyHeader.aesKey
+                )
             ) ?: return@withRetry null
 
             try {
@@ -219,7 +233,26 @@ class ChatMessageStream(
                 Logger.e(t) { "Failed to deserialize payload for message $messageId" }
                 null
             }
-        }
+        } ?: return null
+
+
+        // ---- update loaded conversation in memory ----
+
+        val current = conversationState.messages.value[conversationId] ?: return fullMessage
+
+        val updated =
+            current.map {
+                if (it.id == messageId) {
+                    it.copy(
+                        content = fullMessage,
+                        hasMore = false
+                    )
+                } else it
+            }
+
+        conversationState.set(conversationId, updated)
+
+        return fullMessage
     }
 
     private suspend fun resolveDisplayName(file: HomebaseFile): String {

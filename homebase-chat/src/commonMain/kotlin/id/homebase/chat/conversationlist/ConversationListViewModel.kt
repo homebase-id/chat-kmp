@@ -756,8 +756,37 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ShowMoreClicked -> {
-                // ..?
+                viewModelScope.launch {
 
+                    val full = chatMessageStream.loadFullMessage(
+                        action.conversationId,
+                        action.messageId
+                    ) ?: return@launch
+
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            messages = state.messages.map { item ->
+
+                                when (item) {
+
+                                    is MessageListContentModel.Message -> {
+                                        if (item.message.id == action.messageId) {
+                                            item.copy(
+                                                message = item.message.copy(
+                                                    content = full,
+                                                    hasMore = false
+                                                )
+                                            )
+                                        } else item
+                                    }
+
+                                    is MessageListContentModel.Section -> item
+                                }
+
+                            }.toPersistentList()
+                        )
+                    }
+                }
             }
 
             ConversationListUiAction.CloseFullScreenOverlay -> {
