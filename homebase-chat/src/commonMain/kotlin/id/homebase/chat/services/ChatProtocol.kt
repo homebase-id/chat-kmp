@@ -15,6 +15,8 @@ object ChatProtocol {
     const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889;
 
     const val ConversationFileType = 8888
+    const val ChatStatusMessageDataType = 202
+
     const val MessageFileType = 7878
 
 
