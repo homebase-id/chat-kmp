@@ -30,6 +30,8 @@ import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.chat.services.StatusMessage
+import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
@@ -131,7 +133,10 @@ class ConversationService(
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = Uuid.random(),
                 conversationId = newConversationId,
-                messageText = "$domain started this group titled $title"
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.GroupConversationStarted,
+                    subject = null
+                )
             )
         }
 
@@ -194,7 +199,10 @@ class ConversationService(
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = messageId,
                 conversationId = conversationId,
-                messageText = "$domain added ${user.domainName}",
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.ConversationAdminAdded,
+                    subject = user
+                ),
                 previousMessageUniqueId = previousMessageId
             )
 
@@ -206,7 +214,10 @@ class ConversationService(
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = messageId,
                 conversationId = conversationId,
-                messageText = "$domain removed ${user.domainName}",
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.ConversationAdminRemoved,
+                    subject = user
+                ),
                 previousMessageUniqueId = previousMessageId
             )
 
@@ -248,7 +259,10 @@ class ConversationService(
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = messageId,
                 conversationId = conversationId,
-                messageText = "$domain added ${user.domainName}",
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.ConversationMemberAdded,
+                    subject = user
+                ),
                 previousMessageUniqueId = previousMessageId
             )
 
@@ -260,7 +274,10 @@ class ConversationService(
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = messageId,
                 conversationId = conversationId,
-                messageText = "$domain removed ${user.domainName}",
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.ConversationMemberRemoved,
+                    subject = user
+                ),
                 previousMessageUniqueId = previousMessageId
             )
 
@@ -296,7 +313,9 @@ class ConversationService(
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = messageId,
                 conversationId = conversationId,
-                messageText = "$domain changed the conversation title to \"$title\"",
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.ConversationTitleUpdated,
+                ),
                 previousMessageUniqueId = previousMessageId
             )
 
@@ -310,7 +329,9 @@ class ConversationService(
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = messageId,
                 conversationId = conversationId,
-                messageText = "$domain updated the conversation photo",
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.ConversationPhotoUpdated,
+                ),
                 previousMessageUniqueId = previousMessageId
             )
 

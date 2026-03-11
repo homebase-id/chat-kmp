@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.BatchResult
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.uuid.Uuid
 
 class ChatMessageStream(
@@ -221,18 +223,15 @@ class ChatMessageStream(
 
             val metadata = header.fileMetadata
             val appData = metadata.appData
-            val isSystemMessage = appData.dataType == ChatProtocol.ChatStatusMessageDataType
+            val isStatusMessage = appData.dataType == ChatProtocol.ChatStatusMessageDataType
 
             val isPendingSend =
                 metadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag)
                     ?: false
 
+
             try {
-                // TODO - if this fails app crashes
                 require(appData.fileType == ChatProtocol.MessageFileType)
-//                val versionTag = requireNotNull(header.fileMetadata.versionTag) {
-//                    "versionTag missing in fileMetadata"
-//                }
 
                 val versionTag = header.fileMetadata.versionTag ?: Uuid.NIL
                 val content = appData.content
@@ -260,7 +259,7 @@ class ChatMessageStream(
                         isDeleted = true,
                         versionTag = versionTag,
                         isPendingSend = isPendingSend,
-                        isStatusMessage = isSystemMessage
+                        isStatusMessage = isStatusMessage
                     )
                 }
 
@@ -268,9 +267,27 @@ class ChatMessageStream(
                 require(appData.uniqueId != null)
                 require(appData.groupId != null)
 
-                val messageAppDataSource = OdinSystemSerializer.deserialize<MessageAppData>(content)
-                val messageAppData =
-                    messageAppDataSource.copy(deliveryStatus = getDeliveryStatus(header).value)
+
+                val delivery = getDeliveryStatus(header).value
+
+                val messageAppData: MessageAppData
+
+                if (isStatusMessage) {
+                    val status = OdinSystemSerializer.deserialize<StatusMessageData>(content)
+                    val rendered = renderStatusMessage(
+                        author = metadata.originalAuthor,
+                        status = status
+                    )
+                    messageAppData = MessageAppData(
+                        message = JsonPrimitive(rendered),
+                        deliveryStatus = delivery
+                    )
+                } else {
+                    val source = OdinSystemSerializer.deserialize<MessageAppData>(content)
+                    messageAppData = source.copy(
+                        deliveryStatus = delivery
+                    )
+                }
 
                 val displayName = displayNameResolver(header)
 
@@ -292,7 +309,7 @@ class ChatMessageStream(
                     keyHeader = header.keyHeader,
                     versionTag = versionTag,
                     isPendingSend = isPendingSend,
-                    isStatusMessage = isSystemMessage
+                    isStatusMessage = isStatusMessage
 
                 )
             } catch (t: Throwable) {
@@ -319,7 +336,7 @@ class ChatMessageStream(
                         keyHeader = header.keyHeader,
                         versionTag = Uuid.NIL,
                         isPendingSend = false,
-                        isStatusMessage = isSystemMessage
+                        isStatusMessage = isStatusMessage
                     )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {
@@ -331,5 +348,39 @@ class ChatMessageStream(
                 return null
             }
         }
+
+        fun renderStatusMessage(author: OdinId?, status: StatusMessageData): String {
+            val name = author?.domainName ?: "Someone"
+            val subject = status.subject?.domainName
+
+            return when (status.statusMessage) {
+                StatusMessage.ConversationTitleUpdated ->
+                    "$name updated the conversation title"
+
+                StatusMessage.ConversationPhotoUpdated ->
+                    "$name updated the conversation photo"
+
+                StatusMessage.ConversationMemberAdded ->
+                    subject?.let { "$name added $it to the conversation" }
+                        ?: "$name added a member to the conversation"
+
+                StatusMessage.ConversationMemberRemoved ->
+                    subject?.let { "$name removed $it from the conversation" }
+                        ?: "$name removed a member from the conversation"
+
+                StatusMessage.ConversationAdminAdded ->
+                    subject?.let { "$name made $it an admin" }
+                        ?: "$name added an admin"
+
+                StatusMessage.ConversationAdminRemoved ->
+                    subject?.let { "$name removed $it as admin" }
+                        ?: "$name removed an admin"
+
+                StatusMessage.GroupConversationStarted ->
+                    "$name started the conversation"
+            }
+        }
     }
+
+
 }

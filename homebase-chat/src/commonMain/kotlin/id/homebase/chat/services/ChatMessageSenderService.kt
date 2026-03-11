@@ -42,11 +42,13 @@ class ChatMessageSenderService(
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
-        content = MessageAppData(
-            replyId = null,
-            replyPreview = null,
-            message = JsonPrimitive(messageText),
-            deliveryStatus = ChatDeliveryStatus.Sent.value
+        content = OdinSystemSerializer.serialize(
+            MessageAppData(
+                replyId = null,
+                replyPreview = null,
+                message = JsonPrimitive(messageText),
+                deliveryStatus = ChatDeliveryStatus.Sent.value
+            )
         ),
         notificationText = "You have a new message",
         previousMessageUniqueId = previousMessageUniqueId,
@@ -63,10 +65,12 @@ class ChatMessageSenderService(
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
-        content = MessageAppData(
-            replyPreview = replyTo,
-            message = JsonPrimitive(messageText),
-            deliveryStatus = ChatDeliveryStatus.Sent.value
+        content = OdinSystemSerializer.serialize(
+            MessageAppData(
+                replyPreview = replyTo,
+                message = JsonPrimitive(messageText),
+                deliveryStatus = ChatDeliveryStatus.Sent.value
+            )
         ),
         notificationText = "You have a new reply",
         previousMessageUniqueId = previousMessageUniqueId,
@@ -76,18 +80,13 @@ class ChatMessageSenderService(
     suspend fun sendStatusMessage(
         messageUniqueId: Uuid,
         conversationId: Uuid,
-        messageText: String,
+        statusMessage: StatusMessageData,
         previousMessageUniqueId: Uuid? = null,
         payloadBundle: PayloadBundle? = null
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
-        content = MessageAppData(
-            replyId = null,
-            replyPreview = null,
-            message = JsonPrimitive(messageText),
-            deliveryStatus = ChatDeliveryStatus.Sent.value
-        ),
+        content = OdinSystemSerializer.serialize(statusMessage),
         notificationText = "",
         previousMessageUniqueId = previousMessageUniqueId,
         payloadBundle = payloadBundle,
@@ -97,7 +96,7 @@ class ChatMessageSenderService(
     private suspend fun sendMessageInternal(
         messageUniqueId: Uuid,
         conversationId: Uuid,
-        content: MessageAppData,
+        content: String,
         notificationText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
@@ -121,7 +120,7 @@ class ChatMessageSenderService(
                     fileType = ChatProtocol.MessageFileType,
                     dataType = if (isStatusMessage) ChatProtocol.ChatStatusMessageDataType else null,
                     userDate = UnixTimeUtc.now().milliseconds,
-                    content = OdinSystemSerializer.serialize(content),
+                    content = content,
                     previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
                         it.pixelWidth
                     })
