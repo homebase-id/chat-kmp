@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.serialization.json.JsonPrimitive
 
 @OptIn(FlowPreview::class)
 class ConversationListViewModel(
@@ -767,21 +768,22 @@ class ConversationListViewModel(
                         state.copy(
                             messages = state.messages.map { item ->
 
-                                when (item) {
+                                if (item is MessageListContentModel.Message &&
+                                    item.message.id == action.messageId
+                                ) {
 
-                                    is MessageListContentModel.Message -> {
-                                        if (item.message.id == action.messageId) {
-                                            item.copy(
-                                                message = item.message.copy(
-                                                    content = full,
-                                                    hasMore = false
-                                                )
+                                    val updatedMessage =
+                                        item.message.copy(
+                                            content = full,
+                                            hasMore = false,
+                                            messageAppData = item.message.messageAppData.copy(
+                                                message = JsonPrimitive(full)
                                             )
-                                        } else item
-                                    }
+                                        )
 
-                                    is MessageListContentModel.Section -> item
-                                }
+                                    item.copy(message = updatedMessage)
+
+                                } else item
 
                             }.toPersistentList()
                         )
