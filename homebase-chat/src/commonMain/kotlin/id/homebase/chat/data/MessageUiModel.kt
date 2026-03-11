@@ -43,7 +43,9 @@ data class MessageUiModel(
     val isPendingSend: Boolean,
 
     /** Indicates if this was created by the app/system and should be rendered differently **/
-    val isStatusMessage: Boolean = false
+    val isStatusMessage: Boolean = false,
+
+    val hasMore: Boolean
 ) {
     fun isCurrentUser(domain: OdinId?): Boolean = (originalAuthor == domain)
 

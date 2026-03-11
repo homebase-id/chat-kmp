@@ -87,21 +87,23 @@ fun MessageInfoUi(
                         SentMessageBubble(
                             message = message,
                             onEdit = {},
+                            onShare = {},
                             onDelete = {},
                             onMediaClick = {},
                             onShowReactions = {},
-                            onShare = {},
-                            downloadingFiles = emptySet()
+                            downloadingFiles = emptySet(),
+                            onShowMore = {}
                         )
                     } else {
                         ReceivedMessageBubble(
                             message = message,
+                            onShare = {},
                             onDelete = {},
                             onMarkAsRead = {},
-                            onMediaClick = {},
                             onShowReactions = {},
-                            onShare = {},
-                            downloadingFiles = emptySet()
+                            onMediaClick = {},
+                            downloadingFiles = emptySet(),
+                            onShowMore = {}
                         )
                     }
                 }

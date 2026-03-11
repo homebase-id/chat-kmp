@@ -96,6 +96,7 @@ fun SentMessageBubble(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
+    onShowMore: () -> Unit,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -216,7 +217,9 @@ fun SentMessageBubble(
                     animatedVisibilityScope = animatedVisibilityScope,
                     messageId = message.id,
                     downloadingFiles = downloadingFiles,
-                    showDot = message.isPendingSend
+                    showDot = message.isPendingSend,
+                    showMore = message.hasMore,
+                    onShowMoreClick = onShowMore
                 )
                 message.reactionPreview?.let { reactionSummary ->
                     ReactionList(
@@ -263,6 +266,7 @@ fun ReceivedMessageBubble(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
+    onShowMore: () -> Unit,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -334,7 +338,9 @@ fun ReceivedMessageBubble(
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         messageId = message.id,
-                        downloadingFiles = downloadingFiles
+                        downloadingFiles = downloadingFiles,
+                        showMore = message.hasMore,
+                        onShowMoreClick = onShowMore
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(

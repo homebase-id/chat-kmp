@@ -34,6 +34,7 @@ fun MessageItem(
     val onShowReactions = remember(message.id) { { onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id)) } }
     val onMediaClick = remember(message.id) { { payload: PayloadDescriptor -> onUiAction(ConversationListUiAction.MediaClicked(message, payload.key)) } }
     val onAddReaction = remember(message.id) { { _: Any, reaction: String -> onUiAction(ConversationListUiAction.ToggleReaction(message.conversationId, message.id, reaction)) } }
+    val onShowMore = remember(message.id) { { onUiAction(ConversationListUiAction.ShowMoreClicked(message.id)) } }
 
 
     if (message.isCurrentUser(odinId)) {
@@ -51,7 +52,8 @@ fun MessageItem(
             onShowReactions = onShowReactions,
             animatedVisibilityScope = animatedVisibilityScope,
             sharedTransitionScope = sharedTransitionScope,
-            downloadingFiles = downloadingFiles
+            downloadingFiles = downloadingFiles,
+            onShowMore=onShowMore
         )
     } else {
         val onMarkAsRead = remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(message.id)) } }
@@ -69,7 +71,8 @@ fun MessageItem(
             onMediaClick = onMediaClick,
             animatedVisibilityScope = animatedVisibilityScope,
             sharedTransitionScope = sharedTransitionScope,
-            downloadingFiles = downloadingFiles
+            downloadingFiles = downloadingFiles,
+            onShowMore=onShowMore
         )
     }
 }

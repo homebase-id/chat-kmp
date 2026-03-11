@@ -38,27 +38,37 @@ class ChatMessageSenderService(
 ) {
     private val chatDrive = chatTargetDrive.alias
 
+
     suspend fun sendNewMessage(
         messageUniqueId: Uuid,
         conversationId: Uuid,
         messageText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
-    ): SendMessageResult = sendMessageInternal(
-        messageUniqueId = messageUniqueId,
-        conversationId = conversationId,
-        content = OdinSystemSerializer.serialize(
-            MessageAppData(
-                replyId = null,
-                replyPreview = null,
-                message = JsonPrimitive(messageText),
-                deliveryStatus = ChatDeliveryStatus.Sent.value
-            )
-        ),
-        notificationText = "You have a new message",
-        previousMessageUniqueId = previousMessageUniqueId,
-        payloadBundle = payloadBundle
-    )
+    ): SendMessageResult {
+        val messageData = MessageAppData(
+            replyId = null,
+            replyPreview = null,
+            message = JsonPrimitive(messageText),
+            deliveryStatus = ChatDeliveryStatus.Sent.value
+        )
+
+        val built = buildMessageContentAndBundle(
+            messageData,
+            payloadBundle,
+            fileOperationsProvider
+        )
+
+        return sendMessageInternal(
+            messageUniqueId,
+            conversationId,
+            built.headerContent,
+            "You have a new message",
+            previousMessageUniqueId,
+            built.payloadBundle
+        )
+    }
+
 
     suspend fun replyToMessage(
         messageUniqueId: Uuid,
@@ -67,20 +77,29 @@ class ChatMessageSenderService(
         messageText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?
-    ): SendMessageResult = sendMessageInternal(
-        messageUniqueId = messageUniqueId,
-        conversationId = conversationId,
-        content = OdinSystemSerializer.serialize(
-            MessageAppData(
-                replyPreview = replyTo,
-                message = JsonPrimitive(messageText),
-                deliveryStatus = ChatDeliveryStatus.Sent.value
-            )
-        ),
-        notificationText = "You have a new reply",
-        previousMessageUniqueId = previousMessageUniqueId,
-        payloadBundle = payloadBundle
-    )
+    ): SendMessageResult {
+        val messageData = MessageAppData(
+            replyPreview = replyTo,
+            message = JsonPrimitive(messageText),
+            deliveryStatus = ChatDeliveryStatus.Sent.value
+        )
+
+        val built = buildMessageContentAndBundle(
+            messageData,
+            payloadBundle,
+            fileOperationsProvider
+        )
+
+        return sendMessageInternal(
+            messageUniqueId,
+            conversationId,
+            built.headerContent,
+            "You have a new reply",
+            previousMessageUniqueId,
+            built.payloadBundle
+        )
+    }
+
 
     suspend fun sendStatusMessage(
         messageUniqueId: Uuid,
@@ -111,38 +130,8 @@ class ChatMessageSenderService(
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationStream.getRecipients(conversationId)
 
-        val canUseHeaderOnly = ChatMessageSizer.shouldEmbedInHeader(content)
-
-        val bundle =
-            if (canUseHeaderOnly) payloadBundle
-            else {
-                val payloadBytes = ChatMessageSizer.payloadBytes(content)
-
-                val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                    bytes = payloadBytes,
-                    prefix = "chat_msg",
-                    suffix = ".json"
-                )
-
-                val payload = PayloadFile(
-                    key = ChatProtocol.DefaultPayloadKey,
-                    filePath = tempPath,
-                    contentType = "application/json"
-                )
-
-                (payloadBundle ?: PayloadBundle(emptyList(), emptyList(), emptyList()))
-                    .copy(payloads = payloadBundle?.payloads.orEmpty() + payload)
-            }
-
-        val metadataContent =
-            if (canUseHeaderOnly) content
-            else ChatMessageSizer.preview(content)
-
         val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
-            messageUniqueId,
-            bundle,
-            keyHeader.aesKey,
-            scope = scope
+            messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
         )
 
         val unecryptedMetadata =
@@ -153,11 +142,12 @@ class ChatMessageSenderService(
                     uniqueId = messageUniqueId,
                     groupId = conversationId,
                     fileType = ChatProtocol.MessageFileType,
-                    dataType = if (isStatusMessage) ChatProtocol.ChatStatusMessageDataType else null,
+                    dataType = if (isStatusMessage) ChatProtocol.ChatStatusMessageDataType else 0,
                     userDate = UnixTimeUtc.now().milliseconds,
-                    content = metadataContent,
-                    previewThumbnail = encryptedBundle.previewThumbs.minByOrNull { it.pixelWidth }
-                )
+                    content = content,
+                    previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
+                        it.pixelWidth
+                    })
             )
 
         val request = UploadFileRequest(
@@ -178,7 +168,6 @@ class ChatMessageSenderService(
             payloads = encryptedBundle.payloads,
             thumbnails = encryptedBundle.thumbnails
         )
-
         try {
 
             val enqueued = outboxSync.tryEnqueue(
@@ -187,8 +176,11 @@ class ChatMessageSenderService(
                 dependencyUniqueId = previousMessageUniqueId,
             )
 
-            if (!enqueued) error("Failed to send chat message")
+            if (!enqueued) {
+                error("Failed to send chat message")
+            }
 
+            // optimistic write after we know it will be sent
             optimisticWriter.writeNewFile(
                 driveId = chatDrive,
                 keyHeader = keyHeader,
@@ -198,7 +190,6 @@ class ChatMessageSenderService(
             )
 
             return SendMessageResult(uniqueId = messageUniqueId)
-
         } catch (t: Throwable) {
             Logger.e("ChatMessageSenderService", t)
         }
@@ -208,7 +199,7 @@ class ChatMessageSenderService(
 
     suspend fun updateMessage(
         messageId: Uuid,
-        versionTag: Uuid, // the version of message you're currently editing
+        versionTag: Uuid,
         content: String,
     ): UpdateMessageResult {
 
@@ -227,45 +218,24 @@ class ChatMessageSenderService(
 
         val recipients = conversationStream.getRecipients(msg.conversationId)
 
-        val msgContent = msg.messageAppData.copy(
+        val messageData = msg.messageAppData.copy(
             deliveryStatus = ChatDeliveryStatus.Sending.value,
             message = JsonPrimitive(content)
         )
 
-        val serializedContent = OdinSystemSerializer.serialize(msgContent)
+        val built = buildMessageContentAndBundle(
+            messageData = messageData,
+            payloadBundle = null,
+            fileOperationsProvider = fileOperationsProvider
+        )
 
-        val canUseHeaderOnly = ChatMessageSizer.shouldEmbedInHeader(serializedContent)
+        val payloads = built.payloadBundle?.payloads ?: emptyList()
 
-        val payloads: List<PayloadFile>
-        val toDeletePayloads: List<PayloadDeleteKey>
-
-        val metadataContent =
-            if (canUseHeaderOnly) {
-                payloads = emptyList()
-                toDeletePayloads = listOf(PayloadDeleteKey(ChatProtocol.DefaultPayloadKey))
-                serializedContent
-            } else {
-
-                val payloadBytes = ChatMessageSizer.payloadBytes(serializedContent)
-
-                val tempPath = fileOperationsProvider.writeBytesToTempFile(
-                    bytes = payloadBytes,
-                    prefix = "chat_msg",
-                    suffix = ".json"
-                )
-
-                payloads = listOf(
-                    PayloadFile(
-                        key = ChatProtocol.DefaultPayloadKey,
-                        filePath = tempPath,
-                        contentType = "application/json"
-                    )
-                )
-
-                toDeletePayloads = emptyList()
-
-                ChatMessageSizer.preview(serializedContent)
-            }
+        val toDeletePayloads =
+            if (payloads.isEmpty())
+                listOf(PayloadDeleteKey(ChatProtocol.DefaultPayloadKey))
+            else
+                emptyList()
 
         val unecryptedMetadata = UploadFileMetadata(
             allowDistribution = true,
@@ -275,8 +245,9 @@ class ChatMessageSenderService(
                 uniqueId = messageId,
                 groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
+                dataType = 0,
                 userDate = UnixTimeUtc.now().milliseconds,
-                content = metadataContent,
+                content = built.headerContent,
                 previewThumbnail = msg.previewThumbnail
             )
         )
@@ -302,11 +273,12 @@ class ChatMessageSenderService(
                 appNotificationOptions = null
             ),
             metadata = unecryptedMetadata.encryptContent(keyHeader),
-            payloads = emptyList(),
+            payloads = payloads,
             thumbnails = emptyList()
         )
 
         try {
+
             val enqueued = outboxSync.tryEnqueue(
                 request,
                 priority = 1,
@@ -331,4 +303,57 @@ class ChatMessageSenderService(
 
         error("Failed to update chat message")
     }
+
+
+
+    suspend fun buildMessageContentAndBundle(
+        messageData: MessageAppData,
+        payloadBundle: PayloadBundle?,
+        fileOperationsProvider: FileOperationsProvider
+    ): MessageBuildResult {
+
+        val fullJson = OdinSystemSerializer.serialize(messageData)
+
+        val canUseHeaderOnly = ChatMessageSizer.shouldEmbedInHeader(fullJson)
+
+        if (canUseHeaderOnly) {
+            return MessageBuildResult(
+                headerContent = fullJson,
+                payloadBundle = payloadBundle
+            )
+        }
+
+        val previewData = messageData.copy(
+            message = JsonPrimitive(
+                ChatMessageSizer.preview(messageData.getMessageAsString())
+            )
+        )
+
+        val headerContent = OdinSystemSerializer.serialize(previewData)
+
+        val payloadBytes = ChatMessageSizer.payloadBytes(fullJson)
+
+        val tempPath = fileOperationsProvider.writeBytesToTempFile(
+            bytes = payloadBytes,
+            prefix = "chat_msg",
+            suffix = ".json"
+        )
+
+        val payload = PayloadFile(
+            key = ChatProtocol.DefaultPayloadKey,
+            filePath = tempPath,
+            contentType = "application/json"
+        )
+
+        val updatedBundle =
+            (payloadBundle ?: PayloadBundle(emptyList(), emptyList(), emptyList()))
+                .copy(payloads = payloadBundle?.payloads.orEmpty() + payload)
+
+        return MessageBuildResult(
+            headerContent = headerContent,
+            payloadBundle = updatedBundle
+        )
+    }
+
 }
+

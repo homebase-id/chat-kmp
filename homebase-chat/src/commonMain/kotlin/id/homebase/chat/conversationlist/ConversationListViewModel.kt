@@ -235,17 +235,23 @@ class ConversationListViewModel(
                         if (!action.ignoreDraft && messageInputTextState.annotatedString.isNotBlank()) {
                             _uiState.update {
                                 it.copy(
-                                    uiDialog = ConversationListUiDialog.DiscardDraft(action.messageId, action.versionTag)
+                                    uiDialog = ConversationListUiDialog.DiscardDraft(
+                                        action.messageId,
+                                        action.versionTag
+                                    )
                                 )
                             }
                             return@launch
                         }
 
                         chatMessageStream.getMessage(action.messageId)?.let { message ->
-                            _messagesUiState.update { it.copy(
-                                isEditingMessageId = action.messageId,
-                                isEditingVersionTag = action.versionTag,
-                                replyToMessage = null) }
+                            _messagesUiState.update {
+                                it.copy(
+                                    isEditingMessageId = action.messageId,
+                                    isEditingVersionTag = action.versionTag,
+                                    replyToMessage = null
+                                )
+                            }
                             messageInputTextState.setMarkdown(message.content)
                         }
                     } catch (e: Exception) {
@@ -273,7 +279,12 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.CancelEditMessage -> {
                 messageInputTextState.clear()
-                _messagesUiState.update { it.copy(isEditingMessageId = null, isEditingVersionTag = null) }
+                _messagesUiState.update {
+                    it.copy(
+                        isEditingMessageId = null,
+                        isEditingVersionTag = null
+                    )
+                }
             }
 
             is ConversationListUiAction.DeleteMessage -> {
@@ -575,7 +586,10 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val newFiles = action.files.map {
-                            if (action.isImage) AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+                            if (action.isImage) AttachmentPendingFile.FileImage(
+                                Uuid.generateV7(),
+                                it
+                            )
                             else AttachmentPendingFile.File(Uuid.generateV7(), it)
                         }
                         val conversation = _uiState.value.activeConversations.find {
@@ -741,6 +755,11 @@ class ConversationListViewModel(
                 }
             }
 
+            is ConversationListUiAction.ShowMoreClicked -> {
+                // ..?
+
+            }
+
             ConversationListUiAction.CloseFullScreenOverlay -> {
                 _messagesUiState.update { it.copy(fullScreenOverlay = null) }
             }
@@ -816,7 +835,8 @@ class ConversationListViewModel(
 
     private fun introduceEveryone(conversationId: Uuid) {
         viewModelScope.launch {
-            val defaultMessage = "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
+            val defaultMessage =
+                "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
             conversationService.introduceEveryone(conversationId, defaultMessage)
             //TODO: Anders or Bishwa - please show a confirmation the action was taken
         }
@@ -993,7 +1013,12 @@ class ConversationListViewModel(
                     versionTag = versionTag,
                     content = content
                 )
-                _messagesUiState.update { it.copy(isEditingMessageId = null, isEditingVersionTag = null) }
+                _messagesUiState.update {
+                    it.copy(
+                        isEditingMessageId = null,
+                        isEditingVersionTag = null
+                    )
+                }
             } catch (e: Exception) {
                 sendEvent(
                     ConversationListUiEvent.ShowErrorMessage(

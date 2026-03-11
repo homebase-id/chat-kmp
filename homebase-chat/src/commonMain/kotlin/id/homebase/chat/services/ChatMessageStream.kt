@@ -7,9 +7,11 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.withRetry
 import id.homebase.api.common.BatchResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -33,7 +35,8 @@ class ChatMessageStream(
     private val contactService: ContactService,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val driveFileProvider: DriveFileProvider
 ) {
 
     private val conversationState = ActiveConversationState()
@@ -188,6 +191,37 @@ class ChatMessageStream(
         )
     }
 
+    suspend fun loadFullMessage(messageId: Uuid): String? {
+
+        val header = getMessage(messageId) ?: return null
+
+        val payloadKey =
+            header.payloads
+                ?.firstOrNull { it.key == ChatProtocol.DefaultPayloadKey }
+                ?.key ?: return null
+
+        return withRetry(tag = "ChatMessageStream") {
+
+            val response = driveFileProvider.getPayloadBytesDecrypted(
+                driveId = chatDrive,
+                fileId = header.fileId,
+                key = payloadKey,
+                keyHeader = header.keyHeader
+            ) ?: return@withRetry null
+
+            try {
+                val payloadJson = response.bytes.decodeToString()
+                val payload =
+                    OdinSystemSerializer.deserialize<ChatMessagePayload>(payloadJson)
+
+                payload.message
+            } catch (t: Throwable) {
+                Logger.e(t) { "Failed to deserialize payload for message $messageId" }
+                null
+            }
+        }
+    }
+
     private suspend fun resolveDisplayName(file: HomebaseFile): String {
         val author = file.fileMetadata.originalAuthor ?: return ""
 
@@ -224,7 +258,8 @@ class ChatMessageStream(
             val metadata = header.fileMetadata
             val appData = metadata.appData
             val isStatusMessage = appData.dataType == ChatProtocol.ChatStatusMessageDataType
-
+            val hasMore =
+                metadata.payloads?.any { it.key == ChatProtocol.DefaultPayloadKey } == true
             val isPendingSend =
                 metadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag)
                     ?: false
@@ -259,14 +294,14 @@ class ChatMessageStream(
                         isDeleted = true,
                         versionTag = versionTag,
                         isPendingSend = isPendingSend,
-                        isStatusMessage = isStatusMessage
+                        isStatusMessage = isStatusMessage,
+                        hasMore = hasMore
                     )
                 }
 
                 require(content != null)
                 require(appData.uniqueId != null)
                 require(appData.groupId != null)
-
 
                 val delivery = getDeliveryStatus(header).value
 
@@ -309,7 +344,8 @@ class ChatMessageStream(
                     keyHeader = header.keyHeader,
                     versionTag = versionTag,
                     isPendingSend = isPendingSend,
-                    isStatusMessage = isStatusMessage
+                    isStatusMessage = isStatusMessage,
+                    hasMore = hasMore
 
                 )
             } catch (t: Throwable) {
@@ -336,7 +372,8 @@ class ChatMessageStream(
                         keyHeader = header.keyHeader,
                         versionTag = Uuid.NIL,
                         isPendingSend = false,
-                        isStatusMessage = isStatusMessage
+                        isStatusMessage = isStatusMessage,
+                        hasMore = hasMore
                     )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {

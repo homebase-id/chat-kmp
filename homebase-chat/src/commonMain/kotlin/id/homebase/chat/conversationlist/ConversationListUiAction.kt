@@ -53,6 +53,8 @@ sealed interface ConversationListUiAction {
     data class MediaClicked(val message: MessageUiModel, val payloadKey: String) :
         ConversationListUiAction
 
+    data class ShowMoreClicked(val messageId: Uuid) : ConversationListUiAction
+
     data object CloseFullScreenOverlay : ConversationListUiAction
 
     data class SaveScrollPosition(

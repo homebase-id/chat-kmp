@@ -119,7 +119,9 @@ fun MessageBubbleRaw(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
     downloadingFiles: Set<String>,
-    showDot: Boolean = false
+    showDot: Boolean = false,
+    showMore: Boolean = false,
+    onShowMoreClick: (() -> Unit)? = null
 ) {
     val filteredPayloads = payloads?.filter {
         !listOf(
@@ -352,6 +354,23 @@ fun MessageBubbleRaw(
                                 }
                             }
                         }
+                        Box {
+                            if (showMore && onShowMoreClick != null) {
+                                Text(
+                                    text = "Show more",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = contentColor.copy(alpha = 0.85f),
+                                    modifier = Modifier
+                                        .padding(start = 12.dp, end = 12.dp, bottom = 6.dp)
+                                        .combinedClickable(
+                                            onClick = { onShowMoreClick?.invoke() },
+                                            onLongClick = {},
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null
+                                        )
+                                )
+                            }
+                        }
 
                         Row(
                             modifier = Modifier.padding(start = 8.dp),
@@ -376,7 +395,9 @@ fun MessageBubbleRaw(
                     if (replyPreview != null) mediaIndex++
 
                     val textIndex = if (hasMedia) mediaIndex + 1 else mediaIndex
-                    val infoIndex = textIndex + 1
+                    val showMoreIndex = textIndex + 1
+//                    val infoIndex = if (showMore && onShowMoreClick != null) showMoreIndex + 1 else textIndex + 1
+                    val infoIndex = showMoreIndex + 1
 
                     val placeables: MutableList<Placeable> = mutableListOf()
                     var mediaWidth = 0
@@ -398,6 +419,8 @@ fun MessageBubbleRaw(
                         )
                         else constraints
                     )
+
+                    val showMorePlaceable = measurables[showMoreIndex].measure(constraints)
 
                     // Measure info text
                     val infoPlaceable = measurables[infoIndex].measure(constraints)
@@ -430,13 +453,20 @@ fun MessageBubbleRaw(
                             infoY =
                                 placeables.sumOf { it.height } + lastLineBottom.toInt() + 8.dp.roundToPx() - infoPlaceable.height
                             infoX = finalWidth - infoPlaceable.width - textRowPadding
-                            finalHeight = placeables.sumOf { it.height } + textPlaceable.height
+                            finalHeight =
+                                placeables.sumOf { it.height } +
+                                        textPlaceable.height +
+                                        (showMorePlaceable.height)
                         } else {
                             finalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width)
                             infoY = placeables.sumOf { it.height } + textPlaceable.height
                             infoX = finalWidth - infoPlaceable.width - 8.dp.roundToPx()
                             finalHeight =
-                                placeables.sumOf { it.height } + textPlaceable.height + infoPlaceable.height + 8.dp.roundToPx()
+                                placeables.sumOf { it.height } +
+                                        textPlaceable.height +
+                                        (showMorePlaceable.height) +
+                                        infoPlaceable.height +
+                                        8.dp.roundToPx()
                         }
                     } else {
                         finalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width)
@@ -453,6 +483,11 @@ fun MessageBubbleRaw(
                             yPos += placeable.height
                         }
                         textPlaceable.placeRelative(0, yPos)
+                        yPos += textPlaceable.height
+
+                        showMorePlaceable.placeRelative(0, yPos)
+                        yPos += showMorePlaceable.height
+
                         infoPlaceable.placeRelative(infoX, infoY)
                     }
                 }
