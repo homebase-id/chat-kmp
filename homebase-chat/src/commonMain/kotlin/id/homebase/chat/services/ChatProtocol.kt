@@ -30,7 +30,7 @@ object ChatProtocol {
     const val PAYLOAD_KEY_MESSAGE_WEB = "chat_web"
     const val PAYLOAD_KEY_LINKS = "chat_links"
 
-    const val DEFAULT_PAYLOAD_KEY = "dflt_key"
-    const val MAX_PAYLOAD_DESCRIPTOR_BYTES = 1024
-    const val MAX_HEADER_CONTENT_BYTES = 7000
+    const val DefaultPayloadKey = "dflt_key"
+    const val MaxPayloadDescriptorBytes = 1024
+    const val MaxHeaderContentBytes = 7000
 }

@@ -347,7 +347,7 @@ class ConversationListViewModel(
                 val filteredPayloads = message.payloads?.filter {
                     !listOf(
                         ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                        ChatProtocol.DEFAULT_PAYLOAD_KEY,
+                        ChatProtocol.DefaultPayloadKey,
                         ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
                     ).contains(it.key)
                 }
