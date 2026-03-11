@@ -215,7 +215,7 @@ fun MessageBubbleRaw(
         shape = shape,
         color = backgroundColor,
     ) {
-        if (mediaOnly) {
+        if (mediaOnly && !isDeleted) {
             Box(modifier = Modifier.wrapContentWidth()) {
                 MediaMessage(
                     payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),

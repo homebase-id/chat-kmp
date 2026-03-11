@@ -12,6 +12,10 @@ class JvmAudioRecorder : AudioRecorder {
     private var line: TargetDataLine? = null
     private var audioFileName: String? = null
 
+    override fun getAudioFileExtension(): String {
+        return "wav"
+    }
+
     override fun startRecording(fileName: String) {
         audioFileName = fileName
         val format = AudioFormat(44100.0f, 16, 2, true, false)

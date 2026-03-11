@@ -342,6 +342,10 @@ fun ConversationContent(
                                     MessagesSection(text = getDateSectionLabel(messageItem.date))
                                 }
 
+                                is MessageListContentModel.System -> {
+                                    MessagesSystemMessage(text = messageItem.text)
+                                }
+
                                 is MessageListContentModel.Message -> {
                                     MessageItem(
                                         message = messageItem.message,

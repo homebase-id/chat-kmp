@@ -10,6 +10,10 @@ class AndroidAudioRecorder(
     private var recorder: MediaRecorder? = null
     private var audioFileName: String? = null
 
+    override fun getAudioFileExtension(): String {
+        return "mp3"
+    }
+
     override fun startRecording(fileName: String) {
         audioFileName = fileName
         recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

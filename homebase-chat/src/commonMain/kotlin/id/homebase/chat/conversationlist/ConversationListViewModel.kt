@@ -292,7 +292,7 @@ class ConversationListViewModel(
                     editMessage(
                         messageId = messageId,
                         versionTag = _messagesUiState.value.isEditingVersionTag ?: Uuid.NIL,
-                        content = messageInputTextState.annotatedString.toString(),
+                        content = messageInputTextState.toMarkdown(),
                     )
                 }
             }
@@ -794,16 +794,22 @@ class ConversationListViewModel(
             is ConversationListUiAction.StartRecording -> {
                 viewModelScope.launch {
                     try {
-                        val file =
-                            PlatformFile(FileKit.filesDir, "recording-${Uuid.random()}.mp3")
+                        val file = PlatformFile(
+                            base = FileKit.filesDir,
+                            child = "recording-${Uuid.random()}.${audioRecorder.getAudioFileExtension()}"
+                        )
                         audioRecorder.startRecording(file.toString())
                         _messagesUiState.update {
                             it.copy(
-                                recordingData = RecordingData(file = file, conversationId = action.conversationId)
+                                recordingData = RecordingData(
+                                    file = file,
+                                    conversationId = action.conversationId
+                                )
                             )
                         }
                     } catch (e: Exception) {
-                        sendEvent(ShowErrorMessage("Failed to start recording: ${e.message}"))
+                        Logger.e("Failed to start recording", e)
+                        sendEvent(ShowErrorMessage("Failed to start recording: ${e}"))
                     }
                 }
             }
@@ -816,10 +822,16 @@ class ConversationListViewModel(
                             addMessageWithFiles(
                                 conversationId = recordingData.conversationId,
                                 content = "",
-                                files = listOf(AttachmentPendingFile.File(Uuid.random(), recordingData.file)),
+                                files = listOf(
+                                    AttachmentPendingFile.File(
+                                        Uuid.random(),
+                                        recordingData.file
+                                    )
+                                ),
                             )
                         }
                     } catch (e: Exception) {
+                        Logger.e("Failed to send recording", e)
                         sendEvent(ShowErrorMessage("Failed to send recording: ${e.message}"))
                     }
                     _messagesUiState.update { it.copy(recordingData = null) }
@@ -941,9 +953,10 @@ class ConversationListViewModel(
                     val messagesModels: List<MessageListContentModel> =
                         groupedMessages.flatMap { (date, messages) ->
                             listOf(MessageListContentModel.Section(date)) + messages.map {
-                                MessageListContentModel.Message(
-                                    it
-                                )
+                                if (it.isStatusMessage)
+                                    MessageListContentModel.System(it.content, it.created)
+                                else
+                                    MessageListContentModel.Message(it)
                             }
                         }
 
