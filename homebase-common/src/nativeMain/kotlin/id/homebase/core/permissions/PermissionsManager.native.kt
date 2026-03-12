@@ -6,6 +6,7 @@ import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVAuthorizationStatusDenied
 import platform.AVFoundation.AVAuthorizationStatusNotDetermined
 import platform.AVFoundation.AVCaptureDevice
+import platform.AVFoundation.AVMediaTypeAudio
 import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.authorizationStatusForMediaType
 import platform.AVFoundation.requestAccessForMediaType
@@ -24,7 +25,6 @@ import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionBadge
 import platform.UserNotifications.UNAuthorizationOptionSound
 import platform.UserNotifications.UNAuthorizationStatusAuthorized
-import platform.UserNotifications.UNAuthorizationStatusDenied
 import platform.UserNotifications.UNAuthorizationStatusEphemeral
 import platform.UserNotifications.UNAuthorizationStatusNotDetermined
 import platform.UserNotifications.UNAuthorizationStatusProvisional
@@ -45,6 +45,12 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
                 val status: AVAuthorizationStatus =
                     AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
                 askCameraPermission(status, permission, onPermissionResult)
+            }
+
+            PermissionType.RECORD_AUDIO -> {
+                val status: AVAuthorizationStatus =
+                    AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeAudio)
+                askAudioPermission(status, permission, onPermissionResult)
             }
 
             PermissionType.GALLERY, PermissionType.GALLERY_LIMITED -> {
@@ -73,6 +79,12 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
             PermissionType.CAMERA -> {
                 val status: AVAuthorizationStatus =
                     AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+                status == AVAuthorizationStatusAuthorized
+            }
+
+            PermissionType.RECORD_AUDIO -> {
+                val status: AVAuthorizationStatus =
+                    AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeAudio)
                 status == AVAuthorizationStatusAuthorized
             }
 
@@ -193,6 +205,34 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
             else -> {
                 onPermissionStatus(permission, PermissionStatus.DENIED, false)
             }
+        }
+    }
+
+    private fun askAudioPermission(
+        status: AVAuthorizationStatus,
+        permission: PermissionType,
+        onPermissionStatus: (PermissionType, PermissionStatus, Boolean) -> Unit
+    ) {
+        when (status) {
+            AVAuthorizationStatusAuthorized -> {
+                onPermissionStatus(permission, PermissionStatus.GRANTED, false)
+            }
+
+            AVAuthorizationStatusNotDetermined -> {
+                return AVCaptureDevice.requestAccessForMediaType(AVMediaTypeAudio) { isGranted ->
+                    if (isGranted) {
+                        onPermissionStatus(permission, PermissionStatus.GRANTED, false)
+                    } else {
+                        onPermissionStatus(permission, PermissionStatus.DENIED, false)
+                    }
+                }
+            }
+
+            AVAuthorizationStatusDenied -> {
+                onPermissionStatus(permission, PermissionStatus.DENIED, false)
+            }
+
+            else -> error("Unknown audio status $status")
         }
     }
 }

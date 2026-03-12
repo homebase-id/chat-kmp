@@ -53,8 +53,8 @@ import id.homebase.resources.chat_message_link
 import id.homebase.resources.chat_message_multiple_media
 import id.homebase.resources.chat_message_video
 import id.homebase.resources.chat_no_messages
-import kotlin.time.Instant
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Instant
 
 @Composable
 fun ConversationMessagePreview(
@@ -242,7 +242,7 @@ fun ConversationItem(
                     }
                 } else if (isFromActiveUser && deliveryStatus != null) {
                     Spacer(modifier = Modifier.width(4.dp))
-                    DeliveryStatus(deliveryStatus = deliveryStatus)
+                    DeliveryStatus(isPendingSend = false, deliveryStatus = deliveryStatus)
                 }
             }
         }

@@ -17,5 +17,7 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Allow access to the microphone to record audio for message attachment.</string>
 </dict>
 </plist>

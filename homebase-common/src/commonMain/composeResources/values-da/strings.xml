@@ -35,6 +35,8 @@
     <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
     <string name="action_cannot_be_undone">Denne handling kan ikke fortrydes.</string>
     <string name="show_more">Vis mere</string>
+    <string name="slide_to_cancel">Træk for at annullere</string>
+    <string name="someone">Nogen</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -85,6 +87,20 @@
     <string name="settings_delete_account_dialog_text">Din konto er meget mere end bare denne app. Hvis du vil slette din konto kan du gøre det i ejer konsollen.</string>
     <string name="settings_open_owner_console">Åben ejer konsol</string>
 
+    <!-- System messages -->
+    <string name="system_conversation_title_updated">%1$s opdaterede samtalens titel</string>
+    <string name="system_conversation_photo_updated">%1$s opdaterede samtalens billede</string>
+    <string name="system_conversation_member_name_added">%1$s tilføjede %2$s til samtalen</string>
+    <string name="system_conversation_member_added">%1$s tilføjede et medlem til samtalen</string>
+    <string name="system_conversation_member_name_removed">%1$s fjernede %2$s fra samtalen</string>
+    <string name="system_conversation_member_removed">%1$s fjernede et medlem fra samtalen</string>
+    <string name="system_conversation_admin_name_added">%1$s gjorde %2$s til administrator</string>
+    <string name="system_conversation_admin_added">%1$s tilføjede en administrator</string>
+    <string name="system_conversation_admin_name_removed">%1$s fjernede %2$s som administrator</string>
+    <string name="system_conversation_admin_removed">%1$s fjernede en administrator</string>
+    <string name="system_group_conversation_started">%1$s startede samtalen</string>
+
+
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
     <string name="chat_filter_by_unread_clear_button">Ryd filter</string>
@@ -128,7 +144,10 @@
     <string name="chat_message_edited">Redigeret</string>
     <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
     <string name="chat_group_introduce_everyone">Introducer alle</string>
+    <string name="chat_group_introduce_everyone_status">Indtroduktioner er blevet afsendt</string>
 
+    <!-- Audio recording -->
+    <string name="chat_message_audio_recording_help">Tryk og hold for at optage en lydbesked, slip for sende</string>
 
     <!-- Conversation message -->
     <string name="chat_message_info">Besked info</string>

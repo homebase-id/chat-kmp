@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.AddReaction
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -219,7 +220,8 @@ fun SentMessageBubble(
                     downloadingFiles = downloadingFiles,
                     showDot = message.isPendingSend,
                     showMore = message.hasMore,
-                    onShowMoreClick = onShowMore
+                    onShowMoreClick = onShowMore,
+                    isPendingSend = message.isPendingSend
                 )
                 message.reactionPreview?.let { reactionSummary ->
                     ReactionList(
@@ -437,7 +439,14 @@ fun ReceivedMessageBubble(
 val DELIVERY_ICON_SIZE = 12.dp
 
 @Composable
-fun DeliveryStatus(deliveryStatus: Int) {
+fun DeliveryStatus(isPendingSend: Boolean, deliveryStatus: Int) {
+    if (isPendingSend) {
+        Icon(
+            Icons.Default.Alarm,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp)
+        )
+    } else {
     when (deliveryStatus) {
         ChatDeliveryStatus.Read.value -> {
             Icon(
@@ -463,6 +472,7 @@ fun DeliveryStatus(deliveryStatus: Int) {
             )
         }
     }
+        }
 }
 
 fun String.hasContent(): Boolean {

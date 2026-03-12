@@ -81,6 +81,7 @@ fun ConversationListScreen(
     // Check for missing permissions and show dialog if needed
     ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
+    val infoString = (conversationsUiState.uiEvent as? ConversationListUiEvent.ShowInfoMessage)?.res?.let { stringResource(it) } ?: ""
     LaunchedEffect(conversationsUiState.uiEvent) {
         when (val event = conversationsUiState.uiEvent) {
             is ConversationListUiEvent.NavigateBack -> {
@@ -91,6 +92,11 @@ fun ConversationListScreen(
             is ConversationListUiEvent.ShowErrorMessage -> {
                 viewModel.eventConsumed()
                 scope.launch { snackbarHostState.showSnackbar(message = event.message) }
+            }
+
+            is ConversationListUiEvent.ShowInfoMessage -> {
+                viewModel.eventConsumed()
+                scope.launch { snackbarHostState.showSnackbar(message = infoString) }
             }
 
             is ConversationListUiEvent.NavigateToNewConversation -> {

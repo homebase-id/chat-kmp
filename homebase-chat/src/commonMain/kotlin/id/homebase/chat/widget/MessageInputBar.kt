@@ -1,21 +1,33 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -29,6 +41,7 @@ import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.outlined.FormatItalic
@@ -43,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +69,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -63,6 +79,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -70,13 +89,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.client.link.LinkPreviewProvider
+import id.homebase.chat.conversationlist.RecordingData
+import id.homebase.core.audio.rememberRecordAudioPermissionState
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
@@ -91,9 +114,11 @@ import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.collapse
 import id.homebase.resources.expand
+import id.homebase.resources.slide_to_cancel
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlin.math.roundToInt
 
 private val URL_REGEX = Regex(
     "https?://(?:www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)"
@@ -103,6 +128,7 @@ private val URL_REGEX = Regex(
 fun MessageInputBar(
     modifier: Modifier = Modifier,
     textFieldState: RichTextState,
+    recordingData: RecordingData?,
     focusRequester: FocusRequester,
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
@@ -111,7 +137,12 @@ fun MessageInputBar(
     onFocused: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
+    onRecordingStarted: () -> Unit,
+    onRecordingStopped: () -> Unit,
+    onRecordingCancelled: () -> Unit,
+    onRecordingHelp: () -> Unit,
     onSendMessage: (String, LinkPreview?) -> Unit,
+
     onCancelEdit: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -220,6 +251,7 @@ fun MessageInputBar(
                 state = textFieldState,
                 editExistingMode = editExistingMode,
                 linkPreviewData = linkPreviewData,
+                recordingData = recordingData,
                 onCancelLinkPreview = {
                     linkPreviewData?.let { preview ->
                         cancelledUrls = cancelledUrls + preview.url
@@ -232,6 +264,10 @@ fun MessageInputBar(
                 onKeyboardClick = onKeyboardClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 onCameraClick = onCameraClick,
+                onRecordingStarted = onRecordingStarted,
+                onRecordingStopped = onRecordingStopped,
+                onRecordingCancelled = onRecordingCancelled,
+                onRecordingHelp = onRecordingHelp,
                 onSendMessage = { sendMessage() },
                 onCancelEdit = onCancelEdit
             )
@@ -278,7 +314,10 @@ fun MessageTextFieldExpanded(
                     }
                 },
             placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
-            shape = if (editExistingMode) RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp) else RoundedCornerShape(12.dp),
+            shape = if (editExistingMode) RoundedCornerShape(
+                bottomStart = 12.dp,
+                bottomEnd = 12.dp
+            ) else RoundedCornerShape(12.dp),
             minLines = 10,
             maxLines = 10,
             keyboardOptions = KeyboardOptions(
@@ -315,11 +354,11 @@ fun MessageTextFieldExpanded(
             Spacer(modifier = Modifier.weight(1f))
             if (editExistingMode) {
                 IconButton(
-                onClick = onCancelEdit,
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                ),
+                    onClick = onCancelEdit,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
@@ -334,7 +373,7 @@ fun MessageTextFieldExpanded(
                 )
             ) {
                 Icon(
-                    imageVector = if(editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
+                    imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
                     contentDescription = stringResource(MR.string.chat_send_message_button),
                 )
             }
@@ -348,6 +387,7 @@ fun MessageTextFieldCompact(
     modifier: Modifier = Modifier,
     state: RichTextState,
     linkPreviewData: LinkPreview?,
+    recordingData: RecordingData?,
     onCancelLinkPreview: () -> Unit,
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
@@ -355,31 +395,94 @@ fun MessageTextFieldCompact(
     onKeyboardClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
+    onRecordingStarted: () -> Unit,
+    onRecordingStopped: () -> Unit,
+    onRecordingCancelled: () -> Unit,
+    onRecordingHelp: () -> Unit,
     onFocused: () -> Unit = {},
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
+    val showSendButton = state.annotatedString.isNotBlank()
+    val showRecordingButton by remember(editExistingMode, showSendButton) { derivedStateOf { isMobile() && !editExistingMode && !showSendButton } }
+    var isMicrophonePressed by remember { mutableStateOf(false) }
+    var isRecordingActive by remember { mutableStateOf(false) }
+    var recordingSeconds by remember { mutableStateOf(0) }
+    var dragOffset by remember { mutableStateOf(0f) }
+    val hapticFeedback = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val cancelThresholdPx = with(density) { 200.dp.toPx() }
+
+    val recordAudioPermissionState = rememberRecordAudioPermissionState(
+        onPermissionGranted = {
+           Logger.d("Record audio permission granted")
+        }
+    )
+
+    val micButtonSize by animateDpAsState(
+        targetValue = if (isMicrophonePressed) 72.dp else 56.dp,
+        animationSpec = tween(durationMillis = 1000),
+        label = "micButtonSize"
+    )
+    val micButtonColor by animateColorAsState(
+        targetValue = if (isMicrophonePressed) Color.Red else MaterialTheme.colorScheme.surfaceContainerHighest,
+        animationSpec = tween(durationMillis = 1000),
+        label = "micButtonColor"
+    )
+
+    // Counts up while recording is active.
+    LaunchedEffect(isRecordingActive) {
+        if (isRecordingActive) {
+            recordingSeconds = 0
+            while (true) {
+                delay(1000)
+                recordingSeconds++
+            }
+        }
+    }
+
+    // Starts recording after a 300 ms hold. Cancelled automatically if the finger
+    // is released (isMicrophonePressed → false) before the delay elapses.
+    LaunchedEffect(isMicrophonePressed) {
+        if (isMicrophonePressed) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+            delay(1000)
+
+            if (!recordAudioPermissionState.hasPermission) {
+                recordAudioPermissionState.requestPermission()
+                return@LaunchedEffect
+            }
+
+            isRecordingActive = true
+            onRecordingStarted()
+            Logger.d("Recording started")
+        }
+    }
+
     Column(
         modifier = modifier
     ) {
-        RichTextEditorButtons(
-            modifier = Modifier.fillMaxWidth(),
-            state = state,
-        )
-        if (linkPreviewData != null) {
-            LinkPreviewCard(
-                linkPreview = linkPreviewData,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                isCompact = true,
-                onCancel = onCancelLinkPreview
+        if (!isRecordingActive) {
+            RichTextEditorButtons(
+                modifier = Modifier.fillMaxWidth(),
+                state = state,
             )
+            if (linkPreviewData != null) {
+                LinkPreviewCard(
+                    linkPreview = linkPreviewData,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    isCompact = true,
+                    onCancel = onCancelLinkPreview
+                )
+            }
+        } else {
+            Spacer(modifier = Modifier.height(16.dp))
         }
+
         Row(
-            modifier = Modifier
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
         ) {
-            val showSendButton = state.annotatedString.isNotBlank()
             if (editExistingMode) {
                 IconButton(
                     onClick = onCancelEdit,
@@ -396,117 +499,273 @@ fun MessageTextFieldCompact(
                 }
                 Spacer(modifier = Modifier.width(8.dp))
             }
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                if (editExistingMode) {
-                    MessageEditMessageInfo()
-                }
-                RichTextEditor(
-                    state = state,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { focusState ->
-                            if (focusState.isFocused) {
-                                onFocused()
-                            }
-                        }
-                        .onPreviewKeyEvent { keyEvent ->
-                            if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                                if (keyEvent.isCtrlPressed) {
-                                    onSendMessage()
-                                    true
+            // Left area: text field (normal) or recording progress (while recording).
+            // These are siblings in a Box so the recording overlay never covers the mic
+            // button on the right, which keeps its pointerInput alive throughout the gesture.
+            Box(modifier = Modifier.weight(1f)) {
+                Column {
+                    if (editExistingMode) {
+                        MessageEditMessageInfo()
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RichTextEditor(
+                            state = state,
+                            modifier = Modifier
+                                .weight(1f)
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        onFocused()
+                                    }
+                                }
+                                .onPreviewKeyEvent { keyEvent ->
+                                    if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                                        if (keyEvent.isCtrlPressed) {
+                                            onSendMessage()
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                },
+                            placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+                            leadingIcon = {
+                                if (!showingEmojiSheet) {
+                                    IconButton(onClick = onEmojiClick) {
+                                        Icon(
+                                            imageVector = Icons.Default.EmojiEmotions,
+                                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                        )
+                                    }
                                 } else {
-                                    false
+                                    IconButton(onClick = onKeyboardClick) {
+                                        Icon(
+                                            imageVector = Icons.Default.Keyboard,
+                                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                        )
+                                    }
                                 }
-                            } else {
-                                false
-                            }
-                        },
-                    placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
-                    leadingIcon = {
-                        if (!showingEmojiSheet) {
-                            IconButton(onClick = onEmojiClick) {
+                            },
+                            trailingIcon = {
+                                if (!editExistingMode) {
+                                    if (state.annotatedString.isNotBlank()) {
+                                        IconButton(onClick = onAddAttachmentClick) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = stringResource(MR.string.chat_message_attachment_options)
+                                            )
+                                        }
+                                    } else if (isMobile()) {
+                                        // Camera only; mic has moved to the right-side button below.
+                                        IconButton(onClick = onCameraClick) {
+                                            Icon(
+                                                imageVector = Icons.Default.PhotoCamera,
+                                                contentDescription = "Camera"
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            shape = if (editExistingMode)
+                                RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)
+                            else if (showRecordingButton)
+                                RoundedCornerShape(bottomStart = 12.dp, topStart = 12.dp)
+                            else
+                                RoundedCornerShape(12.dp),
+                            colors = RichTextEditorDefaults.richTextEditorColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                disabledIndicatorColor = Color.Transparent,
+                            ),
+                            minLines = 1,
+                            maxLines = 3,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Sentences,
+                                imeAction = ImeAction.Default
+                            )
+                        )
+                        if (showRecordingButton) {
+                            // Mic button: a single pointerInput handles the full gesture (press,
+                            // hold to record, slide-left to cancel, release to stop). It is always
+                            // outside the recording overlay so Compose never cancels the pointer.
+                            Box(
+                                modifier = Modifier
+                                    .size(micButtonSize)
+                                    .clip(if (isMicrophonePressed) CircleShape else RoundedCornerShape(bottomEnd = 12.dp, topEnd = 12.dp))
+                                    .background(micButtonColor)
+                                    .pointerInput(Unit) {
+                                        awaitEachGesture {
+                                            val down = awaitFirstDown()
+                                            down.consume()
+                                            isMicrophonePressed = true
+
+                                            // Track pointer until released.
+                                            while (true) {
+                                                val event = awaitPointerEvent()
+                                                val change =
+                                                    event.changes.firstOrNull { it.id == down.id }
+                                                        ?: break
+                                                if (!change.pressed) {
+                                                    change.consume()
+                                                    break
+                                                }
+                                                // Update drag offset (finger moving left = negative X delta).
+                                                if (isRecordingActive) {
+                                                    dragOffset =
+                                                        (change.position.x - down.position.x)
+                                                            .coerceAtMost(0f)
+                                                    if (dragOffset < -cancelThresholdPx) {
+                                                        // Threshold crossed – cancel and drain until release.
+                                                        isMicrophonePressed = false
+                                                        isRecordingActive = false
+                                                        dragOffset = 0f
+                                                        Logger.d("Recording cancelled")
+                                                        onRecordingCancelled()
+                                                        while (true) {
+                                                            val ev = awaitPointerEvent()
+                                                            val ch =
+                                                                ev.changes.firstOrNull { it.id == down.id }
+                                                                    ?: break
+                                                            ch.consume()
+                                                            if (!ch.pressed) break
+                                                        }
+                                                        return@awaitEachGesture
+                                                    }
+                                                }
+                                                change.consume()
+                                            }
+
+                                            // Finger released normally.
+                                            val wasRecording = isRecordingActive
+                                            isMicrophonePressed = false
+                                            isRecordingActive = false
+                                            dragOffset = 0f
+
+                                            if (!wasRecording) {
+                                                Logger.d("Recording help (quick tap)")
+                                                onRecordingHelp()
+                                            } else {
+                                                Logger.d("Recording ended")
+                                                onRecordingStopped()
+                                            }
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Default.EmojiEmotions,
-                                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                                )
-                            }
-                        } else {
-                            IconButton(onClick = onKeyboardClick) {
-                                Icon(
-                                    imageVector = Icons.Default.Keyboard,
-                                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "Microphone",
+                                    tint = if (isMicrophonePressed) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
-                    },
-                    trailingIcon = {
-                        if (!editExistingMode) {
-                            if (state.annotatedString.isNotBlank()) {
-                                IconButton(
-                                    onClick = onAddAttachmentClick,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = stringResource(MR.string.chat_message_attachment_options)
-                                    )
-                                }
-                            } else if (isMobile()) {
-                                IconButton(onClick = onCameraClick) {
-                                    Icon(
-                                        imageVector = Icons.Default.PhotoCamera,
-                                        contentDescription = "Camera"
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    shape = if (editExistingMode) RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp) else RoundedCornerShape(12.dp),
-                    colors = RichTextEditorDefaults.richTextEditorColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                    ),
-                    minLines = 1,
-                    maxLines = 3,
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.Sentences,
-                        imeAction = ImeAction.Default
-                    )
+                    }
+                }
+
+                // Recording progress overlay – covers only the text field Box so the
+                // mic button on the right stays fully accessible to pointer events.
+                if (isRecordingActive) {
+                    RecordingInProgress(recordingSeconds, dragOffset, cancelThresholdPx)
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+            if (isRecordingActive) {
+                Spacer(modifier = Modifier.width(56.dp))
+            } else if (showSendButton) {
+                BlueBackgroundIconButton(
+                    onClick = onSendMessage,
+                    imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
+                    contentDescription = stringResource(MR.string.chat_send_message_button),
+                )
+            } else if (!editExistingMode) {
+                BlueBackgroundIconButton(
+                    onClick = onAddAttachmentClick,
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(MR.string.chat_message_attachment_options)
                 )
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            if (showSendButton) {
-                IconButton(
-                    onClick = onSendMessage, colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                    ),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = if(editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
-                        contentDescription = stringResource(MR.string.chat_send_message_button),
-                    )
-                }
-            } else if (!editExistingMode) {
-                IconButton(
-                    onClick = onAddAttachmentClick, colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                    ),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add, contentDescription = stringResource(
-                            MR.string.chat_message_attachment_options
-                        )
-                    )
-                }
-            }
         }
+    }
+}
+
+@Composable
+private fun BoxScope.RecordingInProgress(
+    recordingSeconds: Int,
+    dragOffset: Float,
+    cancelThresholdPx: Float
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "recording")
+    val dotAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+        label = "dot"
+    )
+
+    val minutes = recordingSeconds / 60
+    val secs = recordingSeconds % 60
+    val timeText = "${minutes.toString().padStart(2, '0')}:${
+        secs.toString().padStart(2, '0')
+    }"
+    Row(
+        modifier = Modifier
+            .matchParentSize()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            modifier = Modifier
+                .size(24.dp)
+                .alpha(dotAlpha),
+            imageVector = Icons.Default.Mic,
+            contentDescription = "Microphone",
+            tint = Color.Red,
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = timeText,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = "< " + stringResource(MR.string.slide_to_cancel),
+            modifier = Modifier.offset {
+                IntOffset((dragOffset / 2).roundToInt(), 0)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                alpha = (1f + dragOffset / cancelThresholdPx).coerceIn(0f, 1f)
+            ),
+        )
+    }
+}
+
+@Composable
+private fun BlueBackgroundIconButton(
+    onClick: () -> Unit,
+    imageVector: ImageVector,
+    contentDescription: String?,
+) {
+    IconButton(
+        onClick = onClick,
+        colors = IconButtonDefaults.iconButtonColors(
+            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+        ),
+        modifier = Modifier.padding(bottom = 4.dp)
+    ) {
+        Icon(
+            imageVector = imageVector,
+            contentDescription = contentDescription
+        )
     }
 }
 
@@ -718,3 +977,4 @@ fun RichTextEditorButtons(modifier: Modifier = Modifier, state: RichTextState) {
         //            }
     }
 }
+

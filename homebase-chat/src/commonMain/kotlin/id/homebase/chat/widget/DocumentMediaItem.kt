@@ -1,7 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,7 +41,8 @@ import id.homebase.core.util.formatFileSize
 fun DocumentMediaItem(
     payload: PayloadDescriptor,
     modifier: Modifier = Modifier,
-    onDownloadClick: (() -> Unit)? = null,
+    onDownloadClick: () -> Unit,
+    onLongPress: () -> Unit,
     isDownloading: Boolean = false
 ) {
     val contentType = payload.contentType ?: ""
@@ -49,24 +50,24 @@ fun DocumentMediaItem(
     val fileSize = payload.bytesWritten?.formatFileSize() ?: ""
 
     // Map content types to specific icons based on the requested specification
-    val fileIcon: ImageVector = when {
-        contentType == "application/pdf" -> HomebaseIcons.Pdf
-        contentType == "application/msword" || contentType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> HomebaseIcons.WordFile
-
-        contentType == "application/vnd.ms-excel" || contentType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> HomebaseIcons.Excel
-
-        contentType == "application/zip" || contentType == "application/x-rar-compressed" -> HomebaseIcons.FileZip
-
-        contentType == "application/javascript" || contentType == "application/json" -> HomebaseIcons.FileCode
-
-        contentType == "application/vnd.android.package-archive" -> HomebaseIcons.Apk
+    val fileIcon: ImageVector = when (contentType) {
+        "application/pdf" -> HomebaseIcons.Pdf
+        "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> HomebaseIcons.WordFile
+        "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> HomebaseIcons.Excel
+        "application/zip", "application/x-rar-compressed" -> HomebaseIcons.FileZip
+        "application/javascript", "application/json" -> HomebaseIcons.FileCode
+        "application/vnd.android.package-archive" -> HomebaseIcons.Apk
         else -> HomebaseIcons.File
     }
 
     Row(
         modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(Dimens.Message.cornerRadius))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .clickable { onDownloadClick?.invoke() }.padding(12.dp),
+            .combinedClickable(
+                onClick = onDownloadClick,
+                onLongClick = onLongPress
+            )
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // File Icon
@@ -106,7 +107,7 @@ fun DocumentMediaItem(
         Spacer(modifier = Modifier.width(8.dp))
 
         // Download Action (always visible)
-        IconButton(onClick = { onDownloadClick?.invoke() }, modifier = Modifier.size(40.dp)) {
+        IconButton(onClick = { onDownloadClick() }, modifier = Modifier.size(40.dp)) {
             if (isDownloading) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(24.dp),

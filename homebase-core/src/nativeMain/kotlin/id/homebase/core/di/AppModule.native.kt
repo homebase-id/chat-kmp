@@ -4,6 +4,10 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.IOSFileOperationsProvider
+import id.homebase.core.audio.AudioPlayer
+import id.homebase.core.audio.AudioRecorder
+import id.homebase.core.audio.IOSAudioPlayer
+import id.homebase.core.audio.IOSAudioRecorder
 import id.homebase.core.gallery.IOSGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
@@ -19,6 +23,9 @@ actual fun platformModule(): Module = module {
     single { createSettings() }
     single<PlatformGalleryManager> { IOSGalleryManager() }
     single<PlatformInfo> { IOSPlatformInfo() }
+    single<AudioRecorder> { IOSAudioRecorder() }
+    single<AudioPlayer> { IOSAudioPlayer() }
+
     single {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {

@@ -16,7 +16,32 @@ import androidx.compose.ui.unit.dp
 fun MessagesSection(text: String) {
     Box(
         modifier =
-            Modifier.fillMaxWidth().padding(vertical = 16.dp),
+            Modifier.fillMaxWidth().padding(top = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 0.dp
+        ) {
+            Text(
+                text = text,
+                modifier = Modifier.padding(
+                    horizontal = 12.dp,
+                    vertical = 6.dp
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+fun MessagesSystemMessage(text: String) {
+    Box(
+        modifier =
+            Modifier.fillMaxWidth().padding(top = 16.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -36,11 +61,4 @@ fun MessagesSection(text: String) {
         }
     }
 }
-
-//@Immutable
-//data class MessageSectionItem(
-//    val firstMessageTime: Instant,
-//    val messages: List<MessageUiModel>,
-//    val date: LocalDate
-//)
 

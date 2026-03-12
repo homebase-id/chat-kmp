@@ -42,7 +42,8 @@ data class MessageListUiState(
     val isEditingVersionTag: Uuid? = null,
     val ownerSession: OwnerSession? = null,
     val messageReactions: List<EmojiReaction>? = null,
-    val downloadingFiles: Set<String> = emptySet()
+    val downloadingFiles: Set<String> = emptySet(),
+    val recordingData: RecordingData? = null,
 )
 
 @Immutable
@@ -63,6 +64,7 @@ sealed interface ConversationListContentModel {
 @Immutable
 sealed class MessageListContentModel(val id: String) {
     data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
+    data class System(val text: String, val created: Instant) : MessageListContentModel(created.toString())
     data class Message(val message: MessageUiModel) :
         MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
 }
@@ -95,3 +97,10 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
 }
+
+
+@Immutable
+data class RecordingData(
+    val file: PlatformFile,
+    val conversationId: Uuid,
+)
