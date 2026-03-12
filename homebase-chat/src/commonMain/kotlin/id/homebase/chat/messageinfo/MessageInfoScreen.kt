@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,6 +62,8 @@ fun MessageInfoUi(
     uiState: MessageInfoUiState,
     onUiAction: (MessageInfoUiAction) -> Unit,
 ) {
+    val scrollState = rememberScrollState()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -74,7 +78,12 @@ fun MessageInfoUi(
                 },
             )
         }) { padding ->
-        Column(modifier = Modifier.consumeWindowInsets(padding).padding(padding).padding(16.dp)) {
+        Column(modifier = Modifier
+            .consumeWindowInsets(padding)
+            .padding(padding)
+            .padding(16.dp)
+            .verticalScroll(scrollState)
+        ) {
             if (uiState.isLoading) {
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -92,7 +101,6 @@ fun MessageInfoUi(
                             onMediaClick = {},
                             onShowReactions = {},
                             downloadingFiles = emptySet(),
-                            onShowMore = {}
                         )
                     } else {
                         ReceivedMessageBubble(
@@ -103,7 +111,6 @@ fun MessageInfoUi(
                             onShowReactions = {},
                             onMediaClick = {},
                             downloadingFiles = emptySet(),
-                            onShowMore = {}
                         )
                     }
                 }

@@ -64,6 +64,7 @@ import id.homebase.core.util.isMobile
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_edited
+import id.homebase.resources.show_more
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
@@ -268,6 +269,7 @@ fun MessageBubbleRaw(
                 }
             }
         } else {
+            // Note: If adding composables to to Layout here, remember to update layout code to take new widget into account
             Column {
                 Layout(
                     content = {
@@ -357,13 +359,13 @@ fun MessageBubbleRaw(
                         Box {
                             if (showMore && onShowMoreClick != null) {
                                 Text(
-                                    text = "Show more",
+                                    text = stringResource(MR.string.show_more),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = contentColor.copy(alpha = 0.85f),
                                     modifier = Modifier
                                         .padding(start = 12.dp, end = 12.dp, bottom = 6.dp)
                                         .combinedClickable(
-                                            onClick = { onShowMoreClick?.invoke() },
+                                            onClick = { onShowMoreClick() },
                                             onLongClick = {},
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null

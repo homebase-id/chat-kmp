@@ -96,7 +96,7 @@ fun SentMessageBubble(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
-    onShowMore: () -> Unit,
+    onShowMore: (() -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -266,7 +266,7 @@ fun ReceivedMessageBubble(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
-    onShowMore: () -> Unit,
+    onShowMore: (() -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }

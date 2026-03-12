@@ -64,7 +64,7 @@ sealed interface ConversationListContentModel {
 sealed class MessageListContentModel(val id: String) {
     data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
     data class Message(val message: MessageUiModel) :
-        MessageListContentModel(message.id.toString() + message.versionTag.toString())
+        MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
 }
 
 @Immutable
