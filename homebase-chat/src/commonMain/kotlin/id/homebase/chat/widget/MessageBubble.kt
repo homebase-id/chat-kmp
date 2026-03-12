@@ -97,6 +97,7 @@ fun SentMessageBubble(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
+    onShowMore: (() -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -217,6 +218,9 @@ fun SentMessageBubble(
                     animatedVisibilityScope = animatedVisibilityScope,
                     messageId = message.id,
                     downloadingFiles = downloadingFiles,
+                    showDot = message.isPendingSend,
+                    showMore = message.hasMore,
+                    onShowMoreClick = onShowMore,
                     isPendingSend = message.isPendingSend
                 )
                 message.reactionPreview?.let { reactionSummary ->
@@ -264,6 +268,7 @@ fun ReceivedMessageBubble(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
+    onShowMore: (() -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -272,7 +277,7 @@ fun ReceivedMessageBubble(
     val filteredPayloads = message.payloads?.filter {
         !listOf(
             ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-            ChatProtocol.DEFAULT_PAYLOAD_KEY,
+            ChatProtocol.DefaultPayloadKey,
             ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
         ).contains(it.key)
     }
@@ -335,7 +340,9 @@ fun ReceivedMessageBubble(
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         messageId = message.id,
-                        downloadingFiles = downloadingFiles
+                        downloadingFiles = downloadingFiles,
+                        showMore = message.hasMore,
+                        onShowMoreClick = onShowMore
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(

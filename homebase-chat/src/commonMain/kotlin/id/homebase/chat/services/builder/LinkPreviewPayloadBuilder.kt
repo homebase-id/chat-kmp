@@ -34,7 +34,7 @@ object LinkPreviewPayloadBuilder {
 
         // 1. Build descriptorContent (stripped JSON, no image base64, ≤1024 bytes)
         var descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxDescLen = null)
-        if (descriptorContent.encodeToByteArray().size > ChatProtocol.MAX_PAYLOAD_DESCRIPTOR_BYTES) {
+        if (descriptorContent.encodeToByteArray().size > ChatProtocol.MaxPayloadDescriptorBytes) {
             descriptorContent = buildDescriptorJson(linkPreview, actualHasImage, maxDescLen = 100)
         }
 
