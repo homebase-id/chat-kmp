@@ -223,4 +223,15 @@ class OutboxSync(
         return false
 
     }
+
+    suspend fun clearCheckout() {
+        //TODO: check if the outbox is in process of sending
+
+        semaphore.acquire()
+        {
+            databaseManager.outbox.clearCheckedOut()
+        }
+        semaphore.release()
+
+    }
 }

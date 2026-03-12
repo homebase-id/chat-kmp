@@ -97,6 +97,9 @@ class AuthConnectionCoordinator(
                     scope.launch {
                         driveSyncManager.syncAll()
                         _connectionState.update { it.copy(isDoingInitialConnection = false) }
+
+                        outboxSync.clearCheckout()
+
                         outboxSync.send()
                     }
                 },
