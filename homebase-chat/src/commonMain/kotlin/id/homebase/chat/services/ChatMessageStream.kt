@@ -1,15 +1,18 @@
 package id.homebase.chat.services
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.withRetry
 import id.homebase.api.common.BatchResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -40,6 +43,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 class ChatMessageStream(
@@ -47,7 +51,8 @@ class ChatMessageStream(
     private val contactService: ContactService,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val driveFileProvider: DriveFileProvider
 ) {
 
     private val conversationState = ActiveConversationState()
@@ -202,6 +207,68 @@ class ChatMessageStream(
         )
     }
 
+    suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String? {
+
+        val header = getMessage(messageId) ?: return null
+
+        val descriptor = header.payloads?.firstOrNull { it.key == ChatProtocol.DefaultPayloadKey }
+
+        if(descriptor == null)
+        {
+            return null
+        }
+
+        val payloadIv = Base64.decode(
+            descriptor.iv ?: throw IllegalStateException(
+                "encrypted payload requires key header"
+            )
+        )
+
+        val fullMessage = withRetry(tag = "ChatMessageStream") {
+
+
+            val response = driveFileProvider.getPayloadBytesDecrypted(
+                driveId = chatDrive,
+                fileId = header.fileId,
+                key = descriptor.key,
+                keyHeader = KeyHeader(
+                    iv = payloadIv,
+                    aesKey = header.keyHeader.aesKey
+                )
+            ) ?: return@withRetry null
+
+            try {
+                val payloadJson = response.bytes.decodeToString()
+                val payload =
+                    OdinSystemSerializer.deserialize<ChatMessagePayload>(payloadJson)
+
+                payload.message
+            } catch (t: Throwable) {
+                Logger.e(t) { "Failed to deserialize payload for message $messageId" }
+                null
+            }
+        } ?: return null
+
+
+        // ---- update loaded conversation in memory ----
+
+//        val current = conversationState.messages.value[conversationId] ?: return fullMessage
+//
+//        val updated =
+//            current.map {
+//                if (it.id == messageId) {
+//                    it.copy(
+//                        content = fullMessage,
+//                        hasMore = false
+//                    )
+//                } else it
+//            }
+//
+//        conversationState.set(conversationId, updated)
+
+        return fullMessage
+    }
+
     private suspend fun resolveDisplayName(file: HomebaseFile): String {
         val author = file.fileMetadata.originalAuthor ?: return ""
 
@@ -238,7 +305,8 @@ class ChatMessageStream(
             val metadata = header.fileMetadata
             val appData = metadata.appData
             val isStatusMessage = appData.dataType == ChatProtocol.ChatStatusMessageDataType
-
+            val hasMore =
+                metadata.payloads?.any { it.key == ChatProtocol.DefaultPayloadKey } == true
             val isPendingSend =
                 metadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag)
                     ?: false
@@ -273,14 +341,14 @@ class ChatMessageStream(
                         isDeleted = true,
                         versionTag = versionTag,
                         isPendingSend = isPendingSend,
-                        isStatusMessage = isStatusMessage
+                        isStatusMessage = isStatusMessage,
+                        hasMore = hasMore
                     )
                 }
 
                 require(content != null)
                 require(appData.uniqueId != null)
                 require(appData.groupId != null)
-
 
                 val delivery = getDeliveryStatus(header).value
 
@@ -323,7 +391,8 @@ class ChatMessageStream(
                     keyHeader = header.keyHeader,
                     versionTag = versionTag,
                     isPendingSend = isPendingSend,
-                    isStatusMessage = isStatusMessage
+                    isStatusMessage = isStatusMessage,
+                    hasMore = hasMore
 
                 )
             } catch (t: Throwable) {
@@ -350,7 +419,8 @@ class ChatMessageStream(
                         keyHeader = header.keyHeader,
                         versionTag = Uuid.NIL,
                         isPendingSend = false,
-                        isStatusMessage = isStatusMessage
+                        isStatusMessage = isStatusMessage,
+                        hasMore = hasMore
                     )
                 } catch (t2: Throwable) {
                     Logger.e(t2) {

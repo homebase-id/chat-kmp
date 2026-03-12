@@ -72,6 +72,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
@@ -378,7 +379,7 @@ class ConversationListViewModel(
                 val filteredPayloads = message.payloads?.filter {
                     !listOf(
                         ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-                        ChatProtocol.DEFAULT_PAYLOAD_KEY,
+                        ChatProtocol.DefaultPayloadKey,
                         ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
                     ).contains(it.key)
                 }
@@ -708,7 +709,42 @@ class ConversationListViewModel(
                 }
             }
 
-            is ConversationListUiAction.CloseFullScreenOverlay -> {
+            is ConversationListUiAction.ShowMoreClicked -> {
+                viewModelScope.launch {
+
+                    val full = chatMessageStream.loadFullMessage(
+                        action.conversationId,
+                        action.messageId
+                    ) ?: return@launch
+
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            messages = state.messages.map { item ->
+
+                                if (item is MessageListContentModel.Message &&
+                                    item.message.id == action.messageId
+                                ) {
+
+                                    val updatedMessage =
+                                        item.message.copy(
+                                            content = full,
+                                            hasMore = false,
+                                            messageAppData = item.message.messageAppData.copy(
+                                                message = JsonPrimitive(full)
+                                            )
+                                        )
+
+                                    item.copy(message = updatedMessage)
+
+                                } else item
+
+                            }.toPersistentList()
+                        )
+                    }
+                }
+            }
+
+            ConversationListUiAction.CloseFullScreenOverlay -> {
                 _messagesUiState.update { it.copy(fullScreenOverlay = null) }
             }
 
