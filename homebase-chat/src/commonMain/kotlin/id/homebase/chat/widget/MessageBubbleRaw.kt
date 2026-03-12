@@ -6,7 +6,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -18,10 +17,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
@@ -119,7 +116,7 @@ fun MessageBubbleRaw(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
     downloadingFiles: Set<String>,
-    showDot: Boolean = false
+    isPendingSend: Boolean = false
 ) {
     val filteredPayloads = payloads?.filter {
         !listOf(
@@ -218,7 +215,7 @@ fun MessageBubbleRaw(
         shape = shape,
         color = backgroundColor,
     ) {
-        if (mediaOnly) {
+        if (mediaOnly && !isDeleted) {
             Box(modifier = Modifier.wrapContentWidth()) {
                 MediaMessage(
                     payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
@@ -259,7 +256,7 @@ fun MessageBubbleRaw(
                             )
                             if (sentByYou) {
                                 Spacer(modifier = Modifier.width(4.dp))
-                                DeliveryStatus(deliveryStatus = deliveryStatus)
+                                DeliveryStatus(isPendingSend = isPendingSend, deliveryStatus = deliveryStatus)
                             }
                         }
                     }
@@ -317,30 +314,6 @@ fun MessageBubbleRaw(
                                     color = contentColor
                                 )
                             } else {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-
-                                    Box(
-                                        modifier = Modifier
-                                            .width(16.dp), // reserved space for dot + spacing
-                                        contentAlignment = Alignment.CenterStart
-                                    ) {
-                                        if (showDot) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(10.dp)
-                                                    .background(
-                                                        color = MaterialTheme.colorScheme.tertiary,
-                                                        shape = CircleShape
-                                                    )
-                                                    .border(
-                                                        2.dp,
-                                                        MaterialTheme.colorScheme.surface,
-                                                        CircleShape
-                                                    )
-                                            )
-                                        }
-                                    }
-
                                     SelectionContainer {
                                         RichText(
                                             state = textState,
@@ -349,7 +322,7 @@ fun MessageBubbleRaw(
                                             color = contentColor
                                         )
                                     }
-                                }
+//                                }
                             }
                         }
 
@@ -365,7 +338,7 @@ fun MessageBubbleRaw(
                             )
                             if (sentByYou) {
                                 Spacer(modifier = Modifier.width(4.dp))
-                                DeliveryStatus(deliveryStatus = deliveryStatus)
+                                DeliveryStatus(isPendingSend = isPendingSend, deliveryStatus = deliveryStatus)
                             }
                         }
                     }
@@ -413,7 +386,7 @@ fun MessageBubbleRaw(
                         val lastLineRight = layoutResult.getLineRight(lastLineIndex)
                         val horizontalGap = 8.dp.roundToPx()
 
-                        val textRowPadding = 12.dp.roundToPx() + if (showDot) 16.dp.roundToPx() else 0
+                        val textRowPadding = 12.dp.roundToPx()
                         val availableWidth =
                             if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                         val lastLineEnd = textRowPadding + lastLineRight.toInt()

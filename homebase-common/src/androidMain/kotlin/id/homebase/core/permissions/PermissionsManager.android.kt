@@ -52,6 +52,8 @@ actual fun createPermissionsManager(
 private fun String.toPermissionType(): PermissionType? {
     if (this == Manifest.permission.CAMERA) return PermissionType.CAMERA
 
+    if (this == Manifest.permission.RECORD_AUDIO) return PermissionType.RECORD_AUDIO
+
     if (this == Manifest.permission.READ_MEDIA_IMAGES || this == Manifest.permission.READ_EXTERNAL_STORAGE) return PermissionType.GALLERY
 
     if (this == Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) return PermissionType.GALLERY_LIMITED
@@ -68,6 +70,10 @@ class AndroidPermissionsManager(
         when (permission) {
             PermissionType.CAMERA -> {
                 genericPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
+            }
+
+            PermissionType.RECORD_AUDIO -> {
+                genericPermissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
             }
 
             PermissionType.GALLERY -> {
@@ -113,6 +119,12 @@ class AndroidPermissionsManager(
             PermissionType.CAMERA -> {
                 ContextCompat.checkSelfPermission(
                     context, Manifest.permission.CAMERA
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+
+            PermissionType.RECORD_AUDIO -> {
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.RECORD_AUDIO
                 ) == PackageManager.PERMISSION_GRANTED
             }
 

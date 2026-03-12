@@ -283,7 +283,7 @@ fun FullScreenAttachmentEditor(
             onSendMessage = {
                 onSendMessage(
                     data.conversationId,
-                    textFieldState.toText(),
+                    textFieldState.toMarkdown(),
                     data.attachments
                 )
             }

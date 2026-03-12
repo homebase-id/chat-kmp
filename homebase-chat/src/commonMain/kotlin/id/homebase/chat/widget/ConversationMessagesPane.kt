@@ -213,6 +213,7 @@ fun ConversationMessagesPane(
                     conversation = conversation,
                     uiState = uiState,
                     textFieldState = textFieldState,
+                    recordingData = uiState.recordingData,
                     listState = listState,
                     isScrollPositionReady = true,
                     showBackButton = showBackButton,

@@ -15,12 +15,12 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
@@ -123,7 +123,7 @@ class ConversationStream(
                         name = "Pending...",
                         lastMessage = m.content,
                         timestamp = m.created,
-                        admins = (if (m.originalAuthor == null) emptySet<OdinId>() else listOf(m.originalAuthor)) as Set<OdinId>,
+                        admins = (if (m.originalAuthor == null) emptySet() else setOf(m.originalAuthor)),
                         unreadCount = 0,
                         avatarTiny = null,
                         // Conversation has an image

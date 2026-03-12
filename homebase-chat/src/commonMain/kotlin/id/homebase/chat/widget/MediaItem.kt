@@ -208,6 +208,7 @@ fun MediaItem(
                 payload = payload,
                 modifier = baseModifier,
                 onDownloadClick = { onClick?.invoke() },
+                onLongPress = { onLongPress?.invoke(Offset.Zero) },
                 isDownloading = isDownloading
             )
         }

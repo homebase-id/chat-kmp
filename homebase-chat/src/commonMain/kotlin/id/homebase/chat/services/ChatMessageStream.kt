@@ -18,6 +18,20 @@ import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.ContactService
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.localization.TranslationUtil
+import id.homebase.resources.MR
+import id.homebase.resources.someone
+import id.homebase.resources.system_conversation_admin_added
+import id.homebase.resources.system_conversation_admin_name_added
+import id.homebase.resources.system_conversation_admin_name_removed
+import id.homebase.resources.system_conversation_admin_removed
+import id.homebase.resources.system_conversation_member_added
+import id.homebase.resources.system_conversation_member_name_added
+import id.homebase.resources.system_conversation_member_name_removed
+import id.homebase.resources.system_conversation_member_removed
+import id.homebase.resources.system_conversation_photo_updated
+import id.homebase.resources.system_conversation_title_updated
+import id.homebase.resources.system_group_conversation_started
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -350,34 +364,34 @@ class ChatMessageStream(
         }
 
         fun renderStatusMessage(author: OdinId?, status: StatusMessageData): String {
-            val name = author?.domainName ?: "Someone"
+            val name = author?.domainName ?: TranslationUtil.getString(MR.string.someone)
             val subject = status.subject?.domainName
 
             return when (status.statusMessage) {
                 StatusMessage.ConversationTitleUpdated ->
-                    "$name updated the conversation title"
+                    TranslationUtil.getString(MR.string.system_conversation_title_updated, name)
 
                 StatusMessage.ConversationPhotoUpdated ->
-                    "$name updated the conversation photo"
+                    TranslationUtil.getString(MR.string.system_conversation_photo_updated, name)
 
                 StatusMessage.ConversationMemberAdded ->
-                    subject?.let { "$name added $it to the conversation" }
-                        ?: "$name added a member to the conversation"
+                    subject?.let { TranslationUtil.getString(MR.string.system_conversation_member_name_added, name, it) }
+                        ?: TranslationUtil.getString(MR.string.system_conversation_member_added, name)
 
                 StatusMessage.ConversationMemberRemoved ->
-                    subject?.let { "$name removed $it from the conversation" }
-                        ?: "$name removed a member from the conversation"
+                    subject?.let { TranslationUtil.getString(MR.string.system_conversation_member_name_removed, name, it) }
+                        ?: TranslationUtil.getString(MR.string.system_conversation_member_removed, name)
 
                 StatusMessage.ConversationAdminAdded ->
-                    subject?.let { "$name made $it an admin" }
-                        ?: "$name added an admin"
+                    subject?.let { TranslationUtil.getString(MR.string.system_conversation_admin_name_added, name, it) }
+                        ?: TranslationUtil.getString(MR.string.system_conversation_admin_added, name)
 
                 StatusMessage.ConversationAdminRemoved ->
-                    subject?.let { "$name removed $it as admin" }
-                        ?: "$name removed an admin"
+                    subject?.let { TranslationUtil.getString(MR.string.system_conversation_admin_name_removed, name, it) }
+                        ?: TranslationUtil.getString(MR.string.system_conversation_admin_removed, name)
 
                 StatusMessage.GroupConversationStarted ->
-                    "$name started the conversation"
+                    TranslationUtil.getString(MR.string.system_group_conversation_started, name)
             }
         }
     }

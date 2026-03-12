@@ -89,4 +89,8 @@ sealed interface ConversationListUiAction {
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
 
     data object HideReactionDetails : ConversationListUiAction
+    data class StartRecording(val conversationId: Uuid) : ConversationListUiAction
+    data object StopRecording : ConversationListUiAction
+    data object CancelRecording : ConversationListUiAction
+    data object ShowRecordingHelp : ConversationListUiAction
 }
