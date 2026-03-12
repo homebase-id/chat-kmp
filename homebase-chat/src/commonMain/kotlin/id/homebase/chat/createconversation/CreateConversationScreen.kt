@@ -234,6 +234,7 @@ fun CreateConversationUi(
 fun ContactItem(
     name: String,
     subTitle: String? = null,
+    annotation: String? = null,
     selectionMode: Boolean = false,
     isSelectionEnabled: Boolean= true,
     isSelected: Boolean = false,
@@ -280,6 +281,14 @@ fun ContactItem(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+        annotation?.let {
+            Text(
+                text = annotation,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         if (selectionMode) {
             val tint = if(isSelectionEnabled) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.4f)

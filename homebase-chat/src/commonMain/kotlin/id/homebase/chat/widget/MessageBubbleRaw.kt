@@ -277,7 +277,7 @@ fun MessageBubbleRaw(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = authorColor ?: contentColor,
                                 modifier = Modifier.padding(
-                                    start = 12.dp, top = 8.dp, end = 12.dp
+                                    start = 12.dp, top = 8.dp, end = 12.dp, bottom = 8.dp,
                                 ),
                                 maxLines = 1,
                             )
@@ -296,6 +296,10 @@ fun MessageBubbleRaw(
                                 previewThumbnail = previewThumbnail,
                                 onMediaClick = onMediaClick,
                                 keyHeader = keyHeader,
+                                shape = if (authorName == null) RoundedCornerShape(
+                                    topStart = Dimens.Message.cornerRadius,
+                                    topEnd = Dimens.Message.cornerRadius
+                                ) else RoundedCornerShape(0.dp),
                                 onMediaLongPress = { _, _ -> handleLongClick() },
                                 sharedTransitionScope = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,

@@ -37,6 +37,7 @@
     <string name="show_more">Vis mere</string>
     <string name="slide_to_cancel">Træk for at annullere</string>
     <string name="someone">Nogen</string>
+    <string name="leave">Forlad</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -100,7 +101,6 @@
     <string name="system_conversation_admin_removed">%1$s fjernede en administrator</string>
     <string name="system_group_conversation_started">%1$s startede samtalen</string>
 
-
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
     <string name="chat_filter_by_unread_clear_button">Ryd filter</string>
@@ -130,6 +130,17 @@
     <string name="chat_group_add_members">Tilføj medlemmer</string>
     <string name="chat_group_members_list">%1$s og dig</string>
     <string name="chat_group_members_list_many">%1$s, dig og %2$s andre</string>
+    <string name="chat_group_remove">Fjern fra gruppe</string>
+    <string name="chat_group_admin">Admin</string>
+    <string name="chat_group_make_admin">Gør til admin</string>
+    <string name="chat_group_make_admin_dislaimer">%1$s vil kunne redigere denne gruppe og dens medlemmer.</string>
+    <string name="chat_group_remove_admin">Fjern som admin</string>
+    <string name="chat_group_remove_admin_dislaimer">Fjern %1$s som gruppeadmin?</string>
+    <string name="chat_group_leave">Forlad gruppe</string>
+    <string name="chat_group_leave_disclaimer">Du vil ikke længere kunne sende eller modtage beskeder i denne gruppe.</string>
+    <string name="chat_group_choose_new_admin">Vælg ny admin</string>
+    <string name="chat_group_choose_new_admin_disclaimer">Før du forlader gruppen, skal du vælge mindst én ny admin til denne gruppe.</string>
+
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>
