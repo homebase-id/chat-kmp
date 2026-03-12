@@ -238,19 +238,19 @@ class ChatMessageStream(
 
         // ---- update loaded conversation in memory ----
 
-        val current = conversationState.messages.value[conversationId] ?: return fullMessage
-
-        val updated =
-            current.map {
-                if (it.id == messageId) {
-                    it.copy(
-                        content = fullMessage,
-                        hasMore = false
-                    )
-                } else it
-            }
-
-        conversationState.set(conversationId, updated)
+//        val current = conversationState.messages.value[conversationId] ?: return fullMessage
+//
+//        val updated =
+//            current.map {
+//                if (it.id == messageId) {
+//                    it.copy(
+//                        content = fullMessage,
+//                        hasMore = false
+//                    )
+//                } else it
+//            }
+//
+//        conversationState.set(conversationId, updated)
 
         return fullMessage
     }

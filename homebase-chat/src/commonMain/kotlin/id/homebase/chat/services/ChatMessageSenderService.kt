@@ -305,7 +305,6 @@ class ChatMessageSenderService(
     }
 
 
-
     suspend fun buildMessageContentAndBundle(
         messageData: MessageAppData,
         payloadBundle: PayloadBundle?,
@@ -331,7 +330,7 @@ class ChatMessageSenderService(
 
         val headerContent = OdinSystemSerializer.serialize(previewData)
 
-        val payloadBytes = ChatMessageSizer.payloadBytes(fullJson)
+        val payloadBytes = ChatMessageSizer.payloadBytes(messageData)
 
         val tempPath = fileOperationsProvider.writeBytesToTempFile(
             bytes = payloadBytes,
