@@ -20,7 +20,7 @@ jobs:
           java-version: "17"
 
       - name: Set up Gradle cache
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v3
 
       - name: Decode Homebase Keystore
         id: decode_keystore
@@ -30,7 +30,7 @@ jobs:
           TMP_KEYSTORE_FILE_PATH="${RUNNER_TEMP}/keystore"
           mkdir "${TMP_KEYSTORE_FILE_PATH}"
           KEYSTORE_FILE_PATH="${TMP_KEYSTORE_FILE_PATH}/homebase.keystore"
-          echo $ENCODED_STRING | base64 -di > "${KEYSTORE_FILE_PATH}"
+          echo $ENCODED_STRING | base64 -d > "${KEYSTORE_FILE_PATH}"
           echo "KEYSTORE_FILE_PATH=$KEYSTORE_FILE_PATH" >> $GITHUB_OUTPUT
 
       - name: Write signing SHA1 to file
