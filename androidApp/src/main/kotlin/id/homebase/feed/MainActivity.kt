@@ -1,4 +1,4 @@
-package id.homebase.android
+package id.homebase.feed
 
 import android.content.Intent
 import android.os.Bundle
