@@ -1,4 +1,4 @@
-package id.homebase.android
+package id.homebase.feed
 
 import android.app.Application
 import com.mmk.kmpnotifier.notification.NotifierManager

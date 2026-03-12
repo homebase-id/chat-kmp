@@ -1,0 +1,72 @@
+name: Build Android release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Set up Gradle cache
+        uses: gradle/gradle-build-action@v3
+
+      - name: Decode Homebase Keystore
+        id: decode_keystore
+        env:
+          ENCODED_STRING: ${{ secrets.ANDROID_KEYSTORE_FILE_BASE64_ENCODED }}
+        run: |
+          TMP_KEYSTORE_FILE_PATH="${RUNNER_TEMP}/keystore"
+          mkdir "${TMP_KEYSTORE_FILE_PATH}"
+          KEYSTORE_FILE_PATH="${TMP_KEYSTORE_FILE_PATH}/homebase.keystore"
+          echo $ENCODED_STRING | base64 -di > "${KEYSTORE_FILE_PATH}"
+          echo "KEYSTORE_FILE_PATH=$KEYSTORE_FILE_PATH" >> $GITHUB_OUTPUT
+
+      - name: Write signing SHA1 to file
+        run: |
+          keytool -list -v \
+            -keystore ${{ steps.decode_keystore.outputs.KEYSTORE_FILE_PATH }} \
+            -alias ${{ secrets.ANDROID_KEYSTORE_ALIAS }} \
+            -storepass ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }} \
+            -keypass ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }} \
+            | grep SHA1 > signing-sha1.txt
+
+      - name: Build Android Bundle
+        run: ./gradlew :androidApp:bundleRelease
+        env:
+          SIGNING_KEYSTORE_FILE_PATH: ${{ steps.decode_keystore.outputs.KEYSTORE_FILE_PATH }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
+
+      - name: Rename output
+        run: |
+          mv androidApp/build/outputs/bundle/release/androidApp-release.aab \
+             androidApp/build/outputs/bundle/release/homebase-id-app.aab
+          mv signing-sha1.txt androidApp/build/outputs/bundle/release/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebase-id-app-android
+          path: |
+            androidApp/build/outputs/bundle/release/homebase-id-app.aab
+            androidApp/build/outputs/bundle/release/signing-sha1.txt
+
+      - name: Create Github Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: androidApp/build/outputs/bundle/release/homebase-id-app.aab
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
