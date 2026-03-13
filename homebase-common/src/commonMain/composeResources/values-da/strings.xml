@@ -30,6 +30,7 @@
     <string name="you">Dig</string>
     <string name="recipients">Modtagere</string>
     <string name="sent">Sendt</string>
+    <string name="connect">Forbind</string>
     <string name="updated">Opdateret</string>
     <string name="loading">Indlæser...</string>
     <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
@@ -140,7 +141,7 @@
     <string name="chat_group_leave_disclaimer">Du vil ikke længere kunne sende eller modtage beskeder i denne gruppe.</string>
     <string name="chat_group_choose_new_admin">Vælg ny admin</string>
     <string name="chat_group_choose_new_admin_disclaimer">Før du forlader gruppen, skal du vælge mindst én ny admin til denne gruppe.</string>
-
+    <string name="chat_group_not_connected_disclaimer">Du kan kun chatte med tilsluttede identiteter, beskeder vil ikke blive leveret til alle gruppemedlemmer.</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>

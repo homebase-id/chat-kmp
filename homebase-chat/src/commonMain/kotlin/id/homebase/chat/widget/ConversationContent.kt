@@ -24,18 +24,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -57,9 +62,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.chat.conversationlist.ConversationListUiSheet
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.conversationlist.RecordingData
+import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
@@ -70,8 +77,10 @@ import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
+import id.homebase.resources.chat_group_not_connected_disclaimer
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_options
+import id.homebase.resources.connect
 import id.homebase.resources.menu_back
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
@@ -190,6 +199,11 @@ fun ConversationContent(
             }
         }
 
+    ConversationContentSheets(
+        uiState = uiState,
+        onUiAction = onUiAction,
+    )
+
     uiState.messageReactions?.let {
         EmojiSummary(it, onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) })
     }
@@ -297,6 +311,28 @@ fun ConversationContent(
                 .consumeWindowInsets(innerPadding).imePadding()
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
+            if (conversation.missingConnections().isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        stringResource(MR.string.chat_group_not_connected_disclaimer),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    ElevatedButton(
+                        onClick = {
+                            onUiAction(ConversationListUiAction.ConnectIdentities(conversation.missingConnections()))
+                        }) {
+                        Text(stringResource(MR.string.connect))
+                    }
+                }
+            }
             if (isScrollPositionReady) {
                 Box(
                     modifier = Modifier.weight(1f),
@@ -349,7 +385,8 @@ fun ConversationContent(
                                 is MessageListContentModel.Message -> {
                                     MessageItem(
                                         message = messageItem.message,
-                                        currentOdinId = uiState.ownerSession?.odinId?.domainName ?: "",
+                                        currentOdinId = uiState.ownerSession?.odinId?.domainName
+                                            ?: "",
                                         renderAuthorName = conversation.isGroupConversation,
                                         animatedVisibilityScope = animatedVisibilityScope,
                                         sharedTransitionScope = sharedTransitionScope,
@@ -445,7 +482,13 @@ fun ConversationContent(
                             }
                         },
                         onCameraClick = { cameraLauncher.launch() },
-                        onRecordingStarted = { onUiAction(ConversationListUiAction.StartRecording(conversation.id)) },
+                        onRecordingStarted = {
+                            onUiAction(
+                                ConversationListUiAction.StartRecording(
+                                    conversation.id
+                                )
+                            )
+                        },
                         onRecordingStopped = { onUiAction(ConversationListUiAction.StopRecording) },
                         onRecordingCancelled = { onUiAction(ConversationListUiAction.CancelRecording) },
                         onRecordingHelp = { onUiAction(ConversationListUiAction.ShowRecordingHelp) },
@@ -486,6 +529,45 @@ fun ConversationContent(
                             showAttachmentSheet = false
                             // Handle location
                         })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConversationContentSheets(
+    uiState: MessageListUiState,
+    onUiAction: (ConversationListUiAction) -> Unit
+) {
+    when (val sheet = uiState.uiSheet) {
+        null -> {}
+        is ConversationListUiSheet.ConnectIdentities -> {
+            val sheetState = rememberModalBottomSheetState()
+            val scrollState = rememberScrollState()
+
+            ModalBottomSheet(
+                onDismissRequest = { onUiAction(ConversationListUiAction.DismissSheet) },
+                sheetState = sheetState
+            ) {
+                // Bottom sheet content
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .verticalScroll(scrollState)
+                ) {
+                    sheet.identities.forEach { odinId ->
+                        ContactItem(
+                            name = odinId.domainName,
+                            odinId = odinId,
+                            avatarInitials = "",
+                            onContactClick = {
+                                onUiAction(ConversationListUiAction.ConnectToIdentity(odinId))
+                            },
+                        )
                     }
                 }
             }

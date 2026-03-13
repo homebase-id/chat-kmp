@@ -32,6 +32,7 @@
     <string name="you">You</string>
     <string name="recipients">Recipients</string>
     <string name="sent">Sent</string>
+    <string name="connect">Connect</string>
     <string name="updated">Updated</string>
     <string name="loading">Loading...</string>
     <string name="connection_requests_banner">%1$s connection request(s)</string>
@@ -142,6 +143,7 @@
     <string name="chat_group_leave_disclaimer">You will no longer be able to send or receive messages in this group.</string>
     <string name="chat_group_choose_new_admin">Choose new admin</string>
     <string name="chat_group_choose_new_admin_disclaimer">Before you leave, you must choose at least one new admin for this group.</string>
+    <string name="chat_group_not_connected_disclaimer">You can only chat with connected identities, messages will not be delivered to all group members.</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>

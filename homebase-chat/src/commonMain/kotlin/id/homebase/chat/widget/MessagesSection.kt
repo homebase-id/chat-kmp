@@ -10,13 +10,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
 fun MessagesSection(text: String) {
     Box(
         modifier =
-            Modifier.fillMaxWidth().padding(top = 16.dp),
+            Modifier.fillMaxWidth().padding(top = 16.dp, start = 32.dp, end = 32.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -31,7 +32,8 @@ fun MessagesSection(text: String) {
                     vertical = 6.dp
                 ),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
             )
         }
     }
@@ -41,7 +43,7 @@ fun MessagesSection(text: String) {
 fun MessagesSystemMessage(text: String) {
     Box(
         modifier =
-            Modifier.fillMaxWidth().padding(top = 16.dp),
+            Modifier.fillMaxWidth().padding(top = 16.dp, start = 32.dp, end = 32.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -56,7 +58,8 @@ fun MessagesSystemMessage(text: String) {
                     vertical = 6.dp
                 ),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
             )
         }
     }
