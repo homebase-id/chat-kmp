@@ -33,14 +33,7 @@ jobs:
           echo $ENCODED_STRING | base64 -d > "${KEYSTORE_FILE_PATH}"
           echo "KEYSTORE_FILE_PATH=$KEYSTORE_FILE_PATH" >> $GITHUB_OUTPUT
 
-      - name: Write signing SHA1 to file
-        run: |
-          keytool -list -v \
-            -keystore ${{ steps.decode_keystore.outputs.KEYSTORE_FILE_PATH }} \
-            -alias ${{ secrets.ANDROID_KEYSTORE_ALIAS }} \
-            -storepass ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }} \
-            -keypass ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }} \
-            | grep SHA1 > signing-sha1.txt
+      
 
       - name: Build Android Bundle
         run: ./gradlew :androidApp:bundleRelease
@@ -54,14 +47,12 @@ jobs:
         run: |
           mv androidApp/build/outputs/bundle/release/androidApp-release.aab \
              androidApp/build/outputs/bundle/release/homebase-id-app.aab
-          mv signing-sha1.txt androidApp/build/outputs/bundle/release/
 
       - uses: actions/upload-artifact@v4
         with:
           name: homebase-id-app-android
           path: |
             androidApp/build/outputs/bundle/release/homebase-id-app.aab
-            androidApp/build/outputs/bundle/release/signing-sha1.txt
 
       - name: Create Github Release
         uses: softprops/action-gh-release@v1
