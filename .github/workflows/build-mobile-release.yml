@@ -106,7 +106,7 @@ jobs:
           project-path: iosApp/iosApp.xcodeproj
           workspace-path: iosApp/iosApp.xcodeproj/project.xcworkspace
           scheme: iosApp
-          export-options: iosApp/options.plist
+          export-options: options.plist
           p12-base64: ${{ secrets.IOS_FEED_P12_BASE64 }}
           mobileprovision-base64: ${{ secrets.FEED_IOS_MOBILE_PROVISION_BASE64 }}
           code-signing-identity: "Apple Distribution"
