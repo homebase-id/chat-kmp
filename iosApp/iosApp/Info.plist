@@ -9,7 +9,7 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>youauth</string>
+				<string>homebase-fchat</string>
 			</array>
 		</dict>
 	</array>

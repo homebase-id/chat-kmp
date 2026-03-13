@@ -15,8 +15,8 @@ android {
         applicationId = "id.homebase.feed"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 400
-        versionName = "1.0"
+        versionCode = (project.findProperty("VERSION_CODE") as String?)?.toInt() ?: 403
+        versionName = project.findProperty("VERSION_NAME") as String? ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
