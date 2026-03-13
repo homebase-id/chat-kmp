@@ -10,6 +10,10 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 
 /**
@@ -40,12 +44,16 @@ object OdinIdSerializerNullable : KSerializer<OdinId?> {
     }
 
     override fun deserialize(decoder: Decoder): OdinId? {
-        val string = decoder.decodeString()
-        return if (string.isBlank()) {
-            null
-        } else {
-            OdinId(string)
-        }
+        val jsonDecoder = decoder as? JsonDecoder ?: return OdinId(decoder.decodeString())
+
+        val element = jsonDecoder.decodeJsonElement()
+
+        if (element is JsonNull) return null
+
+        val value = element.jsonPrimitive.contentOrNull ?: return null
+        if (value.isBlank()) return null
+
+        return OdinId(value)
     }
 }
 
