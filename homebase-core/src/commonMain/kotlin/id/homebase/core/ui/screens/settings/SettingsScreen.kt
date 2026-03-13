@@ -1,6 +1,5 @@
 package id.homebase.core.ui.screens.settings
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,6 +39,8 @@ import androidx.compose.ui.window.Dialog
 import id.homebase.api.client.auth.initials
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
+import id.homebase.core.ui.assets.Homebase
+import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
@@ -47,9 +48,9 @@ import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
 import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.SettingsItemAction
+import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.homebase_icon_round
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
@@ -59,7 +60,6 @@ import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_open_owner_console
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -214,10 +214,10 @@ fun SettingsUi(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Image(
-                    modifier = Modifier.size(64.dp),
-                    painter = painterResource(MR.drawable.homebase_icon_round),
-                    contentDescription = null
+                SquircleIcon(
+                    imageVector = HomebaseIcons.Homebase,
+                    contentDescription = "Homebase Logo",
+                    modifier = Modifier.size(72.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(uiState.appName)
