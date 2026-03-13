@@ -141,3 +141,8 @@ jobs:
           files: artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Print release URL
+        run: |
+          echo "Release created:"
+          echo "https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
