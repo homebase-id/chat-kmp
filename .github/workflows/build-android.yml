@@ -54,7 +54,6 @@ jobs:
           name: homebase-id-app-android
           path: |
             androidApp/build/outputs/bundle/release/homebase-id-app.aab
-            androidApp/build/outputs/bundle/release/signing-sha1.txt
 
       - name: Create Github Release
         uses: softprops/action-gh-release@v1
