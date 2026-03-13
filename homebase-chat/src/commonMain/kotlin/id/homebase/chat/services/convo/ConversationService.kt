@@ -56,20 +56,36 @@ class ConversationService(
     )
 
     suspend fun createConversation(
-        recipients: List<OdinId>,
+       recipients: List<OdinId>,
         title: String?,
         payloadBundle: PayloadBundle?
     ): Uuid {
 
         val domain = credentialsManager.requireActiveDomain()
-        val isGroup = recipients.size > 1
+
+        // I know, this is illogical but somehow a null made it in so #paranoid
+        require(recipients.none { it == null }) {
+            "Conversation recipients contained null"
+        }
+
+        val normalizedRecipients =
+            recipients
+                .filterNotNull()
+                .filterNot { it == domain }
+                .distinct()
+
+        require(normalizedRecipients.isNotEmpty()) {
+            "Conversation must have at least one recipient other than self"
+        }
+
+        val isGroup = normalizedRecipients.size > 1
         val keyHeader = KeyHeader.newRandom16()
 
         val newConversationId: Uuid =
             if (isGroup) {
                 Uuid.random()
             } else {
-                XorIdUtil.getNewXorId(domain.domainName, recipients.first().domainName)
+                XorIdUtil.getNewXorId(domain.domainName, normalizedRecipients.first().domainName)
             }
 
         val existingConversation = getConversation(newConversationId)
@@ -80,7 +96,7 @@ class ConversationService(
         val content =
             ConversationAppDataJson(
                 title = title ?: "",
-                recipients = (recipients + domain).distinct(),
+                recipients = (normalizedRecipients + domain).distinct(),
                 version = 1,
                 admins = listOf(domain)
             )
@@ -116,7 +132,7 @@ class ConversationService(
                 keyHeader = keyHeader,
                 metadata = metadata.encryptContent(keyHeader),
                 transitOptions =
-                    TransitOptions(recipients = recipients, useAppNotification = false),
+                    TransitOptions(recipients = normalizedRecipients, useAppNotification = false),
                 payloads = encryptedBundle.payloads,
                 thumbnails = encryptedBundle.thumbnails
             )
@@ -128,7 +144,7 @@ class ConversationService(
         }
 
         if (isGroup) {
-            trySendIntroductions(recipients, "$domain has added you to a group chat")
+            trySendIntroductions(normalizedRecipients, "$domain has added you to a group chat")
 
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = Uuid.random(),
