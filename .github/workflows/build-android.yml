@@ -33,10 +33,16 @@ jobs:
           echo $ENCODED_STRING | base64 -d > "${KEYSTORE_FILE_PATH}"
           echo "KEYSTORE_FILE_PATH=$KEYSTORE_FILE_PATH" >> $GITHUB_OUTPUT
 
-      
+
 
       - name: Build Android Bundle
-        run: ./gradlew :androidApp:bundleRelease
+        run: |
+          VERSION_CODE=$((403 + ${{ github.run_number }}))
+          echo "VERSION_CODE=$VERSION_CODE"
+
+          ./gradlew :androidApp:bundleRelease \
+            -PVERSION_CODE=$VERSION_CODE \
+            -PVERSION_NAME="${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}"
         env:
           SIGNING_KEYSTORE_FILE_PATH: ${{ steps.decode_keystore.outputs.KEYSTORE_FILE_PATH }}
           SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
