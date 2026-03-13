@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.data.ConversationUiModel
@@ -47,25 +48,37 @@ class ConversationMapper(
                     OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it)
                 }
 
-            val participants = conversationData.recipients
+            val participants =
+                conversationData.recipients.filterNotNull().distinct()
+
+            require(participants.isNotEmpty()) { "Conversation has no valid participants" }
 
             val displayNames =
                 participants.map { odinId ->
                     contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
                 }
 
+            val others = participants.filterNot { it == domain }
+            val isGroup = others.size > 1
             val title =
-                if (participants.size == 2) {
+                if (isGroup) {
+                    conversationData.title ?: displayNames.joinToString(", ")
+                } else {
                     val other = participants.first { it != domain }
                     contactService.resolveByOdinId(other)?.name ?: other.domainName
-                } else {
-                    conversationData.title ?: displayNames.joinToString(", ")
                 }
 
-            val admins = (conversationData.admins ?: listOf(
-                conversationFile.fileMetadata.originalAuthor
-                    ?: error("Conversation missing original author")
-            )).toSet()
+            // only try for groups;
+            val admins: Set<OdinId> =
+                if (isGroup) {
+                    (conversationData.admins ?: listOf(
+                        conversationFile.fileMetadata.originalAuthor
+                            ?: conversationFile.fileMetadata.senderOdinId
+                            ?: domain
+                    )).toSet()
+                } else {
+                    emptySet<OdinId>()
+                }
 
             val avatarModel = buildConversationAvatarModel(conversationFile)
 
@@ -96,7 +109,10 @@ class ConversationMapper(
 
         } catch (t: Throwable) {
 
-            Logger.e("Failed mapping conversation UI", t)
+            Logger.e(
+                throwable = t,
+                tag = "ConversationMapper"
+            ) { "Failed mapping conversation UI - ${t.message} fileId: ${conversationFile.fileId} | Uid: ${conversationFile.fileMetadata.appData.uniqueId}" }
 
             ConversationUiModel(
                 id = conversationFile.fileMetadata.appData.uniqueId ?: Uuid.random(),
