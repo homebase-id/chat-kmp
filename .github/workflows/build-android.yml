@@ -19,6 +19,16 @@ jobs:
           distribution: "zulu"
           java-version: "17"
 
+      - name: Compute versionCode
+        id: version
+        run: echo "code=$(( $GITHUB_RUN_NUMBER + 305 ))" >> $GITHUB_OUTPUT
+      
+      - name: Bump version
+        uses: chkfung/android-version-actions@v1.2.1
+        with:
+          gradlePath: packages/mobile/android/app/build.gradle
+          versionCode: ${{ steps.version.outputs.code }}
+          
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v3
 
@@ -33,14 +43,7 @@ jobs:
           echo $ENCODED_STRING | base64 -d > "${KEYSTORE_FILE_PATH}"
           echo "KEYSTORE_FILE_PATH=$KEYSTORE_FILE_PATH" >> $GITHUB_OUTPUT
 
-      - name: Write signing SHA1 to file
-        run: |
-          keytool -list -v \
-            -keystore ${{ steps.decode_keystore.outputs.KEYSTORE_FILE_PATH }} \
-            -alias ${{ secrets.ANDROID_KEYSTORE_ALIAS }} \
-            -storepass ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }} \
-            -keypass ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }} \
-            | grep SHA1 > signing-sha1.txt
+      
 
       - name: Build Android Bundle
         run: ./gradlew :androidApp:bundleRelease
