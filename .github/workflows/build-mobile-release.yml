@@ -44,7 +44,7 @@ jobs:
       - name: Build Android Bundle
         run: |
           VERSION_CODE=$((403 + ${{ github.run_number }}))
-          VERSION_NAME="${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}"
+          VERSION_NAME="${{ github.ref_type == 'tag' && github.ref_name || format('dev.{0}-{1}', github.run_number, github.sha) }}"
 
           echo "VERSION_CODE=$VERSION_CODE"
           echo "VERSION_NAME=$VERSION_NAME"
@@ -93,10 +93,17 @@ jobs:
       - name: Set iOS version
         run: |
           VERSION_CODE=$((403 + ${{ github.run_number }}))
-          VERSION_NAME="${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}"
-
+          
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          VERSION_NAME="${{ github.ref_name }}"
+          else
+          VERSION_NAME="dev.${{ github.run_number }}-${SHORT_SHA}"
+          fi
+          
           echo "Setting iOS version to $VERSION_NAME ($VERSION_CODE)"
-
+          
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION_NAME" iosApp/iosApp/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION_CODE" iosApp/iosApp/Info.plist
 
@@ -106,7 +113,7 @@ jobs:
           project-path: iosApp/iosApp.xcodeproj
           workspace-path: iosApp/iosApp.xcodeproj/project.xcworkspace
           scheme: iosApp
-          export-options: options.plist
+          export-options: iosApp/options.plist
           p12-base64: ${{ secrets.IOS_FEED_P12_BASE64 }}
           mobileprovision-base64: ${{ secrets.FEED_IOS_MOBILE_PROVISION_BASE64 }}
           code-signing-identity: "Apple Distribution"
