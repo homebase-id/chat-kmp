@@ -19,16 +19,6 @@ jobs:
           distribution: "zulu"
           java-version: "17"
 
-      - name: Compute versionCode
-        id: version
-        run: echo "code=$(( $GITHUB_RUN_NUMBER + 305 ))" >> $GITHUB_OUTPUT
-      
-      - name: Bump version
-        uses: chkfung/android-version-actions@v1.2.1
-        with:
-          gradlePath: packages/mobile/android/app/build.gradle
-          versionCode: ${{ steps.version.outputs.code }}
-          
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v3
 
