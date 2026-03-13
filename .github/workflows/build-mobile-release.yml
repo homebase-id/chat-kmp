@@ -44,8 +44,8 @@ jobs:
       - name: Build Android Bundle
         run: |
           VERSION_CODE=$((403 + ${{ github.run_number }} * 10 + ${{ github.run_attempt }}))
-          VERSION_NAME="${{ github.ref_type == 'tag' && github.ref_name || format('dev.{0}-{1}', github.run_number, github.sha) }}"
-
+          VERSION_NAME="${{ github.ref_type == 'tag' && github.ref_name || format('dev.{0}', github.run_number) }}"
+  
           echo "VERSION_CODE=$VERSION_CODE"
           echo "VERSION_NAME=$VERSION_NAME"
 
