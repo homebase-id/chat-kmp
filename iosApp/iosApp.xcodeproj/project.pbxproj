@@ -277,7 +277,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.chat;
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed;
 				PRODUCT_NAME = Homebase;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
