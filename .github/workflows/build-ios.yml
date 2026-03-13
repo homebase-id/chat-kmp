@@ -18,33 +18,12 @@ jobs:
         with:
           xcode-version: "16"
 
-      - name: Extract package version
-        id: version
-        uses: Saionaro/extract-package-version@v1.2.1
-        with:
-          path: packages/mobile
-
-      - name: Auth GitHub Packages
-        run: |
-          echo "@homebase-id:registry=https://npm.pkg.github.com" > .npmrc
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
-
-      - name: Install npm deps
-        run: npm ci
-
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
           working-directory: packages/mobile
           ruby-version: "3.1"
           bundler-cache: true
-
-      - name: Bump iOS version
-        uses: yanamura/ios-bump-version@v1
-        with:
-          version: ${{ steps.version.outputs.version }}
-          build-number: ${{ github.run_number }}
-          project-path: packages/mobile/ios
 
       - name: Setup CocoaPods
         uses: maxim-lobanov/setup-cocoapods@v1
@@ -73,16 +52,7 @@ jobs:
       - name: Rename IPA
         run: mv output.ipa homebase-id-app.ipa
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ios-app
           path: homebase-id-app.ipa
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: homebase-id-app.ipa
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
