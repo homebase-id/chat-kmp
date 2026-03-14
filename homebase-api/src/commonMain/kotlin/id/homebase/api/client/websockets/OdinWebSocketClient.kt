@@ -41,7 +41,8 @@ class OdinWebSocketClient(
     private val databaseManager: DatabaseManager,
     private val drives: List<TargetDrive>,
     private val onConnected: () -> Unit = {},
-    private val onDisconnected: () -> Unit = {}
+    private val onDisconnected: () -> Unit = {},
+    private val onConnectError: (Throwable) -> Unit = {},
 ) {
 
     private var reconnectDelayMs = 1_000L
@@ -105,6 +106,7 @@ class OdinWebSocketClient(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
+                    onConnectError(e)
                     Logger.e(e) { "WebSocket connect failed ${e.message}" }
                 }
 

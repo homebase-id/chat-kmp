@@ -1,6 +1,7 @@
 package id.homebase.chat.conversationlist
 
 import id.homebase.api.client.link.LinkPreview
+import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.gallery.GalleryImage
@@ -18,6 +19,9 @@ sealed interface ConversationListUiAction {
     data object ClearSelection : ConversationListUiAction
     data object FilterByUnreadClicked : ConversationListUiAction
     data object ClearFilterByUnreadClicked : ConversationListUiAction
+    data class ConnectIdentities(val identities: List<OdinId>) : ConversationListUiAction
+    data class ConnectToIdentity(val odinId: OdinId) : ConversationListUiAction
+    data object DismissSheet : ConversationListUiAction
     data class SendMessage(val conversationId: Uuid, val linkPreview: LinkPreview? = null) :
         ConversationListUiAction
 

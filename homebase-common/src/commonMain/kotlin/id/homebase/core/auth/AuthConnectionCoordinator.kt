@@ -103,6 +103,9 @@ class AuthConnectionCoordinator(
                 onDisconnected = {
                     _connectionState.update { it.copy(isConnected = false, isDoingInitialConnection = false) }
                     driveSyncManager.pause()
+                },
+                onConnectError = {
+                    _connectionState.update { it.copy(isConnected = false, isDoingInitialConnection = false) }
                 }
             ).also { it.start() }
     }

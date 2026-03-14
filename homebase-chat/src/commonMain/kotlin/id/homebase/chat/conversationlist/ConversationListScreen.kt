@@ -143,6 +143,11 @@ fun ConversationListScreen(
                 fileSystemHandler.openFile(Path(event.filePath), showChooser = true)
             }
 
+            is ConversationListUiEvent.OpenUrl -> {
+                viewModel.eventConsumed()
+                fileSystemHandler.openUrl(event.url)
+            }
+
             null -> {}
         }
     }
