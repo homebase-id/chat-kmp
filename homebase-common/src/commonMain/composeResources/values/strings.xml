@@ -41,6 +41,7 @@
     <string name="slide_to_cancel">Slide to cancel</string>
     <string name="someone">Someone</string>
     <string name="leave">Leave</string>
+    <string name="export_log">Export log</string>
 
     <!-- Language options -->
     <string name="language">Language</string>

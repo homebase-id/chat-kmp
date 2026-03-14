@@ -64,6 +64,7 @@ kotlin {
             implementation(libs.koin.core)
             implementation(libs.filekit.core)
             implementation(libs.kmpnotifier)
+            implementation(libs.kermit)
         }
 
         jvmMain.dependencies {
