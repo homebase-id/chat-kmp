@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseCore
 import FirebaseMessaging
+import ComposeApp
 
 class AppDelegate: NSObject, UIApplicationDelegate {
 
