@@ -26,7 +26,7 @@ selectAllConversationPlusLastMessage:
 WITH LatestMessages AS (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY groupId ORDER BY created DESC) AS rn
   FROM DriveMainIndex AS m
-  WHERE fileType = 7878 -- Message
+  WHERE fileType = 7878 AND dataType = 0 -- Message
 )
 SELECT d.jsonHeader AS convJsonHeader,m.jsonHeader AS msgJsonHeader,m.created AS msgCreated
 FROM DriveMainIndex AS d
@@ -41,7 +41,7 @@ SELECT COUNT(*) AS unreadCount
 FROM DriveMainIndex d
 LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
 WHERE d.groupId = ?
-  AND d.fileType = 7878
+  AND d.fileType = 7878 AND d.dataType = 0
   AND (c.lastReadTime IS NULL OR d.created > c.lastReadTime);
 
 -- Return list of {groupId, unreadCount} for all chat conversations (8888)
@@ -51,7 +51,7 @@ selectAllUnreadCount:
 SELECT d.groupId, COUNT(*) AS unreadCount
 FROM DriveMainIndex AS d
 LEFT JOIN ChatReadCount ON d.groupId = ChatReadCount.groupId
-WHERE d.fileType = 7878 -- Message
+WHERE d.fileType = 7878 AND d.dataType = 0 -- Message
   AND (ChatReadCount.lastReadTime IS NULL OR d.created > ChatReadCount.lastReadTime)
   AND d.groupId IS NOT NULL
 GROUP BY d.groupId;

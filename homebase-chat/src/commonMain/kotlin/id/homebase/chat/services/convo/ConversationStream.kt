@@ -172,7 +172,14 @@ class ConversationStream(
         m: MessageUiModel
     ) {
         if (m.created > c.timestamp) {
-            if (!m.isEdited) c.unreadCount++
+
+            val domain = credentialsManager.getActiveDomain()
+
+            // new message that was not sent by the current user
+            if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) {
+                c.unreadCount++
+            }
+
             c.timestamp = m.created
             c.lastMessage = m.content.truncateToCodePoints(40) // TODO: Global constant
             c.lastMessageDeliveryStatus = m.messageAppData.deliveryStatus
