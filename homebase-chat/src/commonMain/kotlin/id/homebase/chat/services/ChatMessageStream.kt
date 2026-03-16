@@ -207,14 +207,41 @@ class ChatMessageStream(
         )
     }
 
+    suspend fun getMessages(
+        messageIds: List<Uuid>
+    ): BatchResult<MessageUiModel> {
+
+        val c = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(c.getIdentityId())
+
+        // TODO - inject searchQuery into actual db query
+        val result =
+            queryBatch.queryBatchAsync(
+                dbm = dbm,
+                driveId = chatDrive,
+                noOfItems = messageIds.size,
+                cursor = null,
+                sortOrder = QueryBatchSortOrder.NewestFirst,
+                sortField = QueryBatchSortField.CreatedDate,
+                fileSystemType = 0,
+                filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+                uniqueIdAnyOf = messageIds
+            )
+
+        return BatchResult(
+            records = result.records.mapNotNull { mapToMessageData(it, ::resolveDisplayName) },
+            hasMoreRows = result.hasMoreRows,
+            cursor = result.cursor
+        )
+    }
+
     suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String? {
 
         val header = getMessage(messageId) ?: return null
 
         val descriptor = header.payloads?.firstOrNull { it.key == ChatProtocol.DefaultPayloadKey }
 
-        if(descriptor == null)
-        {
+        if (descriptor == null) {
             return null
         }
 
@@ -311,6 +338,7 @@ class ChatMessageStream(
                 metadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag)
                     ?: false
 
+            val localReadTimestamp = metadata.localAppData?.readTime
 
             try {
                 require(appData.fileType == ChatProtocol.MessageFileType)
@@ -330,7 +358,7 @@ class ChatMessageStream(
                         modified = metadata.updated.toInstant(),
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
-                        isRead = false,
+                        localReadTimestamp = localReadTimestamp,
                         isEdited = false,
                         content = "",
                         messageAppData = MessageAppData(),
@@ -384,6 +412,7 @@ class ChatMessageStream(
                     originalAuthor = metadata.originalAuthor,
                     displayName = displayName,
                     isEdited = messageAppData.isEdited,
+                    localReadTimestamp = localReadTimestamp,
                     messageAppData = messageAppData,
                     reactionPreview = metadata.reactionPreview,
                     previewThumbnail = metadata.appData.previewThumbnail,
@@ -413,6 +442,7 @@ class ChatMessageStream(
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         messageAppData = MessageAppData(),
+                        localReadTimestamp = localReadTimestamp,
                         reactionPreview = metadata.reactionPreview,
                         previewThumbnail = metadata.appData.previewThumbnail,
                         payloads = metadata.payloads?.toPersistentList(),
@@ -445,20 +475,56 @@ class ChatMessageStream(
                     TranslationUtil.getString(MR.string.system_conversation_photo_updated, name)
 
                 StatusMessage.ConversationMemberAdded ->
-                    subject?.let { TranslationUtil.getString(MR.string.system_conversation_member_name_added, name, it) }
-                        ?: TranslationUtil.getString(MR.string.system_conversation_member_added, name)
+                    subject?.let {
+                        TranslationUtil.getString(
+                            MR.string.system_conversation_member_name_added,
+                            name,
+                            it
+                        )
+                    }
+                        ?: TranslationUtil.getString(
+                            MR.string.system_conversation_member_added,
+                            name
+                        )
 
                 StatusMessage.ConversationMemberRemoved ->
-                    subject?.let { TranslationUtil.getString(MR.string.system_conversation_member_name_removed, name, it) }
-                        ?: TranslationUtil.getString(MR.string.system_conversation_member_removed, name)
+                    subject?.let {
+                        TranslationUtil.getString(
+                            MR.string.system_conversation_member_name_removed,
+                            name,
+                            it
+                        )
+                    }
+                        ?: TranslationUtil.getString(
+                            MR.string.system_conversation_member_removed,
+                            name
+                        )
 
                 StatusMessage.ConversationAdminAdded ->
-                    subject?.let { TranslationUtil.getString(MR.string.system_conversation_admin_name_added, name, it) }
-                        ?: TranslationUtil.getString(MR.string.system_conversation_admin_added, name)
+                    subject?.let {
+                        TranslationUtil.getString(
+                            MR.string.system_conversation_admin_name_added,
+                            name,
+                            it
+                        )
+                    }
+                        ?: TranslationUtil.getString(
+                            MR.string.system_conversation_admin_added,
+                            name
+                        )
 
                 StatusMessage.ConversationAdminRemoved ->
-                    subject?.let { TranslationUtil.getString(MR.string.system_conversation_admin_name_removed, name, it) }
-                        ?: TranslationUtil.getString(MR.string.system_conversation_admin_removed, name)
+                    subject?.let {
+                        TranslationUtil.getString(
+                            MR.string.system_conversation_admin_name_removed,
+                            name,
+                            it
+                        )
+                    }
+                        ?: TranslationUtil.getString(
+                            MR.string.system_conversation_admin_removed,
+                            name
+                        )
 
                 StatusMessage.GroupConversationStarted ->
                     TranslationUtil.getString(MR.string.system_group_conversation_started, name)

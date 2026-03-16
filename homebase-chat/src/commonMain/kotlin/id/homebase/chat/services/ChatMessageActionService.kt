@@ -1,54 +1,80 @@
 package id.homebase.chat.services
 
-import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.files.SendReadReceiptResultStatus
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResult
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
-import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
-import id.homebase.api.client.drives.upload.PayloadDeleteKey
-import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
-import id.homebase.api.client.drives.upload.UpdateLocale
-import id.homebase.api.client.drives.upload.UpdateManifest
-import id.homebase.api.client.drives.upload.UploadAppFileMetaData
-import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
-import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.ReactionContent
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.widget.EmojiReaction
-import kotlinx.serialization.json.JsonPrimitive
 import kotlin.uuid.Uuid
 
 class ChatMessageActionService(
     private val conversationService: ConversationService,
+    private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val credentialsManager: CredentialsManager,
     private val operationsProvider: DriveFileOperationsProvider,
     private val fileProvider: DriveFileProvider,
-    private val outboxSync: OutboxSync,
     private val dbm: DatabaseManager,
 ) {
     private val chatDrive = chatTargetDrive.alias
 
     suspend fun markAsRead(messageIds: List<Uuid>) {
-        operationsProvider.sendReadReceiptBatch(
-            driveId = chatDrive, fileIds = fetchFileByUid(messageIds).mapNotNull { d -> d.fileId })
+
+        val batch = chatMessageStream.getMessages(messageIds)
+        val domain = credentialsManager.requireActiveDomain()
+        val unreadRecords = batch.records
+            .filter {
+                it.localReadTimestamp == null &&
+                        !it.isDeleted &&
+                        !it.isPendingSend &&
+                        !it.isAuthoredBy(domain)
+            }
+
+        val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
+
+        unreadRecords
+            .map { it.fileId }
+            .chunked(50)
+            .forEach { chunk ->
+
+                val result = operationsProvider.sendReadReceiptBatch(
+                    driveId = chatDrive,
+                    fileIds = chunk
+                )
+
+                val successfulFileIds = result.results
+                    .filter { file ->
+                        file.status.any { it.status == SendReadReceiptResultStatus.Enqueued }
+                    }
+                    .map { it.fileId }
+                    .toSet()
+
+                unreadRecords
+                    .filter { it.fileId in successfulFileIds }
+                    .distinctBy { it.conversationId }
+                    .forEach {
+                        dbm.chatReadCount.upsertLastReadTime(it.conversationId, newReadTime)
+                    }
+
+                conversationStream.updateUnreadCounts()
+            }
     }
 
     suspend fun addReaction(conversationId: Uuid, messageId: Uuid, emoji: String) {

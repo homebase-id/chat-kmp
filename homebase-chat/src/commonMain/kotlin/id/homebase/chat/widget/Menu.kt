@@ -104,7 +104,7 @@ fun ConversationMenu(
             leadingIcon = { Icon(imageVector = Icons.Filled.Clear, contentDescription = null) })
 
 
-        if(isGroup) {
+        if (isGroup) {
             HorizontalDivider()
 
             DropdownMenuItem(
@@ -132,6 +132,7 @@ fun ReceivedMessagePopup(
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
+    onMarkAsRead: () -> Unit,
     onReply: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
