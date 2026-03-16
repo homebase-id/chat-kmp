@@ -30,9 +30,7 @@ object ChatMessageSizer {
                 .replace(Regex("[*_`#>\\-]"), "")
                 .replace("\n", " ")
 
-        val p =  plain.truncateToCodePoints(400)
-        return plain.take(400) + if (plain.length > 400) "…" else ""
-
+        return plain.truncateToCodePoints(400)
     }
 }
 
