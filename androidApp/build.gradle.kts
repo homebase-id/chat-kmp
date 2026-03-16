@@ -6,17 +6,17 @@ plugins {
 }
 
 android {
-    namespace = "id.homebase.android"
+    namespace = "id.homebase.feed"
     compileSdk {
         version = release(libs.versions.android.targetSdk.get().toInt())
     }
 
     defaultConfig {
-        applicationId = "id.homebase.android"
+        applicationId = "id.homebase.feed"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = (project.findProperty("VERSION_CODE") as String?)?.toInt() ?: 403
+        versionName = project.findProperty("VERSION_NAME") as String? ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -28,7 +28,6 @@ android {
     }
 
     signingConfigs {
-        val keystorePass = System.getenv("HOMEBASE_KEYSTORE_PASS")
         getByName("debug") {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
@@ -36,10 +35,19 @@ android {
             storePassword = "android"
         }
         create("release") {
-            keyAlias = "homebase"
-            keyPassword = keystorePass
-            storeFile = file("../buildsystem/keystore")
-            storePassword = keystorePass
+            val keystorePath = System.getenv("SIGNING_KEYSTORE_FILE_PATH")
+
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            } else {
+                storeFile = file("debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
         }
     }
 
@@ -93,6 +101,7 @@ dependencies {
     implementation(libs.smart.exception.java)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.filekit.dialogs.compose)
+    implementation(libs.kermit)
 
 
     debugImplementation(libs.androidx.ui.tooling)

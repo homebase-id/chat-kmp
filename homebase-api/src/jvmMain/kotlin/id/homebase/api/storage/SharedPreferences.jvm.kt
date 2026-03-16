@@ -11,7 +11,7 @@ actual object SharedPreferences {
 
     private val storageDir: File by lazy {
         val userHome = System.getProperty("user.home")
-        val appDir = File(userHome, ".homebase-kmp-poc")
+        val appDir = File(userHome, ".homebase-chat")
         appDir.mkdirs()
         appDir
     }

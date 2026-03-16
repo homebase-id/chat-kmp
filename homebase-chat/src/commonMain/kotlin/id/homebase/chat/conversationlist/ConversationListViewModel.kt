@@ -47,6 +47,7 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
+import id.homebase.core.util.buildConnectToIdentityUrl
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_introduce_everyone_status
@@ -744,7 +745,7 @@ class ConversationListViewModel(
                 }
             }
 
-            ConversationListUiAction.CloseFullScreenOverlay -> {
+            is ConversationListUiAction.CloseFullScreenOverlay -> {
                 _messagesUiState.update { it.copy(fullScreenOverlay = null) }
             }
 
@@ -779,6 +780,23 @@ class ConversationListViewModel(
                     it.copy(
                         uiEvent = NavigateToMessageInfo((action.message))
                     )
+                }
+            }
+
+            is ConversationListUiAction.DismissSheet -> {
+                _messagesUiState.update { it.copy(uiSheet = null) }
+            }
+
+            /* Group options */
+
+            is ConversationListUiAction.ConnectIdentities -> {
+                _messagesUiState.update { it.copy(uiSheet = ConversationListUiSheet.ConnectIdentities(action.identities)) }
+            }
+
+            is ConversationListUiAction.ConnectToIdentity -> {
+                uiState.value.ownerSession?.odinId?.let { currentUser ->
+                    val url = currentUser.buildConnectToIdentityUrl(action.odinId)
+                    _uiState.update { it.copy(uiEvent = ConversationListUiEvent.OpenUrl(url)) }
                 }
             }
 

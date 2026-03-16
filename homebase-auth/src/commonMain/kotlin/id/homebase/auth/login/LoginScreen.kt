@@ -16,7 +16,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -34,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -48,6 +46,7 @@ import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
+import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
 import id.homebase.resources.login_authenticating
 import id.homebase.resources.login_create_account_button
@@ -124,10 +123,9 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
+            SquircleIcon(
                 imageVector = HomebaseIcons.Homebase,
                 contentDescription = "Homebase Logo",
-                tint = Color.Unspecified,
                 modifier = Modifier.size(72.dp)
             )
 

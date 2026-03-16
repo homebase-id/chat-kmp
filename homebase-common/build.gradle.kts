@@ -83,6 +83,7 @@ kotlin {
             api(libs.coil3.network)
             api(libs.coil3.svg)
             implementation(libs.kermit)
+            implementation(libs.kermit.io)
             api(libs.filekit.core)
             api(libs.koin.core)
             api(libs.koin.compose)

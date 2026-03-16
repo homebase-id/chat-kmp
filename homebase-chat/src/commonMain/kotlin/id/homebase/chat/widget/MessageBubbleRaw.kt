@@ -277,7 +277,7 @@ fun MessageBubbleRaw(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = authorColor ?: contentColor,
                                 modifier = Modifier.padding(
-                                    start = 12.dp, top = 8.dp, end = 12.dp
+                                    start = 12.dp, top = 8.dp, end = 12.dp, bottom = 8.dp,
                                 ),
                                 maxLines = 1,
                             )
@@ -296,6 +296,10 @@ fun MessageBubbleRaw(
                                 previewThumbnail = previewThumbnail,
                                 onMediaClick = onMediaClick,
                                 keyHeader = keyHeader,
+                                shape = if (authorName == null) RoundedCornerShape(
+                                    topStart = Dimens.Message.cornerRadius,
+                                    topEnd = Dimens.Message.cornerRadius
+                                ) else RoundedCornerShape(0.dp),
                                 onMediaLongPress = { _, _ -> handleLongClick() },
                                 sharedTransitionScope = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
@@ -370,13 +374,14 @@ fun MessageBubbleRaw(
                     if (authorName != null) mediaIndex++
                     if (replyPreview != null) mediaIndex++
 
+                    val authorIndex = if (authorName != null) 0 else -1
                     val textIndex = if (hasMedia) mediaIndex + 1 else mediaIndex
                     val showMoreIndex = textIndex + 1
-//                    val infoIndex = if (showMore && onShowMoreClick != null) showMoreIndex + 1 else textIndex + 1
                     val infoIndex = showMoreIndex + 1
 
                     val placeables: MutableList<Placeable> = mutableListOf()
                     var mediaWidth = 0
+                    var authorWidth = 0
 
                     // Measure up to text content
                     for (i in 0 until textIndex) {
@@ -384,6 +389,9 @@ fun MessageBubbleRaw(
                         placeables += placeable
                         if (hasMedia && i == mediaIndex) {
                             mediaWidth = placeable.width
+                        }
+                        if (authorName != null && i == 0) {
+                            authorWidth = placeable.width
                         }
                     }
 
@@ -396,6 +404,7 @@ fun MessageBubbleRaw(
                         else constraints
                     )
 
+                    // Measure show more text
                     val showMorePlaceable = measurables[showMoreIndex].measure(constraints)
 
                     // Measure info text
@@ -423,7 +432,8 @@ fun MessageBubbleRaw(
                             finalWidth = maxOf(
                                 mediaWidth,
                                 textPlaceable.width,
-                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding)
+                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
+                                authorWidth
                             )
                             val lastLineBottom = layoutResult.getLineBottom(lastLineIndex)
                             infoY =
@@ -434,7 +444,7 @@ fun MessageBubbleRaw(
                                         textPlaceable.height +
                                         (showMorePlaceable.height)
                         } else {
-                            finalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width)
+                            finalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
                             infoY = placeables.sumOf { it.height } + textPlaceable.height
                             infoX = finalWidth - infoPlaceable.width - 8.dp.roundToPx()
                             finalHeight =
@@ -445,7 +455,7 @@ fun MessageBubbleRaw(
                                         8.dp.roundToPx()
                         }
                     } else {
-                        finalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width)
+                        finalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
                         infoY = placeables.sumOf { it.height } + textPlaceable.height
                         infoX = finalWidth - infoPlaceable.width
                         finalHeight =

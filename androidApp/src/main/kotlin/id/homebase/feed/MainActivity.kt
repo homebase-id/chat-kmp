@@ -1,4 +1,4 @@
-package id.homebase.android
+package id.homebase.feed
 
 import android.content.Intent
 import android.os.Bundle
@@ -65,7 +65,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleIntent(intent: Intent) {
         val data = intent.data
-        if (data != null && data.scheme == "youauth") {
+        if (data != null && data.scheme == "homebase-fchat") {
             val callbackURL = data.toString()
             lifecycleScope.launch { youAuthFlowManager.handleCallback(callbackURL) }
         }

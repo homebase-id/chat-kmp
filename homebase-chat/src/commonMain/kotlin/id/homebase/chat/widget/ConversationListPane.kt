@@ -419,10 +419,6 @@ fun ConversationLisContentItem(
                     groupName = listItem.conversation.name,
                     message = listItem.conversation.lastMessage,
                     unreadCount = listItem.conversation.unreadCount,
-                    avatarUrl = listItem.conversation.avatarUrl,
-                    avatarTiny = listItem.conversation.avatarTiny,
-                    avatarInitials = listItem.conversation.avatarInitials,
-                    isGroup = listItem.conversation.isGroupConversation,
                     contactOdinId = listItem.conversation.participants.firstOrNull(),
                     timestamp = listItem.conversation.timestamp,
                     onClick = {

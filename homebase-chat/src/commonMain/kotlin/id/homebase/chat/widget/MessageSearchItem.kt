@@ -1,6 +1,5 @@
 package id.homebase.chat.widget
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -44,9 +43,8 @@ fun MessageSearchItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -54,6 +52,7 @@ fun MessageSearchItem(
         if (contactOdinId != null) {
             ContactAvatar(
                 odinId = contactOdinId,
+                modifier = Modifier.padding(8.dp),
                 profileImageData = null,
                 initials = memberName.initials(),
                 options = AvatarOptions(
@@ -96,7 +95,7 @@ fun MessageSearchItem(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

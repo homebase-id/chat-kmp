@@ -1,6 +1,7 @@
-package id.homebase.android
+package id.homebase.feed
 
 import android.app.Application
+import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration
 import id.homebase.api.storage.SecureStorage
@@ -9,8 +10,11 @@ import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
+import id.homebase.core.logging.CrashLogger
+import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
 import kotlinx.coroutines.runBlocking
+import kotlinx.io.files.Path
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.component.KoinComponent
@@ -44,6 +48,19 @@ class MainApplication : Application(), KoinComponent {
             modules(allModules)
         }
 
+        try {
+            val logsDir = filesDir.resolve("logs")
+            if (!logsDir.exists()) {
+                logsDir.mkdirs()
+            }
+            LoggerConfig.initialize(logDirectory =  Path(logsDir.absolutePath))
+        } catch (e: Exception) {
+            Logger.e("MainApplication", e, "Failed to initialize file logging")
+        }
+
+        // Set up uncaught exception handler for crash logging
+        setupCrashHandler()
+
         // Initialize KMPNotifier for push notifications
         NotifierManager.initialize(
             configuration =
@@ -57,5 +74,21 @@ class MainApplication : Application(), KoinComponent {
         // before the UI composes are not lost
         val notificationService: NotificationService = get()
         notificationService.startListening()
+    }
+
+    private fun setupCrashHandler() {
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                CrashLogger.logCrash(thread.name, throwable)
+            } catch (e: Exception) {
+                // If crash logging fails, still call the default handler
+                e.printStackTrace()
+            } finally {
+                // Call the original handler to let the app crash normally
+                defaultHandler?.uncaughtException(thread, throwable)
+            }
+        }
     }
 }

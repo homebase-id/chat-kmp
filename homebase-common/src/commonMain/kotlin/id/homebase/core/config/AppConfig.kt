@@ -12,11 +12,12 @@ import kotlin.uuid.Uuid
  * LoginViewModel (for initial auth) and HomeViewModel (for permission checking).
  */
 object AppConfig {
-    const val APP_ID = "0cecc6fe033e48b19ee6a4f60318be02"
-    const val APP_NAME = "Homebase - KMP POC"
+    const val APP_ID = "2d78140138044b57b4aad8e4e2ef39f4"
+
+    const val APP_NAME = "Homebase - Chat"
 
     // Deep link scheme for returning from permission extension
-    const val DEEP_LINK_SCHEME = "youauth"
+    const val DEEP_LINK_SCHEME = "homebase-fchat"
     const val RETURN_URL = "$DEEP_LINK_SCHEME://permission-callback"
 }
 

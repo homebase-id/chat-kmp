@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatProtocol
@@ -44,6 +43,7 @@ import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.util.ifTrue
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_audio
 import id.homebase.resources.chat_message_deleted
@@ -106,10 +106,6 @@ fun ConversationItem(
     groupName: String,
     message: String,
     unreadCount: Int,
-    avatarUrl: String,
-    avatarInitials: String,
-    avatarTiny: EmbeddedThumb?,
-    isGroup: Boolean,
     contactOdinId: OdinId?,
     timestamp: Instant,
     onClick: () -> Unit,
@@ -123,13 +119,16 @@ fun ConversationItem(
     isFromActiveUser: Boolean = false,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp)).background(
-                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(
-                    alpha = 0.7f
-                )
-                else MaterialTheme.colorScheme.surfaceContainerLow
-            ).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .ifTrue(isSelected) {
+                Modifier
+                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f))
+            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         ConversationAvatar(
@@ -167,7 +166,7 @@ fun ConversationItem(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

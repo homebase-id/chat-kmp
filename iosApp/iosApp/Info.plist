@@ -2,6 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleURLTypes</key>
+    <array>
+     <dict>
+      <key>CFBundleURLSchemes</key>
+      <array>
+       <string>homebase-share</string>
+       <string>homebase-fchat</string>
+      </array>
+     </dict>
+    </array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleURLTypes</key>
@@ -9,15 +19,24 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>youauth</string>
+				<string>homebase-fchat</string>
 			</array>
 		</dict>
 	</array>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
 	</array>
     <key>NSMicrophoneUsageDescription</key>
     <string>Allow access to the microphone to record audio for message attachment.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+     <string>fetch</string>
+     <string>remote-notification</string>
+    </array>
 </dict>
 </plist>

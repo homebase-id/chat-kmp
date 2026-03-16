@@ -244,7 +244,6 @@ fun AppNavHost(
                         if (isAuthenticated) {
                             HomeScreen(
                                 viewModel = koinViewModel(),
-                                onNavigateToChatList = { navController.navigate(Route.ChatList()) },
                                 onNavigateToExamples = { navController.navigate(Route.Examples) }
                             )
                         }
