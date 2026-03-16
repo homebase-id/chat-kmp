@@ -101,6 +101,7 @@ dependencies {
     implementation(libs.smart.exception.java)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.filekit.dialogs.compose)
+    implementation(libs.kermit)
 
 
     debugImplementation(libs.androidx.ui.tooling)

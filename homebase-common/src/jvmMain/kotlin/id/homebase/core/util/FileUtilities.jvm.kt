@@ -3,6 +3,7 @@ package id.homebase.core.util
 import androidx.compose.runtime.Composable
 import co.touchlab.kermit.Logger
 import kotlinx.io.files.Path
+import java.awt.Desktop
 
 private const val TAG = "getUriHandler"
 
@@ -25,9 +26,9 @@ actual fun getUriHandler(): FileSystemHandler {
         override fun openFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit) {
             try {
                 val javaFile = java.io.File(file.toString())
-                if (java.awt.Desktop.isDesktopSupported()) {
-                    val desktop = java.awt.Desktop.getDesktop()
-                    if (desktop.isSupported(java.awt.Desktop.Action.OPEN)) {
+                if (Desktop.isDesktopSupported()) {
+                    val desktop = Desktop.getDesktop()
+                    if (desktop.isSupported(Desktop.Action.OPEN)) {
                         desktop.open(javaFile)
                     } else {
                         onError(Exception("Desktop open action not supported"))
@@ -42,7 +43,32 @@ actual fun getUriHandler(): FileSystemHandler {
         }
 
         override fun openFileBrowser(file: Path, onError: (Throwable) -> Unit) {
-            TODO("Not yet implemented")
+            try {
+                val javaFile = java.io.File(file.toString())
+                if (Desktop.isDesktopSupported()) {
+                    val desktop = Desktop.getDesktop()
+
+                    // Try to open the parent directory and select the file
+                    if (desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
+                        desktop.browseFileDirectory(javaFile)
+                    } else if (desktop.isSupported(Desktop.Action.OPEN)) {
+                        // Fallback: open the parent directory
+                        val parentDir = javaFile.parentFile
+                        if (parentDir != null && parentDir.exists()) {
+                            desktop.open(parentDir)
+                        } else {
+                            onError(Exception("Parent directory not found"))
+                        }
+                    } else {
+                        onError(Exception("Desktop browse/open action not supported"))
+                    }
+                } else {
+                    onError(Exception("Desktop not supported"))
+                }
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "Failed to open file browser: ${e.message}" }
+                onError(e)
+            }
         }
 
         override fun shareFile(file: Path, onError: (Throwable) -> Unit) {
