@@ -38,6 +38,8 @@ class OutboxSync(
     private val totalSent = atomic(0)
     private val counterMutex = Mutex()
 
+    private val checkoutMutex = Mutex()
+
     // The send() function spawns a thread when it acquires the lock.
     // Then send() returns true if it begins processing in a thread, and false if
     // another thread is already processing.
@@ -84,7 +86,10 @@ class OutboxSync(
         while (true) {
             Logger.i("Popping Outbox")
 
-            val outboxRecord = databaseManager.outbox.checkout()
+//            val outboxRecord = databaseManager.outbox.checkout()
+            val outboxRecord = checkoutMutex.withLock {
+                databaseManager.outbox.checkout()
+            }
 
             if (outboxRecord == null) {
                 Logger.i("No more items in outbox")
@@ -224,14 +229,19 @@ class OutboxSync(
 
     }
 
-    suspend fun clearCheckout() {
-        //TODO: check if the outbox is in process of sending
+    suspend fun clearCheckout(timeoutMs: Long = 10_000) {
+        val start = UnixTimeUtc.now().milliseconds
 
-        semaphore.acquire()
-        {
+        while (activeThreads.value > 0) {
+            if (UnixTimeUtc.now().milliseconds - start > timeoutMs) {
+                Logger.w("clearCheckout timed out waiting for outbox to become idle")
+                return
+            }
+            delay(50)
+        }
+
+        checkoutMutex.withLock {
             databaseManager.outbox.clearCheckedOut()
         }
-        semaphore.release()
-
     }
 }
