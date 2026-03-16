@@ -5,6 +5,9 @@ import io.ktor.utils.io.streams.asInput
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import java.io.FileOutputStream
 
 class JvmFileOperationsProvider : FileOperationsProvider {
     override fun openFileInput(path: String): InputProvider {
@@ -72,5 +75,12 @@ class JvmFileOperationsProvider : FileOperationsProvider {
             file.absolutePath
         }
 
-
+    override suspend fun writeStream(
+        path: String,
+        data: Flow<ByteArray>
+    ) = withContext(Dispatchers.IO) {
+            File(path).outputStream().buffered().use { out ->
+            data.collect { out.write(it) }
+        }
+    }
 }

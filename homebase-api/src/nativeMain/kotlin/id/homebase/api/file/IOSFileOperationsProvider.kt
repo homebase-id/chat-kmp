@@ -8,8 +8,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.io.Buffer
 import platform.Foundation.NSCachesDirectory
-import platform.Foundation.NSData
-import platform.Foundation.NSFileManager
 import platform.Foundation.NSNumber
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUUID
@@ -23,6 +21,14 @@ import platform.Photos.PHImageRequestOptionsDeliveryModeHighQualityFormat
 import platform.posix.memcpy
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.flow.Flow
+import platform.Foundation.NSFileHandle
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSData
+import platform.Foundation.closeFile
+import platform.Foundation.fileHandleForWritingAtPath
+import platform.Foundation.seekToEndOfFile
+import platform.Foundation.writeData
 
 class IOSFileOperationsProvider : FileOperationsProvider {
     @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
@@ -112,6 +118,39 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         return filePath
     }
 
+    @OptIn(ExperimentalForeignApi::class)
+    override suspend fun writeStream(
+        path: String,
+        data: Flow<ByteArray>
+    ) {
+
+        val fileManager = NSFileManager.defaultManager
+
+        if (!fileManager.fileExistsAtPath(path)) {
+            fileManager.createFileAtPath(path, contents = null, attributes = null)
+        }
+
+        val handle = NSFileHandle.fileHandleForWritingAtPath(path)
+            ?: error("Unable to open file for writing: $path")
+
+        handle.seekToEndOfFile()
+
+        data.collect { chunk ->
+
+            val nsData =
+                chunk.usePinned { pinned ->
+                    NSData.create(
+                        bytes = pinned.addressOf(0),
+                        length = chunk.size.toULong()
+                    )
+                }
+
+            handle.writeData(nsData)
+        }
+
+        handle.closeFile()
+    }
+
     @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
     private suspend fun readPhotoLibraryAsset(phUri: String): ByteArray = suspendCancellableCoroutine { continuation ->
             val assetId = phUri.removePrefix("ph://")
@@ -142,4 +181,6 @@ class IOSFileOperationsProvider : FileOperationsProvider {
                 }
             )
         }
+
+
 }
