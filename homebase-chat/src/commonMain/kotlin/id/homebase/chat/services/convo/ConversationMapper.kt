@@ -41,6 +41,7 @@ class ConversationMapper(
                     appData.content ?: error("Conversation appData missing")
                 )
 
+
             val domain = credentialsManager.getActiveDomain() ?: error("No active domain")
 
             val localAppData =

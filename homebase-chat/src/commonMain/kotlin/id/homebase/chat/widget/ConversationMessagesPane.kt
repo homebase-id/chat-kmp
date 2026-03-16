@@ -27,6 +27,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.SendFile
 import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.core.HomebaseConstants
@@ -127,6 +128,30 @@ fun ConversationMessagesPane(
                         firstVisibleItemScrollOffset = offset
                     )
                 )
+            }
+    }
+
+    LaunchedEffect(conversation.id) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo }
+            .debounce(200)
+            .collect { visibleItems ->
+
+                val visibleMessageIds = visibleItems
+                    .mapNotNull { item ->
+                        val index = item.index - 1   // adjust if you have header
+                        uiState.messages.getOrNull(index)
+                    }
+                    .mapNotNull { model ->
+                        if (model is MessageListContentModel.Message)
+                            model.message.id
+                        else null
+                    }
+
+                if (visibleMessageIds.isNotEmpty()) {
+                    onUiAction(
+                        ConversationListUiAction.MarkAsRead(visibleMessageIds)
+                    )
+                }
             }
     }
 

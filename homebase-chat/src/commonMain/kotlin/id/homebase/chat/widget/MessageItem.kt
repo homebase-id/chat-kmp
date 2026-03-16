@@ -62,7 +62,7 @@ fun MessageItem(
         remember(message.id) { { onUiAction(ConversationListUiAction.ShowMoreClicked(message.conversationId, message.id)) } }
 
 
-    if (message.isCurrentUser(odinId)) {
+    if (message.isAuthoredBy(odinId)) {
         val onEdit = remember(message.id) {
             {
                 onUiAction(
@@ -92,7 +92,7 @@ fun MessageItem(
         )
     } else {
         val onMarkAsRead =
-            remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(message.id)) } }
+            remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(listOf(message.id))) } }
 
         ReceivedMessageBubble(
             message = message,

@@ -30,9 +30,9 @@ data class FileMetadata(
     val payloads: List<PayloadDescriptor>? = null,
     val dataSource: DataSource? = null
 ) {
-        fun getPayloadDescriptor(key: String): PayloadDescriptor? {
-                return payloads?.firstOrNull { it.keyEquals(key) }
-        }
+    fun getPayloadDescriptor(key: String): PayloadDescriptor? {
+        return payloads?.firstOrNull { it.keyEquals(key) }
+    }
 }
 
 @Serializable
@@ -50,10 +50,11 @@ data class AppFileMetaData(
 
 @Serializable
 data class LocalAppMetadata(
-        val tags: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
-        val versionTag: Uuid? = null,
-        val iv: String? = null,
-        val content: String? = null
+    val tags: List<@Serializable(with = UuidSerializer::class) Uuid>? = null,
+    val versionTag: Uuid? = null,
+    val iv: String? = null,
+    val content: String? = null,
+    val readTime: UnixTimeUtc? = null
 )
 
 /** Reaction entry for both comments and summary reactions */
@@ -63,13 +64,13 @@ data class ReactionEntry(val key: String, val count: Int, val reactionContent: S
 /** Comment preview within a reaction summary */
 @Serializable
 data class CommentPreview(
-        val created: Long,
-        val updated: Long,
-        val fileId: String,
-        val isEncrypted: Boolean,
-        val odinId: String,
-        val content: String,
-        val reactions: List<ReactionEntry> = emptyList()
+    val created: Long,
+    val updated: Long,
+    val fileId: String,
+    val isEncrypted: Boolean,
+    val odinId: String,
+    val content: String,
+    val reactions: List<ReactionEntry> = emptyList()
 )
 
 /**
@@ -85,7 +86,7 @@ data class ReactionSummary(
 
 @Serializable
 data class DataSource(
-        val identity: String,
-        @Serializable(with = UuidSerializer::class) val driveId: Uuid,
-        val payloadsAreRemote: Boolean = false
+    val identity: String,
+    @Serializable(with = UuidSerializer::class) val driveId: Uuid,
+    val payloadsAreRemote: Boolean = false
 )
