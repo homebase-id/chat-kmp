@@ -1,6 +1,7 @@
 package id.homebase.api.file
 
 import io.ktor.client.request.forms.InputProvider
+import kotlinx.coroutines.flow.Flow
 
 interface FileOperationsProvider {
     fun openFileInput(path: String): InputProvider
@@ -17,4 +18,8 @@ interface FileOperationsProvider {
         suffix: String
     ): String
 
+    suspend fun writeStream(
+        path: String,
+        data: Flow<ByteArray>
+    )
 }

@@ -7,6 +7,9 @@ import io.ktor.utils.io.streams.asInput
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import java.io.FileOutputStream
 
 class AndroidFileOperationsProvider(
     val context: Context,
@@ -79,5 +82,31 @@ class AndroidFileOperationsProvider(
         val file = File.createTempFile(prefix, suffix, context.cacheDir)
         file.writeBytes(bytes)
         file.path
+    }
+
+    override suspend fun writeStream(
+        path: String,
+        data: Flow<ByteArray>
+    ) = withContext(Dispatchers.IO) {
+
+        if (path.startsWith("content://") || path.startsWith("content:")) {
+
+            val uri = path.toUri()
+
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                data.collect { chunk ->
+                    out.write(chunk)
+                }
+            } ?: throw IllegalArgumentException("Unable to open content URI for write: $path")
+
+        } else {
+
+            FileOutputStream(File(path)).use { out ->
+                data.collect { chunk ->
+                    out.write(chunk)
+                }
+            }
+
+        }
     }
 }
