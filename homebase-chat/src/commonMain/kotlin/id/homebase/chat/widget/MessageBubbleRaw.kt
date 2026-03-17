@@ -42,6 +42,7 @@ import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
@@ -190,7 +191,12 @@ fun MessageBubbleRaw(
         RichTextState()
             .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
             .also {
-                it.setMarkdown(if (isDeleted) deletedText else text)
+                try {
+                    it.setMarkdown(if (isDeleted) deletedText else text)
+                } catch (e: Exception) {
+                    Logger.e(tag = "MessageBubbleRaw") { "Error setting markdown: $e" }
+                    it.setText(if (isDeleted) deletedText else text)
+                }
             }
     }
 

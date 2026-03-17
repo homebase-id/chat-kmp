@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.PlatformType
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.getPlatform
 import id.homebase.api.youauth.UsernameStorage
@@ -32,7 +34,8 @@ class LoginViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val usernameStorage: UsernameStorage,
-    private val httpClient: HttpClient
+    private val httpClient: HttpClient,
+    private val eventBus: EventBus,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
@@ -40,6 +43,7 @@ class LoginViewModel(
 
     init {
         loadUsernameFromStorage()
+        observeEvents()
         observeAuthState()
     }
 
@@ -152,10 +156,46 @@ class LoginViewModel(
         }
     }
 
+    private fun observeEvents() {
+        viewModelScope.launch {
+            eventBus.events.collectLatest { event ->
+                when (event) {
+                    is BackendEvent.DriveEvent.Started -> {
+                        _uiState.update { it.copy(progress = LoginProgress(driveId = event.driveId.toString())) }
+                    }
+                    is BackendEvent.DriveEvent.Completed -> {
+                        _uiState.update { it.copy(progress = LoginProgress(driveId = event.driveId.toString(), completed = true)) }
+                    }
+                    is BackendEvent.DriveEvent.Failed -> {
+                        _uiState.update { it.copy(progress = LoginProgress(driveId = event.driveId.toString(), error = event.errorMessage)) }
+                    }
+                    is BackendEvent.DriveEvent.BatchReceived -> {
+                        val progress = if (event.totalCount > 0) {
+                            event.batchCount.toFloat() / event.totalCount
+                        } else {
+                            0f
+                        }
+                        _uiState.update {
+                            it.copy(
+                                progress = LoginProgress(
+                                    driveId = event.driveId.toString(),
+                                    progress = progress,
+                                    count = event.batchCount,
+                                    total = event.totalCount,
+                                )
+                            )
+                        }
+                    }
+                    else -> {}
+                }
+
+            }
+        }
+    }
+
     private fun observeAuthState() {
 
         viewModelScope.launch {
-
             combine(
                 authConnectionCoordinator.connectionState,
                 youAuthFlowManager.authState
