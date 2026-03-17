@@ -5,10 +5,10 @@ import kotlinx.serialization.Serializable
 /** Push notification payload matching the backend DevicePushNotificationRequest format. */
 @Serializable
 data class PushNotification(
-    val id: String,
+    val id: String? = null,
     val senderId: String,
-    val unread: Boolean,
-    val created: Long,
+    val unread: Boolean = false,
+    val created: Long = 0,
     val options: PushNotificationPayloadOptions,
     val appDisplayName: String? = null
 )
