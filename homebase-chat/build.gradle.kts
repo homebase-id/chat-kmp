@@ -78,5 +78,12 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
         }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.jetbrains.compose.ui.test)
+        }
+        jvmTest.dependencies {
+            implementation(compose.desktop.currentOs)
+        }
     }
 }

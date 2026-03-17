@@ -34,6 +34,7 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
@@ -301,6 +302,7 @@ fun ConversationListUi(
     LaunchedEffect(partitions) {
         if (partitions > 1) {
             // This ensures the Detail role is added to the active visible roles
+            Logger.i(tag = "ConversationListUi") { "Showing details more than 1 partition for ${uiState.selectedConversationId}" }
             scaffoldNavigator.navigateTo(
                 ListDetailPaneScaffoldRole.Detail,
                 uiState.selectedConversationId,
@@ -326,14 +328,8 @@ fun ConversationListUi(
         // Only restore if we have a selected conversation AND we're in compact mode
         if (selectedId != null && scaffoldDirective.maxHorizontalPartitions == 1) {
             // Re-navigate to ensure the detail is properly loaded
+            Logger.i(tag = "ConversationListUi") { "Restore detail pane for $selectedId" }
             scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, selectedId)
-        }
-    }
-
-    // When selected conversation changes, navigate to detail
-    LaunchedEffect(uiState.selectedConversationId) {
-        uiState.selectedConversationId?.let {
-            scope.launch { scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, it) }
         }
     }
 
@@ -360,6 +356,10 @@ fun ConversationListUi(
                         searchTextState = conversationSearchTextFieldState,
                         onProfileClick = onNavigateToSettingsScreen,
                         onUiAction = onUiAction,
+                        onConversationSelected = {
+                            Logger.i(tag = "ConversationListUi") { "Navigating to detail for $it" }
+                            scope.launch { scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, it) }
+                        }
                     )
                 }
             },
@@ -377,6 +377,7 @@ fun ConversationListUi(
 
                                     showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
                                     onBackClick = {
+                                        onUiAction(ConversationListUiAction.ClearSelection)
                                         scope.launch {
                                             scaffoldNavigator.navigateBack(
                                                 backNavigationBehavior

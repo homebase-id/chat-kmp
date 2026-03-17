@@ -18,6 +18,7 @@ jobs:
             test-command: |
               set -o pipefail
               ./gradlew testDebugUnitTest --rerun-tasks --info | tee test-output.log
+              ./gradlew homebase-common:jvmTest homebase-chat:jvmTest --rerun-tasks
               ./gradlew desktopTest --rerun-tasks
           - os: macos-latest
             name: iOS

@@ -168,6 +168,8 @@
     <!-- Conversation message -->
     <string name="chat_message_info">Message info</string>
     <string name="chat_message_reply">Reply</string>
+    <string name="chat_message_forward">Forward</string>
+    <string name="chat_message_copy">Copy</string>
     <string name="chat_message_reaction">Reaction</string>
     <string name="chat_message_edit">Edit</string>
     <string name="chat_message_edit_message">Edit message</string>

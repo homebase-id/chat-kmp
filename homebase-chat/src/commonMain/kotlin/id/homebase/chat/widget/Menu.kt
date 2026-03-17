@@ -12,12 +12,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PeopleAlt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -43,6 +43,7 @@ import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_group_introduce_everyone
 import id.homebase.resources.chat_group_settings
 import id.homebase.resources.chat_mark_all_as_read
+import id.homebase.resources.chat_message_copy
 import id.homebase.resources.chat_message_edit
 import id.homebase.resources.chat_message_info
 import id.homebase.resources.chat_message_reply
@@ -134,6 +135,7 @@ fun ReceivedMessagePopup(
     onMessageInfo: () -> Unit,
     onMarkAsRead: () -> Unit,
     onReply: () -> Unit,
+    onCopy: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -174,6 +176,12 @@ fun ReceivedMessagePopup(
                         )
                         ListItemActionNormalIcon(
                             modifier = Modifier.fillMaxWidth(),
+                            onClick = onCopy,
+                            text = stringResource(MR.string.chat_message_copy),
+                            imageVector = Icons.Default.ContentCopy,
+                        )
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
                             onClick = onDelete,
                             text = stringResource(MR.string.delete),
                             imageVector = Icons.Filled.Delete,
@@ -193,6 +201,7 @@ fun SentMessagePopup(
     onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
+    onCopy: () -> Unit,
     onShare: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -231,6 +240,12 @@ fun SentMessagePopup(
                             onClick = onReply,
                             text = stringResource(MR.string.chat_message_reply),
                             imageVector = Icons.AutoMirrored.Filled.Reply,
+                        )
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onCopy,
+                            text = stringResource(MR.string.chat_message_copy),
+                            imageVector = Icons.Default.ContentCopy,
                         )
                         ListItemActionNormalIcon(
                             modifier = Modifier.fillMaxWidth(),
