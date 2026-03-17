@@ -43,7 +43,7 @@ val apiModule = module {
     singleOf(::OwnerSessionRepository)
     singleOf(::DriveSyncManager)
     singleOf(::DriveFileProviderCached)
-    single<OutboxUploader> { DriveOutboxUploader(get()) }
+    single<OutboxUploader> { DriveOutboxUploader(get(), get()) }
     singleOf(::OutboxSync)
 
     singleOf(::YouAuthFlowManager)

@@ -104,6 +104,7 @@
     <string name="system_conversation_admin_name_removed">%1$s removed %2$s as admin</string>
     <string name="system_conversation_admin_removed">%1$s removed an admin</string>
     <string name="system_group_conversation_started">%1$s started the conversation</string>
+    <string name="system_group_conversation_member_left">%1$s left the conversation</string>
 
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filter by unread</string>
