@@ -80,6 +80,8 @@
     <string name="login_create_account_button">Opret konto</string>
     <string name="login_authenticating">Authentikerer…</string>
     <string name="login_successful">Login lykkedes</string>
+    <string name="login_progress_sync">Synkroniserer drev %1$s</string>
+    <string name="login_progress_sync_count">Poster %1$s / %2$s synkroniseret</string>
 
     <!-- Settings screen -->
     <string name="settings_appearance">Udseende</string>
@@ -154,8 +156,6 @@
     <string name="chat_clear">Ryd</string>
     <string name="chat_options">Samtale menu</string>
     <string name="chat_no_messages">Ingen beskeder endnu</string>
-    <string name="chat_message_edited">Redigeret</string>
-    <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
     <string name="chat_group_introduce_everyone">Introducer alle</string>
     <string name="chat_group_introduce_everyone_status">Indtroduktioner er blevet afsendt</string>
 
@@ -173,6 +173,22 @@
     <string name="chat_message_options">Besked menu</string>
     <string name="chat_message_attachment_options">Vedhæftelses menu</string>
     <string name="chat_message_emoji_options">Emoji menu</string>
+    <string name="chat_message_edited">Redigeret</string>
+    <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
+
+    <string name="chat_message_image">Billede</string>
+    <string name="chat_message_link">Link</string>
+    <string name="chat_message_video">Video</string>
+    <string name="chat_message_audio">Lyd</string>
+    <string name="chat_message_file">Fil</string>
+    <string name="chat_message_multiple_media">Medier</string>
+
+    <string name="chat_message_attachment_gallery">Galleri</string>
+    <string name="chat_message_attachment_file">Fil</string>
+    <string name="chat_message_attachment_contact">Kontakt</string>
+    <string name="chat_message_attachment_location">Placering</string>
+    <string name="chat_message_needs_gallery_permission">Homebase Chat har brug for tilladelse til at vise dine billeder og videoer</string>
+    <string name="chat_message_needs_gallery_permission_button_text">Tillad adgang</string>
     <string name="chat_message_delete_dialog_title">Slet den valgte besked?</string>
     <string name="chat_message_add_gallery_image">Fjern billede</string>
     <string name="chat_message_remove_gallery_image">Tilføj billede</string>

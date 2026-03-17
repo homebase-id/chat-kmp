@@ -16,8 +16,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +39,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Devices
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -48,10 +52,13 @@ import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
 import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
+import id.homebase.resources.loading
 import id.homebase.resources.login_authenticating
 import id.homebase.resources.login_create_account_button
 import id.homebase.resources.login_id_label
 import id.homebase.resources.login_id_placeholder
+import id.homebase.resources.login_progress_sync
+import id.homebase.resources.login_progress_sync_count
 import id.homebase.resources.login_sign_in_button
 import id.homebase.resources.login_sub_title
 import id.homebase.resources.login_successful
@@ -110,6 +117,17 @@ fun LoginScreen(
         }
     }
 
+    LoginUi(
+        uiState = uiState,
+        onAction = viewModel::onAction
+    )
+}
+
+@Composable
+fun LoginUi(
+    uiState: LoginUiState,
+    onAction: (LoginUiAction )-> Unit,
+) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surfaceContainerLowest
@@ -131,35 +149,20 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                text = stringResource(MR.string.login_title),
-                style = MaterialTheme.typography.headlineLarge,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = stringResource(MR.string.login_sub_title),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(48.dp))
-
             when {
-                uiState.isLoading -> LoginLoading()
+                uiState.isLoading -> LoginLoading(
+                    loginProgress = uiState.progress
+                )
                 uiState.isAuthenticated -> LoginSuccess()
                 uiState.errorMessage != null ->
                     LoginForm(
-                        errorMessage = uiState.errorMessage ?: "",
+                        errorMessage = uiState.errorMessage,
                         homebaseId = uiState.homebaseId,
                         onLoginClick = {
-                            viewModel.onAction(LoginUiAction.LoginClicked(it))
+                            onAction(LoginUiAction.LoginClicked(it))
                         },
                         onCreateAccountClick = {
-                            viewModel.onAction(LoginUiAction.CreateAccount)
+                            onAction(LoginUiAction.CreateAccount)
                         },
                     )
 
@@ -167,10 +170,10 @@ fun LoginScreen(
                     LoginForm(
                         homebaseId = uiState.homebaseId,
                         onLoginClick = {
-                            viewModel.onAction(LoginUiAction.LoginClicked(it))
+                            onAction(LoginUiAction.LoginClicked(it))
                         },
                         onCreateAccountClick = {
-                            viewModel.onAction(LoginUiAction.CreateAccount)
+                            onAction(LoginUiAction.CreateAccount)
                         },
                     )
             }
@@ -181,15 +184,59 @@ fun LoginScreen(
 /* ---------- STATES ---------- */
 
 @Composable
-private fun LoginLoading() {
+private fun LoginLoading(loginProgress: LoginProgress?) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        CircularProgressIndicator()
-        Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = stringResource(MR.string.login_authenticating),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            text = stringResource(MR.string.loading),
+            style = MaterialTheme.typography.headlineLarge,
+            textAlign = TextAlign.Center
         )
+        Spacer(modifier = Modifier.height(16.dp))
+        if (loginProgress != null) {
+            LinearProgressIndicator(
+                progress = { loginProgress.progress ?: 0f },
+                modifier = Modifier.fillMaxWidth(),
+                color = ProgressIndicatorDefaults.linearColor,
+                trackColor = ProgressIndicatorDefaults.linearTrackColor,
+                strokeCap = ProgressIndicatorDefaults.LinearStrokeCap,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                modifier = Modifier.padding(horizontal = 48.dp),
+                text = stringResource(MR.string.login_progress_sync, loginProgress.driveId),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                modifier = Modifier.padding(horizontal = 48.dp),
+                text = if (loginProgress.progress != null) stringResource(
+                    MR.string.login_progress_sync_count,
+                    loginProgress.count,
+                    loginProgress.total
+                ) else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                modifier = Modifier.padding(horizontal = 48.dp),
+                text = loginProgress.error ?: "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+            )
+        } else {
+            CircularProgressIndicator()
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = stringResource(MR.string.login_authenticating),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -217,6 +264,19 @@ private fun LoginForm(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = stringResource(MR.string.login_title),
+            style = MaterialTheme.typography.headlineLarge,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = stringResource(MR.string.login_sub_title),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(48.dp))
         errorMessage?.let {
             Text(
                 text = it,
@@ -272,4 +332,44 @@ private fun HomebaseIdField(
             ),
         keyboardActions = KeyboardActions(onDone = { onDone() })
     )
+}
+
+@Preview(device = Devices.PIXEL_8)
+@Composable
+fun LoginUiFormPreview() {
+    MaterialTheme {
+        LoginUi(
+            uiState = LoginUiState(
+                homebaseId = "example.homebase.id",
+                isLoading = false,
+                isAuthenticated = false,
+                errorMessage = null
+            ),
+            onAction = {}
+        )
+    }
+}
+
+@Preview(device = Devices.PIXEL_8)
+@Composable
+fun LoginUiLoadingPreview() {
+    MaterialTheme {
+        LoginUi(
+          uiState = LoginUiState(
+              homebaseId = "example.homebase.id",
+              isLoading = true,
+              isAuthenticated = false,
+              errorMessage = null,
+              progress = LoginProgress(
+                  driveId = "uuid here",
+                  error = null,
+                  completed = false,
+                  progress = 0.5f,
+                  count = 4,
+                  total = 8,
+              )
+          ),
+          onAction = {}
+        )
+    }
 }

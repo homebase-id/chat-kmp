@@ -82,6 +82,8 @@
     <string name="login_create_account_button">Create account</string>
     <string name="login_authenticating">Authenticating…</string>
     <string name="login_successful">Login successful</string>
+    <string name="login_progress_sync">Syncing drive %1$s</string>
+    <string name="login_progress_sync_count">Records %1$s / %2$s synced</string>
 
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
