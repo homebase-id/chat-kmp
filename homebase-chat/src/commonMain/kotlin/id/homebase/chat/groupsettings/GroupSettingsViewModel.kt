@@ -83,7 +83,9 @@ class GroupSettingsViewModel(
                     try {
                         uiState.value.conversation?.let { conversation ->
                             uiState.value.currentOdinId?.let { currentUser ->
-                                  // TODO - call leave endpoint
+                                conversationService.leaveGroup(
+                                    conversationId = conversation.id
+                                )
                                 _uiState.update { it.copy(uiEvent = Back) }
                             }
                         }

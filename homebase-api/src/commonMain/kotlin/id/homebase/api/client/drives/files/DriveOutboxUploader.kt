@@ -10,8 +10,9 @@ import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
 
 class DriveOutboxUploader(
-    private val driveUploadProvider: DriveUploadProvider
-) : OutboxUploader {
+    private val driveUploadProvider: DriveUploadProvider,
+    private val fileProvider: DriveFileProvider
+    ) : OutboxUploader {
 
     override suspend fun upload(
         outboxRecord: Outbox,
@@ -66,11 +67,17 @@ class DriveOutboxUploader(
                     )
                     println("Upload: $percent%")
                 })
+        } else if(outboxRecord.uploadType == DeleteFile)
+        {
+            val jsonString = outboxRecord.json.decodeToString()
+            val request = OdinSystemSerializer.deserialize<DeleteLocalFilesByFileIdRequest>(jsonString)
+            fileProvider.deleteFiles(request.driveId, request.fileIds)
         }
     }
 
     companion object {
         const val UploadNewFile = 1L
         const val UpdateFile = 2L
+        const val DeleteFile = 3L
     }
 }

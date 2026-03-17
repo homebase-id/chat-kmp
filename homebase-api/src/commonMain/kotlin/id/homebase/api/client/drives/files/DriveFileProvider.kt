@@ -48,6 +48,12 @@ data class BytesResponse(val bytes: ByteArray, val contentType: String) {
     }
 }
 
+@Serializable
+data class DeleteLocalFilesByFileIdRequest(
+    val driveId: Uuid,
+    val fileIds: List<Uuid>,
+)
+
 @OptIn(ExperimentalEncodingApi::class)
 public class DriveFileProvider(
     httpClient: HttpClient,
@@ -492,8 +498,7 @@ data class DeleteFileResult(
 )
 
 @Serializable
-data class DeleteFileIdBatchResult
-    (
+data class DeleteFileIdBatchResult (
     val results: List<DeleteFileResult>
 )
 

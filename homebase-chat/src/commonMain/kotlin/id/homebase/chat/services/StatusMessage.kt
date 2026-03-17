@@ -10,5 +10,7 @@ enum class StatusMessage() {
     ConversationMemberRemoved,
     ConversationAdminAdded,
     ConversationAdminRemoved,
-    GroupConversationStarted
+    GroupConversationStarted,
+
+    ConversationMemberLeft
 }

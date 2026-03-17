@@ -8,6 +8,7 @@ import id.homebase.api.client.connections.IntroductionGroup
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -56,7 +57,7 @@ class ConversationService(
     )
 
     suspend fun createConversation(
-       recipients: List<OdinId>,
+        recipients: List<OdinId>,
         title: String?,
         payloadBundle: PayloadBundle?
     ): Uuid {
@@ -161,6 +162,11 @@ class ConversationService(
 
     suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
         return getConversation(conversationId)
+            ?: throw IllegalStateException("No conversation found")
+    }
+
+    suspend fun requireConversationFileId(conversationId: Uuid): Uuid {
+        return getConversationHomebaseFile(conversationId)?.fileId
             ?: throw IllegalStateException("No conversation found")
     }
 
@@ -354,6 +360,43 @@ class ConversationService(
             previousMessageId = messageId
         }
 
+    }
+
+    suspend fun leaveGroup(conversationId: Uuid) {
+        val conversation = requireConversation(conversationId)
+        val domain = credentialsManager.requireActiveDomain()
+
+        val current = conversation.participants
+            .filterNot { it == domain }
+            .toMutableSet()
+
+        val normalized = current.distinct()
+
+        updateConversationInternal(
+            conversationId = conversationId,
+            title = conversation.name,
+            recipients = normalized
+        )
+
+        val messageId = Uuid.random()
+        chatMessageSenderService.sendStatusMessage(
+            messageUniqueId = messageId,
+            conversationId = conversationId,
+            statusMessage = StatusMessageData(
+                statusMessage = StatusMessage.ConversationMemberLeft,
+                subject = domain
+            )
+        )
+
+        // now delete the conversation file locally
+        val fileId = requireConversationFileId(conversationId)
+        outboxSync.tryEnqueue(
+            DeleteLocalFilesByFileIdRequest(
+                driveId = chatDrive,
+                fileIds = listOf(fileId)
+            ),
+            dependencyUniqueId = messageId
+        )
     }
 
     suspend fun updateConversationInternal(
