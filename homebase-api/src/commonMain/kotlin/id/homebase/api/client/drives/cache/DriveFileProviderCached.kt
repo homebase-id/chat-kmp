@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.cache
 
+import co.touchlab.kermit.Logger
 import com.mayakapps.kache.FileKache
 import id.homebase.api.client.ByteApiResponse
 import id.homebase.api.client.KeyHeader
@@ -34,6 +35,9 @@ class DriveFileProviderCached(
 
     private val payloadSemaphore = Semaphore(1)
     private val thumbnailSemaphore = Semaphore(30)
+
+    private val thumbnailKacheWriteMutex = Mutex()
+
     private val keyLocks = mutableMapOf<String, Mutex>()
     private val lock = Mutex()
 
@@ -226,9 +230,12 @@ class DriveFileProviderCached(
                         notFoundCache.add(cacheKey)
                         ByteApiResponse.EMPTY_404
                     } else {
-                        // 3️⃣ Store to disk
-                        thumbDiskKache.put(cacheKey) { filePath ->
-                            writeBytesResponse(filePath, result)
+                        // 3️⃣ Store to disk; only allow one writer per GPT indicating
+                        // many writers can corrupt the journal file
+                        thumbnailKacheWriteMutex.withLock {
+                            thumbDiskKache.put(cacheKey) { filePath ->
+                                writeBytesResponse(filePath, result)
+                            }
                         }
                         result
                     }
@@ -337,8 +344,19 @@ class DriveFileProviderCached(
                     .joinToString(":")
 
     suspend fun clearCaches() {
-        payloadDiskKache.clear()
-        thumbDiskKache.clear()
+        val payloadDir = "$directory/homebase-payloads".toPath()
+        val thumbDir = "$directory/homebase-thumbs".toPath()
+
+        try {
+            payloadDiskKache.clear()
+            thumbDiskKache.clear()
+        } catch (e: Exception) {
+            Logger.w("Kache.clear() failed, falling back to manual delete", e)
+
+            fileSystem.delete(payloadDir, mustExist = false)
+            fileSystem.delete(thumbDir, mustExist = false)
+        }
+
         notFoundCache.clear()
     }
 }
