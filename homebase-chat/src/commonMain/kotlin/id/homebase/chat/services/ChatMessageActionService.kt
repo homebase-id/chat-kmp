@@ -1,5 +1,6 @@
 package id.homebase.chat.services
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
@@ -35,10 +36,61 @@ class ChatMessageActionService(
 ) {
     private val chatDrive = chatTargetDrive.alias
 
-    suspend fun markAsRead(messageIds: List<Uuid>) {
+    suspend fun markAsReadLatestFileCreated(messageIds: List<Uuid>) {
+
+        Logger.d { "Attempting mark-as-read for messageIds: ${messageIds.size}" }
 
         val batch = chatMessageStream.getMessages(messageIds)
         val domain = credentialsManager.requireActiveDomain()
+
+        Logger.d { "Attempting mark-as-read for batch count: ${batch.records.size}" }
+
+        val unreadRecords = batch.records
+            .filter {
+                it.localReadTimestamp == null &&
+                        !it.isDeleted &&
+                        !it.isPendingSend
+                         && !it.isAuthoredBy(domain)
+            }
+
+        if (unreadRecords.isEmpty()) return
+
+        val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
+
+        Logger.d { "Calling mark-as-read for unread-records count: ${unreadRecords.size}" }
+
+        unreadRecords
+            .groupBy { it.conversationId }
+            .forEach { (conversationId, records) ->
+
+                val endTime =
+                    records.maxOf { it.created }
+
+                operationsProvider.sendReadReceiptBatch(
+                    driveId = chatDrive,
+                    fileType = ChatProtocol.MessageFileType,
+                    dataType = 0,
+                    groupId = conversationId,
+                    endTime = UnixTimeUtc(endTime.toEpochMilliseconds()).addMilliseconds(1) //add a millisecond to include the most recent file
+                )
+
+                Logger.d { "Upserting chatReadCount->lastReadTime: ${conversationId}" }
+
+                dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
+            }
+
+        conversationStream.updateUnreadCounts()
+    }
+
+    suspend fun markAsReadByFiles(messageIds: List<Uuid>) {
+
+        Logger.d { "Attempting mark-as-read for messageIds: ${messageIds.size}" }
+
+        val batch = chatMessageStream.getMessages(messageIds)
+        val domain = credentialsManager.requireActiveDomain()
+
+        Logger.d { "Attempting mark-as-read for batch count: ${batch.records.size}" }
+
         val unreadRecords = batch.records
             .filter {
                 it.localReadTimestamp == null &&
@@ -49,6 +101,8 @@ class ChatMessageActionService(
 
         val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
 
+        Logger.d { "Calling mark-as-read for unread-records count: ${unreadRecords.size}" }
+
         unreadRecords
             .map { it.fileId }
             .chunked(50)
@@ -58,6 +112,7 @@ class ChatMessageActionService(
                     driveId = chatDrive,
                     fileIds = chunk
                 )
+
 
                 val successfulFileIds = result.results
                     .filter { file ->
@@ -70,6 +125,9 @@ class ChatMessageActionService(
                     .filter { it.fileId in successfulFileIds }
                     .distinctBy { it.conversationId }
                     .forEach {
+
+                        Logger.d { "Upserting chatReadCount->lastReadTime: count: ${it.conversationId}" }
+
                         dbm.chatReadCount.upsertLastReadTime(it.conversationId, newReadTime)
                     }
 
