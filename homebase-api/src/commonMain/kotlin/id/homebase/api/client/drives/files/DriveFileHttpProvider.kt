@@ -8,6 +8,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
@@ -18,6 +19,25 @@ import io.ktor.http.HttpHeaders
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
+
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.client.statement.bodyAsChannel
+import okio.Path.Companion.toPath
+import okio.FileSystem
+import io.ktor.client.request.get
+import io.ktor.client.request.bearerAuth
+import io.ktor.utils.io.readAvailable
+
+private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024): Flow<ByteArray> = flow {
+    val buffer = ByteArray(chunkSize)
+
+    while (!isClosedForRead) {
+        val read = readAvailable(buffer)
+        if (read > 0) emit(buffer.copyOf(read))
+    }
+}
 
 @OptIn(ExperimentalEncodingApi::class)
 public class DriveFileHttpProvider(
@@ -30,6 +50,59 @@ public class DriveFileHttpProvider(
     }
 
     // ==================== GET METHODS ====================
+    suspend fun streamPayloadDecryptedToPath(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        outputPath: String,
+        fileOps: FileOperationsProvider
+    ): Boolean {
+
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
+        require(key.isNotBlank()) { "Key must be defined" }
+
+        val creds = requireCreds()
+
+        val url =
+            apiUrl(
+                creds.domain,
+                "/drives/$driveId/files/$fileId/payload/$key"
+            )
+
+        val response =
+            httpClient.get(url) {
+                bearerAuth(creds.accessToken)
+            }
+
+        if (response.status.value == 404) return false
+
+        if (response.status.value !in listOf(200, 206)) {
+            throwForFailure(
+                ByteApiResponse(
+                    status = response.status.value,
+                    headers = response.headers,
+                    bytes = ByteArray(0),
+                    contentType = "application/octet-stream"
+                )
+            )
+        }
+
+        val encryptedFlow =
+            response.bodyAsChannel().asFlow()
+
+        val decryptedFlow =
+            AesCbc.streamDecryptWithCbc(
+                encryptedFlow,
+                keyHeader.aesKey,
+                keyHeader.iv
+            )
+
+        fileOps.writeStream(outputPath, decryptedFlow)
+
+        return true
+    }
 
     // This ought to be private / protected and only used by driveCache but probably rewire it all
     // TODO: Shouldn't it (always) be streaming?! If it's a 500MB file we dont want it in memory

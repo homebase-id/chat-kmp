@@ -92,7 +92,7 @@ fun MessageInfoUi(
             } else {
                 Spacer(modifier = Modifier.height(16.dp))
                 uiState.message?.let { message ->
-                    if (message.isCurrentUser(uiState.ownerSession?.odinId)) {
+                    if (message.isAuthoredBy(uiState.ownerSession?.odinId)) {
                         SentMessageBubble(
                             message = message,
                             onEdit = {},

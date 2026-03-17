@@ -2,8 +2,10 @@ package id.homebase.api.client.drives.files
 
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
@@ -21,14 +23,36 @@ data class SendReadReceiptResult(
 @Serializable
 data class SendReadReceiptResultFileItem(
     val fileId: Uuid,
-    val status: List<SendReadReceiptResultStatusItem>
+    val status: List<SendReadReceiptResultRecipientStatusItem>
 )
 
 @Serializable
-data class SendReadReceiptResultStatusItem(
-    val recipient: String,
-    val status: String
+data class SendReadReceiptResultRecipientStatusItem(
+    val recipient: OdinId?,
+    val status: SendReadReceiptResultStatus
 )
+
+@Serializable
+enum class SendReadReceiptResultStatus {
+
+    @SerialName("notConnectedToOriginalSender")
+    NotConnectedToOriginalSender,
+
+    @SerialName("fileDoesNotExist")
+    FileDoesNotExist,
+
+    @SerialName("fileDoesNotHaveSender")
+    FileDoesNotHaveSender,
+
+    @SerialName("missingGlobalTransitId")
+    MissingGlobalTransitId,
+
+    @SerialName("enqueued")
+    Enqueued,
+
+    @SerialName("cannotSendReadReceiptToSelf")
+    CannotSendReadReceiptToSelf
+}
 
 @OptIn(ExperimentalEncodingApi::class)
 public class DriveFileOperationsProvider(

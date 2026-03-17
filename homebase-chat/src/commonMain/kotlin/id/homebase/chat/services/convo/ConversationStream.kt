@@ -44,9 +44,19 @@ class ConversationStream(
     init {
         scope.launch {
             eventBus.events.collect { event ->
+
+                if (event is BackendEvent.ConnectionOnline)
+                {
+                    updateUnreadCounts()
+                    return@collect
+                }
+
+
                 if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
 
                 when (event) {
+
+
                     is BackendEvent.DriveEvent.Started -> {
                         isSyncing = true
                     }
@@ -55,7 +65,7 @@ class ConversationStream(
                         isSyncing = false
                         // After the drive has been synchronized we fetch all conversations once
                         // and their unread counts
-                        refresh()
+                        start()
                         // From this point on we need to process all incoming messages /
                         // conversations
                         // so that everything in the client is up to date.
@@ -65,7 +75,7 @@ class ConversationStream(
                         if (event.source == BackendEvent.SyncSource.DriveSync) {
                             isSyncing = false
                             Logger.e { "Failed during drive sync" }
-                            refresh()
+                            start()
                             // Optionally handle failure, e.g., log or partial refresh
                         }
                     }
@@ -143,7 +153,7 @@ class ConversationStream(
                         lastMessageFirstPayload = m.payloads?.firstOrNull(),
                         lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
                         lastMessageIsFromActiveUser =
-                            m.isCurrentUser(credentialsManager.getActiveDomain())
+                            m.isAuthoredBy(credentialsManager.getActiveDomain())
                     )
 
                 insertNewConversation(emptyConversation)
@@ -162,14 +172,21 @@ class ConversationStream(
         m: MessageUiModel
     ) {
         if (m.created > c.timestamp) {
-            if (!m.isEdited) c.unreadCount++
+
+            val domain = credentialsManager.getActiveDomain()
+
+            // new message that was not sent by the current user
+            if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) {
+                c.unreadCount++
+            }
+
             c.timestamp = m.created
             c.lastMessage = m.content.truncateToCodePoints(40) // TODO: Global constant
             c.lastMessageDeliveryStatus = m.messageAppData.deliveryStatus
             c.lastMessageIsDeleted = m.isDeleted
             c.lastMessageFirstPayload = m.payloads?.firstOrNull()
             c.lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1
-            c.lastMessageIsFromActiveUser = m.isCurrentUser(credentialsManager.getActiveDomain())
+            c.lastMessageIsFromActiveUser = m.isAuthoredBy(credentialsManager.getActiveDomain())
         }
 
         // Logger.i("Unread count now ${c.unreadCount} edited ${m.isEdited} on coversation id
@@ -232,22 +249,37 @@ class ConversationStream(
         }
     }
 
-    fun start() {
-        scope.launch { refresh() }
+    private suspend fun loadConversations() {
+        val result = fetchConversations()
+        _conversations.value = result
     }
 
-    private suspend fun refresh() {
+    fun start() {
+        scope.launch {
+            loadConversations()
+            updateUnreadCounts()
+        }
+    }
 
-        val result = fetchConversations()
+    suspend fun updateUnreadCounts() {
         val unread = dbm.chatReadCount.selectAllUnreadCount()
+        val unreadMap = unread.associate { it.conversationId to it.unreadCount.toInt() }
 
-        for (u in unread) {
-            result.find { it.id == u.conversationId }?.let { conversation ->
-                conversation.unreadCount = u.unreadCount.toInt()
+        var changed = false
+
+        val updated = _conversations.value.map { convo ->
+            val newCount = unreadMap[convo.id] ?: 0
+            if (newCount != convo.unreadCount) {
+                changed = true
+                convo.copy(unreadCount = newCount)
+            } else {
+                convo
             }
         }
 
-        _conversations.value = result
+        if (changed) {
+            _conversations.value = updated
+        }
     }
 
     suspend fun fetchConversations(): List<ConversationUiModel> {

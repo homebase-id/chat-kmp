@@ -27,14 +27,32 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.SendFile
 import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.core.HomebaseConstants
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlin.uuid.Uuid
+
+inline fun <T, K, V> Iterable<T>.associateNotNull(
+    transform: (T) -> Pair<K, V>?
+): Map<K, V> {
+    val map = mutableMapOf<K, V>()
+    for (item in this) {
+        val pair = transform(item)
+        if (pair != null) {
+            map[pair.first] = pair.second
+        }
+    }
+    return map
+}
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
@@ -87,6 +105,17 @@ fun ConversationMessagesPane(
         }
     }
 
+    val seen = remember(conversation.id) { mutableSetOf<Uuid>() }
+
+    val messageIdByKey = remember(uiState.messages) {
+        uiState.messages.associateNotNull { item ->
+            if (item is MessageListContentModel.Message) {
+                item.id to item.message.id
+            } else null
+        }
+    }
+
+
     // Restore scroll position after groupedMessages are ready
     LaunchedEffect(conversation.id, uiState.messages) {
         isRestoringScrollPosition = true
@@ -127,6 +156,31 @@ fun ConversationMessagesPane(
                         firstVisibleItemScrollOffset = offset
                     )
                 )
+            }
+    }
+
+
+    LaunchedEffect(conversation.id, messageIdByKey) {
+
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo }
+            .debounce(500)
+            .map { visibleItems ->
+                visibleItems
+                    .mapNotNull { it.key as? String }
+                    .mapNotNull { key -> messageIdByKey[key] }
+            }
+            .flowOn(Dispatchers.Default) // MOVE WORK OFF MAIN THREAD
+            .collect { visibleIds ->
+
+                val newIds = visibleIds.filterNot { it in seen }
+
+                if (newIds.isNotEmpty()) {
+                    seen.addAll(newIds)
+
+                    onUiAction(
+                        ConversationListUiAction.MarkAsRead(newIds)
+                    )
+                }
             }
     }
 

@@ -497,7 +497,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.MarkAsRead -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.markAsRead(listOf(action.messageId))
+                        chatMessageActionService.markAsRead(action.messageIds)
                     } catch (e: Exception) {
                         sendEvent(
                             ShowErrorMessage(

@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.services.MessageAppData
 import kotlinx.collections.immutable.ImmutableList
 import kotlin.time.Instant
@@ -25,7 +26,10 @@ data class MessageUiModel(
     val modified: Instant?, // When the message was last modified
     val originalAuthor: OdinId?,
     val displayName: String,
-    val isRead: Boolean = false,
+
+    /** The timestamp when this file was marked as read for current user's identity */
+    val localReadTimestamp: UnixTimeUtc? = null,
+
     val isEdited: Boolean = false,
     val messageAppData: MessageAppData, // TODO: Should we copy these up into the message?
     val reactionPreview: ReactionSummary?,
@@ -47,6 +51,5 @@ data class MessageUiModel(
 
     val hasMore: Boolean
 ) {
-    fun isCurrentUser(domain: OdinId?): Boolean = (originalAuthor == domain)
-
+    fun isAuthoredBy(domain: OdinId?): Boolean = (originalAuthor == domain)
 }

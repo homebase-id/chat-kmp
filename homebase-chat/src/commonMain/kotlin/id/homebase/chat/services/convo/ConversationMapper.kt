@@ -3,7 +3,9 @@ package id.homebase.chat.services.convo
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -29,6 +31,7 @@ class ConversationMapper(
 
         return try {
 
+            val domain = credentialsManager.requireActiveDomain()
             val metadata = conversationFile.fileMetadata
             val appData = metadata.appData
 
@@ -36,12 +39,61 @@ class ConversationMapper(
                 throw IllegalArgumentException("Not a conversation file")
             }
 
+            val isDeleted = conversationFile.fileState == FileState.Deleted
+            if (isDeleted) {
+                val m = ConversationUiModel(
+                    id = appData.uniqueId ?: error("Missing uniqueId"),
+                    name = "Deleted conversation",
+                    lastMessage = " ",
+                    timestamp = conversationFile.fileMetadata.created.toInstant(),
+                    unreadCount = 0,
+                    avatarTiny = appData.previewThumbnail,
+                    avatarInitials = "",
+                    avatarUrl = "",
+                    participants = emptyList(),
+                    lastRead = UnixTimeUtc(0).toInstant(),
+                    avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
+                    admins = setOf(domain)
+                )
+
+                if (lastMsg != null) {
+                    ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
+                        m.updateWithLatestMessage(it, domain)
+                    }
+                }
+
+                return m
+            }
+
+            val isArchived = appData.archivalStatus == ArchivalStatus.Removed
+            if (isArchived) {
+                val m = ConversationUiModel(
+                    id = appData.uniqueId ?: error("Missing uniqueId"),
+                    name = "ArchivedConversation",
+                    lastMessage = " ",
+                    timestamp = conversationFile.fileMetadata.created.toInstant(),
+                    unreadCount = 0,
+                    avatarTiny = appData.previewThumbnail,
+                    avatarInitials = "",
+                    avatarUrl = "",
+                    participants = emptyList(),
+                    lastRead = UnixTimeUtc(0).toInstant(),
+                    avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
+                    admins = setOf(domain)
+                )
+                if (lastMsg != null) {
+                    ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
+                        m.updateWithLatestMessage(it, domain)
+                    }
+                }
+
+                return m
+            }
+
             val conversationData =
                 OdinSystemSerializer.deserialize<ConversationAppDataJson>(
                     appData.content ?: error("Conversation appData missing")
                 )
-
-            val domain = credentialsManager.getActiveDomain() ?: error("No active domain")
 
             val localAppData =
                 metadata.localAppData?.content?.let {
@@ -87,7 +139,7 @@ class ConversationMapper(
                     id = appData.uniqueId ?: error("Missing uniqueId"),
                     name = title,
                     lastMessage = " ",
-                    timestamp = UnixTimeUtc(0).toInstant(),
+                    timestamp = conversationFile.fileMetadata.created.toInstant(),
                     unreadCount = 0,
                     avatarTiny = appData.previewThumbnail,
                     avatarInitials = "",

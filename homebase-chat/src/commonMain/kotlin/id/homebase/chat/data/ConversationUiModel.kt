@@ -52,7 +52,7 @@ data class ConversationUiModel(
             lastMessageIsDeleted = msg.isDeleted
             lastMessageFirstPayload = msg.payloads?.firstOrNull()
             lastMessageHasMultiplePayloads = (msg.payloads?.size ?: 0) > 1
-            lastMessageIsFromActiveUser = msg.isCurrentUser(activeUserDomain)
+            lastMessageIsFromActiveUser = msg.isAuthoredBy(activeUserDomain)
         }
     }
 

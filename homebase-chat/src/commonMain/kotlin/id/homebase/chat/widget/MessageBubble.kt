@@ -415,6 +415,10 @@ fun ReceivedMessageBubble(
                             popupMode = MessagePopupMode.None
                             onReply?.invoke()
                         },
+                        onMarkAsRead = {
+                            popupMode = MessagePopupMode.None
+                            onMarkAsRead()
+                        },
                         onDelete = {
                             popupMode = MessagePopupMode.None
                             onDelete()
@@ -447,32 +451,32 @@ fun DeliveryStatus(isPendingSend: Boolean, deliveryStatus: Int) {
             modifier = Modifier.size(16.dp)
         )
     } else {
-    when (deliveryStatus) {
-        ChatDeliveryStatus.Read.value -> {
-            Icon(
-                HomebaseIcons.MessageSentAndRead,
-                contentDescription = null,
-                modifier = Modifier.height(DELIVERY_ICON_SIZE)
-            )
-        }
+        when (deliveryStatus) {
+            ChatDeliveryStatus.Read.value -> {
+                Icon(
+                    HomebaseIcons.MessageSentAndRead,
+                    contentDescription = null,
+                    modifier = Modifier.height(DELIVERY_ICON_SIZE)
+                )
+            }
 
-        ChatDeliveryStatus.Delivered.value -> {
-            Icon(
-                HomebaseIcons.MessageSentAndDelivered,
-                contentDescription = null,
-                modifier = Modifier.height(DELIVERY_ICON_SIZE)
-            )
-        }
+            ChatDeliveryStatus.Delivered.value -> {
+                Icon(
+                    HomebaseIcons.MessageSentAndDelivered,
+                    contentDescription = null,
+                    modifier = Modifier.height(DELIVERY_ICON_SIZE)
+                )
+            }
 
-        ChatDeliveryStatus.Sent.value -> {
-            Icon(
-                HomebaseIcons.MessageSent,
-                contentDescription = null,
-                modifier = Modifier.height(DELIVERY_ICON_SIZE)
-            )
+            ChatDeliveryStatus.Sent.value -> {
+                Icon(
+                    HomebaseIcons.MessageSent,
+                    contentDescription = null,
+                    modifier = Modifier.height(DELIVERY_ICON_SIZE)
+                )
+            }
         }
     }
-        }
 }
 
 fun String.hasContent(): Boolean {

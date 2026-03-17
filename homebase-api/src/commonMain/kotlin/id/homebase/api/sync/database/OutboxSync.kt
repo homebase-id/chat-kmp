@@ -1,6 +1,7 @@
 package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UploadFileRequest
@@ -37,6 +38,8 @@ class OutboxSync(
     private val activeThreads = atomic(0)
     private val totalSent = atomic(0)
     private val counterMutex = Mutex()
+
+    private val checkoutMutex = Mutex()
 
     // The send() function spawns a thread when it acquires the lock.
     // Then send() returns true if it begins processing in a thread, and false if
@@ -84,7 +87,10 @@ class OutboxSync(
         while (true) {
             Logger.i("Popping Outbox")
 
-            val outboxRecord = databaseManager.outbox.checkout()
+//            val outboxRecord = databaseManager.outbox.checkout()
+            val outboxRecord = checkoutMutex.withLock {
+                databaseManager.outbox.checkout()
+            }
 
             if (outboxRecord == null) {
                 Logger.i("No more items in outbox")
@@ -140,6 +146,29 @@ class OutboxSync(
                 eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
             }
         }
+    }
+
+    public suspend fun tryEnqueue(
+        request: DeleteLocalFilesByFileIdRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean
+    {
+        val enqueued = tryEnqueue(
+            driveId = request.driveId,
+            uniqueId = Uuid.random(), //random because our request is a list of files
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.DeleteFile,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
     }
 
     public suspend fun tryEnqueue(
@@ -222,5 +251,21 @@ class OutboxSync(
 
         return false
 
+    }
+
+    suspend fun clearCheckout(timeoutMs: Long = 10_000) {
+        val start = UnixTimeUtc.now().milliseconds
+
+        while (activeThreads.value > 0) {
+            if (UnixTimeUtc.now().milliseconds - start > timeoutMs) {
+                Logger.w("clearCheckout timed out waiting for outbox to become idle")
+                return
+            }
+            delay(50)
+        }
+
+        checkoutMutex.withLock {
+            databaseManager.outbox.clearCheckedOut()
+        }
     }
 }

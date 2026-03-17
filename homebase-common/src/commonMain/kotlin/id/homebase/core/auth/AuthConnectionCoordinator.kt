@@ -27,7 +27,8 @@ class AuthConnectionCoordinator(
     private val youAuthFlowManager: YouAuthFlowManager,
     private val driveSyncManager: DriveSyncManager,
     private val outboxSync: OutboxSync,
-    private val eventBus: EventBus
+    private val eventBus: EventBus,
+    private val databaseManager: DatabaseManager
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
     private var wsClient: OdinWebSocketClient? = null
@@ -90,13 +91,14 @@ class AuthConnectionCoordinator(
                 driveSyncManager = driveSyncManager,
                 scope = scope,
                 eventBus = eventBus,
-                databaseManager = DatabaseManager.appDb,
+                databaseManager = databaseManager,
                 drives = syncDrives,
                 onConnected = {
                     _connectionState.update { it.copy(isConnected = true) }
                     scope.launch {
                         driveSyncManager.syncAll()
                         _connectionState.update { it.copy(isDoingInitialConnection = false) }
+                        outboxSync.clearCheckout()
                         outboxSync.send()
                     }
                 },

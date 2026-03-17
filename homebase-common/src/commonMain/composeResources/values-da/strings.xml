@@ -104,6 +104,7 @@
     <string name="system_conversation_admin_name_removed">%1$s fjernede %2$s som administrator</string>
     <string name="system_conversation_admin_removed">%1$s fjernede en administrator</string>
     <string name="system_group_conversation_started">%1$s startede samtalen</string>
+    <string name="system_group_conversation_member_left">%1$s forlod samtalen</string>
 
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
