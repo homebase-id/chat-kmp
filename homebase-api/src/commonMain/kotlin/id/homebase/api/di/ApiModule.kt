@@ -16,6 +16,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.profile.PublicProfileProvider
+import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
@@ -59,6 +60,7 @@ val apiModule = module {
 
     factoryOf(::ConnectionRequestProvider)
     factoryOf(::ConnectionIntroductionProvider)
+    singleOf(::PublicProfileProviderCached)
     factoryOf(::PublicProfileProvider)
 
     factoryOf(::SecurityContextProvider)
