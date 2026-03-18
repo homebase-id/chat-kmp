@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.util.PlatformInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +37,7 @@ class SettingsViewModel(
         when (action) {
             is SettingsUiAction.LogoutClicked -> {
                 viewModelScope.launch {
+                    LoggerConfig.purgeLogs()
                     youAuthFlowManager.logout()
                     sendEvent(SettingsUiEvent.LoggedOut)
                 }
