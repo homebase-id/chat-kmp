@@ -105,6 +105,7 @@ class YouAuthFlowManager(
             val query = url.substringAfter("?", "")
             if (query.isEmpty()) {
                 Logger.e(tag = TAG) { "Missing query params in callback URL" }
+                cancelAuth()
                 return
             }
 
@@ -117,6 +118,7 @@ class YouAuthFlowManager(
             val state = decodeUrl(params["state"] ?: "")
             if (state.isEmpty()) {
                 Logger.e(tag = TAG) { "Missing state parameter in callback URL" }
+                cancelAuth()
                 return
             }
 

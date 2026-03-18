@@ -35,9 +35,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
@@ -288,7 +292,7 @@ private fun LoginForm(
         }
         HomebaseIdField(
             value = homebaseId,
-            onValueChange = { homebaseId = it.cleanDomain() },
+            onValueChange = { homebaseId = it.cleanDomain().replace(".", " ") },
             focusRequester = focusRequester,
             onDone = { onLoginClick(homebaseId.cleanDomain(preserveTrailingDot = false)) }
         )
@@ -324,6 +328,14 @@ private fun HomebaseIdField(
         label = { Text(stringResource(MR.string.login_id_label)) },
         singleLine = true,
         shape = RoundedCornerShape(24.dp),
+        visualTransformation = remember {
+            VisualTransformation { text ->
+                TransformedText(
+                    text = AnnotatedString(text.text.replace(' ', '.')),
+                    offsetMapping = OffsetMapping.Identity
+                )
+            }
+        },
         keyboardOptions =
             KeyboardOptions(
                 keyboardType = KeyboardType.Uri,

@@ -57,9 +57,7 @@ class MainActivity : AppCompatActivity() {
             kotlinx.coroutines.delay(300)
 
             // If no callback arrived and we're still authenticating, the user likely cancelled
-            // This is handled inside YouAuthFlowManager.onAppResumed()
-            // Note: We can't easily get YouAuthFlowManager from Koin here,
-            // so the cancellation is handled in LoginViewModel instead
+            youAuthFlowManager.onAppResumed()
         }
     }
 

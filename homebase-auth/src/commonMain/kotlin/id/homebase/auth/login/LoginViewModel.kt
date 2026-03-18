@@ -3,11 +3,9 @@ package id.homebase.auth.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.PlatformType
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
-import id.homebase.api.getPlatform
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -149,12 +147,6 @@ class LoginViewModel(
         val savedUsername = usernameStorage.loadUsername()
         if (savedUsername.isNotBlank()) {
             _uiState.update { it.copy(homebaseId = savedUsername) }
-        }
-    }
-
-    private fun handleAppResumed() {
-        viewModelScope.launch {
-            if (getPlatform().name != PlatformType.IOS) youAuthFlowManager.onAppResumed()
         }
     }
 
