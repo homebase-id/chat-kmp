@@ -37,8 +37,10 @@ import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -67,6 +69,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
@@ -92,8 +95,10 @@ class ConversationListViewModel(
     private val audioRecorder: AudioRecorder,
     private val audioPlayer: AudioPlayer,
     private val eventBus: EventBus,
+    private val contactService: ContactService
 ) : ViewModel() {
 
+    private val enricher = ConversationEnricher()
     val ownerSession = ownerSessionRepository.user
 
     val chatListRoute = savedStateHandle.toRoute<Route.ChatList>()
@@ -118,10 +123,33 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
+            contactService.start()
             conversationStream.start()
-            conversationStream.conversations.collect { conversations ->
-                val sorted = conversations.sortedByDescending { it.timestamp }.toPersistentList()
-                _uiState.value = _uiState.value.copy(activeConversations = sorted)
+
+            combine(
+                conversationStream.conversations,
+                contactService.contacts,
+                ownerSessionRepository.user
+            ) { convos, contacts, ownerSession ->
+
+                if (ownerSession == null) return@combine emptyList()
+
+                val contactMap = contacts.associateBy { it.odinId }
+
+                convos.map {
+                    enricher.enrich(it, contactMap, ownerSession)
+                }
+
+            }.collect { enriched ->
+
+                _uiState.update {
+                    it.copy(
+                        activeConversations = enriched
+                            .sortedByDescending { it.timestamp }
+                            .toPersistentList()
+                    )
+                }
+
                 updateListContent()
             }
         }
@@ -790,7 +818,13 @@ class ConversationListViewModel(
             /* Group options */
 
             is ConversationListUiAction.ConnectIdentities -> {
-                _messagesUiState.update { it.copy(uiSheet = ConversationListUiSheet.ConnectIdentities(action.identities)) }
+                _messagesUiState.update {
+                    it.copy(
+                        uiSheet = ConversationListUiSheet.ConnectIdentities(
+                            action.identities
+                        )
+                    )
+                }
             }
 
             is ConversationListUiAction.ConnectToIdentity -> {

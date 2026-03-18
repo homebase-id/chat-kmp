@@ -44,7 +44,7 @@ data class PermissionedDrive(
      * Permissions for this drive. After parsing, this contains the permission types. The raw
      * API may return a string like "ReadWrite" which needs conversion.
      */
-    val permission: List<DrivePermissionType>
+    val permission: List<DrivePermission>
 )
 
 /** A reference to a drive by alias and type. */

@@ -13,6 +13,7 @@ import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
@@ -35,8 +36,7 @@ class ConversationStream(
     private var isSyncing = false // Track if chat drive sync is in progress
 
     private val mapper: ConversationMapper = ConversationMapper(
-        credentialsManager = credentialsManager,
-        contactService = contactService
+        credentialsManager = credentialsManager
     )
 
     val conversations: StateFlow<List<ConversationUiModel>> = _conversations.asStateFlow()

@@ -19,7 +19,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
-import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.resources.MR
