@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
@@ -24,10 +25,16 @@ class ConversationMapper(
     private val contactService: ContactService
 ) {
 
+    private val logger = Logger.withTag("ConversationMapper")
+
     suspend fun mapToConversationUi(
         conversationFile: HomebaseFile,
         lastMsg: HomebaseFile?
     ): ConversationUiModel {
+
+        logger.d {
+            "START map | fileId=${conversationFile.fileId} uid=${conversationFile.fileMetadata.appData.uniqueId} state=${conversationFile.fileState}"
+        }
 
         return try {
 
@@ -36,64 +43,32 @@ class ConversationMapper(
             val appData = metadata.appData
 
             if (appData.fileType != ChatProtocol.ConversationFileType) {
+                logger.w { "Invalid fileType=${appData.fileType}" }
                 throw IllegalArgumentException("Not a conversation file")
             }
 
+            val conversationId = appData.uniqueId ?: error("Missing uniqueId")
+
             val isDeleted = conversationFile.fileState == FileState.Deleted
             if (isDeleted) {
-                val m = ConversationUiModel(
-                    id = appData.uniqueId ?: error("Missing uniqueId"),
-                    name = "Deleted conversation",
-                    lastMessage = " ",
-                    timestamp = conversationFile.fileMetadata.created.toInstant(),
-                    unreadCount = 0,
-                    avatarTiny = appData.previewThumbnail,
-                    avatarInitials = "",
-                    avatarUrl = "",
-                    participants = emptyList(),
-                    lastRead = UnixTimeUtc(0).toInstant(),
-                    avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
-                    admins = setOf(domain)
-                )
-
-                if (lastMsg != null) {
-                    ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
-                        m.updateWithLatestMessage(it, domain)
-                    }
-                }
-
-                return m
+                return mapDeletedConversation(conversationFile, lastMsg, domain)
             }
 
             val isArchived = appData.archivalStatus == ArchivalStatus.Removed
             if (isArchived) {
-                val m = ConversationUiModel(
-                    id = appData.uniqueId ?: error("Missing uniqueId"),
-                    name = "ArchivedConversation",
-                    lastMessage = " ",
-                    timestamp = conversationFile.fileMetadata.created.toInstant(),
-                    unreadCount = 0,
-                    avatarTiny = appData.previewThumbnail,
-                    avatarInitials = "",
-                    avatarUrl = "",
-                    participants = emptyList(),
-                    lastRead = UnixTimeUtc(0).toInstant(),
-                    avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
-                    admins = setOf(domain)
-                )
-                if (lastMsg != null) {
-                    ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
-                        m.updateWithLatestMessage(it, domain)
-                    }
-                }
-
-                return m
+                return mapArchivedConversation(conversationFile, lastMsg, domain)
             }
+
+            logger.d { "Deserializing appData | fileId=${conversationFile.fileId}" }
 
             val conversationData =
                 OdinSystemSerializer.deserialize<ConversationAppDataJson>(
                     appData.content ?: error("Conversation appData missing")
                 )
+
+            logger.d {
+                "Parsed conversationData | participants=${conversationData.recipients.size} title=${conversationData.title}"
+            }
 
             val localAppData =
                 metadata.localAppData?.content?.let {
@@ -103,6 +78,8 @@ class ConversationMapper(
             val participants =
                 conversationData.recipients.filterNotNull().distinct()
 
+            logger.d { "Participants | count=${participants.size} values=$participants" }
+
             require(participants.isNotEmpty()) { "Conversation has no valid participants" }
 
             val displayNames =
@@ -110,8 +87,11 @@ class ConversationMapper(
                     contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
                 }
 
+            logger.d { "DisplayNames=$displayNames" }
+
             val others = participants.filterNot { it == domain }
             val isGroup = others.size > 1
+
             val title =
                 if (isGroup) {
                     conversationData.title ?: displayNames.joinToString(", ")
@@ -120,26 +100,34 @@ class ConversationMapper(
                     contactService.resolveByOdinId(other)?.name ?: other.domainName
                 }
 
-            // only try for groups;
+            logger.d { "Title resolved | isGroup=$isGroup title=$title" }
+
             val admins: Set<OdinId> =
                 if (isGroup) {
                     (conversationData.admins ?: listOf(
-                        conversationFile.fileMetadata.originalAuthor
-                            ?: conversationFile.fileMetadata.senderOdinId
+                        metadata.originalAuthor
+                            ?: metadata.senderOdinId
                             ?: domain
                     )).toSet()
                 } else {
-                    emptySet<OdinId>()
+                    emptySet()
                 }
 
-            val avatarModel = buildConversationAvatarModel(conversationFile)
+            logger.d { "Admins | count=${admins.size} values=$admins" }
+
+            val avatarModel = buildConversationAvatarModel(
+                conversationFile,
+                participants,
+                domain,
+                conversationId
+            )
 
             val ui =
                 ConversationUiModel(
-                    id = appData.uniqueId ?: error("Missing uniqueId"),
+                    id = conversationId,
                     name = title,
                     lastMessage = " ",
-                    timestamp = conversationFile.fileMetadata.created.toInstant(),
+                    timestamp = metadata.created.toInstant(),
                     unreadCount = 0,
                     avatarTiny = appData.previewThumbnail,
                     avatarInitials = "",
@@ -148,23 +136,29 @@ class ConversationMapper(
                     lastRead = localAppData?.lastReadTime?.toInstant()
                         ?: UnixTimeUtc(0).toInstant(),
                     avatarModel = avatarModel,
-                    admins = admins
+                    admins = admins,
+                    conversationState = ConversationState.Active
                 )
 
             if (lastMsg != null) {
+                logger.d { "Mapping lastMsg | msgId=${lastMsg.fileId}" }
                 ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
                     ui.updateWithLatestMessage(it, domain)
+                    logger.d { "Last message applied" }
                 }
+            }
+
+            logger.d {
+                "SUCCESS map | id=${ui.id} participants=${ui.participants.size}"
             }
 
             ui
 
         } catch (t: Throwable) {
 
-            Logger.e(
-                throwable = t,
-                tag = "ConversationMapper"
-            ) { "Failed mapping conversation UI - ${t.message} fileId: ${conversationFile.fileId} | Uid: ${conversationFile.fileMetadata.appData.uniqueId}" }
+            logger.e(t) {
+                "FAILED map | fileId=${conversationFile.fileId} uid=${conversationFile.fileMetadata.appData.uniqueId} state=${conversationFile.fileState}"
+            }
 
             ConversationUiModel(
                 id = conversationFile.fileMetadata.appData.uniqueId ?: Uuid.random(),
@@ -178,7 +172,8 @@ class ConversationMapper(
                 participants = emptyList(),
                 lastRead = UnixTimeUtc(0).toInstant(),
                 avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
-                admins = emptySet()
+                admins = emptySet(),
+                conversationState = ConversationState.Invalid
             )
         }
     }
@@ -188,21 +183,90 @@ class ConversationMapper(
         return contactService.resolveByOdinId(author)?.name ?: author.domainName
     }
 
+    private suspend fun mapArchivedConversation(
+        conversationFile: HomebaseFile,
+        lastMsg: HomebaseFile?,
+        domain: OdinId
+    ): ConversationUiModel {
+
+        logger.w { "Archived conversation | fileId=${conversationFile.fileId}" }
+
+        val metadata = conversationFile.fileMetadata
+        val appData = metadata.appData
+
+        val m = ConversationUiModel(
+            id = appData.uniqueId ?: error("Missing uniqueId"),
+            name = "Archived Conversation",
+            lastMessage = " ",
+            timestamp = metadata.created.toInstant(),
+            unreadCount = 0,
+            avatarTiny = appData.previewThumbnail,
+            avatarInitials = "",
+            avatarUrl = "",
+            participants = emptyList(),
+            lastRead = UnixTimeUtc(0).toInstant(),
+            avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
+            admins = setOf(domain),
+            conversationState = ConversationState.Archived
+        )
+
+        if (lastMsg != null) {
+            logger.d { "Mapping lastMsg for archived convo | msgId=${lastMsg.fileId}" }
+            ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
+                m.updateWithLatestMessage(it, domain)
+            }
+        }
+
+        return m
+    }
+
+    private suspend fun mapDeletedConversation(
+        conversationFile: HomebaseFile,
+        lastMsg: HomebaseFile?,
+        domain: OdinId
+    ): ConversationUiModel {
+
+        logger.w { "Deleted conversation | fileId=${conversationFile.fileId}" }
+
+        val metadata = conversationFile.fileMetadata
+        val appData = metadata.appData
+
+        val m = ConversationUiModel(
+            id = appData.uniqueId ?: error("Missing uniqueId"),
+            name = "Deleted conversation",
+            lastMessage = " ",
+            timestamp = metadata.created.toInstant(),
+            unreadCount = 0,
+            avatarTiny = appData.previewThumbnail,
+            avatarInitials = "",
+            avatarUrl = "",
+            participants = emptyList(),
+            lastRead = UnixTimeUtc(0).toInstant(),
+            avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
+            admins = setOf(domain),
+            conversationState = ConversationState.Deleted
+        )
+
+        if (lastMsg != null) {
+            logger.d { "Mapping lastMsg for deleted convo | msgId=${lastMsg.fileId}" }
+            ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
+                m.updateWithLatestMessage(it, domain)
+            }
+        }
+
+        return m
+    }
+
+
     private suspend fun buildConversationAvatarModel(
-        conversation: HomebaseFile
+        conversation: HomebaseFile,
+        participants: List<OdinId>,
+        domain: OdinId,
+        conversationId: Uuid
     ): ConversationAvatarModel {
 
         val metadata = conversation.fileMetadata
         val appData = metadata.appData
-
-        val domain = credentialsManager.getActiveDomain() ?: error("No active domain")
-
-        val participants =
-            OdinSystemSerializer.deserialize<ConversationAppDataJson>(
-                appData.content ?: error("Missing content")
-            ).recipients
-
-        val uniqueId = appData.uniqueId ?: error("Missing uniqueId")
 
         val imagePayload =
             metadata.payloads?.firstOrNull { it.key == ChatProtocol.ConversationImageKey }
@@ -234,7 +298,7 @@ class ConversationMapper(
             )
         }
 
-        if (uniqueId == ChatProtocol.ConversationWithYourselfId) {
+        if (conversationId == ChatProtocol.ConversationWithYourselfId) {
             return ConversationAvatarModel(
                 odinId = domain,
                 type = ConversationAvatarModel.Type.Owner
@@ -252,4 +316,5 @@ class ConversationMapper(
 
         return ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback)
     }
+
 }
