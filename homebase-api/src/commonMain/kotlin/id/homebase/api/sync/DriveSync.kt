@@ -106,6 +106,9 @@ class DriveSync(
 
         eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
 
+        var retryCount = 0
+        val maxRetries = 3
+
         while (true) {
             Logger.i("Synchronizing drive $driveId")
             val request = QueryBatchRequest(
@@ -167,12 +170,28 @@ class DriveSync(
 
                     if (!queryBatchResponse.hasMoreRows)
                         break
+                    retryCount = 0
                 } catch (e: Exception) {
-                    Logger.e("Exception on drive $driveId message ${e.message}")
+                    val isTransientNetworkError = e::class.simpleName == "SocketException" ||
+                        e.message?.contains("Software caused connection abort") == true ||
+                        e.message?.contains("Connection reset") == true
+                    if (isTransientNetworkError && retryCount < maxRetries) {
+                        retryCount++
+                        Logger.w("Network abort on drive $driveId, retrying (attempt $retryCount/$maxRetries): ${e.message}")
+                        delay(1000L * retryCount)
+                        continue
+                    }
+                    val cursorInfo = if (cursor != null) "mid-sync" else "fresh sync (cursor=null)"
+                    val reason = if (isTransientNetworkError)
+                        "Network error after $maxRetries retries: ${e.message}"
+                    else
+                        "Non-transient error (${e::class.simpleName}): ${e.message}"
+                    Logger.e("Drive $driveId sync failed ($cursorInfo): $reason")
+                    killroy.value = false // don't retry on terminal failure; reconnect will re-sync
                     eventBus.emit(
                         BackendEvent.DriveEvent.Failed(
                             driveId,
-                            "Sync failed: ${e.message}"
+                            "Sync failed: $reason"
                         )
                     )
                     break
