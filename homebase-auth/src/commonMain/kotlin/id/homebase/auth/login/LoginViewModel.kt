@@ -17,6 +17,7 @@ import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
 import id.homebase.core.config.targetDriveAccessRequest
+import id.homebase.core.notifications.NotificationService
 import id.homebase.core.util.StartupState
 import id.homebase.core.util.mapToStartupState
 import io.ktor.client.HttpClient
@@ -34,6 +35,7 @@ class LoginViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val usernameStorage: UsernameStorage,
+    private val notificationService: NotificationService,
     private val httpClient: HttpClient,
     private val eventBus: EventBus,
 ) : ViewModel() {
@@ -212,17 +214,7 @@ class LoginViewModel(
                     Logger.i(tag = "LoginViewModel", messageString = "AuthState: $authState")
                     when (authState) {
                         is StartupState.Authenticated -> {
-                            usernameStorage.saveUsername(_uiState.value.homebaseId)
-
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    isAuthenticated = true,
-                                    errorMessage = null,
-                                    uiEvent = LoginUiEvent.NavigateToHome
-                                )
-                            }
-
+                            handleAuthenticatedUser()
                         }
 
                         is StartupState.Unauthenticated -> {
@@ -255,6 +247,19 @@ class LoginViewModel(
                         }
                     }
                 }
+        }
+    }
+
+    private suspend fun handleAuthenticatedUser() {
+        notificationService.reRegister()
+        usernameStorage.saveUsername(_uiState.value.homebaseId)
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                isAuthenticated = true,
+                errorMessage = null,
+                uiEvent = LoginUiEvent.NavigateToHome
+            )
         }
     }
 }
