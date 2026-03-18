@@ -406,7 +406,7 @@ fun ConversationLisContentItem(
         is ConversationListContentModel.Conversation -> {
             if (iconOnlyMode) {
                 ConversationAvatarItem(
-                    conversation = listItem.conversation,
+                    conversation = listItem.conversation.conversation,
                     onClick = {
                         onUiAction(
                             ConversationListUiAction.ConversationClicked(
@@ -423,7 +423,7 @@ fun ConversationLisContentItem(
                     groupName = listItem.conversation.name,
                     message = listItem.conversation.lastMessage,
                     unreadCount = listItem.conversation.unreadCount,
-                    contactOdinId = listItem.conversation.participants.firstOrNull(),
+                    contactOdinId = listItem.conversation.participants.firstOrNull()?.odinId,
                     timestamp = listItem.conversation.timestamp,
                     onClick = {
                         onUiAction(
@@ -436,7 +436,7 @@ fun ConversationLisContentItem(
                     onContactClick = {
                         onUiAction(
                             ConversationListUiAction.ShowConversationSettings(
-                                listItem.conversation
+                                listItem.conversation.conversation
                             )
                         )
                     },

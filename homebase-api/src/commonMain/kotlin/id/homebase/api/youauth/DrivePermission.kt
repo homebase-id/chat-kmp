@@ -4,7 +4,7 @@ package id.homebase.api.youauth
  * Bitwise permission flags for drive access. Multiple permissions can be combined by summing their
  * values.
  */
-enum class DrivePermissionType(val value: Int) {
+enum class DrivePermission(val value: Int) {
     Read(1),
     Write(2),
     React(4),
@@ -12,12 +12,12 @@ enum class DrivePermissionType(val value: Int) {
 
     companion object {
         /** Parse a combined permission value into a list of permission types. */
-        fun fromValue(combinedValue: Int): List<DrivePermissionType> {
+        fun fromValue(combinedValue: Int): List<DrivePermission> {
             return entries.filter { (combinedValue and it.value) == it.value }
         }
 
         /** Combine multiple permissions into a single integer value. */
-        fun combine(permissions: List<DrivePermissionType>): Int {
+        fun combine(permissions: List<DrivePermission>): Int {
             return permissions.sumOf { it.value }
         }
     }

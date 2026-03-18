@@ -1,4 +1,4 @@
-package id.homebase.chat.services.convo
+package id.homebase.chat.services.convo.contact
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
@@ -21,10 +21,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
 
 
-class ContactService(
+class DriveContactService(
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
@@ -122,91 +121,6 @@ class ContactService(
         )
     }
 }
-
-
-@Serializable
-data class ContactServerFile(
-    val odinId: OdinId?,
-    val name: ContactName,
-    val source: String?, // 'contact' | 'public' | 'user';
-
-    val location: ContactLocation? = null,
-    val phone: ContactPhone? = null,
-    val email: ContactEmail? = null,
-    val birthday: ContactBirthday? = null
-)
-
-@Serializable
-data class ContactName(
-    val displayName: String?,
-    val givenName: String?,
-    val additionalName: String?,
-    val surname: String?
-) {
-
-    fun initials(): String {
-        val first =
-            givenName
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-                ?.firstOrNull()
-
-        val last =
-            surname
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-                ?.firstOrNull()
-
-        if (first != null && last != null) {
-            return "${first}${last}".uppercase()
-        }
-
-        // Fallback: try display name tokens
-        if (displayName == null) {
-            return "?"
-        }
-
-        val tokens =
-            displayName
-                .trim()
-                .split("\\s+".toRegex())
-                .filter { it.isNotEmpty() }
-
-        return when {
-            tokens.size >= 2 ->
-                "${tokens.first().first()}${tokens.last().first()}".uppercase()
-
-            tokens.size == 1 ->
-                tokens.first().first().uppercaseChar().toString()
-
-            else ->
-                "?"
-        }
-    }
-}
-
-
-@Serializable
-data class ContactLocation(
-    val city: String?,
-    val country: String?
-)
-
-@Serializable
-data class ContactPhone(
-    val number: String?
-)
-
-@Serializable
-data class ContactEmail(
-    val email: String?
-)
-
-
-@Serializable
-data class ContactBirthday(
-    val date: String?
-)
 
 
 

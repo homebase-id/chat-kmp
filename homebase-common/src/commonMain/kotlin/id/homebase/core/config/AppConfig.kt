@@ -2,7 +2,7 @@ package id.homebase.core.config
 
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.youauth.AppPermissionType
-import id.homebase.api.youauth.DrivePermissionType
+import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
 import kotlin.uuid.Uuid
@@ -83,7 +83,7 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
             type = feedTargetDrive.type.toString(),
             name = "Feed Drive",
             description = " ",
-            permissions = listOf(DrivePermissionType.Read, DrivePermissionType.Write)
+            permissions = listOf(DrivePermission.Read, DrivePermission.Write)
         ),
         TargetDriveAccessRequest(
             alias = chatTargetDrive.alias.toString(),
@@ -92,9 +92,9 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
             description = "Drive which contains all the chat messages",
             permissions =
                 listOf(
-                    DrivePermissionType.Read,
-                    DrivePermissionType.Write,
-                    DrivePermissionType.React
+                    DrivePermission.Read,
+                    DrivePermission.Write,
+                    DrivePermission.React
                 )
         ),
         TargetDriveAccessRequest(
@@ -102,7 +102,7 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
             type = contactTargetDrive.type.toString(),
             name = " ",
             description = " ",
-            permissions = listOf(DrivePermissionType.Read, DrivePermissionType.Write)
+            permissions = listOf(DrivePermission.Read, DrivePermission.Write)
         )
     )
 
@@ -120,7 +120,7 @@ val circleDriveTargetRequest: List<TargetDriveAccessRequest> =
             type = chatTargetDrive.type.toString(),
             name = "Chat Drive",
             description = "Drive which contains all the chat messages",
-            permissions = listOf(DrivePermissionType.Write, DrivePermissionType.React)
+            permissions = listOf(DrivePermission.Write, DrivePermission.React)
         )
     )
 

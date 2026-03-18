@@ -10,7 +10,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
-import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
