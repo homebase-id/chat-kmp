@@ -1,33 +1,32 @@
 package id.homebase.api.sync
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.sync.database.CursorStorage
-import id.homebase.api.sync.database.MainIndexMetaHelpers
-import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.client.drives.query.FileQueryParams
-import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import kotlin.time.measureTimedValue
-import kotlinx.coroutines.sync.*
-import kotlin.uuid.Uuid
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import id.homebase.api.sync.database.CursorStorage
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.MainIndexMetaHelpers
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlin.collections.mutableListOf
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlin.time.measureTimedValue
+import kotlin.uuid.Uuid
 
 class DriveSync(
     private val identityId: Uuid,
@@ -63,7 +62,7 @@ class DriveSync(
         databaseManager.driveLocalTagIndex.deleteAll() // TODO: <-- don't delete all! :-)
         databaseManager.keyValue.deleteByKey(driveId) // TODO: <-- don't delete the cursor
         val cursorStorage = CursorStorage(databaseManager, driveId)
-        cursorStorage.deleteCursor();
+        cursorStorage.deleteCursor()
         cursor = null
     }
 
