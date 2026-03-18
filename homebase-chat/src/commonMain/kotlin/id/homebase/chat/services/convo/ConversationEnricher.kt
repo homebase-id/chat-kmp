@@ -1,8 +1,10 @@
 package id.homebase.chat.services.convo
 
 import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.*
+import id.homebase.chat.services.convo.contact.ContactConnectionState
 
 class ConversationEnricher {
 
@@ -24,7 +26,10 @@ class ConversationEnricher {
         val missingConnections =
             if (otherParticipants.size > 1) {
                 otherParticipants.filter { odinId ->
-                    contactMap[odinId] == null
+                    val contact = contactMap[odinId]
+
+                    contact == null ||
+                            contact.connectionState != ContactConnectionState.Connected
                 }
             } else {
                 emptyList()

@@ -30,13 +30,14 @@ class ContactService(
             combine(
                 driveContacts.contacts,
                 connections.connections
-            ) { contacts, connectionsMap ->
+            ) { contacts, connectionState ->
 
                 contacts.map { contact ->
-                    val connection = connectionsMap[contact.odinId]
+
+                    val connection = connectionState.map[contact.odinId]
 
                     val state = when {
-                        connectionsMap.isEmpty() -> ContactConnectionState.Unknown // we are likely offline
+                        !connectionState.isLoaded -> ContactConnectionState.Unknown
                         connection == null -> ContactConnectionState.NotConnected
                         connection.status == ConnectionStatus.Blocked -> ContactConnectionState.Blocked
                         connection.status == ConnectionStatus.Connected -> ContactConnectionState.Connected
@@ -49,7 +50,6 @@ class ContactService(
                         connectionState = state
                     )
                 }
-
             }.collect { merged ->
                 _contacts.value = merged
                 contactByOdinId.value =

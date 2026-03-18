@@ -2,12 +2,19 @@ package id.homebase.chat.services.convo.contact
 
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
-import kotlinx.coroutines.CoroutineScope
 import id.homebase.api.common.OdinId
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import co.touchlab.kermit.Logger
+import org.koin.core.component.getScopeId
+
+data class ConnectionState(
+    val isLoaded: Boolean,
+    val map: Map<OdinId, RedactedIdentityConnectionRegistration>
+)
 
 class ConnectionService(
     private val provider: ConnectionNetworkProvider,
@@ -15,35 +22,55 @@ class ConnectionService(
 ) {
 
     private val _connections =
-        MutableStateFlow<Map<OdinId, RedactedIdentityConnectionRegistration>>(emptyMap())
+        MutableStateFlow(ConnectionState(isLoaded = false, map = emptyMap()))
 
-    val connections: StateFlow<Map<OdinId, RedactedIdentityConnectionRegistration>> =
+    val connections: StateFlow<ConnectionState> =
         _connections.asStateFlow()
+
+    init {
+        scope.launch {
+            refresh()
+        }
+    }
 
     fun start() {
         scope.launch {
-            runCatching { refresh() }
+            refresh()
         }
     }
 
     suspend fun refresh() {
         try {
+            Logger.d { "Fetching connected connections..." }
             val connected = provider.getConnected(1000, null)
+
+            Logger.d { "Loaded connections ${connected.results.size}..." }
+
+            Logger.d { "Fetching blocked connections..." }
             val blocked = provider.getBlocked(1000, null)
 
             val merged =
                 (connected.results + blocked.results)
                     .associateBy { it.odinId }
 
-            _connections.value = merged
+            _connections.value = ConnectionState(
+                isLoaded = true,
+                map = merged
+            )
 
         } catch (e: Exception) {
-            // don’t crash UI layer
-            // optionally log
+            Logger.e(e) {
+                "ConnectionService.refresh failed: ${e.message}"
+            }
+            // still mark as loaded so UI doesn't stay in "loading" forever
+            _connections.value = ConnectionState(
+                isLoaded = true,
+                map = emptyMap()
+            )
         }
     }
 
     fun get(odinId: OdinId): RedactedIdentityConnectionRegistration? {
-        return _connections.value[odinId]
+        return _connections.value.map[odinId]
     }
 }

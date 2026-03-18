@@ -2,7 +2,7 @@ package id.homebase.api.client.connections
 
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.common.OdinId
-import id.homebase.api.youauth.DrivePermission
+import id.homebase.api.youauth.DrivePermissionSet
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
@@ -63,7 +63,7 @@ data class RedactedAccessExchangeGrant(
 @Serializable
 data class RedactedCircleGrant(
     val circleId: Uuid,
-    val permissionSet: PermissionSet,
+    val permissionSet: PermissionSet? = null,
     val driveGrants: List<RedactedDriveGrant> = emptyList()
 )
 
@@ -71,7 +71,7 @@ data class RedactedCircleGrant(
 data class RedactedAppCircleGrant(
     val appId: Uuid,
     val circleId: Uuid,
-    val permissionSet: PermissionSet,
+    val permissionSet: PermissionSet? = null,
     val driveGrants: List<RedactedDriveGrant> = emptyList()
 )
 
@@ -97,7 +97,7 @@ data class PermissionSet(
 @Serializable
 data class PermissionedDrive(
     val drive: TargetDrive,
-    val permission: DrivePermission
+    val permission: DrivePermissionSet
 )
 
 // ------------------------------------------------------------
@@ -124,10 +124,11 @@ enum class ConnectionStatus {
 
 @Serializable
 enum class ConnectionRequestOrigin {
+
     @SerialName("none")
     None,
 
-    @SerialName("identityowner")
+    @SerialName("identityOwner")
     IdentityOwner,
 
     @SerialName("introduction")
@@ -187,10 +188,10 @@ data class DriveGrantInfo(
     val driveName: String,
     val driveGrantIsValid: Boolean,
     val driveIsGranted: Boolean,
-    val expectedDrivePermission: Int,
-    val actualDrivePermission: Int,
+    val expectedDrivePermissionSet: Int,
+    val actualDrivePermissionSet: Int,
     val encryptedKeyLength: Int,
     val targetDrive: TargetDrive,
     val hasValidEncryptionKey: Boolean,
-    val drivePermissionIsValid: Boolean
+    val DrivePermissionSetIsValid: Boolean
 )
