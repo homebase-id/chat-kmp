@@ -3,6 +3,7 @@ package id.homebase.core.util
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextDecoration
+import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.core.ui.theme.LightColors
 
@@ -51,6 +52,55 @@ fun RichTextState.applyDefaultStyling(
         config.linkColor = linkColor
         config.linkTextDecoration = TextDecoration.Underline
     }
+}
+
+fun RichTextState.applyMarkDownContent(
+    content: String,
+): RichTextState {
+    return this.apply {
+        try {
+            setMarkdown(content)
+        } catch (_: Exception) {
+            try {
+                setMarkdown(fixProblematicMarkdownText(content))
+            } catch (e: Exception) {
+                Logger.e(tag = "RichTextExtensions") { "Error setting markdown: $e" }
+                setText(content)
+            }
+        }
+    }
+}
+
+/*
+This fixed Markdown that is invalid for RichTextState by removing empty lines if follow by non-empty lines with initial spaces
+ */
+private fun fixProblematicMarkdownText(input: String) : String {
+    val lines = input.lines()
+    val result = mutableListOf<String>()
+
+    var i = 0
+    while (i < lines.size) {
+        val currentLine = lines[i]
+        val isCurrentEmpty = currentLine.isBlank()
+
+        // Check if current line is empty and there's a next line
+        if (isCurrentEmpty && i < lines.size - 1) {
+            val nextLine = lines[i + 1]
+            val nextHasContent = nextLine.isNotBlank()
+            val nextStartsWithSpaces = nextLine.isNotEmpty() && nextLine[0].isWhitespace() && nextLine[0] != '\n'
+
+            // Skip this empty line if next line has content and starts with spaces
+            if (nextHasContent && nextStartsWithSpaces) {
+                i++
+                continue
+            }
+        }
+
+        result.add(currentLine)
+        i++
+    }
+
+    return result.joinToString("\n")
 }
 
 private fun findPrecedingCharacterStart(text: String, offset: Int): Int {

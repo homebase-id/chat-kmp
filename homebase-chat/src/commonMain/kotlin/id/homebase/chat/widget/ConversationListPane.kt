@@ -88,6 +88,7 @@ fun ConversationListPane(
     searchTextState: TextFieldState,
     onProfileClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
+    onConversationSelected: (conversationId: Uuid) -> Unit,
 ) {
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val twoPaneWindow = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
@@ -346,7 +347,8 @@ fun ConversationListPane(
                                     listItem = listItem,
                                     selectedConversationId = selectedConversationId,
                                     iconOnlyMode = iconOnlyMode,
-                                    onUiAction = onUiAction
+                                    onUiAction = onUiAction,
+                                    onConversationSelected = onConversationSelected,
                                 )
                             }
                         }
@@ -394,6 +396,7 @@ fun ConversationLisContentItem(
     selectedConversationId: Uuid?,
     iconOnlyMode: Boolean,
     onUiAction: (ConversationListUiAction) -> Unit,
+    onConversationSelected: (conversationId: Uuid) -> Unit,
 ) {
     when (listItem) {
         is ConversationListContentModel.Header -> {
@@ -410,6 +413,7 @@ fun ConversationLisContentItem(
                                 listItem.conversation.id, null
                             )
                         )
+                        onConversationSelected(listItem.conversation.id)
                     },
                     isSelected = listItem.conversation.id == selectedConversationId,
                 )
@@ -427,6 +431,7 @@ fun ConversationLisContentItem(
                                 listItem.conversation.id, null
                             )
                         )
+                        onConversationSelected(listItem.conversation.id)
                     },
                     onContactClick = {
                         onUiAction(
@@ -457,6 +462,7 @@ fun ConversationLisContentItem(
                             listItem.message.conversationId, listItem.message.id
                         )
                     )
+                    onConversationSelected(listItem.message.conversationId)
                 },
                 onContactClick = { odinId ->
                     onUiAction(ConversationListUiAction.ShowContactInfo(odinId.domainName))

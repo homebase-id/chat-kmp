@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,7 +41,6 @@ import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
@@ -56,6 +54,7 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.LightColors
 import id.homebase.core.util.applyDefaultStyling
+import id.homebase.core.util.applyMarkDownContent
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
@@ -118,7 +117,6 @@ fun MessageBubbleRaw(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
     downloadingFiles: Set<String>,
-    showDot: Boolean = false,
     showMore: Boolean = false,
     onShowMoreClick: (() -> Unit)? = null,
     isPendingSend: Boolean = false
@@ -190,14 +188,7 @@ fun MessageBubbleRaw(
     val textState = remember {
         RichTextState()
             .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
-            .also {
-                try {
-                    it.setMarkdown(if (isDeleted) deletedText else text)
-                } catch (e: Exception) {
-                    Logger.e(tag = "MessageBubbleRaw") { "Error setting markdown: $e" }
-                    it.setText(if (isDeleted) deletedText else text)
-                }
-            }
+            .applyMarkDownContent(if (isDeleted) deletedText else text)
     }
 
     val shape = remember {
@@ -273,7 +264,7 @@ fun MessageBubbleRaw(
                 }
             }
         } else {
-            // Note: If adding composables to to Layout here, remember to update layout code to take new widget into account
+            // Note: If adding composables to Layout here, remember to update layout code to take new widget into account
             Column {
                 Layout(
                     content = {
@@ -329,15 +320,12 @@ fun MessageBubbleRaw(
                                     color = contentColor
                                 )
                             } else {
-                                    SelectionContainer {
-                                        RichText(
-                                            state = textState,
-                                            onTextLayout = { textLayoutResult = it },
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = contentColor
-                                        )
-                                    }
-//                                }
+                                RichText(
+                                    state = textState,
+                                    onTextLayout = { textLayoutResult = it },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = contentColor
+                                )
                             }
                         }
                         Box {
@@ -380,7 +368,7 @@ fun MessageBubbleRaw(
                     if (authorName != null) mediaIndex++
                     if (replyPreview != null) mediaIndex++
 
-                    val authorIndex = if (authorName != null) 0 else -1
+                    //val authorIndex = if (authorName != null) 0 else -1
                     val textIndex = if (hasMedia) mediaIndex + 1 else mediaIndex
                     val showMoreIndex = textIndex + 1
                     val infoIndex = showMoreIndex + 1

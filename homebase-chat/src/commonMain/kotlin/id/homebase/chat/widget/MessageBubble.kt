@@ -33,18 +33,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
@@ -60,6 +63,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
@@ -103,6 +107,8 @@ fun SentMessageBubble(
     var showEmojiPicker by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+    val clipboardManager = LocalClipboard.current
+    val scope = rememberCoroutineScope()
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
@@ -173,6 +179,12 @@ fun SentMessageBubble(
                             popupMode = MessagePopupMode.None
                             onReply?.invoke()
                         },
+                        onCopy = {
+                            popupMode = MessagePopupMode.None
+                            scope.launch {
+                                clipboardManager.setClipEntry(clipEntryOf(message.content))
+                            }
+                        },
                         onEdit = {
                             popupMode = MessagePopupMode.None
                             onEdit?.invoke()
@@ -218,7 +230,6 @@ fun SentMessageBubble(
                     animatedVisibilityScope = animatedVisibilityScope,
                     messageId = message.id,
                     downloadingFiles = downloadingFiles,
-                    showDot = message.isPendingSend,
                     showMore = message.hasMore,
                     onShowMoreClick = onShowMore,
                     isPendingSend = message.isPendingSend
@@ -285,6 +296,8 @@ fun ReceivedMessageBubble(
     val mediaOnly = !message.content.hasContent() && hasMedia
     val emojiOnly = message.content.isEmojiContentOnly() && !hasMedia
     val hasVisibleBackground = !mediaOnly && !emojiOnly
+    val clipboardManager = LocalClipboard.current
+    val scope = rememberCoroutineScope()
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp),
@@ -414,6 +427,12 @@ fun ReceivedMessageBubble(
                         onReply = {
                             popupMode = MessagePopupMode.None
                             onReply?.invoke()
+                        },
+                        onCopy = {
+                            popupMode = MessagePopupMode.None
+                            scope.launch {
+                                clipboardManager.setClipEntry(clipEntryOf(message.content))
+                            }
                         },
                         onMarkAsRead = {
                             popupMode = MessagePopupMode.None
