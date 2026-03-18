@@ -31,6 +31,7 @@ data class ConversationUiModel(
     var lastMessageHasMultiplePayloads: Boolean = false,
     var lastMessageIsFromActiveUser: Boolean = false,
     val admins: Set<OdinId>,
+    val conversationState: ConversationState = ConversationState.Active,
 ) {
     fun isCurrentUserAdmin(odinId: OdinId): Boolean {
         return admins.contains(odinId)

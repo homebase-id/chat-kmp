@@ -1,9 +1,11 @@
 package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.SqlDriver
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 data class ConversationWithLastMessage(
@@ -41,19 +43,61 @@ class ChatReadCountWrapper(
         return list.map { OdinSystemSerializer.deserialize<HomebaseFile>(it) }
     }
 
+    private val logger = Logger.withTag("ConversationQueries")
+
     /**
      * Select all conversations with their last message
      * Returns ConversationWithLastMessage objects
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
+
     fun selectAllConversationPlusLastMessage(): List<ConversationWithLastMessage> {
+
+        val start = Clock.System.now().toEpochMilliseconds()
+
         val list = delegate.selectAllConversationPlusLastMessage().executeAsList()
-        return list.map { 
-            ConversationWithLastMessage(
-                conversation = OdinSystemSerializer.deserialize<HomebaseFile>(it.convJsonHeader),
-                message = it.msgJsonHeader?.let { msgJsonHeader -> OdinSystemSerializer.deserialize<HomebaseFile>(msgJsonHeader) }
-            )
+
+        logger.d { "Fetched rows=${list.size}" }
+
+        val result = list.mapIndexed { index, it ->
+
+            try {
+                logger.d {
+                    "Mapping row[$index] | convSize=${it.convJsonHeader.length} " +
+                            "hasMsg=${it.msgJsonHeader != null}"
+                }
+
+                val conversation =
+                    OdinSystemSerializer.deserialize<HomebaseFile>(it.convJsonHeader)
+
+                val message =
+                    it.msgJsonHeader?.let { msgJsonHeader ->
+                        OdinSystemSerializer.deserialize<HomebaseFile>(msgJsonHeader)
+                    }
+
+                ConversationWithLastMessage(
+                    conversation = conversation,
+                    message = message
+                )
+
+            } catch (t: Throwable) {
+
+                logger.e(t) {
+                    "FAILED row[$index] | " +
+                            "convSize=${it.convJsonHeader.length} " +
+                            "msgSize=${it.msgJsonHeader?.length} " +
+                            "hasMsg=${it.msgJsonHeader != null}"
+                }
+
+                throw t // preserve original behavior (fail fast)
+            }
         }
+
+        logger.d {
+            "Completed mapping ${result.size} rows in ${Clock.System.now().toEpochMilliseconds() - start}ms"
+        }
+
+        return result
     }
 
     /**
