@@ -49,6 +49,9 @@ class OdinWebSocketClient(
     private val MAX_RECONNECT_DELAY_MS = 5_000L
 
     private val client = HttpClient {
+        // TODO: enable per-message deflate compression via WebSocketDeflateExtension once
+        //  server support is confirmed (RFC 7692 / permessage-deflate).
+        //  install(WebSockets) { extensions { install(WebSocketDeflateExtension) } }
         install(WebSockets)
     }
 

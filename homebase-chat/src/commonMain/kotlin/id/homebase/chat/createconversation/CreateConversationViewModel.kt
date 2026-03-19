@@ -5,7 +5,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.chat.data.ContactUiModel
-import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.ConversationService
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableStateFlow

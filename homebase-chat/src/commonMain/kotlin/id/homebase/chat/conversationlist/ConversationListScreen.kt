@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.common.OdinId
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
@@ -366,8 +367,7 @@ fun ConversationListUi(
             detailPane = {
                 AnimatedPane {
                     uiState.selectedConversationId?.let { conversationId ->
-                        val conversation =
-                            uiState.activeConversations.find { it.id == conversationId }
+                        val conversation = uiState.activeConversations.find { it.id == conversationId }
                         if (conversation != null) {
                             key(conversation.id) {
                                 ConversationMessagesPane(

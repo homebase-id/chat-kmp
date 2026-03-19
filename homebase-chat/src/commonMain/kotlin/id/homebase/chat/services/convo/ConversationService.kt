@@ -34,6 +34,7 @@ import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.StatusMessage
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
@@ -52,8 +53,7 @@ class ConversationService(
     private val chatDrive = chatTargetDrive.alias
 
     private val mapper: ConversationMapper = ConversationMapper(
-        credentialsManager = credentialsManager,
-        contactService = contactService
+        credentialsManager = credentialsManager
     )
 
     suspend fun createConversation(
