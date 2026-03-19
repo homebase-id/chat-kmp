@@ -21,8 +21,7 @@ import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 class ConversationMapper(
-    private val credentialsManager: CredentialsManager,
-    private val contactService: ContactService
+    private val credentialsManager: CredentialsManager
 ) {
 
     private val logger = Logger.withTag("ConversationMapper")
@@ -43,7 +42,6 @@ class ConversationMapper(
             val appData = metadata.appData
 
             if (appData.fileType != ChatProtocol.ConversationFileType) {
-                logger.w { "Invalid fileType=${appData.fileType}" }
                 throw IllegalArgumentException("Not a conversation file")
             }
 
@@ -59,16 +57,10 @@ class ConversationMapper(
                 return mapArchivedConversation(conversationFile, lastMsg, domain)
             }
 
-            logger.d { "Deserializing appData | fileId=${conversationFile.fileId}" }
-
             val conversationData =
                 OdinSystemSerializer.deserialize<ConversationAppDataJson>(
                     appData.content ?: error("Conversation appData missing")
                 )
-
-            logger.d {
-                "Parsed conversationData | participants=${conversationData.recipients.size} title=${conversationData.title}"
-            }
 
             val localAppData =
                 metadata.localAppData?.content?.let {
@@ -78,29 +70,20 @@ class ConversationMapper(
             val participants =
                 conversationData.recipients.filterNotNull().distinct()
 
-            logger.d { "Participants | count=${participants.size} values=$participants" }
-
             require(participants.isNotEmpty()) { "Conversation has no valid participants" }
-
-            val displayNames =
-                participants.map { odinId ->
-                    contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
-                }
-
-            logger.d { "DisplayNames=$displayNames" }
 
             val others = participants.filterNot { it == domain }
             val isGroup = others.size > 1
+
+            val displayNames = participants.map { it.domainName }
 
             val title =
                 if (isGroup) {
                     conversationData.title ?: displayNames.joinToString(", ")
                 } else {
                     val other = participants.first { it != domain }
-                    contactService.resolveByOdinId(other)?.name ?: other.domainName
+                    other.domainName
                 }
-
-            logger.d { "Title resolved | isGroup=$isGroup title=$title" }
 
             val admins: Set<OdinId> =
                 if (isGroup) {
@@ -112,8 +95,6 @@ class ConversationMapper(
                 } else {
                     emptySet()
                 }
-
-            logger.d { "Admins | count=${admins.size} values=$admins" }
 
             val avatarModel = buildConversationAvatarModel(
                 conversationFile,
@@ -141,10 +122,11 @@ class ConversationMapper(
                 )
 
             if (lastMsg != null) {
-                logger.d { "Mapping lastMsg | msgId=${lastMsg.fileId}" }
-                ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
+                ChatMessageStream.mapToMessageData(lastMsg) { homebaseFile ->
+                    homebaseFile.fileMetadata.originalAuthor?.domainName ?: ""
+
+                }?.let {
                     ui.updateWithLatestMessage(it, domain)
-                    logger.d { "Last message applied" }
                 }
             }
 
@@ -157,7 +139,7 @@ class ConversationMapper(
         } catch (t: Throwable) {
 
             logger.e(t) {
-                "FAILED map | fileId=${conversationFile.fileId} uid=${conversationFile.fileMetadata.appData.uniqueId} state=${conversationFile.fileState}"
+                "FAILED map | fileId=${conversationFile.fileId}"
             }
 
             ConversationUiModel(
@@ -178,18 +160,11 @@ class ConversationMapper(
         }
     }
 
-    private suspend fun resolveDisplayName(file: HomebaseFile): String {
-        val author = file.fileMetadata.originalAuthor ?: return ""
-        return contactService.resolveByOdinId(author)?.name ?: author.domainName
-    }
-
     private suspend fun mapArchivedConversation(
         conversationFile: HomebaseFile,
         lastMsg: HomebaseFile?,
         domain: OdinId
     ): ConversationUiModel {
-
-        logger.w { "Archived conversation | fileId=${conversationFile.fileId}" }
 
         val metadata = conversationFile.fileMetadata
         val appData = metadata.appData
@@ -211,8 +186,7 @@ class ConversationMapper(
         )
 
         if (lastMsg != null) {
-            logger.d { "Mapping lastMsg for archived convo | msgId=${lastMsg.fileId}" }
-            ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
+            ChatMessageStream.mapToMessageData(lastMsg) { it.fileMetadata.originalAuthor?.domainName ?: "" }?.let {
                 m.updateWithLatestMessage(it, domain)
             }
         }
@@ -225,8 +199,6 @@ class ConversationMapper(
         lastMsg: HomebaseFile?,
         domain: OdinId
     ): ConversationUiModel {
-
-        logger.w { "Deleted conversation | fileId=${conversationFile.fileId}" }
 
         val metadata = conversationFile.fileMetadata
         val appData = metadata.appData
@@ -248,15 +220,13 @@ class ConversationMapper(
         )
 
         if (lastMsg != null) {
-            logger.d { "Mapping lastMsg for deleted convo | msgId=${lastMsg.fileId}" }
-            ChatMessageStream.mapToMessageData(lastMsg, ::resolveDisplayName)?.let {
+            ChatMessageStream.mapToMessageData(lastMsg) { it.fileMetadata.originalAuthor?.domainName ?: "" }?.let {
                 m.updateWithLatestMessage(it, domain)
             }
         }
 
         return m
     }
-
 
     private suspend fun buildConversationAvatarModel(
         conversation: HomebaseFile,
@@ -316,5 +286,4 @@ class ConversationMapper(
 
         return ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback)
     }
-
 }

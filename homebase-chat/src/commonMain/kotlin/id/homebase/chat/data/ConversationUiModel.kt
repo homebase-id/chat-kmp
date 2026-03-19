@@ -63,9 +63,4 @@ data class ConversationUiModel(
         }
         return name
     }
-
-    fun missingConnections(): List<OdinId> {
-        // TODO - get participants list of members you are not connected to
-        return listOf()
-    }
 }

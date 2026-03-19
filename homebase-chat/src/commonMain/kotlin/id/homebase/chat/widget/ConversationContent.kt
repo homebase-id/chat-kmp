@@ -67,7 +67,7 @@ import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.createconversation.ContactItem
-import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.util.keyboardAsState
@@ -101,7 +101,7 @@ import kotlin.time.Clock
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ConversationContent(
-    conversation: ConversationUiModel,
+    conversation: EnrichedConversationUiModel,
     uiState: MessageListUiState,
     textFieldState: RichTextState,
     recordingData: RecordingData?,
@@ -224,7 +224,7 @@ fun ConversationContent(
                                     onClick = {
                                         onUiAction(
                                             ConversationListUiAction.ShowConversationSettings(
-                                                conversation
+                                                conversation.conversation
                                             )
                                         )
                                     }
@@ -263,7 +263,7 @@ fun ConversationContent(
                             showConversationMenu = false
                             onUiAction(
                                 ConversationListUiAction.ShowConversationSettings(
-                                    conversation
+                                    conversation.conversation
                                 )
                             )
                         },
@@ -311,7 +311,7 @@ fun ConversationContent(
                 .consumeWindowInsets(innerPadding).imePadding()
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
-            if (conversation.missingConnections().isNotEmpty()) {
+            if (conversation.missingConnections.isNotEmpty()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -327,7 +327,7 @@ fun ConversationContent(
                     Spacer(modifier = Modifier.width(8.dp))
                     ElevatedButton(
                         onClick = {
-                            onUiAction(ConversationListUiAction.ConnectIdentities(conversation.missingConnections()))
+                            onUiAction(ConversationListUiAction.ConnectIdentities(conversation.missingConnections))
                         }) {
                         Text(stringResource(MR.string.connect))
                     }
@@ -363,8 +363,8 @@ fun ConversationContent(
                                     participantNames =
                                         conversation
                                             .participants
-                                            .filter { it.domainName != uiState.ownerSession?.odinId?.domainName }
-                                            .map { it.domainName }
+                                            .filter { it.odinId != uiState.ownerSession?.odinId }
+                                            .map { it.name }
                                             .toPersistentList(),
                                 )
                             }

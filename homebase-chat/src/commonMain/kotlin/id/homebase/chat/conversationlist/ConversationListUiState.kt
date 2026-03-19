@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.EmojiReaction
@@ -20,7 +21,7 @@ import kotlin.uuid.Uuid
 
 @Immutable
 data class ConversationListUiState(
-    val activeConversations: ImmutableList<ConversationUiModel> = persistentListOf(),
+    val activeConversations: ImmutableList<EnrichedConversationUiModel> = persistentListOf(),
     val conversationsContent: ConversationListContentState = ConversationListContentState.Empty,
     val selectedConversationId: Uuid? = null,
     val filterByUnread: Boolean = false,
@@ -62,7 +63,7 @@ sealed interface ConversationListContentState {
 
 @Immutable
 sealed interface ConversationListContentModel {
-    data class Conversation(val conversation: ConversationUiModel) : ConversationListContentModel
+    data class Conversation(val conversation: EnrichedConversationUiModel) : ConversationListContentModel
     data class Message(val message: MessageUiModel) : ConversationListContentModel
     data class Header(val resource: StringResource) : ConversationListContentModel
 }

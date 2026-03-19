@@ -134,7 +134,7 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
      * Convert permission from API format to DrivePermissionType list. Handles both string format
      * ("ReadWrite") and array format.
      */
-    private fun parsePermission(element: JsonElement?): List<DrivePermissionType> {
+    private fun parsePermission(element: JsonElement?): List<DrivePermission> {
         if (element == null) return emptyList()
 
         return when (element) {
@@ -147,7 +147,7 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
                 // Array of permission values
                 element.mapNotNull {
                     val value = it.jsonPrimitive.int
-                    DrivePermissionType.entries.find { type -> type.value == value }
+                    DrivePermission.entries.find { type -> type.value == value }
                 }
             }
 
@@ -160,7 +160,7 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
  * Convert text-based permission levels to DrivePermissionType list. Reflects DrivePermission enum
  * in services/Odin.Core.Services/Drives/DrivePermission.cs
  */
-fun getDrivePermissionFromString(permission: String): List<DrivePermissionType> {
+fun getDrivePermissionFromString(permission: String): List<DrivePermission> {
     if (permission.isBlank()) return emptyList()
 
     var lowered = permission.lowercase()
@@ -175,10 +175,10 @@ fun getDrivePermissionFromString(permission: String): List<DrivePermissionType> 
 
     return parts.mapNotNull { part ->
         when (part.trim()) {
-            "read" -> DrivePermissionType.Read
-            "write" -> DrivePermissionType.Write
-            "react" -> DrivePermissionType.React
-            "comment" -> DrivePermissionType.Comment
+            "read" -> DrivePermission.Read
+            "write" -> DrivePermission.Write
+            "react" -> DrivePermission.React
+            "comment" -> DrivePermission.Comment
             else -> null
         }
     }

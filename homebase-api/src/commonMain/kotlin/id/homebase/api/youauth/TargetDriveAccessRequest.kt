@@ -24,7 +24,7 @@ data class TargetDriveAccessRequest(
     val type: String,
     val name: String,
     val description: String,
-    val permissions: List<DrivePermissionType>,
+    val permissions: List<DrivePermission>,
     val attributes: Map<String, String>? = null,
     val allowAnonymousRead: Boolean? = null,
     val allowSubscriptions: Boolean? = null
@@ -45,7 +45,7 @@ data class TargetDriveAccessRequest(
         put("t", type)
         put("n", name)
         put("d", description)
-        put("p", DrivePermissionType.combine(permissions))
+        put("p", DrivePermission.combine(permissions))
         allowAnonymousRead?.let { put("r", it) }
         allowSubscriptions?.let { put("s", it) }
         attributes?.let { put("at", Json.encodeToString(serializer(), it)) }
@@ -57,7 +57,7 @@ data class TargetDriveAccessRequest(
         put("t", JsonPrimitive(type))
         put("n", JsonPrimitive(name))
         put("d", JsonPrimitive(description))
-        put("p", JsonPrimitive(DrivePermissionType.combine(permissions)))
+        put("p", JsonPrimitive(DrivePermission.combine(permissions)))
         allowAnonymousRead?.let { put("r", JsonPrimitive(it)) }
         allowSubscriptions?.let { put("s", JsonPrimitive(it)) }
         attributes?.let {

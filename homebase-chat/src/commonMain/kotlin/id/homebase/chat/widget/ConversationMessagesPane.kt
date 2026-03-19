@@ -29,7 +29,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
-import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -57,7 +57,7 @@ inline fun <T, K, V> Iterable<T>.associateNotNull(
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun ConversationMessagesPane(
-    conversation: ConversationUiModel,
+    conversation: EnrichedConversationUiModel,
     uiState: MessageListUiState,
     textFieldState: RichTextState,
     showBackButton: Boolean,
@@ -274,7 +274,7 @@ fun ConversationMessagesPane(
                     onBackClick = onBackClick,
                     onUiAction = onUiAction,
                     animatedVisibilityScope = this@AnimatedContent,
-                    sharedTransitionScope = this@SharedTransitionLayout,
+                    sharedTransitionScope = this@SharedTransitionLayout
                 )
             } else {
                 when (data) {
