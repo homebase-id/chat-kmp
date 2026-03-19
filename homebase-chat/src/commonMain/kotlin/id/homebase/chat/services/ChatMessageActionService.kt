@@ -59,6 +59,7 @@ class ChatMessageActionService(
             // even if there are no unread record not sent by me
             // lets see if there
             dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
+            conversationStream.updateUnreadCounts()
 
             return
         }
