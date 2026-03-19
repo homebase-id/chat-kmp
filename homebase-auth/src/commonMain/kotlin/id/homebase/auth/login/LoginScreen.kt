@@ -21,10 +21,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -231,21 +229,6 @@ private fun DriveProgressRow(drive: DriveProgress) {
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(modifier = Modifier.weight(1f))
-            if (drive.count > 0 && !drive.completed) {
-                Text(
-                    text = "${drive.count} records",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 8.dp),
-                )
-            } else if (drive.completed) {
-                Text(
-                    text = "${drive.total} records",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 8.dp),
-                )
-            }
             when {
                 drive.completed -> Icon(
                     imageVector = Icons.Filled.CheckCircle,
@@ -261,34 +244,16 @@ private fun DriveProgressRow(drive: DriveProgress) {
                 )
             }
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        when {
-            drive.completed -> LinearProgressIndicator(
-                progress = { 1f },
-                modifier = Modifier.fillMaxWidth(),
-                color = successColor,
-                trackColor = ProgressIndicatorDefaults.linearTrackColor,
-                strokeCap = ProgressIndicatorDefaults.LinearStrokeCap,
-            )
-            drive.error != null -> if (drive.progress != null) {
-                LinearProgressIndicator(
-                    progress = { drive.progress },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.error,
-                    trackColor = ProgressIndicatorDefaults.linearTrackColor,
-                    strokeCap = ProgressIndicatorDefaults.LinearStrokeCap,
-                )
-            } else {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.error,
-                    trackColor = ProgressIndicatorDefaults.linearTrackColor,
-                    strokeCap = ProgressIndicatorDefaults.LinearStrokeCap,
-                )
-            }
-            else -> LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth(),
-                strokeCap = ProgressIndicatorDefaults.LinearStrokeCap,
+        val displayCount = if (drive.completed) drive.total else drive.count
+        if (displayCount > 0) {
+            Text(
+                text = "$displayCount synced",
+                style = MaterialTheme.typography.bodyMedium,
+                color = when {
+                    drive.completed -> successColor
+                    drive.error != null -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
         }
         if (drive.error != null) {
