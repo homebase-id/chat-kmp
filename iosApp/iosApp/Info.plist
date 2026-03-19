@@ -1,42 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-    <key>CFBundleURLTypes</key>
-    <array>
-     <dict>
-      <key>CFBundleURLSchemes</key>
-      <array>
-       <string>homebase-share</string>
-       <string>homebase-fchat</string>
-      </array>
-     </dict>
-    </array>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>homebase-fchat</string>
-			</array>
-		</dict>
-	</array>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-	</array>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Allow access to the microphone to record audio for message attachment.</string>
-    <key>UIBackgroundModes</key>
-    <array>
-     <string>fetch</string>
-     <string>remote-notification</string>
-    </array>
-</dict>
+    <dict>
+        <key>CADisableMinimumFrameDurationOnPhone</key>
+        <true/>
+        <key>CFBundleURLTypes</key>
+        <array>
+            <dict>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+                <key>CFBundleURLSchemes</key>
+                <array>
+                    <string>homebase-share</string>
+                    <string>homebase-fchat</string>
+                </array>
+            </dict>
+        </array>
+        <key>ITSAppUsesNonExemptEncryption</key>
+        <false/>
+        <key>NSAppTransportSecurity</key>
+        <dict>
+            <key>NSAllowsArbitraryLoads</key>
+            <false/>
+            <key>NSAllowsLocalNetworking</key>
+            <true/>
+        </dict>
+        <key>NSMicrophoneUsageDescription</key>
+        <string>Allow access to your microphone to record a message and send it securely over chat.</string>
+        <key>UIBackgroundModes</key>
+        <array>
+            <string>fetch</string>
+            <string>remote-notification</string>
+        </array>
+    </dict>
 </plist>
