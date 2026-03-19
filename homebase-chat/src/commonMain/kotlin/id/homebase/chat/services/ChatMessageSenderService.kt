@@ -38,7 +38,6 @@ class ChatMessageSenderService(
 ) {
     private val chatDrive = chatTargetDrive.alias
 
-
     suspend fun sendNewMessage(
         messageUniqueId: Uuid,
         conversationId: Uuid,
@@ -224,7 +223,7 @@ class ChatMessageSenderService(
         )
 
         val built = buildMessageContentAndBundle(
-            messageData = messageData,
+            preVersionedMessageData = messageData,
             payloadBundle = null,
             fileOperationsProvider = fileOperationsProvider
         )
@@ -306,10 +305,14 @@ class ChatMessageSenderService(
 
 
     suspend fun buildMessageContentAndBundle(
-        messageData: MessageAppData,
+        preVersionedMessageData: MessageAppData,
         payloadBundle: PayloadBundle?,
         fileOperationsProvider: FileOperationsProvider
     ): MessageBuildResult {
+
+        val messageData = preVersionedMessageData.copy(
+            version = ChatProtocol.MessageVersionNumber
+        )
 
         val fullJson = OdinSystemSerializer.serialize(messageData)
 
@@ -324,7 +327,7 @@ class ChatMessageSenderService(
 
         val previewData = messageData.copy(
             message = JsonPrimitive(
-                ChatMessageSizer.preview(messageData.getMessageAsString())
+                ChatMessageSizer.preview(messageData.getMessage())
             )
         )
 
