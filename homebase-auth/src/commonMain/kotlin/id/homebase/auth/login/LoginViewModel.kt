@@ -3,11 +3,9 @@ package id.homebase.auth.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.PlatformType
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
-import id.homebase.api.getPlatform
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -21,6 +19,7 @@ import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.config.feedTargetDrive
 import id.homebase.core.config.syncDrives
 import id.homebase.core.config.targetDriveAccessRequest
+import id.homebase.core.notifications.NotificationService
 import id.homebase.core.util.StartupState
 import id.homebase.core.util.mapToStartupState
 import io.ktor.client.HttpClient
@@ -38,6 +37,7 @@ class LoginViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val usernameStorage: UsernameStorage,
+    private val notificationService: NotificationService,
     private val httpClient: HttpClient,
     private val eventBus: EventBus,
 ) : ViewModel() {
@@ -255,17 +255,7 @@ class LoginViewModel(
                     Logger.i(tag = "LoginViewModel", messageString = "AuthState: $authState")
                     when (authState) {
                         is StartupState.Authenticated -> {
-                            usernameStorage.saveUsername(_uiState.value.homebaseId)
-
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    isAuthenticated = true,
-                                    errorMessage = null,
-                                    uiEvent = LoginUiEvent.NavigateToHome
-                                )
-                            }
-
+                            handleAuthenticatedUser()
                         }
 
                         is StartupState.Unauthenticated -> {
@@ -298,6 +288,19 @@ class LoginViewModel(
                         }
                     }
                 }
+        }
+    }
+
+    private suspend fun handleAuthenticatedUser() {
+        notificationService.reRegister()
+        usernameStorage.saveUsername(_uiState.value.homebaseId)
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                isAuthenticated = true,
+                errorMessage = null,
+                uiEvent = LoginUiEvent.NavigateToHome
+            )
         }
     }
 }

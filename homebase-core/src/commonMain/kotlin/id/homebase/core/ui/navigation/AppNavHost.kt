@@ -51,6 +51,9 @@ import id.homebase.chat.editconversationgroup.EditConversationGroupScreen
 import id.homebase.chat.groupsettings.GroupSettingsScreen
 import id.homebase.chat.messageinfo.MessageInfoScreen
 import id.homebase.chat.selectmembers.SelectMembersScreen
+import id.homebase.core.permissions.PermissionStatus
+import id.homebase.core.permissions.PermissionType
+import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.home.HomeScreen
@@ -85,6 +88,13 @@ fun AppNavHost(
     val topLevelRoutes = remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Home) }
     val uriHandler = getUriHandler()
 
+    var hasNotificationPermission by remember { mutableStateOf(false) }
+    val permissionManager = createPermissionsManager { type, status, _ ->
+        if (type == PermissionType.NOTIFICATION) {
+            hasNotificationPermission = status == PermissionStatus.GRANTED
+        }
+    }
+
     // Track if we're showing only the detail pane (list hidden) in a top level screen
     var showingOnlyDetailPane by remember { mutableStateOf(false) }
 
@@ -112,6 +122,8 @@ fun AppNavHost(
         }
     }
 
+
+
     // Global auth guard - navigate to login when unauthenticated
     LaunchedEffect(authState, currentDestination) {
         if (authState is YouAuthState.Unauthenticated || authState is YouAuthState.Error) {
@@ -120,6 +132,15 @@ fun AppNavHost(
                 navController.navigate(Route.Login) {
                     popUpTo(0) { inclusive = true }
                 }
+            }
+        }
+    }
+
+    // Show notification permission popup when relevant
+    LaunchedEffect(authState, currentDestination) {
+        if (currentDestination != null && !currentDestination.hasRoute(Route.Login::class) && !currentDestination.hasRoute(Route.AppLoading::class)) {
+            if (authState is YouAuthState.Authenticated && !hasNotificationPermission) {
+                permissionManager.askPermission(PermissionType.NOTIFICATION)
             }
         }
     }
