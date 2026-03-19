@@ -11,6 +11,7 @@ import id.homebase.core.audio.IOSAudioRecorder
 import id.homebase.core.gallery.IOSGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
+import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.image.PHAssetFetcher
 import id.homebase.core.settings.createSettings
 import id.homebase.core.util.IOSPlatformInfo
@@ -31,6 +32,7 @@ actual fun platformModule(): Module = module {
                 .components {
                     add(PHAssetFetcher.Factory())
                     add(HomebaseImageFetcher.Factory(get()))
+                    add(PublicImageFetcher.Factory(get()))
                 }
                 .build()
     }

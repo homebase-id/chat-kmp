@@ -11,6 +11,7 @@ import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.gallery.AndroidGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
+import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.settings.createSettings
 import id.homebase.core.util.AndroidPlatformInfo
 import id.homebase.core.util.PlatformInfo
@@ -27,7 +28,10 @@ actual fun platformModule(): Module = module {
     single<AudioPlayer> { AndroidAudioPlayer() }
     single {
         ImageLoader.Builder(androidContext())
-                .components { add(HomebaseImageFetcher.Factory(get())) }
+                .components {
+                    add(HomebaseImageFetcher.Factory(get()))
+                    add(PublicImageFetcher.Factory(get()))
+                }
             .memoryCache {
                 MemoryCache.Builder()
                     .maxSizePercent(androidContext(), 0.25)
