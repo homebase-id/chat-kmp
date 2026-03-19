@@ -13,7 +13,7 @@ import id.homebase.chat.createconversation.ContactGroup
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.selectmembers.filterAndGroup
-import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.core.ui.navigation.Route
 import kotlinx.collections.immutable.PersistentList

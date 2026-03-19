@@ -12,7 +12,7 @@ import id.homebase.chat.groupsettings.GroupSettingsUiEvent.Error
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowAddMembers
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowContactInfo
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowEditGroup
-import id.homebase.chat.services.convo.ContactService
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.ui.navigation.Route
