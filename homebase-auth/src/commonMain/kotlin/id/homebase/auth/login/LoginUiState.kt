@@ -8,13 +8,14 @@ data class LoginUiState(
     val isLoading: Boolean = false,
     val isAuthenticated: Boolean = false,
     val errorMessage: String? = null,
-    val progress: LoginProgress? = null,
+    val driveProgresses: List<DriveProgress> = emptyList(),
     val uiEvent: LoginUiEvent? = null
 )
 
 @Immutable
-data class LoginProgress(
+data class DriveProgress(
     val driveId: String,
+    val name: String,
     val error: String? = null,
     val completed: Boolean = false,
     val progress: Float? = null,
