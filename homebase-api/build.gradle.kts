@@ -20,6 +20,7 @@ kotlin {
             optIn("kotlinx.serialization.ExperimentalSerializationApi")
             optIn("kotlin.time.ExperimentalTime")
             optIn("dev.whyoleg.cryptography.DelicateCryptographyApi")
+            optIn("io.ktor.client.plugins.websocket.ExperimentalWebSocketExtensionApi")
         }
     }
 
@@ -75,6 +76,7 @@ kotlin {
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.client.encoding)
+            implementation(libs.ktor.client.websockets)
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.ktor.logging)
             implementation(libs.kotlinx.coroutines.core)
