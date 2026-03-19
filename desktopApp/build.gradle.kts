@@ -116,6 +116,15 @@ compose.desktop {
         nativeDistributions {
             macOS {
                 iconFile.set(project.rootProject.file("icons/icon.icns"))  // Path to your .icns file
+
+                // Add Info.plist configuration for macOS
+                infoPlist {
+                    // Microphone permission
+                    extraKeysRawXml = """
+                        <key>NSMicrophoneUsageDescription</key>
+                        <string>Allow access to the microphone to record audio for message attachment.</string>
+                    """.trimIndent()
+                }
             }
             windows {
                 iconFile.set(project.rootProject.file("icons/icon.ico"))  // Path to your .ico file

@@ -404,7 +404,7 @@ fun MessageTextFieldCompact(
     onCancelEdit: () -> Unit,
 ) {
     val showSendButton = state.annotatedString.isNotBlank()
-    val showRecordingButton by remember(editExistingMode, showSendButton) { derivedStateOf { isMobile() && !editExistingMode && !showSendButton } }
+    val showRecordingButton by remember(editExistingMode, showSendButton) { derivedStateOf { !editExistingMode && !showSendButton } }
     var isMicrophonePressed by remember { mutableStateOf(false) }
     var isRecordingActive by remember { mutableStateOf(false) }
     var recordingSeconds by remember { mutableStateOf(0) }

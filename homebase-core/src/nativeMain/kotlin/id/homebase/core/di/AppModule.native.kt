@@ -6,13 +6,15 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.IOSFileOperationsProvider
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
+import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.audio.IOSAudioPlayer
 import id.homebase.core.audio.IOSAudioRecorder
+import id.homebase.core.audio.IOSWaveFormGenerator
 import id.homebase.core.gallery.IOSGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
-import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.image.PHAssetFetcher
+import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.settings.createSettings
 import id.homebase.core.util.IOSPlatformInfo
 import id.homebase.core.util.PlatformInfo
@@ -26,6 +28,7 @@ actual fun platformModule(): Module = module {
     single<PlatformInfo> { IOSPlatformInfo() }
     single<AudioRecorder> { IOSAudioRecorder() }
     single<AudioPlayer> { IOSAudioPlayer() }
+    single<AudioWaveFormGenerator> { IOSWaveFormGenerator() }
 
     single {
         ImageLoader.Builder(PlatformContext.INSTANCE)

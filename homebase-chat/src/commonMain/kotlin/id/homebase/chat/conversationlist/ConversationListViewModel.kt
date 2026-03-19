@@ -43,6 +43,7 @@ import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
+import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
@@ -58,9 +59,11 @@ import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.cacheDir
 import io.github.vinceglb.filekit.delete
 import io.github.vinceglb.filekit.filesDir
 import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.write
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
@@ -94,6 +97,7 @@ class ConversationListViewModel(
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val audioRecorder: AudioRecorder,
     private val audioPlayer: AudioPlayer,
+    private val audioWaveFormGenerator: AudioWaveFormGenerator,
     private val eventBus: EventBus,
     private val contactService: ContactService
 ) : ViewModel() {
@@ -919,6 +923,12 @@ class ConversationListViewModel(
                     try {
                         audioRecorder.stopRecording()
                         _messagesUiState.value.recordingData?.let { recordingData ->
+                            val audioInfo = audioWaveFormGenerator.generateWaveForm(recordingData.file)
+                            val waveFormFileImage = audioWaveFormGenerator.saveWaveformToPng(audioInfo.waveForm, 1000, 200)
+                            val file = PlatformFile(FileKit.cacheDir, "waveform.png")
+                            file.write(waveFormFileImage)
+                            _uiState.update { it.copy(uiEvent = OpenFile(file.toString())) }
+
                             addMessageWithFiles(
                                 conversationId = recordingData.conversationId,
                                 content = "",

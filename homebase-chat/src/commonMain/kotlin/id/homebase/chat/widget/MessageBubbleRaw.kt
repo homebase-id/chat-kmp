@@ -306,7 +306,7 @@ fun MessageBubbleRaw(
                         }
                         Row(
                             modifier = Modifier.padding(
-                                horizontal = 12.dp, vertical = 8.dp
+                                horizontal = 12.dp, vertical = 12.dp
                             ),
                         ) {
                             if (emojiOnly) {
@@ -323,7 +323,7 @@ fun MessageBubbleRaw(
                                 RichText(
                                     state = textState,
                                     onTextLayout = { textLayoutResult = it },
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    style = MaterialTheme.typography.bodyLarge,
                                     color = contentColor
                                 )
                             }

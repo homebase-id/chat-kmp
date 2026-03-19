@@ -1,19 +1,28 @@
 package id.homebase.api.file
 
 import io.ktor.client.request.forms.InputProvider
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.io.Buffer
 import platform.Foundation.NSCachesDirectory
+import platform.Foundation.NSData
+import platform.Foundation.NSFileHandle
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSNumber
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUUID
 import platform.Foundation.NSUserDomainMask
+import platform.Foundation.closeFile
 import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfFile
+import platform.Foundation.fileHandleForWritingAtPath
+import platform.Foundation.seekToEndOfFile
+import platform.Foundation.writeData
 import platform.Foundation.writeToFile
 import platform.Photos.PHAsset
 import platform.Photos.PHImageRequestOptions
@@ -21,17 +30,9 @@ import platform.Photos.PHImageRequestOptionsDeliveryModeHighQualityFormat
 import platform.posix.memcpy
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.flow.Flow
-import platform.Foundation.NSFileHandle
-import platform.Foundation.NSFileManager
-import platform.Foundation.NSData
-import platform.Foundation.closeFile
-import platform.Foundation.fileHandleForWritingAtPath
-import platform.Foundation.seekToEndOfFile
-import platform.Foundation.writeData
 
 class IOSFileOperationsProvider : FileOperationsProvider {
-    @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override fun openFileInput(path: String): InputProvider = InputProvider {
         if (path.startsWith("ph://") || path.contains("/L0/")) {
             val bytes = runBlocking { readPhotoLibraryAsset(path) }
@@ -45,7 +46,7 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         Buffer().apply { write(bytes) }
     }
 
-    @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun readFileBytes(path: String): ByteArray {
         if (path.startsWith("ph://") || path.contains("/L0/")) {
             return readPhotoLibraryAsset(path)
@@ -97,7 +98,7 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         return size?.longLongValue ?: 0L
     }
 
-    @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray,
         prefix: String,
@@ -118,7 +119,7 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         return filePath
     }
 
-    @OptIn(ExperimentalForeignApi::class)
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun writeStream(
         path: String,
         data: Flow<ByteArray>
@@ -151,7 +152,7 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         handle.closeFile()
     }
 
-    @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     private suspend fun readPhotoLibraryAsset(phUri: String): ByteArray = suspendCancellableCoroutine { continuation ->
             val assetId = phUri.removePrefix("ph://")
             val fetchResult = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(assetId), options = null)
