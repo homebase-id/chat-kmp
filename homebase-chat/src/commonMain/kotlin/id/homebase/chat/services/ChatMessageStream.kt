@@ -407,7 +407,7 @@ class ChatMessageStream(
                     globalTransitId = metadata.globalTransitId,
                     fileId = header.fileId,
                     conversationId = appData.groupId!!,
-                    content = messageAppData.getMessageAsString(),
+                    content = messageAppData.getMessage(),
                     created = metadata.created.toInstant(),
                     modified = metadata.updated.toInstant(),
                     originalAuthor = metadata.originalAuthor,
@@ -423,8 +423,8 @@ class ChatMessageStream(
                     isPendingSend = isPendingSend,
                     isStatusMessage = isStatusMessage,
                     hasMore = hasMore
-
                 )
+
             } catch (t: Throwable) {
 
                 Logger.e(t) {
