@@ -16,8 +16,6 @@ import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.toBase64
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
-import io.ktor.client.plugins.websocket.WebSocketDeflateExtension
-import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
@@ -50,11 +48,7 @@ class OdinWebSocketClient(
     private val MAX_RECONNECT_DELAY_MS = 5_000L
 
     private val client = HttpClient {
-        install(WebSockets) {
-            extensions {
-                install(WebSocketDeflateExtension)
-            }
-        }
+        installWebSockets()
     }
 
     private var fileHeaderProcessor = MainIndexMetaHelpers.HomebaseFileProcessor(databaseManager)
