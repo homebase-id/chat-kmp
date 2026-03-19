@@ -178,7 +178,7 @@ fun ConversationMessagesPane(
                     seen.addAll(newIds)
 
                     onUiAction(
-                        ConversationListUiAction.MarkAsRead(newIds)
+                        ConversationListUiAction.MarkAsRead(conversation.id, newIds)
                     )
                 }
             }

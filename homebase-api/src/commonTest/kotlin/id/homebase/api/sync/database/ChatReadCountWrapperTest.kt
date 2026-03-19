@@ -1,6 +1,7 @@
 package id.homebase.api.sync.database
 
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
@@ -413,7 +414,8 @@ class ChatReadCountWrapperTest {
         DatabaseManager { createInMemoryDatabase() }.use { dbm ->
             val wrapper = dbm.chatReadCount
 
-            val allReadCounts = wrapper.selectAllUnreadCount()
+            val originalAuthor: OdinId = OdinId("somewhere.demo.rocks")
+            val allReadCounts = wrapper.selectAllUnreadCount(originalAuthor)
 
             assertTrue(
                 allReadCounts.isEmpty(), "Should return empty list when no conversations exist"

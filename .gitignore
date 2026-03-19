@@ -1,5 +1,6 @@
 *.iml
 desktopApp/odin.db
+desktopApp/odin-2.db
 .kotlin
 .gradle
 **/build/

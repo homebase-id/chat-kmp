@@ -262,7 +262,8 @@ class ConversationStream(
     }
 
     suspend fun updateUnreadCounts() {
-        val unread = dbm.chatReadCount.selectAllUnreadCount()
+        val domain = credentialsManager.requireActiveDomain()
+        val unread = dbm.chatReadCount.selectAllUnreadCount(domain)
         val unreadMap = unread.associate { it.conversationId to it.unreadCount.toInt() }
 
         var changed = false
