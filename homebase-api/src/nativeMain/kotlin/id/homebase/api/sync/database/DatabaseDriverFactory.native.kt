@@ -7,7 +7,7 @@ import co.touchlab.sqliter.DatabaseConfiguration
 actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
         return NativeSqliteDriver(
-            schema = OdinDatabase.Schema, name = "odin.db", onConfiguration = { config ->
+            schema = OdinDatabase.Schema, name = "odin-2.db", onConfiguration = { config ->
                 config.copy(
                     encryptionConfig = DatabaseConfiguration.Encryption(
                         key = passphrase ?: "", rekey = ""

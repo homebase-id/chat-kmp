@@ -47,14 +47,26 @@ WHERE d.groupId = ?
 -- Return list of {groupId, unreadCount} for all chat conversations (8888)
 -- Will return (groupId, unread-count) for all Chat conversations with 1 or more unread messages.
 -- Any conversation missing in this table will be included and considered to have all messages unread.
+-- selectAllUnreadCount:
+-- SELECT d.groupId, COUNT(*) AS unreadCount
+-- FROM DriveMainIndex AS d
+-- LEFT JOIN ChatReadCount ON d.groupId = ChatReadCount.groupId
+-- WHERE d.fileType = 7878 AND d.dataType = 0 -- Message
+--   AND (ChatReadCount.lastReadTime IS NULL OR d.created > ChatReadCount.lastReadTime)
+--   AND d.groupId IS NOT NULL
+-- GROUP BY d.groupId;
+
 selectAllUnreadCount:
 SELECT d.groupId, COUNT(*) AS unreadCount
 FROM DriveMainIndex AS d
-LEFT JOIN ChatReadCount ON d.groupId = ChatReadCount.groupId
-WHERE d.fileType = 7878 AND d.dataType = 0 -- Message
-  AND (ChatReadCount.lastReadTime IS NULL OR d.created > ChatReadCount.lastReadTime)
+LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
+WHERE d.fileType = 7878  -- Message
+  AND d.dataType = 0 -- Standard message
+  AND (c.lastReadTime IS NULL OR d.created > c.lastReadTime)
   AND d.groupId IS NOT NULL
+  AND (d.originalAuthor IS NULL OR d.originalAuthor != ?)
 GROUP BY d.groupId;
+
 
 -- Upsert lastReadTime (only increase)
 upsertLastReadTime:

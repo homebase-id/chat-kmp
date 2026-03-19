@@ -3,6 +3,7 @@ package id.homebase.api.sync.database
 import app.cash.sqldelight.db.SqlDriver
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.time.Clock
@@ -117,8 +118,8 @@ class ChatReadCountWrapper(
      * Get all conversation read counts
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
-    suspend fun selectAllUnreadCount(): List<ConversationUnreadCount> {
-        val list = delegate.selectAllUnreadCount().executeAsList()
+    suspend fun selectAllUnreadCount(originalAuthor: OdinId): List<ConversationUnreadCount> {
+        val list = delegate.selectAllUnreadCount(originalAuthor.domainName).executeAsList()
         return list.map {
             ConversationUnreadCount(
                 conversationId = it.groupId,

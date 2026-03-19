@@ -6,7 +6,7 @@ import java.util.Properties
 
 actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
-        val dbFileName = "odin.db"
+        val dbFileName = "odin-2.db"
         val jdbcUrl = if (passphrase.isNullOrEmpty()) {
             "jdbc:sqlite:$dbFileName"
         } else {

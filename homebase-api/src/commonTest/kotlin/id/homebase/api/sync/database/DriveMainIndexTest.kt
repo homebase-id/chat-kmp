@@ -49,6 +49,7 @@ class DriveMainIndexTest {
         val archivalStatus = 6
         val historyStatus = 7
         val senderId = "sender-$randomId"
+        val originalAuthor = "originalAuthor-$randomId"
         val byteCount = 1024L
         val hdrEncryptedKeyHeader = "encrypted-key-header"
         val hdrAppData = "app-data"
@@ -69,6 +70,7 @@ class DriveMainIndexTest {
             globalTransitId = globalTransitId,
             groupId = groupId,
             senderId = senderId,
+            originalAuthor = originalAuthor,
             fileType = fileType.toLong(),
             dataType = dataType.toLong(),
             archivalStatus = archivalStatus.toLong(),
@@ -97,6 +99,7 @@ class DriveMainIndexTest {
         assertEquals(historyStatus.toLong(), selectedRecord.historyStatus)
         // Note: fileState, requiredSecurityGroup, fileSystemType are now consolidated in jsonHeader
         assertEquals(senderId, selectedRecord.senderId)
+        assertEquals(originalAuthor, selectedRecord.originalAuthor)
         assertEquals(groupId, selectedRecord.groupId)
         assertEquals(uniqueId, selectedRecord.uniqueId)
         assertEquals(created, selectedRecord.created)
@@ -125,6 +128,7 @@ class DriveMainIndexTest {
             globalTransitId = globalTransitId,
             groupId = null,
             senderId = "original-sender",
+            originalAuthor = "original-author",
             fileType = 4L,
             dataType = 5L,
             archivalStatus = 6L,
@@ -149,6 +153,7 @@ class DriveMainIndexTest {
             globalTransitId = updatedGlobalTransitId,
             groupId = Uuid.random(),
             senderId = "updated-sender",
+            originalAuthor = "updated-original-author",
             fileType = 44L,
             dataType = 55L,
             archivalStatus = 66L,
@@ -171,6 +176,7 @@ class DriveMainIndexTest {
 
         assertEquals(updatedGlobalTransitId, updatedRecord.globalTransitId)
         assertEquals("updated-sender", updatedRecord.senderId)
+        assertEquals("updated-original-author", updatedRecord.originalAuthor)
         assertEquals(updatedUniqueId, updatedRecord.uniqueId)
         assertEquals(updatedTime, updatedRecord.modified)
         assertEquals(currentTime, updatedRecord.created)
@@ -214,6 +220,7 @@ class DriveMainIndexTest {
                 globalTransitId = Uuid.random(),
                 groupId = null,
                 senderId = "sender-$i",
+                originalAuthor = "original-author-$i",
                 fileType = 1L,
                 dataType = 1L,
                 archivalStatus = 1L,
@@ -253,6 +260,7 @@ class DriveMainIndexTest {
             globalTransitId = Uuid.random(),
             groupId = null,
             senderId = "sender-delete",
+            originalAuthor = "original-author-delete",
             fileType = 1L,
             dataType = 1L,
             archivalStatus = 1L,

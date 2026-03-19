@@ -92,7 +92,7 @@ fun MessageItem(
         )
     } else {
         val onMarkAsRead =
-            remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(listOf(message.id))) } }
+            remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(message.conversationId, listOf(message.id))) } }
 
         ReceivedMessageBubble(
             message = message,
