@@ -1,11 +1,7 @@
 package id.homebase.chat.services
 
-import androidx.compose.runtime.Immutable
-import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.RichText
 import id.homebase.api.client.drives.files.getPlainTextFromRichText
-import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -23,18 +19,36 @@ data class MessageAppData(
 
     /** Content of the message - can be a simple string or rich text */
     val message: JsonElement = JsonPrimitive(""),
-    // homebaseFile.contentIsComplete is a boolean if true write "more..."
-    // TODO: A helper function to load the text when the user presses "more..."
 
     // Where is the urlPreview?
     /** Delivery status of the message (as int value) */
     val deliveryStatus: Int = ChatDeliveryStatus.Sent.value,
 
     /** Whether the message has been edited */
-    val isEdited: Boolean = false
+    val isEdited: Boolean = false,
+
+    /** The version of the MessageAppData stored
+     * When version is null, the message field's content is likely rich-text coming
+     *  from the older homebase apps (web and react-native)
+     * When the version == 1, the message field's content is mark down
+     */
+    val version: Int? = null
 ) {
-    /** Get the delivery status as enum */
-    fun getDeliveryStatusEnum(): ChatDeliveryStatus? = ChatDeliveryStatus.fromValue(deliveryStatus)
+
+    fun getMessage(): String {
+        return when {
+            version == null -> getMessageAsString()
+            version >= 1 -> getMessageAsMarkdown()
+            else -> getMessageAsString() // safe fallback
+        }
+    }
+
+    fun getMessageAsMarkdown(): String {
+        return when (message) {
+            is JsonPrimitive -> message.content
+            else -> ""
+        }
+    }
 
     /** Returns the message as a plain string, extracting from RichText if necessary */
     fun getMessageAsString(): String {
@@ -54,46 +68,3 @@ data class MessageAppData(
         }
     }
 }
-
-@Serializable
-@Immutable
-data class ReplyPreview(
-    val replyUniqueId: Uuid, // FileId of the message that was replied to
-    val authorOdinId: String, // frodo.baggins.demo.rocks
-    val message:
-    String, // chopped chars (IDK how many you use? 40? 80? use truncateToCodePoints(80)
-    val previewThumbnail: EmbeddedThumb? =
-        null // Real thumb via replyUniqueId, null for text-only messages
-) // Tiny tiny thumb, can be even smaller than tinyThumb even a 1px color
-
-enum class ChatDeliveryStatus(val value: Int) {
-    /** Message is currently being sent; Used for optimistic updates */
-    Sending(15),
-
-    /** Message has been sent and delivered to your identity */
-    Sent(20),
-
-    /** Message has been delivered to the recipient's inbox */
-    Delivered(30),
-
-    /** Message has been read by the recipient */
-    Read(40),
-
-    /** Message failed to send to the recipient */
-    Failed(50);
-
-    companion object {
-        fun fromValue(value: Int): ChatDeliveryStatus? = entries.find { it.value == value }
-    }
-}
-
-
-@Serializable
-data class ConversationLastMessageContent(
-    val message: String?,
-    val deliveryStatus: ChatDeliveryStatus,
-    val sender: String,
-    val uniqueId: Uuid,
-    val time: UnixTimeUtc,
-    val reactionSummary: ReactionSummary?,
-)

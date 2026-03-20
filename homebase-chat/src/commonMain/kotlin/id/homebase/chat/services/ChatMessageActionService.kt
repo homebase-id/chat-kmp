@@ -36,12 +36,13 @@ class ChatMessageActionService(
 ) {
     private val chatDrive = chatTargetDrive.alias
 
-    suspend fun markAsReadLatestFileCreated(messageIds: List<Uuid>) {
+    suspend fun markAsReadLatestFileCreated(conversationId: Uuid, messageIds: List<Uuid>) {
 
         Logger.d { "Attempting mark-as-read for messageIds: ${messageIds.size}" }
 
         val batch = chatMessageStream.getMessages(messageIds)
         val domain = credentialsManager.requireActiveDomain()
+        val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
 
         Logger.d { "Attempting mark-as-read for batch count: ${batch.records.size}" }
 
@@ -53,12 +54,20 @@ class ChatMessageActionService(
                          && !it.isAuthoredBy(domain)
             }
 
-        if (unreadRecords.isEmpty()) return
+        if (unreadRecords.isEmpty()) {
 
-        val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
+            // even if there are no unread record not sent by me
+            // lets see if there
+            dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
+            conversationStream.updateUnreadCounts()
+
+            return
+        }
+
 
         Logger.d { "Calling mark-as-read for unread-records count: ${unreadRecords.size}" }
 
+        //TODO no need to group
         unreadRecords
             .groupBy { it.conversationId }
             .forEach { (conversationId, records) ->

@@ -525,7 +525,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.MarkAsRead -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.markAsReadLatestFileCreated(action.messageIds)
+                        chatMessageActionService.markAsReadLatestFileCreated(action.conversationId, action.messageIds)
                     } catch (e: Exception) {
                         sendEvent(
                             ShowErrorMessage(

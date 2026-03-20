@@ -11,7 +11,7 @@ actual class DatabaseDriverFactory(private val context: Context) {
         System.loadLibrary("sqlcipher")
         val factory = SupportOpenHelperFactory((passphrase ?: "").toByteArray())
         return AndroidSqliteDriver(
-            schema = OdinDatabase.Schema, context = context, name = "odin.db", factory = factory
+            schema = OdinDatabase.Schema, context = context, name = "odin-2.db", factory = factory
         )
     }
 }

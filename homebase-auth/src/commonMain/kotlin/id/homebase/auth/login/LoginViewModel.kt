@@ -3,11 +3,10 @@ package id.homebase.auth.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.PlatformType
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
-import id.homebase.api.getPlatform
+import id.homebase.api.isIos
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -158,7 +157,7 @@ class LoginViewModel(
 
     private fun handleAppResumed() {
         viewModelScope.launch {
-            if (getPlatform().name != PlatformType.IOS) youAuthFlowManager.onAppResumed()
+            if (isIos()) youAuthFlowManager.onAppResumed()
         }
     }
 
@@ -185,53 +184,97 @@ class LoginViewModel(
                 when (event) {
                     is BackendEvent.DriveEvent.SyncAllStarted -> {
                         val initial = syncDrives.map { drive ->
-                            DriveProgress(driveId = drive.alias.toString(), name = driveName(drive.alias))
+                            DriveProgress(
+                                driveId = drive.alias.toString(),
+                                name = driveName(drive.alias)
+                            )
                         }
                         _uiState.update { it.copy(driveProgresses = initial) }
                     }
+
                     is BackendEvent.DriveEvent.Started -> {
                         _uiState.update { state ->
                             val id = event.driveId.toString()
                             val exists = state.driveProgresses.any { it.driveId == id }
                             val updated = if (exists) {
-                                updateDrive(state.driveProgresses, event.driveId) { it.copy(progress = null) }
+                                updateDrive(
+                                    state.driveProgresses,
+                                    event.driveId
+                                ) { it.copy(progress = null) }
                             } else {
-                                state.driveProgresses + DriveProgress(driveId = id, name = driveName(event.driveId))
+                                state.driveProgresses + DriveProgress(
+                                    driveId = id,
+                                    name = driveName(event.driveId)
+                                )
                             }
                             state.copy(driveProgresses = updated)
                         }
                     }
+
                     is BackendEvent.DriveEvent.Completed -> {
                         _uiState.update { state ->
-                            state.copy(driveProgresses = updateDrive(state.driveProgresses, event.driveId) {
-                                it.copy(completed = true, progress = 1f, total = event.totalCount, count = event.totalCount)
-                            })
+                            state.copy(
+                                driveProgresses = updateDrive(
+                                    state.driveProgresses,
+                                    event.driveId
+                                ) {
+                                    it.copy(
+                                        completed = true,
+                                        progress = 1f,
+                                        total = event.totalCount,
+                                        count = event.totalCount
+                                    )
+                                })
                         }
                     }
+
                     is BackendEvent.DriveEvent.Failed -> {
                         _uiState.update { state ->
                             val id = event.driveId.toString()
                             val exists = state.driveProgresses.any { it.driveId == id }
                             val updated = if (exists) {
-                                updateDrive(state.driveProgresses, event.driveId) { it.copy(error = event.errorMessage) }
+                                updateDrive(
+                                    state.driveProgresses,
+                                    event.driveId
+                                ) { it.copy(error = event.errorMessage) }
                             } else {
-                                state.driveProgresses + DriveProgress(driveId = id, name = driveName(event.driveId), error = event.errorMessage)
+                                state.driveProgresses + DriveProgress(
+                                    driveId = id,
+                                    name = driveName(event.driveId),
+                                    error = event.errorMessage
+                                )
                             }
                             state.copy(driveProgresses = updated)
                         }
                     }
+
                     is BackendEvent.DriveEvent.BatchReceived -> {
                         _uiState.update { state ->
                             val id = event.driveId.toString()
                             val exists = state.driveProgresses.any { it.driveId == id }
                             val updated = if (exists) {
-                                updateDrive(state.driveProgresses, event.driveId) { it.copy(count = event.totalCount, total = event.totalCount, progress = null) }
+                                updateDrive(
+                                    state.driveProgresses,
+                                    event.driveId
+                                ) {
+                                    it.copy(
+                                        count = event.totalCount,
+                                        total = event.totalCount,
+                                        progress = null
+                                    )
+                                }
                             } else {
-                                state.driveProgresses + DriveProgress(driveId = id, name = driveName(event.driveId), count = event.totalCount, total = event.totalCount)
+                                state.driveProgresses + DriveProgress(
+                                    driveId = id,
+                                    name = driveName(event.driveId),
+                                    count = event.totalCount,
+                                    total = event.totalCount
+                                )
                             }
                             state.copy(driveProgresses = updated)
                         }
                     }
+
                     else -> {}
                 }
             }
