@@ -97,6 +97,14 @@ sealed interface FullScreenOverlay {
         val conversationId: Uuid,
         val attachments: List<AttachmentPendingFile>,
     ) : FullScreenOverlay
+
+    data class VideoPlayerData(
+        val fileId: Uuid,
+        val driveId: Uuid,
+        val payloadKey: String,
+        val keyHeader: KeyHeader,
+        val payload: PayloadDescriptor,
+    ) : FullScreenOverlay
 }
 
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {

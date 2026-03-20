@@ -292,6 +292,13 @@ fun ConversationMessagesPane(
                         )
                     }
 
+                    is FullScreenOverlay.VideoPlayerData -> {
+                        FullScreenVideoPlayer(
+                            data = data,
+                            onDismiss = { onUiAction(CloseFullScreenOverlay) },
+                        )
+                    }
+
                     is FullScreenOverlay.AttachmentData -> {
                         FullScreenAttachmentEditor(
                             data = data,

@@ -706,6 +706,17 @@ class ConversationListViewModel(
                             }
 
                             contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+                                _messagesUiState.update {
+                                    it.copy(
+                                        fullScreenOverlay = FullScreenOverlay.VideoPlayerData(
+                                            fileId = action.message.fileId,
+                                            driveId = chatTargetDrive.alias,
+                                            payloadKey = action.payloadKey,
+                                            keyHeader = action.message.keyHeader,
+                                            payload = selectedPayload,
+                                        )
+                                    )
+                                }
                             }
 
                             contentType.startsWith("audio/") -> {}
