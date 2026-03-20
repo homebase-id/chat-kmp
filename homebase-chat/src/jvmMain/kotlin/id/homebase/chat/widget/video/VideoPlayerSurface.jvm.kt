@@ -24,6 +24,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Bitmap
 import org.koin.compose.koinInject
@@ -33,9 +34,12 @@ import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormat
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormatCallback
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.RenderCallback
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.format.RV32BufferFormat
+import com.sun.net.httpserver.HttpServer
 import java.io.File
+import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.util.UUID
+import java.util.concurrent.Executors
 
 private sealed interface VpsState {
     data object Loading : VpsState
@@ -51,9 +55,13 @@ actual fun VideoPlayerSurface(
     val driveFileProvider = koinInject<DriveFileProvider>()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
+    var httpServer by remember(data) { mutableStateOf<HttpServer?>(null) }
 
     DisposableEffect(data) {
-        onDispose { tempDir?.deleteRecursively() }
+        onDispose {
+            httpServer?.stop(0)
+            tempDir?.deleteRecursively()
+        }
     }
 
     LaunchedEffect(data) {
@@ -66,27 +74,80 @@ actual fun VideoPlayerSurface(
                     return@withContext
                 }
 
-                val bytesResponse = driveFileProvider.getPayloadBytesDecrypted(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    key = data.payloadKey,
-                    keyHeader = data.keyHeader,
-                ) ?: run {
-                    state = VpsState.Error("Failed to download video")
-                    return@withContext
-                }
-
                 val dir = File(System.getProperty("java.io.tmpdir"), "hbvid_${UUID.randomUUID()}")
                     .also { it.mkdirs() }
                 tempDir = dir
 
                 val hlsPlaylist = metadata.hlsPlaylist
                 if (metadata.isSegmented && hlsPlaylist != null) {
-                    File(dir, "index.ts").writeBytes(bytesResponse.bytes)
-                    File(dir, "enc.key").writeBytes(data.keyHeader.aesKey.unsafeBytes)
-                    File(dir, "index.m3u8").writeText(hlsPlaylist)
-                    state = VpsState.Playing(File(dir, "index.m3u8").absolutePath)
+                    // Write only the playlist — segments are fetched on demand by the proxy.
+                    // Strip #EXT-X-KEY: data from getPayloadBytesDecrypted is already decrypted.
+                    val strippedPlaylist = hlsPlaylist.lines()
+                        .filter { !it.startsWith("#EXT-X-KEY") }
+                        .joinToString("\n")
+                    File(dir, "index.m3u8").writeText(strippedPlaylist)
+
+                    val totalSize = metadata.fileSize
+                    val server = HttpServer.create(InetSocketAddress(0), 0).apply {
+                        createContext("/") { exchange ->
+                            val name = exchange.requestURI.path.trimStart('/')
+                            if (name.endsWith(".m3u8")) {
+                                val fileBytes = File(dir, name).readBytes()
+                                exchange.responseHeaders.add("Content-Type", "application/vnd.apple.mpegurl")
+                                exchange.sendResponseHeaders(200, fileBytes.size.toLong())
+                                exchange.responseBody.use { it.write(fileBytes) }
+                                return@createContext
+                            }
+
+                            // .ts range requests — fetch and decrypt the requested chunk on demand
+                            exchange.responseHeaders.add("Content-Type", "video/mp2t")
+                            exchange.responseHeaders.add("Accept-Ranges", "bytes")
+                            val rangeHeader = exchange.requestHeaders.getFirst("Range")
+                            val start: Long
+                            val end: Long
+                            if (rangeHeader != null) {
+                                val parts = rangeHeader.removePrefix("bytes=").split("-")
+                                start = parts[0].toLong()
+                                end = if (parts[1].isNotEmpty()) parts[1].toLong() else totalSize - 1
+                            } else {
+                                start = 0
+                                end = totalSize - 1
+                            }
+                            val length = end - start + 1
+                            val bytes = runBlocking {
+                                driveFileProvider.getPayloadBytesDecrypted(
+                                    driveId = data.driveId,
+                                    fileId = data.fileId,
+                                    key = data.payloadKey,
+                                    keyHeader = data.keyHeader,
+                                    chunkStart = start,
+                                    chunkLength = length,
+                                )?.bytes
+                            }
+                            if (bytes == null) {
+                                exchange.sendResponseHeaders(500, -1)
+                                exchange.responseBody.close()
+                                return@createContext
+                            }
+                            exchange.responseHeaders.add("Content-Range", "bytes $start-$end/$totalSize")
+                            exchange.sendResponseHeaders(206, bytes.size.toLong())
+                            exchange.responseBody.use { it.write(bytes) }
+                        }
+                        executor = Executors.newFixedThreadPool(4)
+                        start()
+                    }
+                    httpServer = server
+                    state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                 } else {
+                    val bytesResponse = driveFileProvider.getPayloadBytesDecrypted(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        key = data.payloadKey,
+                        keyHeader = data.keyHeader,
+                    ) ?: run {
+                        state = VpsState.Error("Failed to download video")
+                        return@withContext
+                    }
                     File(dir, "video.mp4").writeBytes(bytesResponse.bytes)
                     state = VpsState.Playing(File(dir, "video.mp4").absolutePath)
                 }
