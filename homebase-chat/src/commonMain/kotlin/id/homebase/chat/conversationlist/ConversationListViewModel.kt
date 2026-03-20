@@ -42,7 +42,7 @@ import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.core.audio.AudioPlayer
+import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -66,6 +66,7 @@ import io.github.vinceglb.filekit.filesDir
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.write
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -97,7 +98,6 @@ class ConversationListViewModel(
     private val ownerSessionRepository: OwnerSessionRepository,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val audioRecorder: AudioRecorder,
-    private val audioPlayer: AudioPlayer,
     private val audioWaveFormGenerator: AudioWaveFormGenerator,
     private val eventBus: EventBus,
     private val contactService: ContactService
@@ -150,7 +150,7 @@ class ConversationListViewModel(
                 _uiState.update {
                     it.copy(
                         activeConversations = enriched
-                            .sortedByDescending { it.timestamp }
+                            .sortedByDescending { conversation -> conversation.timestamp }
                             .toPersistentList()
                     )
                 }
@@ -457,7 +457,7 @@ class ConversationListViewModel(
                             KeyHeader(payloadIv, message.keyHeader.aesKey)
                         )
 
-                        val fileName = payload.descriptorContent ?: payload.key
+                        val fileName = payload.filename() ?: payload.key
 
                         if (fileBytes != null) {
                             var extension = payload.contentType?.substringAfter("/") ?: "bin"
@@ -473,6 +473,65 @@ class ConversationListViewModel(
                             sendEvent(
                                 ShowErrorMessage(
                                     "Could not download file"
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        sendEvent(
+                            ShowErrorMessage(
+                                "Error downloading file: ${e.message}"
+                            )
+                        )
+                    } finally {
+                        // 4. Remove from downloadingFiles set
+                        _uiState.update {
+                            it.copy(downloadingFiles = it.downloadingFiles - fileKey)
+                        }
+                    }
+                }
+            }
+
+            is ConversationListUiAction.DecryptFile -> {
+                val message =
+                    _messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
+                        .map { it.message }.find { it.id == action.messageId } ?: return
+
+                val fileKey = "${message.id}_${action.payloadKey}"
+
+                viewModelScope.launch {
+                    try {
+
+                        val payload =
+                            message.payloads?.find { it.key == action.payloadKey } ?: return@launch
+                        val payloadIv = Base64.decode(
+                            payload.iv ?: throw IllegalStateException(
+                                "encrypted payload requires key header"
+                            )
+                        )
+                        val fileBytes = chatMessageActionService.getPayloadBytes(
+                            message.fileId,
+                            action.payloadKey,
+                            KeyHeader(payloadIv, message.keyHeader.aesKey)
+                        )
+
+                        val fileName = payload.filename() ?: payload.key
+
+                        if (fileBytes != null) {
+                            var extension = payload.contentType?.substringAfter("/") ?: "bin"
+                            extension = when (extension) {
+                                "jpeg" -> "jpg"
+                                else -> extension
+                            }
+                            val tempFile = fileOperationsProvider.writeBytesToTempFile(
+                                fileBytes, fileName, ".$extension"
+                            )
+                            val decryptedFiles = _messagesUiState.value.decryptedFiles.toMutableMap()
+                            decryptedFiles[DecryptedFileKey(message.fileId, action.payloadKey)] = tempFile
+                            _messagesUiState.update { it.copy(decryptedFiles = decryptedFiles.toPersistentMap()) }
+                        } else {
+                            sendEvent(
+                                ShowErrorMessage(
+                                    "Could not decrypt file"
                                 )
                             )
                         }
@@ -930,8 +989,9 @@ class ConversationListViewModel(
                         audioRecorder.stopRecording()
                         recordingData?.let { recordingData ->
                             var waveFormImageFile: PlatformFile? = null
+                            var audioInfo: AudioFileInfo? = null
                             try {
-                                val audioInfo = audioWaveFormGenerator.generateWaveForm(recordingData.file)
+                                audioInfo = audioWaveFormGenerator.generateWaveForm(recordingData.file)
                                 val waveFormImageBytes = audioWaveFormGenerator.saveWaveformToPng(audioInfo.waveForm, 1000, 200)
                                 waveFormImageFile = PlatformFile(FileKit.cacheDir, "waveform-${Uuid.generateV4()}.png")
                                 waveFormImageFile.write(waveFormImageBytes)
@@ -947,7 +1007,7 @@ class ConversationListViewModel(
                                         id = Uuid.random(),
                                         audioFile = recordingData.file,
                                         waveformFile = waveFormImageFile,
-                                        lengthSeconds = 3
+                                        lengthSeconds = audioInfo?.getDuration()?.inWholeSeconds?.toInt() ?: 0
                                     )
                                 ),
                             )
@@ -1101,13 +1161,13 @@ class ConversationListViewModel(
                                 Logger.i("Resetting scroll position, new message seen")
                                 messagesModels.indexOfLast {
                                     it is MessageListContentModel.Message && it.message.id == newMessageId
-                                } + 1
+                                }
                             } else {
                                 if (messageIdForScrollNullable == null) null
                                 else {
                                     val messageIndex = messagesModels.indexOfLast {
                                         it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
-                                    } + 1
+                                    }
                                     messageIdForScrollNullable = null
                                     messageIndex
                                 }

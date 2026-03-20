@@ -13,8 +13,10 @@ import androidx.compose.ui.graphics.Shape
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import kotlinx.collections.immutable.ImmutableMap
 import kotlin.uuid.Uuid
 
 /**
@@ -34,6 +36,7 @@ import kotlin.uuid.Uuid
 @Composable
 fun MediaMessage(
     payloads: List<PayloadDescriptor>,
+    decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     fileId: Uuid,
     driveId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
@@ -42,6 +45,7 @@ fun MediaMessage(
     modifier: Modifier = Modifier,
     onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
+    onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     shape: Shape = RoundedCornerShape(
         topStart = Dimens.Message.cornerRadius,
         topEnd = Dimens.Message.cornerRadius
@@ -64,6 +68,7 @@ fun MediaMessage(
                 driveId = driveId,
                 previewThumbnail = previewThumbnail
                     ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
+                decryptedFiles = decryptedFiles,
                 keyHeader = keyHeader,
                 modifier = widthModifier.heightIn(
                     min = Dimens.MediaBubble.minHeight,
@@ -73,6 +78,7 @@ fun MediaMessage(
                 preserveAspectRatio = preserveAspectRatio,
                 onClick = { onMediaClick?.invoke(payloads[0]) },
                 onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
+                onRequestDecryptedFile = { onRequestDecryptedFile?.invoke(payloads[0]) },
                 shape = shape,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,

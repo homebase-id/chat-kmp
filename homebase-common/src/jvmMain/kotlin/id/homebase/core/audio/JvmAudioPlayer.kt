@@ -5,6 +5,10 @@ class JvmAudioPlayer: AudioPlayer {
         TODO("Not yet implemented")
     }
 
+    override fun jump(seconds: Int) {
+        TODO("Not yet implemented")
+    }
+
     override fun resume() {
         TODO("Not yet implemented")
     }

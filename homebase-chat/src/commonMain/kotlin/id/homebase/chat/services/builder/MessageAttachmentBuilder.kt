@@ -1,5 +1,6 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.services.PayloadBundle
@@ -67,7 +68,9 @@ object MessageAttachmentBuilder {
                                         filePath = attachment.filePath,
                                         contentType = attachment.contentType,
                                         previewThumbnail = thumbs?.preview,
-                                        descriptorContent = """{ "lengthSeconds": ${attachment.audioLengthSeconds} }"""
+                                        descriptorContent = DescriptorContent.descriptorContentFromAudioFile(
+                                            name = attachment.displayName ?: attachment.filePath,
+                                            lengthSeconds = attachment.audioLengthSeconds ?: 0)
                                     )
                                 ),
                             thumbnails = thumbs?.thumbnails ?: emptyList(),

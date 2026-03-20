@@ -378,6 +378,7 @@ fun ConversationContent(
                                 is MessageListContentModel.Message -> {
                                     MessageItem(
                                         message = messageItem.message,
+                                        decryptedFiles = uiState.decryptedFiles,
                                         currentOdinId = uiState.ownerSession?.odinId?.domainName
                                             ?: "",
                                         renderAuthorName = conversation.isGroupConversation,

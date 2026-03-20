@@ -12,7 +12,9 @@ import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.EmojiReaction
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.datetime.LocalDate
 import org.jetbrains.compose.resources.StringResource
 import kotlin.time.Instant
@@ -40,6 +42,7 @@ sealed interface ConversationListUiSheet {
 @Immutable
 data class MessageListUiState(
     val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
+    val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     val isLoadingMessages: Boolean = true,
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
@@ -51,6 +54,12 @@ data class MessageListUiState(
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
     val uiSheet: ConversationListUiSheet? = null,
+)
+
+@Immutable
+data class DecryptedFileKey(
+    val fileId: Uuid,
+    val payloadKey: String,
 )
 
 @Immutable

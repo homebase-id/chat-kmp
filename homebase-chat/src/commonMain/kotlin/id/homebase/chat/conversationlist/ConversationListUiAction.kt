@@ -94,6 +94,7 @@ sealed interface ConversationListUiAction {
         ConversationListUiAction
 
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
+    data class DecryptFile(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
 
     data object HideReactionDetails : ConversationListUiAction
     data class StartRecording(val conversationId: Uuid) : ConversationListUiAction

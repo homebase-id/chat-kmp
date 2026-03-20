@@ -7,11 +7,14 @@ import androidx.compose.runtime.remember
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.data.MessageUiModel
+import kotlinx.collections.immutable.ImmutableMap
 
 @Composable
 fun MessageItem(
     message: MessageUiModel,
+    decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     currentOdinId: String,
     renderAuthorName: Boolean = false,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -37,6 +40,8 @@ fun MessageItem(
         remember(message.id) { { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) } }
     val onShowReactions =
         remember(message.id) { { onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id)) } }
+    val onDecryptFile =
+        remember(message.id) { { payload: PayloadDescriptor -> onUiAction(ConversationListUiAction.DecryptFile(messageId = message.id, payloadKey = payload.key)) } }
     val onMediaClick = remember(message.id) {
         { payload: PayloadDescriptor ->
             onUiAction(
@@ -77,12 +82,14 @@ fun MessageItem(
 
         SentMessageBubble(
             message = message,
+            decryptedFiles = decryptedFiles,
             onMessageInfo = onMessageInfo,
             onReply = onReply,
             onEdit = onEdit,
             onShare = onShare,
             onDelete = onDelete,
             onMediaClick = onMediaClick,
+            onRequestDecryptedFile = onDecryptFile,
             onAddReaction = onAddReaction,
             onShowReactions = onShowReactions,
             animatedVisibilityScope = animatedVisibilityScope,
@@ -96,6 +103,7 @@ fun MessageItem(
 
         ReceivedMessageBubble(
             message = message,
+            decryptedFiles = decryptedFiles,
             renderAuthorName = renderAuthorName,
             onMessageInfo = onMessageInfo,
             onReply = onReply,
@@ -105,6 +113,7 @@ fun MessageItem(
             onAddReaction = onAddReaction,
             onShowReactions = onShowReactions,
             onMediaClick = onMediaClick,
+            onRequestDecryptedFile = onDecryptFile,
             animatedVisibilityScope = animatedVisibilityScope,
             sharedTransitionScope = sharedTransitionScope,
             downloadingFiles = downloadingFiles,
