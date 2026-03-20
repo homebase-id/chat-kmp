@@ -12,6 +12,6 @@ data class VideoMetadata(
     val fileSize: Long,
     val duration: Float = 0F,
     val key: String = "",
-    val codec: String,
+    val codec: String = if (isSegmented) "video/mp2t" else "video/mp4",
     val hlsPlaylist: String? = null,
 )
