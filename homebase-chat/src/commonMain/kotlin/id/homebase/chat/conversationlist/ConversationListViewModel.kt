@@ -32,6 +32,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
@@ -266,14 +267,14 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.SaveScrollPosition -> {
-                _messagesUiState.update {
-                    it.copy(
-                        scrollPosition = ScrollPosition(
-                            firstVisibleItemIndex = action.firstVisibleItemIndex,
-                            firstVisibleItemScrollOffset = action.firstVisibleItemScrollOffset,
-                        )
-                    )
-                }
+//                _messagesUiState.update {
+//                    it.copy(
+//                        scrollPosition = ScrollPosition(
+//                            firstVisibleItemIndex = action.firstVisibleItemIndex,
+//                            firstVisibleItemScrollOffset = action.firstVisibleItemScrollOffset,
+//                        )
+//                    )
+//                }
 
                 // Persist to user settings
                 viewModelScope.launch {
@@ -1057,59 +1058,80 @@ class ConversationListViewModel(
     }
 
     private fun loadMessagesForConversation(conversationId: Uuid, messageIdForScroll: Uuid?) {
+        _messagesUiState.update { it.copy(scrollPosition = null, isLoadingMessages = true) }
+
         // When loading message for newly selected conversation, cancel any previous job to
         // avoid observing multiple messageStreams
         currentConversationJob?.cancel()
         currentConversationJob = viewModelScope.launch {
             try {
+                var messageIdForScrollNullable = messageIdForScroll
+                var setInitialScroll = true
+
                 chatMessageStream.loadConversation(conversationId)
-                chatMessageStream.observeMessages(conversationId).collect { messages ->
-
-                    // Group messages within day sections
-                    val timezone = TimeZone.currentSystemDefault()
-                    val groupedMessages = messages.sortedBy { it.created }.groupBy { message ->
-                        val date = message.created.toLocalDateTime(timezone).date
-                        date
-                    }
-                    val messagesModels: List<MessageListContentModel> =
-                        groupedMessages.flatMap { (date, messages) ->
-                            listOf(MessageListContentModel.Section(date)) + messages.map {
-                                if (it.isStatusMessage)
-                                    MessageListContentModel.System(it.content, it.created)
-                                else
-                                    MessageListContentModel.Message(it)
-                            }
+                chatMessageStream.observeMessages(conversationId).collect { messageState ->
+                    when (messageState) {
+                        is ChatMessagesData.Initializing -> {
+                            // ignore
                         }
+                        is ChatMessagesData.Messages ->  {
+                            val messages = messageState.messages
+                            // Group messages within day sections
+                            val timezone = TimeZone.currentSystemDefault()
+                            val groupedMessages = messages.sortedBy { it.created }.groupBy { message ->
+                                val date = message.created.toLocalDateTime(timezone).date
+                                date
+                            }
+                            val messagesModels: MutableList<MessageListContentModel> = mutableListOf(MessageListContentModel.Header)
 
-                    // Scroll handling, either use new message id, click message id or null
-                    val newMessageId = messages.firstOrNull { it.id == pendingMessageId }?.id
-                    pendingMessageId = null
-                    val indexOfMessageForScroll = if (newMessageId != null) {
-                        Logger.i("Resetting scroll position, new message seen")
-                        messagesModels.indexOfLast {
-                            it is MessageListContentModel.Message && it.message.id == newMessageId
-                        } + 1
-                    } else {
-                        if (messageIdForScroll == null) null
-                        else messagesModels.indexOfLast {
-                            it is MessageListContentModel.Message && it.message.id == messageIdForScroll
-                        } + 1
-                    }
+                            messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
+                                listOf(MessageListContentModel.Section(date)) + messages.map {
+                                    if (it.isStatusMessage)
+                                        MessageListContentModel.System(it.content, it.created)
+                                    else
+                                        MessageListContentModel.Message(it)
+                                }
+                            }
+                            )
 
-                    _uiState.value = _uiState.value.copy(
-                        selectedConversationId = conversationId,
-                    )
-
-                    _messagesUiState.update {
-                        it.copy(
-                            messages = messagesModels.toPersistentList(),
-                            scrollPosition = if (indexOfMessageForScroll == null) {
-                                getScrollPosition(conversationId)
+                            // Scroll handling, either use new message id, click message id or null
+                            val newMessageId = messages.firstOrNull { it.id == pendingMessageId }?.id
+                            pendingMessageId = null
+                            val indexOfMessageForScroll = if (newMessageId != null) {
+                                Logger.i("Resetting scroll position, new message seen")
+                                messagesModels.indexOfLast {
+                                    it is MessageListContentModel.Message && it.message.id == newMessageId
+                                } + 1
                             } else {
-                                ScrollPosition(indexOfMessageForScroll)
-                            },
-                        )
+                                if (messageIdForScrollNullable == null) null
+                                else {
+                                    val messageIndex = messagesModels.indexOfLast {
+                                        it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
+                                    } + 1
+                                    messageIdForScrollNullable = null
+                                    messageIndex
+                                }
+                            }
+
+                            _uiState.value = _uiState.value.copy(
+                                selectedConversationId = conversationId,
+                            )
+
+                            _messagesUiState.update {
+                                it.copy(
+                                    isLoadingMessages = false,
+                                    messages = messagesModels.toPersistentList(),
+                                    scrollPosition = if (indexOfMessageForScroll == null) {
+                                        if (setInitialScroll) getScrollPosition(conversationId) else null
+                                    } else {
+                                        ScrollPosition(indexOfMessageForScroll)
+                                    },
+                                )
+                            }
+                            setInitialScroll = false
+                        }
                     }
+
                 }
             } catch (_: CancellationException) {
                 // ignore

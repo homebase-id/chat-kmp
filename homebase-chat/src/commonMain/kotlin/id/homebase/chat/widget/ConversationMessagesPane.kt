@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import associateNotNull
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.ConversationListUiAction
@@ -40,19 +41,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlin.uuid.Uuid
-
-inline fun <T, K, V> Iterable<T>.associateNotNull(
-    transform: (T) -> Pair<K, V>?
-): Map<K, V> {
-    val map = mutableMapOf<K, V>()
-    for (item in this) {
-        val pair = transform(item)
-        if (pair != null) {
-            map[pair.first] = pair.second
-        }
-    }
-    return map
-}
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
@@ -89,10 +77,12 @@ fun ConversationMessagesPane(
         }
     }
 
-    val listState = remember(conversation.id) {
+    val listState = remember(conversation.id,uiState.isLoadingMessages) {
         val conversationId = conversation.id
-
-        if (uiState.scrollPosition != null) {
+        if (uiState.isLoadingMessages) {
+            Logger.i("Pre-initializing empty scroll position: id=$conversationId")
+            LazyListState()
+        } else if (uiState.scrollPosition != null) {
             Logger.i("Pre-initializing scroll position: id=$conversationId -> ${uiState.scrollPosition.firstVisibleItemIndex}:${uiState.scrollPosition.firstVisibleItemScrollOffset}")
             LazyListState(
                 firstVisibleItemIndex = uiState.scrollPosition.firstVisibleItemIndex,
@@ -105,8 +95,29 @@ fun ConversationMessagesPane(
         }
     }
 
-    val seen = remember(conversation.id) { mutableSetOf<Uuid>() }
+    // Save scroll position when it changes
+    LaunchedEffect(listState) {
+        val conversationId = conversation.id
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.debounce(
+            300
+        ) // Only save after 300ms of no scrolling
+            .distinctUntilChanged().collect { (index, offset) ->
+                // Only save if we're still viewing the same conversation, messages are loaded,
+                // and not restoring
+                if (!uiState.isLoadingMessages) {
+                    Logger.i("Scroll changed: id=${conversationId} -> $index:$offset")
+                    onUiAction(
+                        SaveScrollPosition(
+                            conversationId = conversationId,
+                            firstVisibleItemIndex = index,
+                            firstVisibleItemScrollOffset = offset
+                        )
+                    )
+                }
+            }
+    }
 
+    val seen = remember(conversation.id) { mutableSetOf<Uuid>() }
     val messageIdByKey = remember(uiState.messages) {
         uiState.messages.associateNotNull { item ->
             if (item is MessageListContentModel.Message) {
@@ -114,51 +125,6 @@ fun ConversationMessagesPane(
             } else null
         }
     }
-
-
-    // Restore scroll position after groupedMessages are ready
-    LaunchedEffect(conversation.id, uiState.messages) {
-        isRestoringScrollPosition = true
-        val totalItems = uiState.messages.size + 1 // +1 for header item
-        val conversationId = conversation.id
-        val currentIndex = listState.firstVisibleItemIndex
-
-        // Only scroll if necessary
-        if (uiState.scrollPosition == null && currentIndex >= totalItems) {
-            // Was initialized with Int.MAX_VALUE, now scroll to actual bottom
-            Logger.i("Correcting scroll to bottom: id=$conversationId (totalItems=$totalItems)")
-            listState.scrollToItem(index = (totalItems - 1).coerceAtLeast(0), scrollOffset = 0)
-        } else if (uiState.scrollPosition != null && currentIndex != uiState.scrollPosition.firstVisibleItemIndex) {
-            // Saved position was outside bounds, re-scroll with proper coercion
-            Logger.i("Correcting saved scroll position: id=$conversationId -> ${uiState.scrollPosition.firstVisibleItemIndex}:${uiState.scrollPosition.firstVisibleItemScrollOffset} (totalItems=$totalItems)")
-            listState.scrollToItem(
-                index = uiState.scrollPosition.firstVisibleItemIndex.coerceIn(0, totalItems - 1),
-                scrollOffset = uiState.scrollPosition.firstVisibleItemScrollOffset
-            )
-        }
-        isRestoringScrollPosition = false
-    }
-
-    // Save scroll position when it changes
-    LaunchedEffect(conversation.id) {
-        val currentConversationId = conversation.id
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.debounce(
-            300
-        ) // Only save after 300ms of no scrolling
-            .distinctUntilChanged().collect { (index, offset) ->
-                // Only save if we're still viewing the same conversation, messages are loaded,
-                // and not restoring
-                Logger.i("Scroll changed: id=${currentConversationId} -> $index:$offset")
-                onUiAction(
-                    SaveScrollPosition(
-                        conversationId = currentConversationId,
-                        firstVisibleItemIndex = index,
-                        firstVisibleItemScrollOffset = offset
-                    )
-                )
-            }
-    }
-
 
     LaunchedEffect(conversation.id, messageIdByKey) {
 
@@ -269,7 +235,6 @@ fun ConversationMessagesPane(
                     textFieldState = textFieldState,
                     recordingData = uiState.recordingData,
                     listState = listState,
-                    isScrollPositionReady = true,
                     showBackButton = showBackButton,
                     onBackClick = onBackClick,
                     onUiAction = onUiAction,

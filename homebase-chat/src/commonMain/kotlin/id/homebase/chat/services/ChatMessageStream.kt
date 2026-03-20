@@ -88,11 +88,11 @@ class ChatMessageStream(
 
     // ---------- PUBLIC API ----------
 
-    fun observeMessages(conversationId: Uuid): StateFlow<List<MessageUiModel>> =
+    fun observeMessages(conversationId: Uuid): StateFlow<ChatMessagesData> =
         conversationState
             .messages
-            .map { it[conversationId].orEmpty() }
-            .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
+            .map { ChatMessagesData.Messages(it[conversationId].orEmpty()) }
+            .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ChatMessagesData.Initializing)
 
     suspend fun loadConversation(conversationId: Uuid) {
         loadedConversations += conversationId
@@ -535,4 +535,9 @@ class ChatMessageStream(
             }
         }
     }
+}
+
+sealed interface ChatMessagesData {
+    data object Initializing : ChatMessagesData
+    data class Messages(val messages: List<MessageUiModel>) : ChatMessagesData
 }

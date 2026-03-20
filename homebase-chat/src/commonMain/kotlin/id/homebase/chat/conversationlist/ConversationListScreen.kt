@@ -36,10 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.api.common.OdinId
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
-import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
@@ -54,8 +52,6 @@ import id.homebase.resources.chat_message_delete_dialog_title
 import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_message_discard_draft
-import id.homebase.resources.chat_select_a_conversation
-import id.homebase.resources.chat_select_a_conversation_subtitle
 import id.homebase.resources.discard
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
@@ -366,43 +362,35 @@ fun ConversationListUi(
             },
             detailPane = {
                 AnimatedPane {
-                    uiState.selectedConversationId?.let { conversationId ->
-                        val conversation = uiState.activeConversations.find { it.id == conversationId }
-                        if (conversation != null) {
-                            key(conversation.id) {
-                                ConversationMessagesPane(
-                                    conversation = conversation,
-                                    uiState = messagesUiState,
-                                    textFieldState = messageInputTextFieldState,
-
-                                    showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
-                                    onBackClick = {
-                                        onUiAction(ConversationListUiAction.ClearSelection)
-                                        scope.launch {
-                                            scaffoldNavigator.navigateBack(
-                                                backNavigationBehavior
-                                            )
-                                        }
-                                    },
-                                    onUiAction = onUiAction,
-                                )
-                            }
-                        } else {
-                            EmptyDetailPane(
-                                title = stringResource(
-                                    MR.string.chat_select_a_conversation
-                                ), subtitle = stringResource(
-                                    MR.string.chat_select_a_conversation_subtitle
-                                )
+                    val conversation =
+                        uiState.activeConversations.find { it.id == scaffoldNavigator.currentDestination?.contentKey }
+                    if (conversation != null) {
+                        key(conversation.id) {
+                            ConversationMessagesPane(
+                                conversation = conversation,
+                                uiState = messagesUiState,
+                                textFieldState = messageInputTextFieldState,
+                                showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
+                                onBackClick = {
+                                    onUiAction(ConversationListUiAction.ClearSelection)
+                                    scope.launch {
+                                        scaffoldNavigator.navigateBack(
+                                            backNavigationBehavior
+                                        )
+                                    }
+                                },
+                                onUiAction = onUiAction,
                             )
                         }
-                    } ?: EmptyDetailPane(
-                        title = stringResource(
-                            MR.string.chat_select_a_conversation
-                        ), subtitle = stringResource(
-                            MR.string.chat_select_a_conversation_subtitle
-                        )
-                    )
+                    } else {
+//                        EmptyDetailPane(
+//                            title = stringResource(
+//                                MR.string.chat_select_a_conversation
+//                            ), subtitle = stringResource(
+//                                MR.string.chat_select_a_conversation_subtitle
+//                            )
+//                        )
+                    }
                 }
             },
             paneExpansionState = rememberPaneExpansionState(
