@@ -77,6 +77,7 @@ kotlin {
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
+            implementation(libs.vlcj)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

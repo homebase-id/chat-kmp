@@ -1,6 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -13,7 +14,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -21,6 +25,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -36,6 +41,8 @@ fun FullScreenVideoPlayer(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var isPlaying by remember(data) { mutableStateOf(false) }
+
     val payloadIv = remember(data.payload.iv) {
         data.payload.iv?.let { Base64.decode(it) }
     }
@@ -45,35 +52,44 @@ fun FullScreenVideoPlayer(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        if (payloadIv != null) {
-            val imageData = remember(data.driveId, data.fileId, data.payloadKey, data.payload.lastModified) {
-                HomebaseImageData(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    payloadKey = data.payloadKey,
-                    previewThumbnail = data.payload.previewThumbnail?.toEmbeddedThumb(),
-                    requestedSize = ImageSize.THUMB_MEDIUM,
-                    lastModified = data.payload.lastModified,
-                    isEncrypted = true,
-                    keyHeader = KeyHeader(iv = payloadIv, aesKey = data.keyHeader.aesKey)
+        if (isPlaying) {
+            VideoPlayerSurface(
+                data = data,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            // Thumbnail with play button overlay
+            if (payloadIv != null) {
+                val imageData = remember(data.driveId, data.fileId, data.payloadKey, data.payload.lastModified) {
+                    HomebaseImageData(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        payloadKey = data.payloadKey,
+                        previewThumbnail = data.payload.previewThumbnail?.toEmbeddedThumb(),
+                        requestedSize = ImageSize.THUMB_MEDIUM,
+                        lastModified = data.payload.lastModified,
+                        isEncrypted = true,
+                        keyHeader = KeyHeader(iv = payloadIv, aesKey = data.keyHeader.aesKey)
+                    )
+                }
+                HomebaseImage(
+                    imageData = imageData,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                    contentDescription = "Video thumbnail",
                 )
             }
-            HomebaseImage(
-                imageData = imageData,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-                contentDescription = "Video thumbnail",
+
+            Icon(
+                imageVector = Icons.Default.PlayCircle,
+                contentDescription = "Play video",
+                modifier = Modifier
+                    .size(72.dp)
+                    .align(Alignment.Center)
+                    .clickable { isPlaying = true },
+                tint = Color.White.copy(alpha = 0.85f)
             )
         }
-
-        Icon(
-            imageVector = Icons.Default.PlayCircle,
-            contentDescription = "Play video",
-            modifier = Modifier
-                .size(72.dp)
-                .align(Alignment.Center),
-            tint = Color.White.copy(alpha = 0.85f)
-        )
 
         TopAppBar(
             modifier = Modifier.align(Alignment.TopStart),
