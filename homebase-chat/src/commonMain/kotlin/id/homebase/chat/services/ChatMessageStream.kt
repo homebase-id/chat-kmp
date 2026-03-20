@@ -351,7 +351,7 @@ class ChatMessageStream(
 
                 if (isDeleted) {
                     return MessageUiModel(
-                        id = appData.uniqueId!!,
+                        id = appData.uniqueId ?: header.fileId,
                         globalTransitId = metadata.globalTransitId,
                         fileId = header.fileId,
                         conversationId = appData.groupId!!,
@@ -361,7 +361,7 @@ class ChatMessageStream(
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         localReadTimestamp = localReadTimestamp,
                         isEdited = false,
-                        content = "",
+                        content = "Deleted File",
                         messageAppData = MessageAppData(),
                         reactionPreview = metadata.reactionPreview,
                         previewThumbnail = metadata.appData.previewThumbnail,

@@ -71,12 +71,16 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.androidx.media3.exoplayer)
+            implementation(libs.androidx.media3.exoplayer.hls)
+            implementation(libs.androidx.media3.ui)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
+            implementation(libs.vlcj)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
