@@ -78,7 +78,11 @@ fun MediaMessage(
                 preserveAspectRatio = preserveAspectRatio,
                 onClick = { onMediaClick?.invoke(payloads[0]) },
                 onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
-                onRequestDecryptedFile = { onRequestDecryptedFile?.invoke(payloads[0]) },
+                onRequestDecryptedFile = if (onRequestDecryptedFile != null) {
+                    { onRequestDecryptedFile(payloads[0]) }
+                } else {
+                    null
+                },
                 shape = shape,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,

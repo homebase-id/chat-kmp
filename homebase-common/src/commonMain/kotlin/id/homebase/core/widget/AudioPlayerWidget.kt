@@ -60,7 +60,7 @@ fun AudioPlayerWidget(
     keyHeader: KeyHeader,
     audioFile: String?,
     payload: PayloadDescriptor,
-    onRequestFile: () -> Unit,
+    onRequestDecryptedFile: (() -> Unit)? = null,
 ) {
     val audioPlayer = remember { getAudioPlayer() }
     var isPlaying by remember { mutableStateOf(false) }
@@ -122,7 +122,7 @@ fun AudioPlayerWidget(
                     if (audioFile == null && !fileRequested) {
                         fileRequested = true
                         isLoading = true
-                        onRequestFile()
+                        onRequestDecryptedFile?.invoke()
                     } else if (audioFile != null) {
                         if (isPlaying) {
                             audioPlayer.pause()
@@ -137,7 +137,7 @@ fun AudioPlayerWidget(
                         }
                     }
                 },
-                enabled = audioFile != null || !fileRequested
+                enabled = (audioFile != null || !fileRequested) && onRequestDecryptedFile != null
             ) {
                 if (isLoading && audioFile == null) {
                     CircularProgressIndicator(
@@ -173,6 +173,7 @@ fun AudioPlayerWidget(
 
             Slider(
                 value = progress,
+                enabled = onRequestDecryptedFile != null,
                 onValueChange = {
                     progress = it
                     audioPlayer.jump((it * totalFileSeconds).toInt())
@@ -244,9 +245,11 @@ fun AudioPlayerWidget(
     // Update loading state when file is loaded
     LaunchedEffect(audioFile) {
         if (audioFile != null) {
-            isLoading = false
-            isPlaying = true
-            audioPlayer.play(audioFile)
+            if (isLoading) {
+                isLoading = false
+                isPlaying = true
+                audioPlayer.play(audioFile)
+            }
         }
     }
 }

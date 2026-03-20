@@ -98,7 +98,7 @@ fun MessageBubbleRaw(
     authorColor: Color? = null,
     onLongClick: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
-    onRequestDecryptedFile: (PayloadDescriptor) -> Unit,
+    onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     downloadingFiles: Set<String>,

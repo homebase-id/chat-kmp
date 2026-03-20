@@ -346,7 +346,7 @@ fun ConversationContent(
                                             modifier = Modifier.fillMaxWidth()
                                                 .padding(horizontal = 16.dp)
                                                 .padding(bottom = 16.dp),
-                                            displayName = if (conversation.isWithSelf) stringResource(MR.string.chat_note_to_self),
+                                            displayName = if (conversation.isWithSelf) stringResource(MR.string.chat_note_to_self) else conversation.name,
                                             avatarModel = conversation.avatarModel,
                                         )
 

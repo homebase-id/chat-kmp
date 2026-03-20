@@ -267,14 +267,14 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.SaveScrollPosition -> {
-//                _messagesUiState.update {
-//                    it.copy(
-//                        scrollPosition = ScrollPosition(
-//                            firstVisibleItemIndex = action.firstVisibleItemIndex,
-//                            firstVisibleItemScrollOffset = action.firstVisibleItemScrollOffset,
-//                        )
-//                    )
-//                }
+                _messagesUiState.update {
+                    it.copy(
+                        scrollPosition = ScrollPosition(
+                            firstVisibleItemIndex = action.firstVisibleItemIndex,
+                            firstVisibleItemScrollOffset = action.firstVisibleItemScrollOffset,
+                        )
+                    )
+                }
 
                 // Persist to user settings
                 viewModelScope.launch {
@@ -1151,8 +1151,7 @@ class ConversationListViewModel(
                                     else
                                         MessageListContentModel.Message(it)
                                 }
-                            }
-                            )
+                            })
 
                             // Scroll handling, either use new message id, click message id or null
                             val newMessageId = messages.firstOrNull { it.id == pendingMessageId }?.id
@@ -1184,7 +1183,7 @@ class ConversationListViewModel(
                                     scrollPosition = if (indexOfMessageForScroll == null) {
                                         if (setInitialScroll) getScrollPosition(conversationId) else null
                                     } else {
-                                        ScrollPosition(indexOfMessageForScroll)
+                                        ScrollPosition(indexOfMessageForScroll, triggerScroll = true)
                                     },
                                 )
                             }

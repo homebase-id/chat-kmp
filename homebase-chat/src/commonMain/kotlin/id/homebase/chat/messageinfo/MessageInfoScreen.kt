@@ -102,7 +102,6 @@ fun MessageInfoUi(
                             onDelete = {},
                             onMediaClick = {},
                             onShowReactions = {},
-                            onRequestDecryptedFile = {},
                             downloadingFiles = emptySet(),
                         )
                     } else {
@@ -114,7 +113,6 @@ fun MessageInfoUi(
                             onMarkAsRead = {},
                             onShowReactions = {},
                             onMediaClick = {},
-                            onRequestDecryptedFile = {},
                             downloadingFiles = emptySet(),
                         )
                     }

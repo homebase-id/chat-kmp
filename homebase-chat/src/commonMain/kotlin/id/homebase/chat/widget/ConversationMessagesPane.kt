@@ -52,7 +52,6 @@ fun ConversationMessagesPane(
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
 ) {
-    var isRestoringScrollPosition by remember { mutableStateOf(false) }
     var currentGalleryPage by remember { mutableStateOf(0) }
 
     val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
@@ -115,6 +114,15 @@ fun ConversationMessagesPane(
                     )
                 }
             }
+    }
+
+    LaunchedEffect(uiState.scrollPosition) {
+        if (uiState.scrollPosition?.triggerScroll == true) {
+            listState.scrollToItem(
+                uiState.scrollPosition.firstVisibleItemIndex,
+                uiState.scrollPosition.firstVisibleItemScrollOffset
+            )
+        }
     }
 
     val seen = remember(conversation.id) { mutableSetOf<Uuid>() }
