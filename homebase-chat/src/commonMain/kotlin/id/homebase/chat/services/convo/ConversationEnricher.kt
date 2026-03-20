@@ -16,6 +16,14 @@ class ConversationEnricher {
 
         val currentUser = ownerSession.odinId
 
+        if (convo.isWithSelf) {
+            return EnrichedConversationUiModel(
+                conversation = convo,
+                participants = emptyList(),
+                missingConnections = emptyList()
+            )
+        }
+
         val otherParticipants = convo.participants
             .filter { it != currentUser }
 

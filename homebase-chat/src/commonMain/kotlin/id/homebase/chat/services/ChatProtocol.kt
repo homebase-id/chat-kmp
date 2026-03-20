@@ -1,5 +1,9 @@
 package id.homebase.chat.services
 
+import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.chat.data.ConversationUiModel
+import id.homebase.core.avatars.ConversationAvatarModel
 import kotlin.uuid.Uuid
 
 object ChatProtocol {
@@ -35,4 +39,29 @@ object ChatProtocol {
     const val DefaultPayloadKey = "dflt_key"
     const val MaxPayloadDescriptorBytes = 1024
     const val MaxHeaderContentBytes = 7000
+
+    /**
+     * Creates a static [ConversationUiModel] for the "Note to Self" conversation.
+     * This conversation is never created on the server — it exists purely as a
+     * local constant identified by [ConversationWithYourselfId].
+     */
+    fun buildSelfConversation(domain: OdinId): ConversationUiModel {
+        return ConversationUiModel(
+            id = ConversationWithYourselfId,
+            name = "", // Display name resolved via string resource at UI layer
+            lastMessage = "",
+            timestamp = UnixTimeUtc(0).toInstant(),
+            unreadCount = 0,
+            avatarInitials = "",
+            avatarTiny = null,
+            participants = listOf(domain),
+            lastRead = UnixTimeUtc(0).toInstant(),
+            avatarModel = ConversationAvatarModel(
+                type = ConversationAvatarModel.Type.Owner,
+                odinId = domain
+            ),
+            admins = setOf(domain),
+            isPinned = true,
+        )
+    }
 }
