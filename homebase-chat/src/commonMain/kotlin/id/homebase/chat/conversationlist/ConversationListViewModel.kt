@@ -712,7 +712,8 @@ class ConversationListViewModel(
                                             fileId = action.message.fileId,
                                             driveId = chatTargetDrive.alias,
                                             payloadKey = action.payloadKey,
-                                            keyHeader = action.message.keyHeader,
+                                            keyHeader = KeyHeader(iv = Base64.decode(selectedPayload.iv!!),
+                                                aesKey = action.message.keyHeader.aesKey),
                                             payload = selectedPayload,
                                         )
                                     )

@@ -1,5 +1,6 @@
 package id.homebase.chat.widget.video
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -11,21 +12,29 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import java.util.concurrent.atomic.AtomicReference
 import id.homebase.api.client.drives.files.DriveFileProvider
-import java.awt.event.HierarchyEvent
-import java.awt.event.HierarchyListener
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.jetbrains.skia.Bitmap
 import org.koin.compose.koinInject
+import uk.co.caprica.vlcj.factory.MediaPlayerFactory
 import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery
-import uk.co.caprica.vlcj.player.component.EmbeddedMediaPlayerComponent
+import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormat
+import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormatCallback
+import uk.co.caprica.vlcj.player.embedded.videosurface.callback.RenderCallback
+import uk.co.caprica.vlcj.player.embedded.videosurface.callback.format.RV32BufferFormat
 import java.io.File
+import java.nio.ByteBuffer
 import java.util.UUID
 
 private sealed interface VpsState {
@@ -110,31 +119,74 @@ private fun VlcjPlayer(
         return
     }
 
-    val mediaPlayerComponent = remember { EmbeddedMediaPlayerComponent() }
+    val factory = remember { MediaPlayerFactory() }
+    val mediaPlayer = remember { factory.mediaPlayers().newEmbeddedMediaPlayer() }
 
-    DisposableEffect(videoPath) {
-        // VLC requires the component to be displayable (attached to an AWT peer) before play().
-        // SwingPanel adds it asynchronously, so we wait for the DISPLAYABILITY_CHANGED event.
-        var listener: HierarchyListener? = null
-        listener = HierarchyListener { e ->
-            if (e.changeFlags and HierarchyEvent.DISPLAYABILITY_CHANGED.toLong() != 0L
-                && mediaPlayerComponent.isDisplayable
-            ) {
-                mediaPlayerComponent.removeHierarchyListener(listener)
-                mediaPlayerComponent.mediaPlayer().media().play(videoPath)
-            }
-        }
-        mediaPlayerComponent.addHierarchyListener(listener)
+    // VLC delivers frames on its own thread. We park the latest frame in an AtomicReference
+    // and pull it into Compose state via withFrameNanos, decoupling VLC's frame rate from
+    // the recomposition rate. Bitmap and pixel buffer are reused across frames to avoid GC.
+    val pendingFrame = remember { AtomicReference<ImageBitmap?>(null) }
+    var currentFrame by remember { mutableStateOf<ImageBitmap?>(null) }
 
-        onDispose {
-            mediaPlayerComponent.removeHierarchyListener(listener)
-            mediaPlayerComponent.mediaPlayer().controls().stop()
-            mediaPlayerComponent.release()
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos { pendingFrame.getAndSet(null)?.let { currentFrame = it } }
         }
     }
 
-    SwingPanel(
-        modifier = modifier,
-        factory = { mediaPlayerComponent },
-    )
+    DisposableEffect(videoPath) {
+        // Reused across frames; reallocated only on resolution change.
+        var skiaBitmap = Bitmap()
+        var pixelBuffer = ByteArray(0)
+
+        val surface = factory.videoSurfaces().newVideoSurface(
+            object : BufferFormatCallback {
+                override fun getBufferFormat(sourceWidth: Int, sourceHeight: Int): BufferFormat =
+                    RV32BufferFormat(sourceWidth, sourceHeight)
+                override fun allocatedBuffers(buffers: Array<ByteBuffer>) {}
+            },
+            object : RenderCallback {
+                override fun display(
+                    mediaPlayer: uk.co.caprica.vlcj.player.base.MediaPlayer,
+                    nativeBuffers: Array<ByteBuffer>,
+                    bufferFormat: BufferFormat,
+                ) {
+                    val width = bufferFormat.width
+                    val height = bufferFormat.height
+                    val size = width * height * 4
+                    if (pixelBuffer.size != size) {
+                        pixelBuffer = ByteArray(size)
+                        skiaBitmap = Bitmap().apply { allocN32Pixels(width, height) }
+                    }
+                    nativeBuffers[0].rewind()
+                    nativeBuffers[0].get(pixelBuffer)
+                    skiaBitmap.installPixels(pixelBuffer)
+                    pendingFrame.set(skiaBitmap.asComposeImageBitmap())
+                }
+            },
+            true,
+        )
+        mediaPlayer.videoSurface().set(surface)
+        mediaPlayer.media().play(videoPath)
+
+        onDispose {
+            mediaPlayer.controls().stop()
+            mediaPlayer.release()
+            factory.release()
+        }
+    }
+
+    Box(modifier, contentAlignment = Alignment.Center) {
+        val frame = currentFrame
+        if (frame != null) {
+            Image(
+                bitmap = frame,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        } else {
+            CircularProgressIndicator()
+        }
+    }
 }
