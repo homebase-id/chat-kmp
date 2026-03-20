@@ -159,6 +159,7 @@
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
+    <string name="chat_note_to_self">Note to Self</string>
     <string name="chat_group_introduce_everyone">Introduce Everyone</string>
     <string name="chat_group_introduce_everyone_status">Introductions has been sent</string>
 

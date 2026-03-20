@@ -79,6 +79,7 @@ import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_not_connected_disclaimer
 import id.homebase.resources.chat_no_messages
+import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
 import id.homebase.resources.connect
 import id.homebase.resources.menu_back
@@ -157,8 +158,7 @@ fun ConversationContent(
         keyboardController?.hide()
     }
 
-    @Suppress("DEPRECATION")
-    BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
+    @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
         showEmojiSheet = false
         showAttachmentSheet = false
         keyboardController?.hide()
@@ -186,18 +186,17 @@ fun ConversationContent(
             )
         }
     }
-    val galleryLauncher =
-        rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
-            file?.let {
-                onUiAction(
-                    ConversationListUiAction.AttachPlatformFile(
-                        conversationId = conversation.id,
-                        files = listOf(file),
-                        isImage = true,
-                    )
+    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
+        file?.let {
+            onUiAction(
+                ConversationListUiAction.AttachPlatformFile(
+                    conversationId = conversation.id,
+                    files = listOf(file),
+                    isImage = true,
                 )
-            }
+            )
         }
+    }
 
     ConversationContentSheets(
         uiState = uiState,
@@ -216,24 +215,19 @@ fun ConversationContent(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ConversationAvatar(
                             modifier = Modifier.focusable(), // to avoid textfield focus
-                            avatarModel = conversation.avatarModel,
-                            options =
-                                AvatarOptions(
-                                    size = 32.dp,
-                                    fontSize = 12.sp,
-                                    onClick = {
-                                        onUiAction(
-                                            ConversationListUiAction.ShowConversationSettings(
-                                                conversation.conversation
-                                            )
+                            avatarModel = conversation.avatarModel, options = AvatarOptions(
+                                size = 32.dp, fontSize = 12.sp, onClick = {
+                                    onUiAction(
+                                        ConversationListUiAction.ShowConversationSettings(
+                                            conversation.conversation
                                         )
-                                    }
-                                )
-                        )
+                                    )
+                                }))
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
                             Text(
-                                text = conversation.name,
+                                text = if (conversation.isWithSelf) stringResource(MR.string.chat_note_to_self)
+                                else conversation.name,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -298,8 +292,7 @@ fun ConversationContent(
                                     conversation.id
                                 )
                             )
-                        }
-                    )
+                        })
                 }, colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                 )
@@ -313,10 +306,8 @@ fun ConversationContent(
         ) {
             if (conversation.missingConnections.isNotEmpty()) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .padding(16.dp)
+                    modifier = Modifier.fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(16.dp)
                 ) {
                     Text(
                         stringResource(MR.string.chat_group_not_connected_disclaimer),
@@ -350,7 +341,8 @@ fun ConversationContent(
                             AvatarNameDisplay(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                                     .padding(bottom = 16.dp),
-                                displayName = conversation.name,
+                                displayName = if (conversation.isWithSelf) stringResource(MR.string.chat_note_to_self)
+                                else conversation.name,
                                 avatarModel = conversation.avatarModel,
                             )
                         }
@@ -360,12 +352,8 @@ fun ConversationContent(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                                         .padding(bottom = 16.dp),
                                     // TODO - how to get list of nice display names
-                                    participantNames =
-                                        conversation
-                                            .participants
-                                            .filter { it.odinId != uiState.ownerSession?.odinId }
-                                            .map { it.name }
-                                            .toPersistentList(),
+                                    participantNames = conversation.participants.filter { it.odinId != uiState.ownerSession?.odinId }
+                                        .map { it.name }.toPersistentList(),
                                 )
                             }
                         }
@@ -492,8 +480,7 @@ fun ConversationContent(
                         onRecordingStopped = { onUiAction(ConversationListUiAction.StopRecording) },
                         onRecordingCancelled = { onUiAction(ConversationListUiAction.CancelRecording) },
                         onRecordingHelp = { onUiAction(ConversationListUiAction.ShowRecordingHelp) },
-                        onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) }
-                    )
+                        onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) })
 
                     EmojiSelectorSheet(
                         modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
@@ -539,8 +526,7 @@ fun ConversationContent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationContentSheets(
-    uiState: MessageListUiState,
-    onUiAction: (ConversationListUiAction) -> Unit
+    uiState: MessageListUiState, onUiAction: (ConversationListUiAction) -> Unit
 ) {
     when (val sheet = uiState.uiSheet) {
         null -> {}
@@ -554,10 +540,7 @@ fun ConversationContentSheets(
             ) {
                 // Bottom sheet content
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .verticalScroll(scrollState)
+                    modifier = Modifier.fillMaxWidth().padding(16.dp).verticalScroll(scrollState)
                 ) {
                     sheet.identities.forEach { odinId ->
                         ContactItem(

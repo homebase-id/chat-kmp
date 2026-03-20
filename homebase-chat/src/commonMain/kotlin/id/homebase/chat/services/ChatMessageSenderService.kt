@@ -128,6 +128,7 @@ class ChatMessageSenderService(
 
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationStream.getRecipients(conversationId)
+        val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
         val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
             messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
@@ -135,7 +136,7 @@ class ChatMessageSenderService(
 
         val unecryptedMetadata =
             UploadFileMetadata(
-                allowDistribution = true,
+                allowDistribution = !isLocalOnly,
                 isEncrypted = true,
                 appData = UploadAppFileMetaData(
                     uniqueId = messageUniqueId,
@@ -155,7 +156,7 @@ class ChatMessageSenderService(
             metadata = unecryptedMetadata.encryptContent(keyHeader),
             transitOptions = TransitOptions(
                 recipients = recipients,
-                useAppNotification = !isStatusMessage,
+                useAppNotification = !isStatusMessage && !isLocalOnly,
                 appNotificationOptions = PushNotificationOptions(
                     appId = ChatProtocol.ChatAppId.toString(),
                     typeId = conversationId.toString(),
@@ -216,6 +217,7 @@ class ChatMessageSenderService(
         )
 
         val recipients = conversationStream.getRecipients(msg.conversationId)
+        val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
         val messageData = msg.messageAppData.copy(
             deliveryStatus = ChatDeliveryStatus.Sending.value,
@@ -237,7 +239,7 @@ class ChatMessageSenderService(
                 emptyList()
 
         val unecryptedMetadata = UploadFileMetadata(
-            allowDistribution = true,
+            allowDistribution = !isLocalOnly,
             isEncrypted = true,
             versionTag = versionTag,
             appData = UploadAppFileMetaData(

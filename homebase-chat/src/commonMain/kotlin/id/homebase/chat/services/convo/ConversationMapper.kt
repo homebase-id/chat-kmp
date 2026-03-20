@@ -78,7 +78,9 @@ class ConversationMapper(
             val displayNames = participants.map { it.domainName }
 
             val title =
-                if (isGroup) {
+                if (conversationId == ChatProtocol.ConversationWithYourselfId) {
+                    "" // Display name resolved via string resource at UI layer
+                } else if (isGroup) {
                     conversationData.title ?: displayNames.joinToString(", ")
                 } else {
                     val other = participants.first { it != domain }
