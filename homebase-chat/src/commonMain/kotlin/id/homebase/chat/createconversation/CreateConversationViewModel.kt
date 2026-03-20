@@ -5,6 +5,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.ConversationService
 import kotlinx.collections.immutable.toPersistentList
@@ -52,6 +53,15 @@ class CreateConversationViewModel(
         when (action) {
             is CreateConversationUiAction.BackClicked -> _uiState.update { it.copy(uiEvent = CreateConversationUiEvent.Back) }
             is CreateConversationUiAction.CreateNewGroup -> _uiState.update { it.copy(uiEvent = CreateConversationUiEvent.ShowCreateGroupScreen) }
+            is CreateConversationUiAction.CreateSelfConversation -> {
+                _uiState.update {
+                    it.copy(
+                        uiEvent = CreateConversationUiEvent.LoadConversation(
+                            ChatProtocol.ConversationWithYourselfId
+                        )
+                    )
+                }
+            }
             is CreateConversationUiAction.ContactClicked -> {
                 viewModelScope.launch {
                     try {
@@ -89,8 +99,9 @@ class CreateConversationViewModel(
     ): List<CreateConversationListItem> {
         val result = mutableListOf<CreateConversationListItem>()
 
-        // Only display new group option if not showing search results and not in group mode
+        // Only display new group and note to self options if not showing search results
         if (query.isEmpty()) {
+            result.add(CreateConversationListItem.NoteToSelf)
             result.add(CreateConversationListItem.NewGroup)
         }
 

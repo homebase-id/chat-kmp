@@ -77,6 +77,7 @@ import id.homebase.resources.chat_search_empty_description
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.search
+import id.homebase.resources.chat_note_to_self
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
@@ -143,7 +144,7 @@ fun ConversationListPane(
                                                     }),
                                                 animatedVisibilityScope = this@AnimatedVisibility,
                                                 sharedTransitionScope = null,
-                                                )
+                                            )
                                         }
 
                                         Spacer(modifier = Modifier.width(16.dp))
@@ -172,9 +173,8 @@ fun ConversationListPane(
                             ) {
                                 MinimalSearchTextField(
                                     textFieldState = searchTextState,
-                                    modifier = Modifier.fillMaxWidth().focusRequester(
-                                            focusRequesterSearch
-                                        ),
+                                    modifier = Modifier.fillMaxWidth()
+                                        .focusRequester(focusRequesterSearch),
                                     placeHolderText = stringResource(
                                         MR.string.chat_search_placeholder
                                     ),
@@ -334,7 +334,8 @@ fun ConversationListPane(
                                 ) {
                                     Text(
                                         text = stringResource(
-                                            MR.string.chat_search_result_empty, uiState.conversationsContent.query
+                                            MR.string.chat_search_result_empty,
+                                            uiState.conversationsContent.query
                                         )
                                     )
                                 }
@@ -420,7 +421,8 @@ fun ConversationLisContentItem(
             } else {
                 ConversationItem(
                     avatarModel = listItem.conversation.avatarModel,
-                    groupName = listItem.conversation.name,
+                    groupName = if (listItem.conversation.isWithSelf) stringResource(MR.string.chat_note_to_self)
+                    else listItem.conversation.name,
                     message = listItem.conversation.lastMessage,
                     unreadCount = listItem.conversation.unreadCount,
                     contactOdinId = listItem.conversation.participants.firstOrNull()?.odinId,

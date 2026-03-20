@@ -15,6 +15,7 @@ data class CreateConversationUiState(
 sealed interface CreateConversationListItem {
     data class Contacts(val contactGroups: List<ContactGroup>) : CreateConversationListItem
     data object NewGroup : CreateConversationListItem
+    data object NoteToSelf : CreateConversationListItem
 }
 
 data class ContactGroup(

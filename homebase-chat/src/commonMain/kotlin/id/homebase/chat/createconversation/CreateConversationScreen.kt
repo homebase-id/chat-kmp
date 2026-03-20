@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -54,6 +55,7 @@ import id.homebase.resources.chat_new_conversation
 import id.homebase.resources.chat_new_conversation_new_group
 import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.chat_no_contacts_found
+import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.contacts
 import id.homebase.resources.menu_back
@@ -208,6 +210,19 @@ fun CreateConversationUi(
                                         },
                                     )
                                 }
+                            }
+                        }
+
+                        is CreateConversationListItem.NoteToSelf -> {
+                            item {
+                                ListItemAction(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    imageVector = Icons.Default.StickyNote2,
+                                    text = stringResource(MR.string.chat_note_to_self),
+                                    onClick = { onUiAction(CreateConversationUiAction.CreateSelfConversation) }
+                                )
                             }
                         }
 
