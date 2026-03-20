@@ -69,9 +69,10 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
         debug {
-            //applicationIdSuffix = ".debug" // TODO - support .debug package in google-services.json
+            applicationIdSuffix = ".dev"
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
+
         }
     }
     compileOptions {

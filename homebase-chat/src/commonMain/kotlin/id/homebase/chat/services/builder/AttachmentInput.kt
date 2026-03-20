@@ -4,5 +4,7 @@ package id.homebase.chat.services.builder
 data class AttachmentInput(
     val filePath: String,
     val contentType: String,
-    val displayName: String? = null
+    val displayName: String? = null,
+    val waveformFile: String? = null,
+    val audioLengthSeconds: Int? = null,
 )

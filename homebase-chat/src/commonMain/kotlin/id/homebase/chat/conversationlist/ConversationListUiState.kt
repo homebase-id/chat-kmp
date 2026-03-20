@@ -5,7 +5,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
-import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.gallery.GalleryImage
@@ -111,6 +110,7 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     data class FileImage(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
+    data class Audio(val id: Uuid, val audioFile: PlatformFile, val waveformFile: PlatformFile?, val lengthSeconds: Int) : AttachmentPendingFile(id)
 }
 
 
@@ -118,4 +118,5 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
 data class RecordingData(
     val file: PlatformFile,
     val conversationId: Uuid,
+    val isProcessing: Boolean = false,
 )

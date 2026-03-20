@@ -913,7 +913,7 @@ class ConversationListViewModel(
                         }
                     } catch (e: Exception) {
                         Logger.e("Failed to start recording", e)
-                        sendEvent(ShowErrorMessage("Failed to start recording: ${e}"))
+                        sendEvent(ShowErrorMessage("Failed to start recording: $e"))
                     }
                 }
             }
@@ -921,21 +921,32 @@ class ConversationListViewModel(
             is ConversationListUiAction.StopRecording -> {
                 viewModelScope.launch {
                     try {
+                        val recordingData = _messagesUiState.value.recordingData
+                        _messagesUiState.update {
+                            it.copy(recordingData = recordingData?.copy(isProcessing = true))
+                        }
+
                         audioRecorder.stopRecording()
-                        _messagesUiState.value.recordingData?.let { recordingData ->
-                            val audioInfo = audioWaveFormGenerator.generateWaveForm(recordingData.file)
-                            val waveFormFileImage = audioWaveFormGenerator.saveWaveformToPng(audioInfo.waveForm, 1000, 200)
-                            val file = PlatformFile(FileKit.cacheDir, "waveform.png")
-                            file.write(waveFormFileImage)
-                            _uiState.update { it.copy(uiEvent = OpenFile(file.toString())) }
+                        recordingData?.let { recordingData ->
+                            var waveFormImageFile: PlatformFile? = null
+                            try {
+                                val audioInfo = audioWaveFormGenerator.generateWaveForm(recordingData.file)
+                                val waveFormImageBytes = audioWaveFormGenerator.saveWaveformToPng(audioInfo.waveForm, 1000, 200)
+                                waveFormImageFile = PlatformFile(FileKit.cacheDir, "waveform-${Uuid.generateV4()}.png")
+                                waveFormImageFile.write(waveFormImageBytes)
+                            } catch (e: Exception) {
+                                Logger.e("Failed to generate waveform", e)
+                            }
 
                             addMessageWithFiles(
                                 conversationId = recordingData.conversationId,
                                 content = "",
                                 files = listOf(
-                                    AttachmentPendingFile.File(
-                                        Uuid.random(),
-                                        recordingData.file
+                                    AttachmentPendingFile.Audio(
+                                        id = Uuid.random(),
+                                        audioFile = recordingData.file,
+                                        waveformFile = waveFormImageFile,
+                                        lengthSeconds = 3
                                     )
                                 ),
                             )
@@ -1249,6 +1260,20 @@ class ConversationListViewModel(
                                         attachment.image.fileName
                                     ),
                                     displayName = attachment.image.fileName,
+                                )
+                            )
+                        }
+
+                        is AttachmentPendingFile.Audio -> {
+                            attachments.add(
+                                AttachmentInput(
+                                    filePath = attachment.audioFile.toString(),
+                                    contentType = detectContentTypeFromExtensionOrHint(
+                                        attachment.audioFile.name
+                                    ),
+                                    displayName = attachment.audioFile.name,
+                                    waveformFile = attachment.waveformFile?.toString(),
+                                    audioLengthSeconds = attachment.lengthSeconds,
                                 )
                             )
                         }

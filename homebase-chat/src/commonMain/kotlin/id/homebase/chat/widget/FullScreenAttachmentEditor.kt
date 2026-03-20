@@ -139,6 +139,9 @@ fun FullScreenAttachmentEditor(
                             contentScale = ContentScale.Fit
                         )
                     }
+                    is AttachmentPendingFile.Audio -> {
+                        // not currently supported
+                    }
                 }
             }
             IconButton(
@@ -215,6 +218,9 @@ fun FullScreenAttachmentEditor(
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                     )
+                                }
+                                is AttachmentPendingFile.Audio -> {
+                                    // not currently supported
                                 }
                             }
 
