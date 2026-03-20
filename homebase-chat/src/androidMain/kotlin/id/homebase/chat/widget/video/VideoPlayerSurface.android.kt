@@ -14,8 +14,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.util.Log
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
@@ -74,6 +76,7 @@ actual fun VideoPlayerSurface(
                 val metadata = data.payload.descriptorContent?.let {
                     OdinSystemSerializer.deserialize<VideoMetadata>(it)
                 } ?: run {
+                    Log.e("VideoPlayer", "Missing video metadata for fileId=${data.fileId}")
                     state = VpsState.Error("Missing video metadata")
                     return@withContext
                 }
@@ -112,6 +115,7 @@ actual fun VideoPlayerSurface(
                         key = data.payloadKey,
                         keyHeader = data.keyHeader,
                     ) ?: run {
+                        Log.e("VideoPlayer", "Failed to download video for fileId=${data.fileId}")
                         state = VpsState.Error("Failed to download video")
                         return@withContext
                     }
@@ -123,6 +127,7 @@ actual fun VideoPlayerSurface(
                     }
                 }
             } catch (e: Exception) {
+                Log.e("VideoPlayer", "Playback error for fileId=${data.fileId}", e)
                 state = VpsState.Error(e.message ?: "Playback error")
             }
         }
@@ -131,7 +136,7 @@ actual fun VideoPlayerSurface(
     Box(modifier) {
         when (val s = state) {
             VpsState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            is VpsState.Error -> Text(text = s.message, modifier = Modifier.align(Alignment.Center))
+            is VpsState.Error -> Text(text = s.message, color = Color.White, modifier = Modifier.align(Alignment.Center))
             VpsState.Ready -> AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply { player = exoPlayer }
