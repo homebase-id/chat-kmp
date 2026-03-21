@@ -1,11 +1,13 @@
 package id.homebase.core.config
 
+import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
-import kotlin.uuid.Uuid
+
+data class LabeledDrive(val drive: TargetDrive, val label: String)
 
 /**
  * Central app configuration for authentication, permissions, and drives. Used by both
@@ -42,24 +44,15 @@ const val PHOTO_APP_ID = "32f0bdbf-017f-4fc0-8004-2d4631182d1e"
 const val OWNER_APP_ID = "ac126e09-54cb-4878-a690-856be692da16"
 const val COMMUNITY_APP_ID = "77ed6136-6b33-4654-8088-3d89c91e6065"
 
-// Target drives
-val feedTargetDrive =
-    TargetDrive(
-        alias = Uuid.parse("4db49422ebad02e99ab96e9c477d1e08"),
-        type = Uuid.parse("a3227ffba87608beeb24fee9b70d92a6")
-    )
+// Labeled drives — drive definition co-located with its human-readable label
+val chatLabeledDrive = LabeledDrive(drive = SystemDriveConstants.chatDrive, label = "Chat")
+val contactLabeledDrive = LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
+val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
 
-val chatTargetDrive =
-    TargetDrive(
-        alias = Uuid.parse("9ff813aff2d61e2f9b9db189e72d1a11"),
-        type = Uuid.parse("66ea8355ae4155c39b5a719166b510e3")
-    )
-
-val contactTargetDrive =
-    TargetDrive(
-        alias = Uuid.parse("2612429d1c3f037282b8d42fb2cc0499"),
-        type = Uuid.parse("70e92f0f94d05f5c7dcd36466094f3a5")
-    )
+// Backward-compatible aliases — all existing consumers remain unaffected
+val chatTargetDrive    = chatLabeledDrive.drive
+val contactTargetDrive = contactLabeledDrive.drive
+val feedTargetDrive    = feedLabeledDrive.drive
 
 // App permissions required
 val appPermissions: List<AppPermissionType> =
@@ -105,10 +98,7 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
     )
 
 // Drives we listen to for sockets and synchronization
-val syncDrives: List<TargetDrive> =
-    targetDriveAccessRequest.map { request ->
-        TargetDrive(alias = Uuid.parse(request.alias), type = Uuid.parse(request.type))
-    }
+val syncLabeledDrives: List<LabeledDrive> = listOf(chatLabeledDrive, contactLabeledDrive, feedLabeledDrive)
 
 // Circle drive requests
 val circleDriveTargetRequest: List<TargetDriveAccessRequest> =
