@@ -20,7 +20,8 @@ class DriveSyncManager(
     private val driveQueryProvider: DriveQueryProvider,
     private val credentialsManager: CredentialsManager,
     private val eventBus: EventBus,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val databaseManager: DatabaseManager,
 ) {
     private val driveSyncs = mutableMapOf<Uuid, DriveSync>()
 
@@ -71,7 +72,7 @@ class DriveSyncManager(
                     identityId = identityId,
                     driveId = driveId,
                     driveQueryProvider = driveQueryProvider,
-                    databaseManager = DatabaseManager.appDb,
+                    databaseManager = databaseManager,
                     eventBus = eventBus,
                     scope = scope
                 )

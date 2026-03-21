@@ -1,6 +1,7 @@
 package id.homebase.core.config
 
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
