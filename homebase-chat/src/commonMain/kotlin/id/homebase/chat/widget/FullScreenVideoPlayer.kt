@@ -52,13 +52,14 @@ fun FullScreenVideoPlayer(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        if (isPlaying) {
-            VideoPlayerSurface(
-                data = data,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            // Thumbnail with play button overlay
+        // Always composed so loading/buffering starts immediately on open
+        VideoPlayerSurface(
+            data = data,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // Thumbnail + play button overlay, hidden once user taps play
+        if (!isPlaying) {
             if (payloadIv != null) {
                 val imageData = remember(data.driveId, data.fileId, data.payloadKey, data.payload.lastModified) {
                     HomebaseImageData(

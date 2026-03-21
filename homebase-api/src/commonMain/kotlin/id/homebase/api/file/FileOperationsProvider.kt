@@ -22,4 +22,10 @@ interface FileOperationsProvider {
         path: String,
         data: Flow<ByteArray>
     )
+
+    /**
+     * Resolves a path that may be a content URI (Android) to a real filesystem path
+     * by copying it to a temp file. On platforms without content URIs, returns [path] unchanged.
+     */
+    suspend fun resolveToFilePath(path: String): String = path
 }

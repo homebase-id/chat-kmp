@@ -153,6 +153,19 @@ class IOSFileOperationsProvider : FileOperationsProvider {
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+    override suspend fun resolveToFilePath(path: String): String {
+        if (!path.startsWith("ph://") && !path.contains("/L0/")) return path
+        val bytes = readPhotoLibraryAsset(path)
+        val tmpPath = "${NSTemporaryDirectory()}resolved_${NSUUID().UUIDString}.mov"
+        val data = bytes.usePinned { pinned ->
+            NSData.create(bytes = pinned.addressOf(0), length = bytes.size.toULong())
+        }
+        data.writeToFile(tmpPath, atomically = true)
+        return tmpPath
+    }
+
+    @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
     private suspend fun readPhotoLibraryAsset(phUri: String): ByteArray = suspendCancellableCoroutine { continuation ->
             val assetId = phUri.removePrefix("ph://")
             val fetchResult = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(assetId), options = null)
