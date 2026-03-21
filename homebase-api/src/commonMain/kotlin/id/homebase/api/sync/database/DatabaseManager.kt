@@ -48,7 +48,7 @@ private val outboxAdapter = Outbox.Adapter(
 class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
     private val logger = Logger.withTag("DatabaseManager")
     private var database: OdinDatabase
-    private var driver: SqlDriver
+    internal var driver: SqlDriver
 
     //    private val dbDispatcher = Dispatchers.IO.limitedParallelism(1)
     private val dbDispatcher = Dispatchers.Default.limitedParallelism(1)
@@ -78,37 +78,31 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
         suspend fun initialize(driverProvider: () -> SqlDriver) {
             if (::instance.isInitialized) throw IllegalStateException("Already initialized")
 
-            val driver = driverProvider()
             instance = DatabaseManager(driverProvider)
 
             val version = instance.driveMainIndex.getSchemaVersion()
 
             if (version < DATABASE_VERSION) {
-                wipeTables(instance, driver);
-                OdinDatabase.Schema.create(driver)
+                val logger = Logger.withTag("DatabaseManager")
+                logger.i { "Schema version $version < $DATABASE_VERSION — wiping tables" }
+                wipeTables(instance.driver)
+                OdinDatabase.Schema.create(instance.driver)
+                logger.i { "Tables recreated after wipe" }
             }
         }
 
-        suspend fun wipeTables(dbm:DatabaseManager, driver: SqlDriver) {
-            dbm.withWriteTransaction { db ->
-                try {
-                    val tables = listOf(
-                        "AppNotifications",
-                        "DriveLocalTagIndex",
-                        "DriveMainIndex",
-                        "DriveTagIndex",
-                        "KeyValue",
-                        "Outbox"
-                    )
-                    tables.forEach { table ->
-                        driver.execute(null, "DROP TABLE IF EXISTS $table;", 0)
-                    }
-                    // OdinDatabase.Schema.create(driver)
-                } catch (e: Exception) {
-                    throw e
-                } finally {
-                    // driver.close()
-                }
+        private fun wipeTables(driver: SqlDriver) {
+            val tables = listOf(
+                "AppNotifications",
+                "ChatReadCount",
+                "DriveLocalTagIndex",
+                "DriveMainIndex",
+                "DriveTagIndex",
+                "KeyValue",
+                "Outbox"
+            )
+            tables.forEach { table ->
+                driver.execute(null, "DROP TABLE IF EXISTS $table;", 0)
             }
         }
     }
