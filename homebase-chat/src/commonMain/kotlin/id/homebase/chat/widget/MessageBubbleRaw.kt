@@ -122,11 +122,8 @@ fun MessageBubbleRaw(
     isPendingSend: Boolean = false
 ) {
     val filteredPayloads = payloads?.filter {
-        !listOf(
-            ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB,
-            ChatProtocol.DefaultPayloadKey,
-            ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
-        ).contains(it.key)
+        it.key != ChatProtocol.DefaultPayloadKey &&
+        !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
     }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     // We store the result of the text layout to know where the last line ends
