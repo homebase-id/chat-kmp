@@ -10,6 +10,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.data.MessageUiModel
 import kotlinx.collections.immutable.ImmutableMap
+import kotlin.uuid.Uuid
 
 @Composable
 fun MessageItem(
@@ -42,6 +43,8 @@ fun MessageItem(
         remember(message.id) { { onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id)) } }
     val onDecryptFile =
         remember(message.id) { { payload: PayloadDescriptor -> onUiAction(ConversationListUiAction.DecryptFile(messageId = message.id, payloadKey = payload.key)) } }
+    val onClickMessageId =
+        remember(message.id) { { messageId: Uuid -> onUiAction(ConversationListUiAction.ScrollToMessageId(messageId)) } }
     val onMediaClick = remember(message.id) {
         { payload: PayloadDescriptor ->
             onUiAction(
@@ -89,6 +92,7 @@ fun MessageItem(
             onShare = onShare,
             onDelete = onDelete,
             onMediaClick = onMediaClick,
+            onClickMessageId = onClickMessageId,
             onRequestDecryptedFile = onDecryptFile,
             onAddReaction = onAddReaction,
             onShowReactions = onShowReactions,
@@ -113,6 +117,7 @@ fun MessageItem(
             onAddReaction = onAddReaction,
             onShowReactions = onShowReactions,
             onMediaClick = onMediaClick,
+            onClickMessageId = onClickMessageId,
             onRequestDecryptedFile = onDecryptFile,
             animatedVisibilityScope = animatedVisibilityScope,
             sharedTransitionScope = sharedTransitionScope,

@@ -67,6 +67,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 /**
  * Core message bubble composable that renders message content with smart layout.
@@ -98,6 +99,7 @@ fun MessageBubbleRaw(
     authorColor: Color? = null,
     onLongClick: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
@@ -106,7 +108,7 @@ fun MessageBubbleRaw(
     isPendingSend: Boolean = false
 ) {
 
-    val filteredPayloads = payloads?.filter {
+    val filteredPayloads = message.payloads?.filter {
         it.key != ChatProtocol.DefaultPayloadKey &&
         !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
     }
@@ -267,7 +269,9 @@ fun MessageBubbleRaw(
                         // Inline reply preview if this message is a reply
                         message.messageAppData.replyPreview?.let { reply ->
                             InlineReplyPreview(
-                                replyPreview = reply, sentByYou = sentByYou
+                                replyPreview = reply,
+                                sentByYou = sentByYou,
+                                onClick = { onClickMessageId(reply.replyUniqueId) }
                             )
                         }
                         if (hasMedia) {

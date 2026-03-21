@@ -108,6 +108,7 @@ sealed interface FullScreenOverlay {
         val attachments: List<AttachmentPendingFile>,
     ) : FullScreenOverlay
 
+    @Immutable
     data class VideoPlayerData(
         val fileId: Uuid,
         val driveId: Uuid,

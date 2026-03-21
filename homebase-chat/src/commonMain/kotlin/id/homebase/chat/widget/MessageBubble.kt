@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -98,6 +99,7 @@ fun SentMessageBubble(
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
     onShowReactions: () -> Unit,
@@ -221,6 +223,7 @@ fun SentMessageBubble(
                         }
                     },
                     onMediaClick = onMediaClick,
+                    onClickMessageId = onClickMessageId,
                     onRequestDecryptedFile = onRequestDecryptedFile,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
@@ -271,6 +274,7 @@ fun ReceivedMessageBubble(
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
     onShowReactions: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
@@ -338,6 +342,7 @@ fun ReceivedMessageBubble(
                             }
                         },
                         onMediaClick = onMediaClick,
+                        onClickMessageId = onClickMessageId,
                         onRequestDecryptedFile = onRequestDecryptedFile,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
@@ -505,7 +510,11 @@ fun String.hasContent(): Boolean {
  */
 @OptIn(ExperimentalResourceApi::class)
 @Composable
-fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
+fun InlineReplyPreview(
+    replyPreview: ReplyPreview,
+    sentByYou: Boolean,
+    onClick: () -> Unit
+) {
     val accentColor = if (sentByYou) {
         HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
     } else {
@@ -530,7 +539,9 @@ fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
     }
 
     Row(
-        modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+        modifier = Modifier
+            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp)
+            .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Vertical accent bar

@@ -101,6 +101,7 @@ fun MessageInfoUi(
                             onShare = {},
                             onDelete = {},
                             onMediaClick = {},
+                            onClickMessageId = {},
                             onShowReactions = {},
                             downloadingFiles = emptySet(),
                         )
@@ -113,6 +114,7 @@ fun MessageInfoUi(
                             onMarkAsRead = {},
                             onShowReactions = {},
                             onMediaClick = {},
+                            onClickMessageId = {},
                             downloadingFiles = emptySet(),
                         )
                     }

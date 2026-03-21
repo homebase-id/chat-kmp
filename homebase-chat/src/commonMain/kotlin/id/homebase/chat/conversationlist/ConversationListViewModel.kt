@@ -550,6 +550,30 @@ class ConversationListViewModel(
                 }
             }
 
+            is ConversationListUiAction.ScrollToMessageId -> {
+                viewModelScope.launch {
+                    try {
+                        val indexOfMessageForScroll = messagesUiState.value.messages.indexOfLast {
+                            it is MessageListContentModel.Message && it.message.id == action.messageId
+                        }
+
+                        if (indexOfMessageForScroll != -1) {
+                            _messagesUiState.update {
+                                it.copy(
+                                    scrollPosition =
+                                        ScrollPosition(
+                                            firstVisibleItemIndex = indexOfMessageForScroll,
+                                            triggerScroll = true
+                                        )
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        sendEvent(ShowErrorMessage("Failed to scroll to message: ${e.message}"))
+                    }
+                }
+            }
+
             is ConversationListUiAction.SaveFile -> {
                 sendEvent(ShowErrorMessage("Not implemented yet"))
             }
