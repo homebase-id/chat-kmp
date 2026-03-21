@@ -153,7 +153,6 @@ class IOSFileOperationsProvider : FileOperationsProvider {
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-    @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
     override suspend fun resolveToFilePath(path: String): String {
         if (!path.startsWith("ph://") && !path.contains("/L0/")) return path
         val bytes = readPhotoLibraryAsset(path)
