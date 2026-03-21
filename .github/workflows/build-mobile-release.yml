@@ -120,8 +120,8 @@ jobs:
           
           echo "Setting iOS version to $VERSION_NAME ($VERSION_CODE)"
           
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION_NAME" iosApp/iosApp/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION_CODE" iosApp/iosApp/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION_NAME" iosApp/iosApp/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION_NAME" iosApp/iosApp/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION_CODE" iosApp/iosApp/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VERSION_CODE" iosApp/iosApp/Info.plist
 
       - name: Build iOS
         uses: yukiarrr/ios-build-action@v1.12.0
