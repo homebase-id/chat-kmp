@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -41,8 +42,14 @@ class DriveSyncManager(
                     is BackendEvent.DriveEvent.Completed     -> updateState(event.driveId) {
                         it.copy(state = DriveState.Completed(totalCount = event.totalCount))
                     }
-                    is BackendEvent.DriveEvent.Failed        -> updateState(event.driveId) {
-                        it.copy(state = DriveState.Failed(event.errorMessage))
+                    is BackendEvent.DriveEvent.Failed        -> {
+                        updateState(event.driveId) {
+                            it.copy(state = DriveState.Failed(event.errorMessage))
+                        }
+                        scope.launch {
+                            delay(1000L)
+                            driveSyncs[event.driveId]?.sync()
+                        }
                     }
                     else -> Unit
                 }
@@ -98,6 +105,15 @@ class DriveSyncManager(
         jobs.joinAll()
 
         eventBus.emit(BackendEvent.DriveEvent.SyncAllCompleted)
+    }
+
+    suspend fun syncAllFailed() {
+        val failedIds = _driveStatuses.value
+            .filter { (_, status) -> status.state is DriveState.Failed }
+            .keys
+
+        val jobs = failedIds.mapNotNull { driveSyncs[it]?.sync() }
+        jobs.joinAll()
     }
 
     fun syncDrive(driveId: Uuid) {
