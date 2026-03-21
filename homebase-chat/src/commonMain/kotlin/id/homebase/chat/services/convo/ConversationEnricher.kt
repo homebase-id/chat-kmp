@@ -11,10 +11,8 @@ class ConversationEnricher {
     fun enrich(
         convo: ConversationUiModel,
         contactMap: Map<OdinId, ContactUiModel>,
-        ownerSession: OwnerSession
+        ownerSession: OwnerSession?
     ): EnrichedConversationUiModel {
-
-        val currentUser = ownerSession.odinId
 
         if (convo.isWithSelf) {
             return EnrichedConversationUiModel(
@@ -25,7 +23,7 @@ class ConversationEnricher {
         }
 
         val otherParticipants = convo.participants
-            .filter { it != currentUser }
+            .filter { it != ownerSession?.odinId }
 
         val participants = otherParticipants.mapNotNull { odinId ->
             contactMap[odinId]

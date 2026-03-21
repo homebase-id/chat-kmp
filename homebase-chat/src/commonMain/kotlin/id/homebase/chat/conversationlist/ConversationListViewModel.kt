@@ -132,8 +132,6 @@ class ConversationListViewModel(
                 ownerSessionRepository.user
             ) { convos, contacts, ownerSession ->
 
-                if (ownerSession == null) return@combine emptyList()
-
                 val contactMap = contacts.associateBy { it.odinId }
 
                 convos.map {

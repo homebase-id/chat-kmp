@@ -69,6 +69,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(libs.multiplatform.settings)
             implementation(libs.atomicfu)
             implementation(libs.kotlinx.datetime)
             implementation(libs.kermit)

@@ -72,6 +72,7 @@ class AuthConnectionCoordinator(
     private fun loadProfile() {
         scope.launch {
             val odinId = credentialsManager.requireActiveCredentials().domain
+            ownerSessionRepository.loadCached(odinId)
             ownerSessionRepository.load(odinId)
         }
     }

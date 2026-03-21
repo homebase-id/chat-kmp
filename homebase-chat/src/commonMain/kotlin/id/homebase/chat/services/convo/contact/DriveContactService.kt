@@ -50,7 +50,6 @@ class DriveContactService(
                 }
             }
         }
-        start()
     }
 
     fun start() {

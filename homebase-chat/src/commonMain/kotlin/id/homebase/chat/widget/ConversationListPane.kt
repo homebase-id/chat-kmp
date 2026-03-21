@@ -310,6 +310,10 @@ fun ConversationListPane(
                         }
                     }
                     when (uiState.conversationsContent) {
+                        is ConversationListContentState.Loading -> {
+                            item { LoadingListItem() }
+                        }
+
                         is ConversationListContentState.Empty -> {
                             item {
                                 Row(
