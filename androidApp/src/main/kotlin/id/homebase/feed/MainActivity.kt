@@ -10,6 +10,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.lifecycleScope
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
 import com.mmk.kmpnotifier.notification.NotifierManager
+import id.homebase.api.ActivityProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
 import io.github.vinceglb.filekit.FileKit
@@ -26,6 +27,8 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         handleIntent(intent)
+
+        ActivityProvider.initialize(this)
 
         // Notify KMPNotifier of activity create
         NotifierManager.onCreateOrOnNewIntent(intent)
@@ -48,6 +51,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        ActivityProvider.initialize(this)
 
         // Check if browser was closed without completing auth
         // This is called when user returns from Custom Tab without completing auth

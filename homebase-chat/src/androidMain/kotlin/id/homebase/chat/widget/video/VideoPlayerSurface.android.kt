@@ -58,19 +58,21 @@ actual fun VideoPlayerSurface(
     val driveFileProvider = koinInject<DriveFileProvider>()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
-
-    val exoPlayer = remember(data) {
-        ExoPlayer.Builder(context).build().apply { playWhenReady = true }
-    }
+    var exoPlayer by remember(data) { mutableStateOf<ExoPlayer?>(null) }
 
     DisposableEffect(data) {
         onDispose {
-            exoPlayer.release()
+            exoPlayer?.release()
             tempDir?.deleteRecursively()
         }
     }
 
     LaunchedEffect(data) {
+        // Build ExoPlayer on main thread but deferred to after the first frame,
+        // avoiding a synchronous block during composition/animation.
+        val player = ExoPlayer.Builder(context).build().apply { playWhenReady = true }
+        exoPlayer = player
+
         withContext(Dispatchers.IO) {
             try {
                 val metadata = data.payload.descriptorContent?.let {
@@ -104,8 +106,8 @@ actual fun VideoPlayerSurface(
                         .createMediaSource(MediaItem.fromUri("homebase://video/index.m3u8"))
 
                     withContext(Dispatchers.Main) {
-                        exoPlayer.setMediaSource(mediaSource)
-                        exoPlayer.prepare()
+                        player.setMediaSource(mediaSource)
+                        player.prepare()
                         state = VpsState.Ready
                     }
                 } else {
@@ -121,8 +123,8 @@ actual fun VideoPlayerSurface(
                     }
                     val file = File(dir, "video.mp4").also { it.writeBytes(bytesResponse.bytes) }
                     withContext(Dispatchers.Main) {
-                        exoPlayer.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
-                        exoPlayer.prepare()
+                        player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                        player.prepare()
                         state = VpsState.Ready
                     }
                 }
@@ -139,7 +141,7 @@ actual fun VideoPlayerSurface(
             is VpsState.Error -> Text(text = s.message, color = Color.White, modifier = Modifier.align(Alignment.Center))
             VpsState.Ready -> AndroidView(
                 factory = { ctx ->
-                    PlayerView(ctx).apply { player = exoPlayer }
+                    PlayerView(ctx).apply { player = exoPlayer!! }
                 },
                 modifier = Modifier.fillMaxSize(),
             )

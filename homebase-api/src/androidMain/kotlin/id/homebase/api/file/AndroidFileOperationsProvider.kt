@@ -84,6 +84,21 @@ class AndroidFileOperationsProvider(
         file.path
     }
 
+    override suspend fun resolveToFilePath(path: String): String {
+        if (!path.startsWith("content://") && !path.startsWith("content:")) return path
+        return withContext(Dispatchers.IO) {
+            val uri = path.toUri()
+            val ext = context.contentResolver.getType(uri)
+                ?.substringAfterLast('/')
+                ?.let { ".$it" } ?: ""
+            val tmp = File.createTempFile("resolved_", ext, context.cacheDir)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                tmp.outputStream().use { input.copyTo(it) }
+            } ?: throw IllegalArgumentException("Unable to open content URI: $path")
+            tmp.absolutePath
+        }
+    }
+
     override suspend fun writeStream(
         path: String,
         data: Flow<ByteArray>
