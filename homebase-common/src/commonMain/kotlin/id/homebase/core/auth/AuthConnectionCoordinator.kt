@@ -11,7 +11,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
-import id.homebase.core.config.syncDrives
+import id.homebase.core.config.syncLabeledDrives
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,11 +80,7 @@ class AuthConnectionCoordinator(
     private suspend fun connect() {
         if (wsClient != null) return
 
-        val driveIds = syncDrives.map { it.alias }
-
-        driveSyncManager.start(
-            drives = driveIds
-        )
+        driveSyncManager.start(drives = syncLabeledDrives.associate { it.drive.alias to it.label })
 
         wsClient =
             OdinWebSocketClient(
@@ -93,7 +89,7 @@ class AuthConnectionCoordinator(
                 scope = scope,
                 eventBus = eventBus,
                 databaseManager = databaseManager,
-                drives = syncDrives,
+                drives = syncLabeledDrives.map { it.drive },
                 onConnected = {
                     _connectionState.update { it.copy(isConnected = true) }
                     scope.launch {
