@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -72,12 +73,13 @@ import id.homebase.resources.app_name
 import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_filter_by_unread_description
 import id.homebase.resources.chat_new_conversation
+import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
 import id.homebase.resources.chat_search_empty_description
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_search_result_empty
+import id.homebase.resources.loading
 import id.homebase.resources.search
-import id.homebase.resources.chat_note_to_self
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
@@ -310,6 +312,23 @@ fun ConversationListPane(
                         }
                     }
                     when (uiState.conversationsContent) {
+                        is ConversationListContentState.Loading -> {
+                            item {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    CircularProgressIndicator()
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = stringResource(
+                                            MR.string.loading
+                                        ),
+                                        modifier = Modifier.padding(24.dp),
+                                    )
+                                }
+                            }
+                        }
                         is ConversationListContentState.Empty -> {
                             item {
                                 Row(

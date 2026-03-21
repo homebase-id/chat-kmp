@@ -25,6 +25,13 @@ class AndroidAudioPlayer: AudioPlayer {
         startPositionPolling()
     }
 
+    override fun jump(seconds: Int) {
+        mediaPlayer?.let {
+            val newPosition = (seconds * 1000).coerceIn(0, it.duration)
+            it.seekTo(newPosition)
+        }
+    }
+
     override fun resume() {
         mediaPlayer?.start()
     }
@@ -50,10 +57,10 @@ class AndroidAudioPlayer: AudioPlayer {
 
     private fun startPositionPolling() {
         positionJob = scope.launch {
-            while (isActive && mediaPlayer?.isPlaying == true) {
+            while (isActive) {
                 val position = mediaPlayer?.currentPosition ?: 0
                 val duration = mediaPlayer?.duration ?: 0
-                observer?.onProgressUpdate(position * 1000, duration * 1000)
+                observer?.onProgressUpdate(position / 1000, duration / 1000)
                 delay(500)
             }
         }

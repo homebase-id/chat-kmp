@@ -16,10 +16,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -219,7 +219,7 @@ fun CreateConversationUi(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 4.dp),
-                                    imageVector = Icons.Default.StickyNote2,
+                                    imageVector = Icons.AutoMirrored.Filled.StickyNote2,
                                     text = stringResource(MR.string.chat_note_to_self),
                                     onClick = { onUiAction(CreateConversationUiAction.CreateSelfConversation) }
                                 )

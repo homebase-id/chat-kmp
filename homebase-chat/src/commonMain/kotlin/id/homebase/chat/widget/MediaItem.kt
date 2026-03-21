@@ -13,26 +13,30 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.widget.AudioPlayerWidget
+import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentMapOf
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
@@ -62,12 +66,14 @@ fun MediaItem(
     fileId: Uuid,
     driveId: Uuid,
     previewThumbnail: EmbeddedThumb? = null,
+    decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     modifier: Modifier = Modifier,
     keyHeader: KeyHeader,
     imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
+    onRequestDecryptedFile: (() -> Unit)? = null,
     shape: Shape =
         RoundedCornerShape(
             topStart = Dimens.Message.cornerRadius,
@@ -115,7 +121,7 @@ fun MediaItem(
                         OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(
                             content
                         )
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                         null
                     }
                 }
@@ -231,11 +237,14 @@ fun MediaItem(
         }
 
         contentType.startsWith("audio/") -> {
-            // TODO: Implement audio player
-            MediaPlaceholder(
-                emoji = "🎵",
-                label = "Audio",
+            AudioPlayerWidget(
                 modifier = baseModifier,
+                driveId = driveId,
+                fileId = fileId,
+                keyHeader = keyHeader,
+                audioFile = decryptedFiles[DecryptedFileKey(fileId, payload.key)],
+                payload = payload,
+                onRequestDecryptedFile = onRequestDecryptedFile,
             )
         }
 
@@ -284,3 +293,5 @@ private fun MediaPlaceholder(
         )
     }
 }
+
+
