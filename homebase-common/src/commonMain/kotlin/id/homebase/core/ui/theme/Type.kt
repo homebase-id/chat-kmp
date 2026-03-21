@@ -99,7 +99,7 @@ val HomebaseTypography =
                                 fontWeight = FontWeight.Normal,
                                 fontSize = 16.sp,
                                 lineHeight = 22.sp, // 16sp + 6sp
-                                letterSpacing = 0.01.sp
+                                letterSpacing = 0.0125.sp
                         ),
                 bodyMedium =
                         TextStyle(
