@@ -23,6 +23,10 @@ class VideoPayloadProcessor(
         descriptorContentPayloadKey: String
     ): VideoProcessResult {
 
+        // Resolve content URIs (Android) to real filesystem paths before FFmpeg work
+        val resolvedPath = fileOperationsProvider.resolveToFilePath(payload.filePath)
+        val payload = if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath) else payload
+
         /* ---------- PHASE 1: THUMBNAILS ---------- */
 
         onProgress?.invoke(
@@ -145,7 +149,7 @@ class VideoPayloadProcessor(
                     if (isSegmented) "application/vnd.apple.mpegurl" else "video/mp4",
                 isSegmented = isSegmented,
                 fileSize = fileOperationsProvider.getFileSize(finalVideoPath),
-                durationMs = durationMs,
+                duration = durationMs.toFloat(),
                 codec = codec,
                 hlsPlaylist = playlistContent,
                 key = payload.key

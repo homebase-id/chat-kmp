@@ -15,6 +15,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.withRetry
 import id.homebase.api.common.BatchResult
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
@@ -36,6 +37,7 @@ import id.homebase.resources.system_conversation_photo_updated
 import id.homebase.resources.system_conversation_title_updated
 import id.homebase.resources.system_group_conversation_member_left
 import id.homebase.resources.system_group_conversation_started
+import io.ktor.client.request.invoke
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -349,19 +351,21 @@ class ChatMessageStream(
                 val isDeleted = header.fileState == FileState.Deleted ||
                         header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
 
+                val created = UnixTimeUtc(appData.userDate!!).toInstant()
+
                 if (isDeleted) {
                     return MessageUiModel(
-                        id = appData.uniqueId!!,
+                        id = appData.uniqueId ?: header.fileId,
                         globalTransitId = metadata.globalTransitId,
                         fileId = header.fileId,
                         conversationId = appData.groupId!!,
-                        created = metadata.created.toInstant(),
+                        created = created,
                         modified = metadata.updated.toInstant(),
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         localReadTimestamp = localReadTimestamp,
                         isEdited = false,
-                        content = "",
+                        content = "Deleted File",
                         messageAppData = MessageAppData(),
                         reactionPreview = metadata.reactionPreview,
                         previewThumbnail = metadata.appData.previewThumbnail,
@@ -408,7 +412,7 @@ class ChatMessageStream(
                     fileId = header.fileId,
                     conversationId = appData.groupId!!,
                     content = messageAppData.getMessage(),
-                    created = metadata.created.toInstant(),
+                    created = created,
                     modified = metadata.updated.toInstant(),
                     originalAuthor = metadata.originalAuthor,
                     displayName = displayName,

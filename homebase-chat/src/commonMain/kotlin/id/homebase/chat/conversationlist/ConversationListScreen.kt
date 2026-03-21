@@ -324,7 +324,7 @@ fun ConversationListUi(
     }
 
     // Restore detail pane when returning to this screen ONLY if we have a selected conversation
-    LaunchedEffect(Unit) {
+    LaunchedEffect(uiState.selectedConversationId) {
         val selectedId = uiState.selectedConversationId
         // Only restore if we have a selected conversation AND we're in compact mode
         if (selectedId != null && scaffoldDirective.maxHorizontalPartitions == 1) {

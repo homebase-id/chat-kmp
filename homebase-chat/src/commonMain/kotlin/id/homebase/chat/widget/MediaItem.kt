@@ -5,10 +5,16 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -182,12 +188,46 @@ fun MediaItem(
         }
 
         contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
-            // TODO: Implement video player/thumbnail
-            MediaPlaceholder(
-                emoji = "📹",
-                label = "Video",
-                modifier = baseModifier,
-            )
+            val payloadIv = remember(payload.iv) {
+                payload.iv?.let { Base64.decode(it) }
+            }
+            if (payloadIv != null) {
+                val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
+                    HomebaseImageData(
+                        driveId = driveId,
+                        fileId = fileId,
+                        payloadKey = payload.key,
+                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                            ?: previewThumbnail,
+                        requestedSize = ImageSize.THUMB_MEDIUM,
+                        lastModified = payload.lastModified,
+                        isEncrypted = true,
+                        keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
+                    )
+                }
+                Box(modifier = finalModifier) {
+                    HomebaseImage(
+                        imageData = imageData,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        contentDescription = "Video thumbnail",
+                        onClick = onClick,
+                        onLongPress = onLongPress,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                    )
+                    Icon(
+                        imageVector = Icons.Default.PlayCircle,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .align(Alignment.Center),
+                        tint = Color.White.copy(alpha = 0.85f)
+                    )
+                }
+            } else {
+                MediaPlaceholder(emoji = "📹", label = "Video", modifier = baseModifier)
+            }
         }
 
         contentType.startsWith("audio/") -> {
