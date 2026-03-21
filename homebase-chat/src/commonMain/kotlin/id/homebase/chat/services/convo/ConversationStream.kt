@@ -35,14 +35,14 @@ class ConversationStream(
 ) {
 
     private val chatDrive = chatTargetDrive.alias
-    private val _conversations = MutableStateFlow<List<ConversationUiModel>>(emptyList())
+    private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
     private var isSyncing = false // Track if chat drive sync is in progress
 
     private val mapper: ConversationMapper = ConversationMapper(
         credentialsManager = credentialsManager
     )
 
-    val conversations: StateFlow<List<ConversationUiModel>> = _conversations.asStateFlow()
+    val conversations: StateFlow<ConversationsData> = _conversations.asStateFlow()
 
     init {
         scope.launch {
@@ -120,14 +120,14 @@ class ConversationStream(
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingMessages =
             messageFiles.mapNotNull { file ->
-                ChatMessageStream.Companion.mapToMessageData(file, ::resolveDisplayName)
+                ChatMessageStream.mapToMessageData(file, ::resolveDisplayName)
             }
 
         if (messageFiles.size != incomingMessages.size)
             throw IllegalArgumentException("Size mismatch - conversion problem")
 
         for (m in incomingMessages) {
-            val matchingConversation = _conversations.value.find { it.id == m.conversationId }
+            val matchingConversation = _conversations.value.items.find { it.id == m.conversationId }
             if (matchingConversation == null) {
                 val emptyConversation =
                     ConversationUiModel(
@@ -165,8 +165,8 @@ class ConversationStream(
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
-        val sortedList = _conversations.value.sortedByDescending { it.timestamp }
-        _conversations.value = sortedList
+        val sortedList = _conversations.value.items.sortedByDescending { it.timestamp }
+        _conversations.value = ConversationsData(true, sortedList)
     }
 
     private suspend fun updateConversationFromNewMessage(
@@ -191,7 +191,7 @@ class ConversationStream(
             c.lastMessageIsFromActiveUser = m.isAuthoredBy(credentialsManager.getActiveDomain())
         }
 
-        // Logger.i("Unread count now ${c.unreadCount} edited ${m.isEdited} on coversation id
+        // Logger.i("Unread count now ${c.unreadCount} edited ${m.isEdited} on conversation id
         // ${c.id}")
     }
 
@@ -205,7 +205,7 @@ class ConversationStream(
             }
 
         for (c in incomingConversations) {
-            val matchingConversation = _conversations.value.find { it.id == c.id }
+            val matchingConversation = _conversations.value.items.find { it.id == c.id }
             if (matchingConversation == null) {
                 insertNewConversation(c)
             } else {
@@ -214,16 +214,16 @@ class ConversationStream(
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
-        val sortedList = _conversations.value.sortedByDescending { it.timestamp }
-        _conversations.value = sortedList
+        val sortedList = _conversations.value.items.sortedByDescending { it.timestamp }
+        _conversations.value = ConversationsData(items = sortedList)
     }
 
     private fun insertNewConversation(conversation: ConversationUiModel) {
         // We should optimize later to not copy the full list
-        val currentList = _conversations.value.toMutableList()
+        val currentList = _conversations.value.items.toMutableList()
         currentList.add(conversation)
 
-        _conversations.value = currentList
+        _conversations.value = ConversationsData(items = currentList)
     }
 
     private fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
@@ -247,13 +247,13 @@ class ConversationStream(
                 )
             // We should optimize later to not  map the full list
             _conversations.value =
-                _conversations.value.map { if (it.id == existing.id) updatedConvo else it }
+                ConversationsData(items = _conversations.value.items.map { if (it.id == existing.id) updatedConvo else it })
         }
     }
 
     private suspend fun loadConversations() {
         val result = fetchConversations()
-        _conversations.value = result
+        _conversations.value = ConversationsData(items = result)
     }
 
     fun start() {
@@ -270,7 +270,7 @@ class ConversationStream(
 
         var changed = false
 
-        val updated = _conversations.value.map { convo ->
+        val updated = _conversations.value.items.map { convo ->
             val newCount = unreadMap[convo.id] ?: 0
             if (newCount != convo.unreadCount) {
                 changed = true
@@ -281,7 +281,7 @@ class ConversationStream(
         }
 
         if (changed) {
-            _conversations.value = updated
+            _conversations.value = ConversationsData(items = updated)
         }
     }
 
@@ -321,7 +321,7 @@ class ConversationStream(
     }
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {
-        return _conversations.value.firstOrNull { it.id == conversationId }
+        return _conversations.value.items.firstOrNull { it.id == conversationId }
     }
 
     suspend fun getRecipients(conversationId: Uuid): List<OdinId> {
@@ -332,3 +332,8 @@ class ConversationStream(
         return recipients
     }
 }
+
+data class ConversationsData(
+    val dataReady: Boolean = true,
+    val items: List<ConversationUiModel> = emptyList(),
+)

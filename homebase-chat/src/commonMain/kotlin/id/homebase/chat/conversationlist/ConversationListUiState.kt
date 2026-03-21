@@ -23,7 +23,7 @@ import kotlin.uuid.Uuid
 @Immutable
 data class ConversationListUiState(
     val activeConversations: ImmutableList<EnrichedConversationUiModel> = persistentListOf(),
-    val conversationsContent: ConversationListContentState = ConversationListContentState.Empty,
+    val conversationsContent: ConversationListContentState = ConversationListContentState.Loading,
     val selectedConversationId: Uuid? = null,
     val filterByUnread: Boolean = false,
     val isSearchActive: Boolean = false,
@@ -64,6 +64,7 @@ data class DecryptedFileKey(
 
 @Immutable
 sealed interface ConversationListContentState {
+    data object Loading : ConversationListContentState
     data object Empty : ConversationListContentState
     data class EmptySearch(val query: String) : ConversationListContentState
     data class Items(val list: ImmutableList<ConversationListContentModel>) :

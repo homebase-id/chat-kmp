@@ -12,9 +12,9 @@ import id.homebase.chat.groupsettings.GroupSettingsUiEvent.Error
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowAddMembers
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowContactInfo
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowEditGroup
-import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.ui.navigation.Route
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,11 +40,11 @@ class GroupSettingsViewModel(
             conversationStream.start()
             conversationStream.conversations
                 .filter { conversations ->
-                    conversations.any { it.id.toString() == route.conversationId }
+                    conversations.items.any { it.id.toString() == route.conversationId }
                 }
                 .collect { conversations ->
                     val conversation =
-                        conversations.find { it.id.toString() == route.conversationId }
+                        conversations.items.find { it.id.toString() == route.conversationId }
                     conversation?.let {
                         loadData(conversation)
                     }
@@ -82,7 +82,7 @@ class GroupSettingsViewModel(
                 viewModelScope.launch {
                     try {
                         uiState.value.conversation?.let { conversation ->
-                            uiState.value.currentOdinId?.let { currentUser ->
+                            uiState.value.currentOdinId?.let { _ ->
                                 conversationService.leaveGroup(
                                     conversationId = conversation.id
                                 )

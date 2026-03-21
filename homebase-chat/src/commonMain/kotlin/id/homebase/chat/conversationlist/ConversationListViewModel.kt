@@ -41,6 +41,7 @@ import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
@@ -135,27 +136,26 @@ class ConversationListViewModel(
                 conversationStream.conversations,
                 contactService.contacts,
                 ownerSessionRepository.user
-            ) { convos, contacts, ownerSession ->
+            ) { conversationState, contacts, ownerSession ->
 
-                if (ownerSession == null) return@combine emptyList()
+                if (ownerSession == null) return@combine Pair(false, emptyList())
 
                 val contactMap = contacts.associateBy { it.odinId }
 
-                convos.map {
+                Pair(conversationState.dataReady, conversationState.items.map {
                     enricher.enrich(it, contactMap, ownerSession)
+                })
+            }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
+                if (dataReady) {
+                    _uiState.update {
+                        it.copy(
+                            activeConversations = enriched
+                                .sortedByDescending { conversation -> conversation.timestamp }
+                                .toPersistentList()
+                        )
+                    }
+                    updateListContent()
                 }
-
-            }.collect { enriched ->
-
-                _uiState.update {
-                    it.copy(
-                        activeConversations = enriched
-                            .sortedByDescending { conversation -> conversation.timestamp }
-                            .toPersistentList()
-                    )
-                }
-
-                updateListContent()
             }
         }
 
@@ -172,7 +172,11 @@ class ConversationListViewModel(
         // Listen for search query changes
         viewModelScope.launch {
             snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300)
-                .collectLatest { updateListContent() }
+                .collectLatest {
+                    if (uiState.value.conversationsContent is ConversationListContentState.Items) {
+                        updateListContent()
+                    }
+                }
         }
 
         // Set connected state
@@ -525,8 +529,10 @@ class ConversationListViewModel(
                             val tempFile = fileOperationsProvider.writeBytesToTempFile(
                                 fileBytes, fileName, ".$extension"
                             )
-                            val decryptedFiles = _messagesUiState.value.decryptedFiles.toMutableMap()
-                            decryptedFiles[DecryptedFileKey(message.fileId, action.payloadKey)] = tempFile
+                            val decryptedFiles =
+                                _messagesUiState.value.decryptedFiles.toMutableMap()
+                            decryptedFiles[DecryptedFileKey(message.fileId, action.payloadKey)] =
+                                tempFile
                             _messagesUiState.update { it.copy(decryptedFiles = decryptedFiles.toPersistentMap()) }
                         } else {
                             sendEvent(
@@ -613,7 +619,10 @@ class ConversationListViewModel(
             is ConversationListUiAction.MarkAsRead -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.markAsReadLatestFileCreated(action.conversationId, action.messageIds)
+                        chatMessageActionService.markAsReadLatestFileCreated(
+                            action.conversationId,
+                            action.messageIds
+                        )
                     } catch (e: Exception) {
                         sendEvent(
                             ShowErrorMessage(
@@ -800,8 +809,10 @@ class ConversationListViewModel(
                                             fileId = action.message.fileId,
                                             driveId = chatTargetDrive.alias,
                                             payloadKey = action.payloadKey,
-                                            keyHeader = KeyHeader(iv = Base64.decode(selectedPayload.iv!!),
-                                                aesKey = action.message.keyHeader.aesKey),
+                                            keyHeader = KeyHeader(
+                                                iv = Base64.decode(selectedPayload.iv!!),
+                                                aesKey = action.message.keyHeader.aesKey
+                                            ),
                                             payload = selectedPayload,
                                         )
                                     )
@@ -1015,9 +1026,17 @@ class ConversationListViewModel(
                             var waveFormImageFile: PlatformFile? = null
                             var audioInfo: AudioFileInfo? = null
                             try {
-                                audioInfo = audioWaveFormGenerator.generateWaveForm(recordingData.file)
-                                val waveFormImageBytes = audioWaveFormGenerator.saveWaveformToPng(audioInfo.waveForm, 1000, 200)
-                                waveFormImageFile = PlatformFile(FileKit.cacheDir, "waveform-${Uuid.generateV4()}.png")
+                                audioInfo =
+                                    audioWaveFormGenerator.generateWaveForm(recordingData.file)
+                                val waveFormImageBytes = audioWaveFormGenerator.saveWaveformToPng(
+                                    audioInfo.waveForm,
+                                    1000,
+                                    200
+                                )
+                                waveFormImageFile = PlatformFile(
+                                    FileKit.cacheDir,
+                                    "waveform-${Uuid.generateV4()}.png"
+                                )
                                 waveFormImageFile.write(waveFormImageBytes)
                             } catch (e: Exception) {
                                 Logger.e("Failed to generate waveform", e)
@@ -1031,7 +1050,8 @@ class ConversationListViewModel(
                                         id = Uuid.random(),
                                         audioFile = recordingData.file,
                                         waveformFile = waveFormImageFile,
-                                        lengthSeconds = audioInfo?.getDuration()?.inWholeSeconds?.toInt() ?: 0
+                                        lengthSeconds = audioInfo?.getDuration()?.inWholeSeconds?.toInt()
+                                            ?: 0
                                     )
                                 ),
                             )
@@ -1158,15 +1178,18 @@ class ConversationListViewModel(
                         is ChatMessagesData.Initializing -> {
                             // ignore
                         }
-                        is ChatMessagesData.Messages ->  {
+
+                        is ChatMessagesData.Messages -> {
                             val messages = messageState.messages
                             // Group messages within day sections
                             val timezone = TimeZone.currentSystemDefault()
-                            val groupedMessages = messages.sortedBy { it.created }.groupBy { message ->
-                                val date = message.created.toLocalDateTime(timezone).date
-                                date
-                            }
-                            val messagesModels: MutableList<MessageListContentModel> = mutableListOf(MessageListContentModel.Header)
+                            val groupedMessages =
+                                messages.sortedBy { it.created }.groupBy { message ->
+                                    val date = message.created.toLocalDateTime(timezone).date
+                                    date
+                                }
+                            val messagesModels: MutableList<MessageListContentModel> =
+                                mutableListOf(MessageListContentModel.Header)
 
                             messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
                                 listOf(MessageListContentModel.Section(date)) + messages.map {
@@ -1178,7 +1201,8 @@ class ConversationListViewModel(
                             })
 
                             // Scroll handling, either use new message id, click message id or null
-                            val newMessageId = messages.firstOrNull { it.id == pendingMessageId }?.id
+                            val newMessageId =
+                                messages.firstOrNull { it.id == pendingMessageId }?.id
                             pendingMessageId = null
                             val indexOfMessageForScroll = if (newMessageId != null) {
                                 Logger.i("Resetting scroll position, new message seen")
@@ -1207,7 +1231,10 @@ class ConversationListViewModel(
                                     scrollPosition = if (indexOfMessageForScroll == null) {
                                         if (setInitialScroll) getScrollPosition(conversationId) else null
                                     } else {
-                                        ScrollPosition(indexOfMessageForScroll, triggerScroll = true)
+                                        ScrollPosition(
+                                            indexOfMessageForScroll,
+                                            triggerScroll = true
+                                        )
                                     },
                                 )
                             }
