@@ -32,6 +32,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
@@ -40,9 +41,11 @@ import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.core.audio.AudioPlayer
+import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
+import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.settings.UserPreferences
@@ -58,10 +61,13 @@ import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.cacheDir
 import io.github.vinceglb.filekit.delete
 import io.github.vinceglb.filekit.filesDir
 import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.write
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -93,7 +99,7 @@ class ConversationListViewModel(
     private val ownerSessionRepository: OwnerSessionRepository,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val audioRecorder: AudioRecorder,
-    private val audioPlayer: AudioPlayer,
+    private val audioWaveFormGenerator: AudioWaveFormGenerator,
     private val eventBus: EventBus,
     private val contactService: ContactService
 ) : ViewModel() {
@@ -130,27 +136,26 @@ class ConversationListViewModel(
                 conversationStream.conversations,
                 contactService.contacts,
                 ownerSessionRepository.user
-            ) { convos, contacts, ownerSession ->
+            ) { conversationState, contacts, ownerSession ->
 
-                if (ownerSession == null) return@combine emptyList()
+                if (ownerSession == null) return@combine Pair(false, emptyList())
 
                 val contactMap = contacts.associateBy { it.odinId }
 
-                convos.map {
+                Pair(conversationState.dataReady, conversationState.items.map {
                     enricher.enrich(it, contactMap, ownerSession)
+                })
+            }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
+                if (dataReady) {
+                    _uiState.update {
+                        it.copy(
+                            activeConversations = enriched
+                                .sortedByDescending { conversation -> conversation.timestamp }
+                                .toPersistentList()
+                        )
+                    }
+                    updateListContent()
                 }
-
-            }.collect { enriched ->
-
-                _uiState.update {
-                    it.copy(
-                        activeConversations = enriched
-                            .sortedByDescending { it.timestamp }
-                            .toPersistentList()
-                    )
-                }
-
-                updateListContent()
             }
         }
 
@@ -167,7 +172,11 @@ class ConversationListViewModel(
         // Listen for search query changes
         viewModelScope.launch {
             snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300)
-                .collectLatest { updateListContent() }
+                .collectLatest {
+                    if (uiState.value.conversationsContent is ConversationListContentState.Items) {
+                        updateListContent()
+                    }
+                }
         }
 
         // Set connected state
@@ -452,7 +461,7 @@ class ConversationListViewModel(
                             KeyHeader(payloadIv, message.keyHeader.aesKey)
                         )
 
-                        val fileName = payload.descriptorContent ?: payload.key
+                        val fileName = payload.filename() ?: payload.key
 
                         if (fileBytes != null) {
                             var extension = payload.contentType?.substringAfter("/") ?: "bin"
@@ -482,6 +491,91 @@ class ConversationListViewModel(
                         _uiState.update {
                             it.copy(downloadingFiles = it.downloadingFiles - fileKey)
                         }
+                    }
+                }
+            }
+
+            is ConversationListUiAction.DecryptFile -> {
+                val message =
+                    _messagesUiState.value.messages.filterIsInstance<MessageListContentModel.Message>()
+                        .map { it.message }.find { it.id == action.messageId } ?: return
+
+                val fileKey = "${message.id}_${action.payloadKey}"
+
+                viewModelScope.launch {
+                    try {
+
+                        val payload =
+                            message.payloads?.find { it.key == action.payloadKey } ?: return@launch
+                        val payloadIv = Base64.decode(
+                            payload.iv ?: throw IllegalStateException(
+                                "encrypted payload requires key header"
+                            )
+                        )
+                        val fileBytes = chatMessageActionService.getPayloadBytes(
+                            message.fileId,
+                            action.payloadKey,
+                            KeyHeader(payloadIv, message.keyHeader.aesKey)
+                        )
+
+                        val fileName = payload.filename() ?: payload.key
+
+                        if (fileBytes != null) {
+                            var extension = payload.contentType?.substringAfter("/") ?: "bin"
+                            extension = when (extension) {
+                                "jpeg" -> "jpg"
+                                else -> extension
+                            }
+                            val tempFile = fileOperationsProvider.writeBytesToTempFile(
+                                fileBytes, fileName, ".$extension"
+                            )
+                            val decryptedFiles =
+                                _messagesUiState.value.decryptedFiles.toMutableMap()
+                            decryptedFiles[DecryptedFileKey(message.fileId, action.payloadKey)] =
+                                tempFile
+                            _messagesUiState.update { it.copy(decryptedFiles = decryptedFiles.toPersistentMap()) }
+                        } else {
+                            sendEvent(
+                                ShowErrorMessage(
+                                    "Could not decrypt file"
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        sendEvent(
+                            ShowErrorMessage(
+                                "Error downloading file: ${e.message}"
+                            )
+                        )
+                    } finally {
+                        // 4. Remove from downloadingFiles set
+                        _uiState.update {
+                            it.copy(downloadingFiles = it.downloadingFiles - fileKey)
+                        }
+                    }
+                }
+            }
+
+            is ConversationListUiAction.ScrollToMessageId -> {
+                viewModelScope.launch {
+                    try {
+                        val indexOfMessageForScroll = messagesUiState.value.messages.indexOfLast {
+                            it is MessageListContentModel.Message && it.message.id == action.messageId
+                        }
+
+                        if (indexOfMessageForScroll != -1) {
+                            _messagesUiState.update {
+                                it.copy(
+                                    scrollPosition =
+                                        ScrollPosition(
+                                            firstVisibleItemIndex = indexOfMessageForScroll,
+                                            triggerScroll = true
+                                        )
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        sendEvent(ShowErrorMessage("Failed to scroll to message: ${e.message}"))
                     }
                 }
             }
@@ -525,7 +619,10 @@ class ConversationListViewModel(
             is ConversationListUiAction.MarkAsRead -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.markAsReadLatestFileCreated(action.conversationId, action.messageIds)
+                        chatMessageActionService.markAsReadLatestFileCreated(
+                            action.conversationId,
+                            action.messageIds
+                        )
                     } catch (e: Exception) {
                         sendEvent(
                             ShowErrorMessage(
@@ -712,8 +809,10 @@ class ConversationListViewModel(
                                             fileId = action.message.fileId,
                                             driveId = chatTargetDrive.alias,
                                             payloadKey = action.payloadKey,
-                                            keyHeader = KeyHeader(iv = Base64.decode(selectedPayload.iv!!),
-                                                aesKey = action.message.keyHeader.aesKey),
+                                            keyHeader = KeyHeader(
+                                                iv = Base64.decode(selectedPayload.iv!!),
+                                                aesKey = action.message.keyHeader.aesKey
+                                            ),
                                             payload = selectedPayload,
                                         )
                                     )
@@ -909,7 +1008,7 @@ class ConversationListViewModel(
                         }
                     } catch (e: Exception) {
                         Logger.e("Failed to start recording", e)
-                        sendEvent(ShowErrorMessage("Failed to start recording: ${e}"))
+                        sendEvent(ShowErrorMessage("Failed to start recording: $e"))
                     }
                 }
             }
@@ -917,15 +1016,42 @@ class ConversationListViewModel(
             is ConversationListUiAction.StopRecording -> {
                 viewModelScope.launch {
                     try {
+                        val recordingData = _messagesUiState.value.recordingData
+                        _messagesUiState.update {
+                            it.copy(recordingData = recordingData?.copy(isProcessing = true))
+                        }
+
                         audioRecorder.stopRecording()
-                        _messagesUiState.value.recordingData?.let { recordingData ->
+                        recordingData?.let { recordingData ->
+                            var waveFormImageFile: PlatformFile? = null
+                            var audioInfo: AudioFileInfo? = null
+                            try {
+                                audioInfo =
+                                    audioWaveFormGenerator.generateWaveForm(recordingData.file)
+                                val waveFormImageBytes = audioWaveFormGenerator.saveWaveformToPng(
+                                    audioInfo.waveForm,
+                                    1000,
+                                    200
+                                )
+                                waveFormImageFile = PlatformFile(
+                                    FileKit.cacheDir,
+                                    "waveform-${Uuid.generateV4()}.png"
+                                )
+                                waveFormImageFile.write(waveFormImageBytes)
+                            } catch (e: Exception) {
+                                Logger.e("Failed to generate waveform", e)
+                            }
+
                             addMessageWithFiles(
                                 conversationId = recordingData.conversationId,
                                 content = "",
                                 files = listOf(
-                                    AttachmentPendingFile.File(
-                                        Uuid.random(),
-                                        recordingData.file
+                                    AttachmentPendingFile.Audio(
+                                        id = Uuid.random(),
+                                        audioFile = recordingData.file,
+                                        waveformFile = waveFormImageFile,
+                                        lengthSeconds = audioInfo?.getDuration()?.inWholeSeconds?.toInt()
+                                            ?: 0
                                     )
                                 ),
                             )
@@ -1036,59 +1162,86 @@ class ConversationListViewModel(
     }
 
     private fun loadMessagesForConversation(conversationId: Uuid, messageIdForScroll: Uuid?) {
+        _messagesUiState.update { it.copy(scrollPosition = null, isLoadingMessages = true) }
+
         // When loading message for newly selected conversation, cancel any previous job to
         // avoid observing multiple messageStreams
         currentConversationJob?.cancel()
         currentConversationJob = viewModelScope.launch {
             try {
-                chatMessageStream.loadConversation(conversationId)
-                chatMessageStream.observeMessages(conversationId).collect { messages ->
+                var messageIdForScrollNullable = messageIdForScroll
+                var setInitialScroll = true
 
-                    // Group messages within day sections
-                    val timezone = TimeZone.currentSystemDefault()
-                    val groupedMessages = messages.sortedBy { it.created }.groupBy { message ->
-                        val date = message.created.toLocalDateTime(timezone).date
-                        date
-                    }
-                    val messagesModels: List<MessageListContentModel> =
-                        groupedMessages.flatMap { (date, messages) ->
-                            listOf(MessageListContentModel.Section(date)) + messages.map {
-                                if (it.isStatusMessage)
-                                    MessageListContentModel.System(it.content, it.created)
-                                else
-                                    MessageListContentModel.Message(it)
-                            }
+                chatMessageStream.loadConversation(conversationId)
+                chatMessageStream.observeMessages(conversationId).collect { messageState ->
+                    when (messageState) {
+                        is ChatMessagesData.Initializing -> {
+                            // ignore
                         }
 
-                    // Scroll handling, either use new message id, click message id or null
-                    val newMessageId = messages.firstOrNull { it.id == pendingMessageId }?.id
-                    pendingMessageId = null
-                    val indexOfMessageForScroll = if (newMessageId != null) {
-                        Logger.i("Resetting scroll position, new message seen")
-                        messagesModels.indexOfLast {
-                            it is MessageListContentModel.Message && it.message.id == newMessageId
-                        } + 1
-                    } else {
-                        if (messageIdForScroll == null) null
-                        else messagesModels.indexOfLast {
-                            it is MessageListContentModel.Message && it.message.id == messageIdForScroll
-                        } + 1
-                    }
+                        is ChatMessagesData.Messages -> {
+                            val messages = messageState.messages
+                            // Group messages within day sections
+                            val timezone = TimeZone.currentSystemDefault()
+                            val groupedMessages =
+                                messages.sortedBy { it.created }.groupBy { message ->
+                                    val date = message.created.toLocalDateTime(timezone).date
+                                    date
+                                }
+                            val messagesModels: MutableList<MessageListContentModel> =
+                                mutableListOf(MessageListContentModel.Header)
 
-                    _uiState.value = _uiState.value.copy(
-                        selectedConversationId = conversationId,
-                    )
+                            messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
+                                listOf(MessageListContentModel.Section(date)) + messages.map {
+                                    if (it.isStatusMessage)
+                                        MessageListContentModel.System(it.content, it.created)
+                                    else
+                                        MessageListContentModel.Message(it)
+                                }
+                            })
 
-                    _messagesUiState.update {
-                        it.copy(
-                            messages = messagesModels.toPersistentList(),
-                            scrollPosition = if (indexOfMessageForScroll == null) {
-                                getScrollPosition(conversationId)
+                            // Scroll handling, either use new message id, click message id or null
+                            val newMessageId =
+                                messages.firstOrNull { it.id == pendingMessageId }?.id
+                            pendingMessageId = null
+                            val indexOfMessageForScroll = if (newMessageId != null) {
+                                Logger.i("Resetting scroll position, new message seen")
+                                messagesModels.indexOfLast {
+                                    it is MessageListContentModel.Message && it.message.id == newMessageId
+                                }
                             } else {
-                                ScrollPosition(indexOfMessageForScroll)
-                            },
-                        )
+                                if (messageIdForScrollNullable == null) null
+                                else {
+                                    val messageIndex = messagesModels.indexOfLast {
+                                        it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
+                                    }
+                                    messageIdForScrollNullable = null
+                                    messageIndex
+                                }
+                            }
+
+                            _uiState.value = _uiState.value.copy(
+                                selectedConversationId = conversationId,
+                            )
+
+                            _messagesUiState.update {
+                                it.copy(
+                                    isLoadingMessages = false,
+                                    messages = messagesModels.toPersistentList(),
+                                    scrollPosition = if (indexOfMessageForScroll == null) {
+                                        if (setInitialScroll) getScrollPosition(conversationId) else null
+                                    } else {
+                                        ScrollPosition(
+                                            indexOfMessageForScroll,
+                                            triggerScroll = true
+                                        )
+                                    },
+                                )
+                            }
+                            setInitialScroll = false
+                        }
                     }
+
                 }
             } catch (_: CancellationException) {
                 // ignore
@@ -1239,6 +1392,20 @@ class ConversationListViewModel(
                                         attachment.image.fileName
                                     ),
                                     displayName = attachment.image.fileName,
+                                )
+                            )
+                        }
+
+                        is AttachmentPendingFile.Audio -> {
+                            attachments.add(
+                                AttachmentInput(
+                                    filePath = attachment.audioFile.toString(),
+                                    contentType = detectContentTypeFromExtensionOrHint(
+                                        attachment.audioFile.name
+                                    ),
+                                    displayName = attachment.audioFile.name,
+                                    waveformFile = attachment.waveformFile?.toString(),
+                                    audioLengthSeconds = attachment.lengthSeconds,
                                 )
                             )
                         }

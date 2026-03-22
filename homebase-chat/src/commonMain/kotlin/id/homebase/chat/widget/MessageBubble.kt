@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -43,6 +44,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
@@ -53,7 +55,6 @@ import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
 import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.HomebaseTheme
-import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.getOdinIdColor
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isEmojiContentOnly
@@ -63,6 +64,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
+import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
@@ -90,12 +92,15 @@ import kotlin.uuid.Uuid
 @Composable
 fun SentMessageBubble(
     message: MessageUiModel,
+    decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    onClickMessageId: (Uuid) -> Unit,
+    onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
     onShowReactions: () -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
@@ -209,28 +214,20 @@ fun SentMessageBubble(
             Box {
                 MessageBubbleRaw(
                     modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
-                    text = message.content,
-                    timestamp = formatMessageTimestamp(message.created),
+                    message = message,
+                    decryptedFiles = decryptedFiles,
                     sentByYou = true,
-                    isEdited = message.isEdited,
-                    isDeleted = message.isDeleted,
-                    deliveryStatus = message.messageAppData.deliveryStatus,
-                    payloads = message.payloads,
-                    fileId = message.fileId,
-                    previewThumbnail = message.previewThumbnail,
-                    replyPreview = message.messageAppData.replyPreview,
                     onLongClick = {
                         if (onMessageInfo != null) {
                             popupMode = MessagePopupMode.All
                         }
                     },
-                    keyHeader = message.keyHeader,
                     onMediaClick = onMediaClick,
+                    onClickMessageId = onClickMessageId,
+                    onRequestDecryptedFile = onRequestDecryptedFile,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
-                    messageId = message.id,
                     downloadingFiles = downloadingFiles,
-                    showMore = message.hasMore,
                     onShowMoreClick = onShowMore,
                     isPendingSend = message.isPendingSend
                 )
@@ -267,6 +264,7 @@ fun SentMessageBubble(
 @Composable
 fun ReceivedMessageBubble(
     message: MessageUiModel,
+    decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     renderAuthorName: Boolean = false,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
@@ -276,6 +274,8 @@ fun ReceivedMessageBubble(
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
     onShowReactions: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    onClickMessageId: (Uuid) -> Unit,
+    onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
@@ -329,17 +329,9 @@ fun ReceivedMessageBubble(
                             bottom = if (message.reactionPreview == null) 0.dp
                             else 26.dp
                         ),
-                        text = message.content,
-                        timestamp = formatMessageTimestamp(message.created),
+                        message = message,
+                        decryptedFiles = decryptedFiles,
                         sentByYou = false,
-                        isEdited = message.isEdited,
-                        isDeleted = message.isDeleted,
-                        deliveryStatus = message.messageAppData.deliveryStatus,
-                        payloads = message.payloads,
-                        fileId = message.fileId,
-                        keyHeader = message.keyHeader,
-                        previewThumbnail = message.previewThumbnail,
-                        replyPreview = message.messageAppData.replyPreview,
                         authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
                         else null,
                         authorColor = if (renderAuthorName && hasVisibleBackground) finalAuthorColor
@@ -350,11 +342,11 @@ fun ReceivedMessageBubble(
                             }
                         },
                         onMediaClick = onMediaClick,
+                        onClickMessageId = onClickMessageId,
+                        onRequestDecryptedFile = onRequestDecryptedFile,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
-                        messageId = message.id,
                         downloadingFiles = downloadingFiles,
-                        showMore = message.hasMore,
                         onShowMoreClick = onShowMore
                     )
                     message.reactionPreview?.let { reactionSummary ->
@@ -518,7 +510,11 @@ fun String.hasContent(): Boolean {
  */
 @OptIn(ExperimentalResourceApi::class)
 @Composable
-fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
+fun InlineReplyPreview(
+    replyPreview: ReplyPreview,
+    sentByYou: Boolean,
+    onClick: () -> Unit
+) {
     val accentColor = if (sentByYou) {
         HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
     } else {
@@ -543,7 +539,9 @@ fun InlineReplyPreview(replyPreview: ReplyPreview, sentByYou: Boolean) {
     }
 
     Row(
-        modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+        modifier = Modifier
+            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp)
+            .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Vertical accent bar

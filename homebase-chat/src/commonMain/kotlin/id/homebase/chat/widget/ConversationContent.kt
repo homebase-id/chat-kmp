@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -107,7 +108,6 @@ fun ConversationContent(
     textFieldState: RichTextState,
     recordingData: RecordingData?,
     listState: LazyListState,
-    isScrollPositionReady: Boolean,
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
@@ -324,10 +324,11 @@ fun ConversationContent(
                     }
                 }
             }
-            if (isScrollPositionReady) {
-                Box(
-                    modifier = Modifier.weight(1f),
-                ) {
+
+            Box(
+                modifier = Modifier.weight(1f),
+            ) {
+                if (!uiState.isLoadingMessages) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -337,31 +338,35 @@ fun ConversationContent(
                             bottom = 24.dp,
                         )
                     ) {
-                        item {
-                            AvatarNameDisplay(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                                    .padding(bottom = 16.dp),
-                                displayName = if (conversation.isWithSelf) stringResource(MR.string.chat_note_to_self)
-                                else conversation.name,
-                                avatarModel = conversation.avatarModel,
-                            )
-                        }
-                        if (conversation.isGroupConversation) {
-                            item {
-                                GroupMemberNamesCard(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                                        .padding(bottom = 16.dp),
-                                    // TODO - how to get list of nice display names
-                                    participantNames = conversation.participants.filter { it.odinId != uiState.ownerSession?.odinId }
-                                        .map { it.name }.toPersistentList(),
-                                )
-                            }
-                        }
-                        if (uiState.messages.isEmpty()) {
-                            item { EmptyListItem(stringResource(MR.string.chat_no_messages)) }
-                        }
                         items(uiState.messages, key = { message -> message.id }) { messageItem ->
                             when (messageItem) {
+                                is MessageListContentModel.Header -> {
+                                    Column {
+                                        AvatarNameDisplay(
+                                            modifier = Modifier.fillMaxWidth()
+                                                .padding(horizontal = 16.dp)
+                                                .padding(bottom = 16.dp),
+                                            displayName = if (conversation.isWithSelf) stringResource(MR.string.chat_note_to_self) else conversation.name,
+                                            avatarModel = conversation.avatarModel,
+                                        )
+
+                                        if (conversation.isGroupConversation) {
+                                            GroupMemberNamesCard(
+                                                modifier = Modifier.fillMaxWidth()
+                                                    .padding(horizontal = 16.dp)
+                                                    .padding(bottom = 16.dp),
+                                                // TODO - how to get list of nice display names
+                                                participantNames =
+                                                    conversation
+                                                        .participants
+                                                        .filter { it.odinId != uiState.ownerSession?.odinId }
+                                                        .map { it.name }
+                                                        .toPersistentList(),
+                                            )
+                                        }
+                                    }
+                                }
+
                                 is MessageListContentModel.Section -> {
                                     MessagesSection(text = getDateSectionLabel(messageItem.date))
                                 }
@@ -373,6 +378,7 @@ fun ConversationContent(
                                 is MessageListContentModel.Message -> {
                                     MessageItem(
                                         message = messageItem.message,
+                                        decryptedFiles = uiState.decryptedFiles,
                                         currentOdinId = uiState.ownerSession?.odinId?.domainName
                                             ?: "",
                                         renderAuthorName = conversation.isGroupConversation,
@@ -384,13 +390,21 @@ fun ConversationContent(
                                 }
                             }
                         }
+                        // If only one message item (the header) show no messages info
+                        if (uiState.messages.size == 1) {
+                            item { EmptyListItem(stringResource(MR.string.chat_no_messages)) }
+                        }
                     }
                     HomebaseVerticalScrollbar(
                         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                         state = listState
                     )
+                } else {
+
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
             }
+
             Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
                 Column(modifier = Modifier.animateContentSize()) {
                     uiState.replyToMessage?.let { msg ->

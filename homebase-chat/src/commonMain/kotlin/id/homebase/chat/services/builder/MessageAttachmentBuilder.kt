@@ -1,8 +1,8 @@
 package id.homebase.chat.services.builder
 
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
 
 object MessageAttachmentBuilder {
@@ -50,6 +50,31 @@ object MessageAttachmentBuilder {
                                 ),
                             thumbnails = thumbs.thumbnails,
                             previewThumbs = listOfNotNull(thumbs.preview)
+                        )
+                    }
+                    attachment.contentType.startsWith("audio/") -> {
+                        val thumbs = if (attachment.waveformFile == null) null else
+                            MessageThumbnailGenerator.generate(
+                                attachment.waveformFile,
+                                payloadKey,
+                                fileOperationsProvider,
+                            )
+
+                        PayloadBundle(
+                            payloads =
+                                listOf(
+                                    PayloadFile(
+                                        key = payloadKey,
+                                        filePath = attachment.filePath,
+                                        contentType = attachment.contentType,
+                                        previewThumbnail = thumbs?.preview,
+                                        descriptorContent = DescriptorContent.descriptorContentFromAudioFile(
+                                            name = attachment.displayName ?: attachment.filePath,
+                                            lengthSeconds = attachment.audioLengthSeconds ?: 0)
+                                    )
+                                ),
+                            thumbnails = thumbs?.thumbnails ?: emptyList(),
+                            previewThumbs = listOfNotNull(thumbs?.preview)
                         )
                     }
                     else ->

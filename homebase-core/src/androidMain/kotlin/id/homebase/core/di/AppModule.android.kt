@@ -6,8 +6,10 @@ import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.audio.AndroidAudioPlayer
 import id.homebase.core.audio.AndroidAudioRecorder
+import id.homebase.core.audio.AndroidWaveFormGenerator
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
+import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.gallery.AndroidGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
@@ -26,6 +28,7 @@ actual fun platformModule(): Module = module {
     single<PlatformInfo> { AndroidPlatformInfo(androidContext()) }
     single<AudioRecorder> { AndroidAudioRecorder(androidContext()) }
     single<AudioPlayer> { AndroidAudioPlayer() }
+    single<AudioWaveFormGenerator> { AndroidWaveFormGenerator() }
     single {
         ImageLoader.Builder(androidContext())
                 .components {

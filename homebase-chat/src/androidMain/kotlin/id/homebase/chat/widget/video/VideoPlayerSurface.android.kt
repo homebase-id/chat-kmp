@@ -1,8 +1,8 @@
-@file:OptIn(UnstableApi::class)
-
 package id.homebase.chat.widget.video
 
 import android.net.Uri
+import android.util.Log
+import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -14,7 +14,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import android.util.Log
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -49,6 +48,7 @@ private sealed interface VpsState {
     data class Error(val message: String) : VpsState
 }
 
+@OptIn(UnstableApi::class)
 @Composable
 actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
@@ -149,6 +149,7 @@ actual fun VideoPlayerSurface(
     }
 }
 
+@UnstableApi
 private class HomebaseVideoDataSource(
     private val strippedPlaylist: String,
     private val driveFileProvider: DriveFileProvider,
@@ -161,6 +162,7 @@ private class HomebaseVideoDataSource(
     private var readPosition: Int = 0
     private var openedUri: Uri? = null
 
+    @OptIn(UnstableApi::class)
     override fun open(dataSpec: DataSpec): Long {
         openedUri = dataSpec.uri
         val path = dataSpec.uri.path?.trimStart('/') ?: ""

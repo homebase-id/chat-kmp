@@ -35,6 +35,7 @@ import id.homebase.resources.details
 import id.homebase.resources.menu_back
 import id.homebase.resources.sent
 import id.homebase.resources.updated
+import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -95,21 +96,25 @@ fun MessageInfoUi(
                     if (message.isAuthoredBy(uiState.ownerSession?.odinId)) {
                         SentMessageBubble(
                             message = message,
+                            decryptedFiles = persistentMapOf(),
                             onEdit = {},
                             onShare = {},
                             onDelete = {},
                             onMediaClick = {},
+                            onClickMessageId = {},
                             onShowReactions = {},
                             downloadingFiles = emptySet(),
                         )
                     } else {
                         ReceivedMessageBubble(
                             message = message,
+                            decryptedFiles = persistentMapOf(),
                             onShare = {},
                             onDelete = {},
                             onMarkAsRead = {},
                             onShowReactions = {},
                             onMediaClick = {},
+                            onClickMessageId = {},
                             downloadingFiles = emptySet(),
                         )
                     }

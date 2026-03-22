@@ -43,11 +43,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.chat.conversationlist.DecryptedFileKey
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.ReplyPreview
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.DarkColors
 import id.homebase.core.ui.theme.Dimens
@@ -55,6 +54,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.LightColors
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.applyMarkDownContent
+import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
@@ -62,7 +62,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_edited
 import id.homebase.resources.show_more
-import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
@@ -82,14 +82,8 @@ import kotlin.uuid.Uuid
  * - Different styling for sent vs received messages
  *
  * @param modifier Modifier to be applied to the message bubble surface.
- * @param text The message text content (can be HTML formatted).
- * @param timestamp The formatted timestamp string to display.
+ * @param message The message content
  * @param sentByYou Whether this message was sent by the current user (affects styling).
- * @param payloads Optional list of media/file attachments associated with the message.
- * @param fileId The unique identifier for the message file.
- * @param previewThumbnail Optional embedded thumbnail for media preview.
- * @param replyPreview Optional reply preview data for the message.
- * @param keyHeader The key header for the message.
  * @param onLongClick Callback invoked when user performs a long-press on the bubble.
  * @param onMediaClick Callback invoked when user clicks on a media attachment.
  * @param sharedTransitionScope The shared transition scope for animations.
@@ -98,30 +92,23 @@ import kotlin.uuid.Uuid
 @Composable
 fun MessageBubbleRaw(
     modifier: Modifier = Modifier,
-    text: String,
-    timestamp: String,
+    message: MessageUiModel,
+    decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     sentByYou: Boolean,
-    isEdited: Boolean,
-    isDeleted: Boolean,
-    deliveryStatus: Int,
-    payloads: ImmutableList<PayloadDescriptor>? = null,
-    fileId: Uuid,
-    previewThumbnail: EmbeddedThumb? = null,
-    replyPreview: ReplyPreview? = null,
-    keyHeader: KeyHeader,
     authorName: String? = null,
     authorColor: Color? = null,
     onLongClick: () -> Unit,
     onMediaClick: (PayloadDescriptor) -> Unit,
+    onClickMessageId: (Uuid) -> Unit,
+    onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
-    messageId: Uuid,
     downloadingFiles: Set<String>,
-    showMore: Boolean = false,
     onShowMoreClick: (() -> Unit)? = null,
     isPendingSend: Boolean = false
 ) {
-    val filteredPayloads = payloads?.filter {
+
+    val filteredPayloads = message.payloads?.filter {
         it.key != ChatProtocol.DefaultPayloadKey &&
         !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
     }
@@ -168,10 +155,11 @@ fun MessageBubbleRaw(
         }
     }
 
+    val timestamp = formatMessageTimestamp(message.created)
     val messageInfoText =
-        if (isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
-    val mediaOnly = remember { !text.hasContent() && hasMedia }
-    val emojiOnly = remember { text.isEmojiContentOnly() && !hasMedia }
+        if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
+    val mediaOnly = remember { !message.content.hasContent() && hasMedia }
+    val emojiOnly = remember { message.content.isEmojiContentOnly() && !hasMedia }
     val backgroundColor =
         if (emojiOnly) Color.Unspecified
         else if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
@@ -185,7 +173,7 @@ fun MessageBubbleRaw(
     val textState = remember {
         RichTextState()
             .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
-            .applyMarkDownContent(if (isDeleted) deletedText else text)
+            .applyMarkDownContent(if (message.isDeleted) deletedText else message.content)
     }
 
     val shape = remember {
@@ -213,20 +201,22 @@ fun MessageBubbleRaw(
         shape = shape,
         color = backgroundColor,
     ) {
-        if (mediaOnly && !isDeleted) {
+        if (mediaOnly && !message.isDeleted) {
             Box(modifier = Modifier.wrapContentWidth()) {
                 MediaMessage(
                     payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
-                    fileId = fileId,
-                    keyHeader = keyHeader,
+                    fileId = message.fileId,
+                    decryptedFiles = decryptedFiles,
+                    keyHeader = message.keyHeader,
                     driveId = chatTargetDrive.alias,
-                    previewThumbnail = previewThumbnail,
+                    previewThumbnail = message.previewThumbnail,
                     onMediaClick = onMediaClick,
                     onMediaLongPress = { _, _ -> handleLongClick() },
+                    onRequestDecryptedFile = onRequestDecryptedFile,
                     shape = RoundedCornerShape(Dimens.Message.cornerRadius),
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
-                    messageId = messageId,
+                    messageId = message.id,
                     downloadingFiles = downloadingFiles
                 )
                 Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
@@ -254,7 +244,7 @@ fun MessageBubbleRaw(
                             )
                             if (sentByYou) {
                                 Spacer(modifier = Modifier.width(4.dp))
-                                DeliveryStatus(isPendingSend = isPendingSend, deliveryStatus = deliveryStatus)
+                                DeliveryStatus(isPendingSend = isPendingSend, deliveryStatus = message.messageAppData.deliveryStatus)
                             }
                         }
                     }
@@ -277,40 +267,44 @@ fun MessageBubbleRaw(
                             )
                         }
                         // Inline reply preview if this message is a reply
-                        replyPreview?.let { reply ->
+                        message.messageAppData.replyPreview?.let { reply ->
                             InlineReplyPreview(
-                                replyPreview = reply, sentByYou = sentByYou
+                                replyPreview = reply,
+                                sentByYou = sentByYou,
+                                onClick = { onClickMessageId(reply.replyUniqueId) }
                             )
                         }
                         if (hasMedia) {
                             MediaMessage(
                                 payloads = filteredPayloads.toPersistentList(),
-                                fileId = fileId,
+                                decryptedFiles = decryptedFiles,
+                                fileId = message.fileId,
                                 driveId = chatTargetDrive.alias,
-                                previewThumbnail = previewThumbnail,
+                                previewThumbnail = message.previewThumbnail,
                                 onMediaClick = onMediaClick,
-                                keyHeader = keyHeader,
+                                keyHeader = message.keyHeader,
                                 shape = if (authorName == null) RoundedCornerShape(
                                     topStart = Dimens.Message.cornerRadius,
                                     topEnd = Dimens.Message.cornerRadius
                                 ) else RoundedCornerShape(0.dp),
                                 onMediaLongPress = { _, _ -> handleLongClick() },
+                                onRequestDecryptedFile = onRequestDecryptedFile,
                                 sharedTransitionScope = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
-                                messageId = messageId,
+                                messageId = message.id,
                                 downloadingFiles = downloadingFiles,
                             )
                         }
                         Row(
                             modifier = Modifier.padding(
-                                horizontal = 12.dp, vertical = 8.dp
+                                horizontal = 12.dp, vertical = 12.dp
                             ),
                         ) {
                             if (emojiOnly) {
                                 // Render emoji-only messages prominently
-                                val size = if (text.length <= 6) 56.sp else 42.sp
+                                val size = if (message.content.length <= 6) 56.sp else 42.sp
                                 Text(
-                                    text = text,
+                                    text = message.content,
                                     onTextLayout = { textLayoutResult = it },
                                     fontSize = size,
                                     style = MaterialTheme.typography.displaySmall,
@@ -320,13 +314,13 @@ fun MessageBubbleRaw(
                                 RichText(
                                     state = textState,
                                     onTextLayout = { textLayoutResult = it },
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    style = MaterialTheme.typography.bodyLarge,
                                     color = contentColor
                                 )
                             }
                         }
                         Box {
-                            if (showMore && onShowMoreClick != null) {
+                            if (message.hasMore && onShowMoreClick != null) {
                                 Text(
                                     text = stringResource(MR.string.show_more),
                                     style = MaterialTheme.typography.labelMedium,
@@ -355,7 +349,7 @@ fun MessageBubbleRaw(
                             )
                             if (sentByYou) {
                                 Spacer(modifier = Modifier.width(4.dp))
-                                DeliveryStatus(isPendingSend = isPendingSend, deliveryStatus = deliveryStatus)
+                                DeliveryStatus(isPendingSend = isPendingSend, deliveryStatus = message.messageAppData.deliveryStatus)
                             }
                         }
                     }
@@ -363,7 +357,7 @@ fun MessageBubbleRaw(
                     // Find MediaMessage index (after author and reply preview)
                     var mediaIndex = 0
                     if (authorName != null) mediaIndex++
-                    if (replyPreview != null) mediaIndex++
+                    if (message.messageAppData.replyPreview != null) mediaIndex++
 
                     //val authorIndex = if (authorName != null) 0 else -1
                     val textIndex = if (hasMedia) mediaIndex + 1 else mediaIndex

@@ -165,6 +165,7 @@
 
     <!-- Audio recording -->
     <string name="chat_message_audio_recording_help">Tap and hold to record a voice message, release to send</string>
+    <string name="chat_message_processing">Processing...</string>
 
     <!-- Conversation message -->
     <string name="chat_message_info">Message info</string>

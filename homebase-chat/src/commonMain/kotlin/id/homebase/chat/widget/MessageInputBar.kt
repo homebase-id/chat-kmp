@@ -110,6 +110,7 @@ import id.homebase.resources.chat_message_attachment_options
 import id.homebase.resources.chat_message_edit_message
 import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_hide_keyboard
+import id.homebase.resources.chat_message_processing
 import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.collapse
@@ -404,7 +405,10 @@ fun MessageTextFieldCompact(
     onCancelEdit: () -> Unit,
 ) {
     val showSendButton = state.annotatedString.isNotBlank()
-    val showRecordingButton by remember(editExistingMode, showSendButton) { derivedStateOf { isMobile() && !editExistingMode && !showSendButton } }
+    val showRecordingButton by remember(
+        editExistingMode,
+        showSendButton
+    ) { derivedStateOf { !editExistingMode && !showSendButton } }
     var isMicrophonePressed by remember { mutableStateOf(false) }
     var isRecordingActive by remember { mutableStateOf(false) }
     var recordingSeconds by remember { mutableStateOf(0) }
@@ -415,7 +419,7 @@ fun MessageTextFieldCompact(
 
     val recordAudioPermissionState = rememberRecordAudioPermissionState(
         onPermissionGranted = {
-           Logger.d("Record audio permission granted")
+            Logger.d("Record audio permission granted")
         }
     )
 
@@ -596,7 +600,12 @@ fun MessageTextFieldCompact(
                             Box(
                                 modifier = Modifier
                                     .size(micButtonSize)
-                                    .clip(if (isMicrophonePressed) CircleShape else RoundedCornerShape(bottomEnd = 12.dp, topEnd = 12.dp))
+                                    .clip(
+                                        if (isMicrophonePressed) CircleShape else RoundedCornerShape(
+                                            bottomEnd = 12.dp,
+                                            topEnd = 12.dp
+                                        )
+                                    )
                                     .background(micButtonColor)
                                     .pointerInput(Unit) {
                                         awaitEachGesture {
@@ -670,7 +679,12 @@ fun MessageTextFieldCompact(
                 // Recording progress overlay – covers only the text field Box so the
                 // mic button on the right stays fully accessible to pointer events.
                 if (isRecordingActive) {
-                    RecordingInProgress(recordingSeconds, dragOffset, cancelThresholdPx)
+                    RecordingInProgress(
+                        recordingSeconds,
+                        dragOffset,
+                        cancelThresholdPx,
+                        recordingData?.isProcessing ?: false
+                    )
                 }
             }
 
@@ -698,7 +712,8 @@ fun MessageTextFieldCompact(
 private fun BoxScope.RecordingInProgress(
     recordingSeconds: Int,
     dragOffset: Float,
-    cancelThresholdPx: Float
+    cancelThresholdPx: Float,
+    isProcessing: Boolean,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "recording")
     val dotAlpha by infiniteTransition.animateFloat(
@@ -730,21 +745,30 @@ private fun BoxScope.RecordingInProgress(
             tint = Color.Red,
         )
         Spacer(modifier = Modifier.width(8.dp))
+
         Text(
             text = timeText,
             style = MaterialTheme.typography.bodyMedium,
         )
         Spacer(modifier = Modifier.weight(1f))
-        Text(
-            text = "< " + stringResource(MR.string.slide_to_cancel),
-            modifier = Modifier.offset {
-                IntOffset((dragOffset / 2).roundToInt(), 0)
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                alpha = (1f + dragOffset / cancelThresholdPx).coerceIn(0f, 1f)
-            ),
-        )
+        if (isProcessing) {
+            Text(
+                text = stringResource(MR.string.chat_message_processing),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Text(
+                text = "< " + stringResource(MR.string.slide_to_cancel),
+                modifier = Modifier.offset {
+                    IntOffset((dragOffset / 2).roundToInt(), 0)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = (1f + dragOffset / cancelThresholdPx).coerceIn(0f, 1f)
+                ),
+            )
+        }
     }
 }
 

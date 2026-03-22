@@ -162,6 +162,7 @@
 
     <!-- Audio recording -->
     <string name="chat_message_audio_recording_help">Tryk og hold for at optage en lydbesked, slip for sende</string>
+    <string name="chat_message_processing">Processerer...</string>
 
     <!-- Conversation message -->
     <string name="chat_message_info">Besked info</string>

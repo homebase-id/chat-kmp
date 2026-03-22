@@ -5,7 +5,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
-import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.gallery.GalleryImage
@@ -13,7 +12,9 @@ import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.EmojiReaction
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.datetime.LocalDate
 import org.jetbrains.compose.resources.StringResource
 import kotlin.time.Instant
@@ -22,7 +23,7 @@ import kotlin.uuid.Uuid
 @Immutable
 data class ConversationListUiState(
     val activeConversations: ImmutableList<EnrichedConversationUiModel> = persistentListOf(),
-    val conversationsContent: ConversationListContentState = ConversationListContentState.Empty,
+    val conversationsContent: ConversationListContentState = ConversationListContentState.Loading,
     val selectedConversationId: Uuid? = null,
     val filterByUnread: Boolean = false,
     val isSearchActive: Boolean = false,
@@ -41,6 +42,8 @@ sealed interface ConversationListUiSheet {
 @Immutable
 data class MessageListUiState(
     val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
+    val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
+    val isLoadingMessages: Boolean = true,
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
@@ -54,7 +57,14 @@ data class MessageListUiState(
 )
 
 @Immutable
+data class DecryptedFileKey(
+    val fileId: Uuid,
+    val payloadKey: String,
+)
+
+@Immutable
 sealed interface ConversationListContentState {
+    data object Loading : ConversationListContentState
     data object Empty : ConversationListContentState
     data class EmptySearch(val query: String) : ConversationListContentState
     data class Items(val list: ImmutableList<ConversationListContentModel>) :
@@ -70,6 +80,7 @@ sealed interface ConversationListContentModel {
 
 @Immutable
 sealed class MessageListContentModel(val id: String) {
+    data object Header : MessageListContentModel("header")
     data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
     data class System(val text: String, val created: Instant) : MessageListContentModel(created.toString())
     data class Message(val message: MessageUiModel) :
@@ -98,6 +109,7 @@ sealed interface FullScreenOverlay {
         val attachments: List<AttachmentPendingFile>,
     ) : FullScreenOverlay
 
+    @Immutable
     data class VideoPlayerData(
         val fileId: Uuid,
         val driveId: Uuid,
@@ -111,6 +123,7 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     data class FileImage(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
+    data class Audio(val id: Uuid, val audioFile: PlatformFile, val waveformFile: PlatformFile?, val lengthSeconds: Int) : AttachmentPendingFile(id)
 }
 
 
@@ -118,4 +131,5 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
 data class RecordingData(
     val file: PlatformFile,
     val conversationId: Uuid,
+    val isProcessing: Boolean = false,
 )
