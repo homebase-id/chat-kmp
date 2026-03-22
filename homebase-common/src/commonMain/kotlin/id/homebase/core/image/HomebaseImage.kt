@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -32,11 +33,11 @@ import coil3.compose.SubcomposeAsyncImageContent
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.Warning
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.koin.compose.koinInject
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Progressive image component for Homebase drives.
@@ -70,6 +71,7 @@ fun HomebaseImage(
     onLongPress: ((Offset) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    colorFilter: ColorFilter? = null,  // ← Add this par
 ) {
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
@@ -126,7 +128,8 @@ fun HomebaseImage(
         imageLoader = imageLoader,
         contentDescription = contentDescription,
         modifier = customModified,
-        contentScale = contentScale
+        contentScale = contentScale,
+        colorFilter = colorFilter
     ) {
         val state by painter.state.collectAsState()
 
