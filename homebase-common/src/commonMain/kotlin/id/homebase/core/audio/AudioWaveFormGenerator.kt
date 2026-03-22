@@ -14,7 +14,7 @@ interface AudioWaveFormGenerator {
         const val BAR_COUNT = 46
         const val SAMPLES_PER_BAR = 4
         val BAR_COLOR = Color(0xFFF5F5F5)
-        const val MIN_BAR_HEIGHT_PERCENT = 0.05f  // 5% minimum height
+        const val MIN_BAR_HEIGHT_PERCENT = 0.03f  // 3% minimum height
     }
 }
 
