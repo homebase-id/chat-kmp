@@ -1,6 +1,7 @@
 package id.homebase.core.auth
 
 import androidx.compose.runtime.Immutable
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.eventbus.BackendEvent
@@ -92,10 +93,15 @@ class AuthConnectionCoordinator(
                 onConnected = {
                     _connectionState.update { it.copy(isConnected = true) }
                     scope.launch {
-                        driveSyncManager.syncAll()
-                        _connectionState.update { it.copy(isDoingInitialConnection = false) }
-                        outboxSync.clearCheckout()
-                        outboxSync.send()
+                        try {
+                            driveSyncManager.syncAll()
+                        } catch (e: Exception) {
+                            Logger.e(e) { "syncAll() failed on connect" }
+                        } finally {
+                            _connectionState.update { it.copy(isDoingInitialConnection = false) }
+                            outboxSync.clearCheckout()
+                            outboxSync.send()
+                        }
                     }
                 },
                 onDisconnected = {

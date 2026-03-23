@@ -19,7 +19,9 @@ import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
+import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -64,6 +66,9 @@ class OdinWebSocketClient(
 
     private var connectionJob: Job? = null
     private var session: DefaultClientWebSocketSession? = null
+
+    @Volatile
+    private var handshakeDone = false
 
     private val notificationBuffer =
         mutableListOf<ClientNotificationPayload>()
@@ -157,7 +162,16 @@ class OdinWebSocketClient(
             session = this
             _connectionState.value = WebSocketState.Connected
 
+            handshakeDone = false
             establishConnectionRequest()
+
+            val handshakeTimeoutJob = scope.launch {
+                delay(10_000L)
+                if (!handshakeDone) {
+                    Logger.w { "Handshake timeout — closing session to force reconnect" }
+                    session?.close()
+                }
+            }
 
             try {
                 for (frame in incoming) {
@@ -175,7 +189,9 @@ class OdinWebSocketClient(
                     }
                 }
             } finally {
+                handshakeTimeoutJob.cancel()
                 session = null // Clear session reference
+                pingSupervisor.stop()
                 if (_connectionState.value != WebSocketState.Error("Unknown error")) {
                     _connectionState.value = WebSocketState.Disconnected
                 }
@@ -183,11 +199,6 @@ class OdinWebSocketClient(
                 Logger.i { "WebSocket connection ended" }
             }
         }
-
-        session = null
-        pingSupervisor.stop()
-        _connectionState.value = WebSocketState.Disconnected
-        handleDisconnected()
     }
 
     private suspend fun handleTextFrame(frame: Frame.Text) {
@@ -463,6 +474,7 @@ class OdinWebSocketClient(
 
     private suspend fun onHandshakeSuccess() {
         Logger.i { "Device handshake successful" }
+        handshakeDone = true
         pingSupervisor.notifySessionReconnected()
         pingSupervisor.start()
         onConnected()
