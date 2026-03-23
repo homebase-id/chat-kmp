@@ -136,7 +136,13 @@ class LoginViewModel(
                     circles =
                         listOf(CONFIRMED_CONNECTIONS_CIRCLE_ID, AUTO_CONNECTIONS_CIRCLE_ID)
                 )
-                _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenAuthUrl(authUrl)) }
+                if (authUrl.isNotBlank()) {
+                    _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenAuthUrl(authUrl)) }
+                } else {
+                    _uiState.update {
+                        it.copy(isLoading = false, errorMessage = "Authentication already in progress")
+                    }
+                }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, errorMessage = e.message ?: "Login failed")
