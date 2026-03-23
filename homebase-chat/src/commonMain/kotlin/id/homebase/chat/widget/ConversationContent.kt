@@ -142,7 +142,7 @@ fun ConversationContent(
         }
     }
 
-    DisposableEffect(conversation.id) {
+    DisposableEffect(conversation.conversation.id) {
         focusManager.clearFocus()
         keyboardController?.hide()
 
@@ -152,7 +152,7 @@ fun ConversationContent(
         }
     }
 
-    LaunchedEffect(conversation.id) {
+    LaunchedEffect(conversation.conversation.id) {
         kotlinx.coroutines.delay(50) // Small delay to ensure composition is complete
         focusManager.clearFocus()
         keyboardController?.hide()
@@ -169,7 +169,7 @@ fun ConversationContent(
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.id,
+                    conversationId = conversation.conversation.id,
                     files = listOf(file),
                     isImage = true,
                 )
@@ -180,7 +180,7 @@ fun ConversationContent(
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.id,
+                    conversationId = conversation.conversation.id,
                     files = listOf(file),
                 )
             )
@@ -190,7 +190,7 @@ fun ConversationContent(
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.id,
+                    conversationId = conversation.conversation.id,
                     files = listOf(file),
                     isImage = true,
                 )
@@ -215,7 +215,7 @@ fun ConversationContent(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ConversationAvatar(
                             modifier = Modifier.focusable(), // to avoid textfield focus
-                            avatarModel = conversation.avatarModel, options = AvatarOptions(
+                            avatarModel = conversation.conversation.avatarModel, options = AvatarOptions(
                                 size = 32.dp, fontSize = 12.sp, onClick = {
                                     onUiAction(
                                         ConversationListUiAction.ShowConversationSettings(
@@ -226,8 +226,8 @@ fun ConversationContent(
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
                             Text(
-                                text = if (conversation.isWithSelf) stringResource(MR.string.chat_note_to_self)
-                                else conversation.name,
+                                text = if (conversation.conversation.isWithSelf) stringResource(MR.string.chat_note_to_self)
+                                else conversation.conversation.name,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -252,7 +252,7 @@ fun ConversationContent(
                     ConversationMenu(
                         showMenu = showConversationMenu,
                         dismissMenu = { showConversationMenu = false },
-                        isGroup = conversation.isGroupConversation,
+                        isGroup = conversation.conversation.isGroupConversation,
                         onConversationInfo = {
                             showConversationMenu = false
                             onUiAction(
@@ -265,7 +265,7 @@ fun ConversationContent(
                             showConversationMenu = false
                             onUiAction(
                                 ConversationListUiAction.DeleteConversation(
-                                    conversation.id
+                                    conversation.conversation.id
                                 )
                             )
                         },
@@ -273,7 +273,7 @@ fun ConversationContent(
                             showConversationMenu = false
                             onUiAction(
                                 ConversationListUiAction.ArchiveConversation(
-                                    conversation.id
+                                    conversation.conversation.id
                                 )
                             )
                         },
@@ -281,7 +281,7 @@ fun ConversationContent(
                             showConversationMenu = false
                             onUiAction(
                                 ConversationListUiAction.ClearConversation(
-                                    conversation.id
+                                    conversation.conversation.id
                                 )
                             )
                         },
@@ -289,7 +289,7 @@ fun ConversationContent(
                             showConversationMenu = false
                             onUiAction(
                                 ConversationListUiAction.IntroduceEveryone(
-                                    conversation.id
+                                    conversation.conversation.id
                                 )
                             )
                         })
@@ -346,11 +346,11 @@ fun ConversationContent(
                                             modifier = Modifier.fillMaxWidth()
                                                 .padding(horizontal = 16.dp)
                                                 .padding(bottom = 16.dp),
-                                            displayName = if (conversation.isWithSelf) stringResource(MR.string.chat_note_to_self) else conversation.name,
-                                            avatarModel = conversation.avatarModel,
+                                            displayName = if (conversation.conversation.isWithSelf) stringResource(MR.string.chat_note_to_self) else conversation.conversation.name,
+                                            avatarModel = conversation.conversation.avatarModel,
                                         )
 
-                                        if (conversation.isGroupConversation) {
+                                        if (conversation.conversation.isGroupConversation) {
                                             GroupMemberNamesCard(
                                                 modifier = Modifier.fillMaxWidth()
                                                     .padding(horizontal = 16.dp)
@@ -381,7 +381,7 @@ fun ConversationContent(
                                         decryptedFiles = uiState.decryptedFiles,
                                         currentOdinId = uiState.ownerSession?.odinId?.domainName
                                             ?: "",
-                                        renderAuthorName = conversation.isGroupConversation,
+                                        renderAuthorName = conversation.conversation.isGroupConversation,
                                         animatedVisibilityScope = animatedVisibilityScope,
                                         sharedTransitionScope = sharedTransitionScope,
                                         onUiAction = onUiAction,
@@ -428,7 +428,7 @@ fun ConversationContent(
                                 } else {
                                     onUiAction(
                                         ConversationListUiAction.SendMessage(
-                                            conversationId = conversation.id,
+                                            conversationId = conversation.conversation.id,
                                             linkPreview = linkPreview,
                                         )
                                     )
@@ -487,7 +487,7 @@ fun ConversationContent(
                         onRecordingStarted = {
                             onUiAction(
                                 ConversationListUiAction.StartRecording(
-                                    conversation.id
+                                    conversation.conversation.id
                                 )
                             )
                         },
@@ -511,7 +511,7 @@ fun ConversationContent(
                                 showAttachmentSheet = false
                                 onUiAction(
                                     ConversationListUiAction.AttachGalleryItem(
-                                        conversationId = conversation.id, files = listOf(it)
+                                        conversationId = conversation.conversation.id, files = listOf(it)
                                     )
                                 )
                                 // Handle image selection

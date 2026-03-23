@@ -2,32 +2,23 @@ package id.homebase.core.avatars
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
 import id.homebase.api.common.OdinId
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.util.ifTrue
+import id.homebase.core.ui.theme.ExtendedColors
 
 @Composable
 fun OwnerAvatar(
@@ -41,44 +32,9 @@ fun OwnerAvatar(
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?
 ) {
-    val infiniteTransition = rememberInfiniteTransition()
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        )
-    )
-
-    val borderBrush = remember(driveIsConnected) {
-        if (driveIsConnected == true) {
-            Brush.sweepGradient(
-                colors = listOf(
-                    Color.Green.copy(alpha = 0.1f),
-                    Color.Green.copy(alpha = 0.3f),
-                    Color.Green.copy(alpha = 1.0f),
-                    Color.Green.copy(alpha = 0.3f),
-                    Color.Green.copy(alpha = 0.1f)
-                )
-            )
-        } else {
-            Brush.sweepGradient(
-                colors = listOf(
-                    Color.Red.copy(alpha = 0.1f),
-                    Color.Red.copy(alpha = 0.3f),
-                    Color.Red.copy(alpha = 1.0f),
-                    Color.Red.copy(alpha = 0.3f),
-                    Color.Red.copy(alpha = 0.1f)
-                )
-            )
-        }
-    }
-
     Box(
         modifier = modifier
-            .clip(CircleShape)
-            .size(options.size)
+            .size(options.size + 6.dp)
     ) {
         if (profileImageData != null) {
             HomebaseImage(
@@ -105,29 +61,29 @@ fun OwnerAvatar(
                 modifier = modifier
             )
         }
-        Box(
-            modifier = modifier
-                .size(options.size)
-                .clip(CircleShape)
-                .ifTrue(driveIsConnected != null && driveIsSyncing == true) {
-                    Modifier
-                        .drawBehind {
-                            rotate(rotation) {
-                                drawCircle(
-                                    brush = borderBrush,
-                                    radius = size.minDimension / 2,
-                                    style = Stroke(width = 3.dp.toPx())
-                                )
-                            }
-                        }
-                }
-            .ifTrue(driveIsConnected != null && driveIsSyncing != true) {
-                Modifier.border(
-                    width = 2.dp,
-                    brush = borderBrush,
-                    shape = CircleShape
+        if (driveIsConnected != null) {
+            if (driveIsSyncing == true) {
+                CircularProgressIndicator(
+                    modifier = modifier
+                        .align(Alignment.BottomEnd)
+                        .size(16.dp),
+                    color = if (driveIsConnected) ExtendedColors.Success else Color.Red,
+                    strokeWidth = 4.dp
+                )
+            } else {
+                Box(
+                    modifier = modifier
+                        .align(Alignment.BottomEnd)
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(if (driveIsConnected) ExtendedColors.Success else Color.Red)
+                        .border(
+                            width = 1.dp,
+                            color = Color.Black,
+                            shape = CircleShape
+                        )
                 )
             }
-        )
+        }
     }
 }
