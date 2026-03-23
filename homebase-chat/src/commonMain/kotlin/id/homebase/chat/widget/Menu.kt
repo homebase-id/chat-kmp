@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MarkChatRead
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,7 +49,9 @@ import id.homebase.resources.chat_message_copy
 import id.homebase.resources.chat_message_edit
 import id.homebase.resources.chat_message_info
 import id.homebase.resources.chat_message_reply
+import id.homebase.resources.chat_pin
 import id.homebase.resources.chat_settings
+import id.homebase.resources.chat_unpin
 import id.homebase.resources.delete
 import id.homebase.resources.save
 import id.homebase.resources.settings
@@ -341,5 +345,63 @@ fun ConversationListMenu(
             onClick = onSettings,
             text = { Text(text = stringResource(MR.string.settings)) },
         )
+    }
+}
+
+@Composable
+fun ConversationItemMenuPopup(
+    dismissMenu: () -> Unit,
+    isPinned: Boolean,
+    onMarkAsRead: () -> Unit,
+    onTogglePin: () -> Unit,
+    onArchive: () -> Unit,
+) {
+    Popup(
+        onDismissRequest = dismissMenu
+    ) {
+        Column {
+            Surface(
+                modifier = Modifier
+                    .wrapContentWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shadowElevation = 4.dp,
+                tonalElevation = 2.dp
+            ) {
+                Column(
+                    modifier = Modifier.width(IntrinsicSize.Max)
+                ) {
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            dismissMenu()
+                            onMarkAsRead()
+                        },
+                        text = stringResource(MR.string.chat_mark_all_as_read),
+                        imageVector = Icons.Default.MarkChatRead,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            dismissMenu()
+                            onTogglePin()
+                        },
+                        text = if (isPinned) stringResource(MR.string.chat_pin) else stringResource(
+                            MR.string.chat_unpin
+                        ),
+                        imageVector = Icons.Default.PushPin,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            dismissMenu()
+                            onArchive()
+                        },
+                        text = stringResource(MR.string.chat_archive),
+                        imageVector = Icons.Default.Archive,
+                    )
+                }
+            }
+        }
     }
 }

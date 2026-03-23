@@ -150,7 +150,7 @@ class ConversationListViewModel(
                     _uiState.update {
                         it.copy(
                             activeConversations = enriched
-                                .sortedByDescending { conversation -> conversation.timestamp }
+                                .sortedByDescending { conversation -> conversation.conversation.timestamp }
                                 .toPersistentList()
                         )
                     }
@@ -673,7 +673,7 @@ class ConversationListViewModel(
                             else AttachmentPendingFile.File(Uuid.generateV7(), it)
                         }
                         val conversation = _uiState.value.activeConversations.find {
-                            it.id == action.conversationId
+                            it.conversation.id == action.conversationId
                         }
                         if (newFiles.isEmpty() || conversation == null) return@launch
 
@@ -684,7 +684,7 @@ class ConversationListViewModel(
                             )
                         } else {
                             FullScreenOverlay.AttachmentData(
-                                conversationTitle = conversation.name,
+                                conversationTitle = conversation.conversation.name,
                                 conversationId = action.conversationId,
                                 selected = newFiles.last().attachmentId,
                                 attachments = newFiles,
@@ -714,7 +714,7 @@ class ConversationListViewModel(
                             AttachmentPendingFile.Gallery(Uuid.generateV7(), it)
                         }
                         val conversation = _uiState.value.activeConversations.find {
-                            it.id == action.conversationId
+                            it.conversation.id == action.conversationId
                         }
                         if (newFiles.isEmpty() || conversation == null) return@launch
 
@@ -725,7 +725,7 @@ class ConversationListViewModel(
                             )
                         } else {
                             FullScreenOverlay.AttachmentData(
-                                conversationTitle = conversation.name,
+                                conversationTitle = conversation.conversation.name,
                                 conversationId = action.conversationId,
                                 selected = newFiles.last().attachmentId,
                                 attachments = newFiles,
@@ -1094,7 +1094,7 @@ class ConversationListViewModel(
                 val filterByUnread = uiState.value.filterByUnread
                 val conversationsPool =
                     if (filterByUnread) uiState.value.activeConversations.filter {
-                        it.unreadCount > 0 || it.id == uiState.value.selectedConversationId
+                        it.conversation.unreadCount > 0 || it.conversation.id == uiState.value.selectedConversationId
                     }
                     else uiState.value.activeConversations
 
@@ -1111,7 +1111,7 @@ class ConversationListViewModel(
                     val result = mutableListOf<ConversationListContentModel>()
 
                     val conversations = conversationsPool.filter { conversation ->
-                        conversation.name.contains(searchQuery, ignoreCase = true)
+                        conversation.conversation.name.contains(searchQuery, ignoreCase = true)
                     }.toPersistentList()
                     if (conversations.isNotEmpty()) {
                         result.add(

@@ -58,7 +58,7 @@ fun ConversationMessagesPane(
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.id,
+                    conversationId = conversation.conversation.id,
                     files = listOf(file),
                     isImage = true,
                 )
@@ -69,15 +69,15 @@ fun ConversationMessagesPane(
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
-                    conversation.id,
+                    conversation.conversation.id,
                     listOf(file),
                 )
             )
         }
     }
 
-    val listState = remember(conversation.id,uiState.isLoadingMessages) {
-        val conversationId = conversation.id
+    val listState = remember(conversation.conversation.id,uiState.isLoadingMessages) {
+        val conversationId = conversation.conversation.id
         if (uiState.isLoadingMessages) {
             Logger.i("Pre-initializing empty scroll position: id=$conversationId")
             LazyListState()
@@ -96,7 +96,7 @@ fun ConversationMessagesPane(
 
     // Save scroll position when it changes
     LaunchedEffect(listState) {
-        val conversationId = conversation.id
+        val conversationId = conversation.conversation.id
         snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.debounce(
             300
         ) // Only save after 300ms of no scrolling
@@ -125,7 +125,7 @@ fun ConversationMessagesPane(
         }
     }
 
-    val seen = remember(conversation.id) { mutableSetOf<Uuid>() }
+    val seen = remember(conversation.conversation.id) { mutableSetOf<Uuid>() }
     val messageIdByKey = remember(uiState.messages) {
         uiState.messages.associateNotNull { item ->
             if (item is MessageListContentModel.Message) {
@@ -134,7 +134,7 @@ fun ConversationMessagesPane(
         }
     }
 
-    LaunchedEffect(conversation.id, messageIdByKey) {
+    LaunchedEffect(conversation.conversation.id, messageIdByKey) {
 
         snapshotFlow { listState.layoutInfo.visibleItemsInfo }
             .debounce(500)
@@ -152,7 +152,7 @@ fun ConversationMessagesPane(
                     seen.addAll(newIds)
 
                     onUiAction(
-                        ConversationListUiAction.MarkAsRead(conversation.id, newIds)
+                        ConversationListUiAction.MarkAsRead(conversation.conversation.id, newIds)
                     )
                 }
             }

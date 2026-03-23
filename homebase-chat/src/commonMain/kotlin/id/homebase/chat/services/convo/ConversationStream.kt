@@ -13,6 +13,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessage
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
@@ -174,22 +175,22 @@ class ConversationStream(
         m: MessageUiModel
     ) {
         if (m.created > c.timestamp) {
-
             val domain = credentialsManager.getActiveDomain()
 
             // new message that was not sent by the current user
-            if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) {
-                c.unreadCount++
-            }
-
-            c.timestamp = m.created
-            c.lastMessage = m.content.truncateToCodePoints(40) // TODO: Global constant
-            c.lastMessageDeliveryStatus = m.messageAppData.deliveryStatus
-            c.lastMessageIsDeleted = m.isDeleted
-            c.lastMessageFirstPayload = m.payloads?.firstOrNull()
-            c.lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1
-            c.lastMessageIsFromActiveUser = m.isAuthoredBy(credentialsManager.getActiveDomain())
+            val updatedConversation = c.copy(
+                unreadCount = c.unreadCount + if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) 1 else 0,
+                timestamp = m.created,
+                lastMessage = m.content.truncateToCodePoints(40), // TODO: Global constant
+                lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
+                lastMessageIsDeleted = m.isDeleted,
+                lastMessageFirstPayload = m.payloads?.firstOrNull(),
+                lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
+                lastMessageIsFromActiveUser = m.isAuthoredBy(credentialsManager.getActiveDomain()),
+            )
+            updateConversation(c, updatedConversation)
         }
+
 
         // Logger.i("Unread count now ${c.unreadCount} edited ${m.isEdited} on conversation id
         // ${c.id}")
@@ -290,7 +291,7 @@ class ConversationStream(
         val conversations = result.map { mapper.mapToConversationUi(it.conversation, it.message) }
         val c = credentialsManager.requireActiveCredentials()
         val domain = c.domain
-        val self = ChatProtocol.buildSelfConversation(domain)
+        var self = ChatProtocol.buildSelfConversation(domain)
 
         // Query the latest message for the self-conversation directly from the DB.
         // There is no conversation file for the self-conversation, so we query message files
@@ -314,7 +315,7 @@ class ConversationStream(
         }
 
         if (latestMsg != null) {
-            self.updateWithLatestMessage(latestMsg, domain)
+            self = self.updateWithLatestMessage(latestMsg, domain)
         }
 
         return listOf(self) + conversations.filter { it.id != ChatProtocol.ConversationWithYourselfId }
