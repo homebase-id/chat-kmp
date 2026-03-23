@@ -2,6 +2,7 @@ package id.homebase.chat.widget
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -33,13 +38,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
-import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
@@ -53,12 +57,193 @@ import id.homebase.resources.chat_message_link
 import id.homebase.resources.chat_message_multiple_media
 import id.homebase.resources.chat_message_video
 import id.homebase.resources.chat_no_messages
+import id.homebase.resources.chat_note_to_self
 import org.jetbrains.compose.resources.stringResource
-import kotlin.time.Instant
+
+@Composable
+fun ConversationItem(
+    enrichedData: EnrichedConversationUiModel,
+    onClick: () -> Unit,
+    onTogglePinClick: () -> Unit,
+    onArchiveClick: () -> Unit,
+    onMarkAsReadClick: () -> Unit,
+    onContactClick: (odinId: OdinId) -> Unit,
+    isSelected: Boolean,
+) {
+    var showMenu by rememberSaveable { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .ifTrue(isSelected) {
+                Modifier
+                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f))
+            }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { showMenu = true }
+            )
+            .padding(horizontal = 12.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ConversationAvatar(
+            avatarModel = enrichedData.conversation.avatarModel,
+            modifier = Modifier.padding(8.dp),
+            options = AvatarOptions(onClick = { enrichedData.participants.firstOrNull()?.odinId?.let { onContactClick(it) } })
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // Content
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (enrichedData.conversation.isWithSelf) stringResource(MR.string.chat_note_to_self) else enrichedData.conversation.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (enrichedData.conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = formatTimestamp(enrichedData.conversation.timestamp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (enrichedData.conversation.unreadCount > 0) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (enrichedData.conversation.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val previewText: String
+                val iconRes: ImageVector?
+
+                if (enrichedData.conversation.lastMessageIsDeleted) {
+                    previewText = stringResource(MR.string.chat_message_deleted)
+                    iconRes = Icons.Default.Block
+                } else if (enrichedData.conversation.lastMessage.isNotBlank()) {
+                    previewText = enrichedData.conversation.lastMessage
+                    iconRes = null
+                } else if (enrichedData.conversation.lastMessageHasMultiplePayloads) {
+                    previewText = stringResource(MR.string.chat_message_multiple_media)
+                    iconRes = Icons.Default.PhotoLibrary
+                } else if (enrichedData.conversation.lastMessageFirstPayload != null) {
+                    when {
+                        enrichedData.conversation.lastMessageFirstPayload.contentType?.startsWith("image") == true -> {
+                            previewText = stringResource(MR.string.chat_message_image)
+                            iconRes = Icons.Default.Image
+                        }
+
+                        enrichedData.conversation.lastMessageFirstPayload.contentType?.startsWith("video") == true || enrichedData.conversation.lastMessageFirstPayload.contentType == "application/vnd.apple.mpegurl" -> {
+                            previewText = stringResource(MR.string.chat_message_video)
+                            iconRes = Icons.Default.PlayArrow
+                        }
+
+                        enrichedData.conversation.lastMessageFirstPayload.contentType?.startsWith("audio") == true -> {
+                            previewText = stringResource(MR.string.chat_message_audio)
+                            iconRes = Icons.Default.PlayArrow
+                        }
+
+                        enrichedData.conversation.lastMessageFirstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
+                            previewText = stringResource(MR.string.chat_message_link)
+                            iconRes = Icons.Default.Description
+                        }
+
+                        // Assume link identification or default fallback
+                        else -> {
+                            previewText = stringResource(MR.string.chat_message_file)
+                            iconRes = Icons.Default.Description
+                        }
+                    }
+                } else {
+                    previewText = ""
+                    iconRes = null
+                }
+
+                ConversationMessagePreview(
+                    text = previewText,
+                    iconRes = iconRes,
+                    isDeleted = enrichedData.conversation.lastMessageIsDeleted,
+                    modifier = Modifier.weight(1f)
+                )
+
+                if (enrichedData.conversation.unreadCount > 0) {
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Badge(
+                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                    ) {
+                        Text(
+                            modifier = Modifier.padding(4.dp),
+                            text = enrichedData.conversation.unreadCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else if (enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    DeliveryStatus(isPendingSend = false, deliveryStatus = enrichedData.conversation.lastMessageDeliveryStatus)
+                }
+            }
+
+            if (showMenu) {
+                ConversationItemMenuPopup(
+                    dismissMenu = { showMenu = false},
+                    isPinned = enrichedData.conversation.isPinned,
+                    onMarkAsRead = onMarkAsReadClick,
+                    onTogglePin = onTogglePinClick,
+                    onArchive = onArchiveClick,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ConversationAvatarItem(
+    onClick: () -> Unit,
+    isSelected: Boolean = false,
+    conversation: ConversationUiModel,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(8.dp)).background(
+                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(
+                    alpha = 0.7f
+                )
+                else MaterialTheme.colorScheme.surfaceContainerLow
+            ).clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        ConversationAvatar(
+            avatarModel = conversation.avatarModel, modifier = Modifier.padding(8.dp)
+        )
+    }
+}
 
 @Composable
 fun ConversationMessagePreview(
-    text: String, iconRes: ImageVector?, isDeleted: Boolean, modifier: Modifier = Modifier
+    text: String,
+    iconRes: ImageVector?,
+    isDeleted: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -98,175 +283,5 @@ fun ConversationMessagePreview(
                 overflow = TextOverflow.Ellipsis
             )
         }
-    }
-}
-
-@Composable
-fun ConversationItem(
-    groupName: String,
-    message: String,
-    unreadCount: Int,
-    contactOdinId: OdinId?,
-    timestamp: Instant,
-    onClick: () -> Unit,
-    onContactClick: (odinId: OdinId) -> Unit,
-    isSelected: Boolean = false,
-    avatarModel: ConversationAvatarModel,
-    deliveryStatus: Int? = null,
-    isDeleted: Boolean = false,
-    firstPayload: PayloadDescriptor? = null,
-    hasMultiplePayloads: Boolean = false,
-    isFromActiveUser: Boolean = false,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .ifTrue(isSelected) {
-                Modifier
-                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f))
-            }
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ConversationAvatar(
-            avatarModel = avatarModel,
-            modifier = Modifier.padding(8.dp),
-            options = AvatarOptions(onClick = { contactOdinId?.let { onContactClick(it) } })
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Content
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = groupName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Text(
-                    text = formatTimestamp(timestamp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (unreadCount > 0) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val previewText: String
-                val iconRes: ImageVector?
-
-                if (isDeleted) {
-                    previewText = stringResource(MR.string.chat_message_deleted)
-                    iconRes = Icons.Default.Block
-                } else if (message.isNotBlank()) {
-                    previewText = message
-                    iconRes = null
-                } else if (hasMultiplePayloads) {
-                    previewText = stringResource(MR.string.chat_message_multiple_media)
-                    iconRes = Icons.Default.PhotoLibrary
-                } else if (firstPayload != null) {
-                    when {
-                        firstPayload.contentType?.startsWith("image") == true -> {
-                            previewText = stringResource(MR.string.chat_message_image)
-                            iconRes = Icons.Default.Image
-                        }
-
-                        firstPayload.contentType?.startsWith("video") == true || firstPayload.contentType == "application/vnd.apple.mpegurl" -> {
-                            previewText = stringResource(MR.string.chat_message_video)
-                            iconRes = Icons.Default.PlayArrow
-                        }
-
-                        firstPayload.contentType?.startsWith("audio") == true -> {
-                            previewText = stringResource(MR.string.chat_message_audio)
-                            iconRes = Icons.Default.PlayArrow
-                        }
-
-                        firstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
-                            previewText = stringResource(MR.string.chat_message_link)
-                            iconRes = Icons.Default.Description
-                        }
-
-                        // Assume link identification or default fallback
-                        else -> {
-                            previewText = stringResource(MR.string.chat_message_file)
-                            iconRes = Icons.Default.Description
-                        }
-                    }
-                } else {
-                    previewText = ""
-                    iconRes = null
-                }
-
-                ConversationMessagePreview(
-                    text = previewText,
-                    iconRes = iconRes,
-                    isDeleted = isDeleted,
-                    modifier = Modifier.weight(1f)
-                )
-
-                if (unreadCount > 0) {
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Badge(
-                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                    ) {
-                        Text(
-                            modifier = Modifier.padding(4.dp),
-                            text = unreadCount.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                } else if (isFromActiveUser && deliveryStatus != null) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    DeliveryStatus(isPendingSend = false, deliveryStatus = deliveryStatus)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ConversationAvatarItem(
-    onClick: () -> Unit,
-    isSelected: Boolean = false,
-    conversation: ConversationUiModel,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp)).background(
-                if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(
-                    alpha = 0.7f
-                )
-                else MaterialTheme.colorScheme.surfaceContainerLow
-            ).clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        ConversationAvatar(
-            avatarModel = conversation.avatarModel, modifier = Modifier.padding(8.dp)
-        )
     }
 }

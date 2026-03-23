@@ -25,11 +25,11 @@ data class ConversationUiModel(
     val isPinned: Boolean = false,
     val lastRead: Instant,
     val avatarModel: ConversationAvatarModel,
-    var lastMessageDeliveryStatus: Int? = null,
-    var lastMessageIsDeleted: Boolean = false,
-    var lastMessageFirstPayload: PayloadDescriptor? = null,
-    var lastMessageHasMultiplePayloads: Boolean = false,
-    var lastMessageIsFromActiveUser: Boolean = false,
+    val lastMessageDeliveryStatus: Int? = null,
+    val lastMessageIsDeleted: Boolean = false,
+    val lastMessageFirstPayload: PayloadDescriptor? = null,
+    val lastMessageHasMultiplePayloads: Boolean = false,
+    val lastMessageIsFromActiveUser: Boolean = false,
     val admins: Set<OdinId>,
     val conversationState: ConversationState = ConversationState.Active,
 ) {
@@ -44,23 +44,32 @@ data class ConversationUiModel(
     val isWithSelf: Boolean
         get() = id == ChatProtocol.ConversationWithYourselfId
 
-    fun updateWithLatestMessage(msg: MessageUiModel, activeUserDomain: OdinId?) {
-        // TODO: Should we also increase unread count here if it's a new message?
-        if (msg.created >= timestamp) {
-            lastMessage = msg.content.truncateToCodePoints(40)
-            timestamp = msg.created
-            lastMessageDeliveryStatus = msg.messageAppData.deliveryStatus
-            lastMessageIsDeleted = msg.isDeleted
-            lastMessageFirstPayload = msg.payloads?.firstOrNull()
-            lastMessageHasMultiplePayloads = (msg.payloads?.size ?: 0) > 1
-            lastMessageIsFromActiveUser = msg.isAuthoredBy(activeUserDomain)
-        }
-    }
 
     fun getDisplay(): String {
         if (name.isEmpty() || name.isBlank()) {
             return participants.first().domainName
         }
         return name
+    }
+
+    companion object {
+        fun ConversationUiModel.updateWithLatestMessage(
+            msg: MessageUiModel,
+            activeUserDomain: OdinId?
+        ): ConversationUiModel {
+            // TODO: Should we also increase unread count here if it's a new message?
+            if (msg.created >= timestamp) {
+                return this.copy(
+                    lastMessage = msg.content.truncateToCodePoints(40),
+                    timestamp = msg.created,
+                    lastMessageDeliveryStatus = msg.messageAppData.deliveryStatus,
+                    lastMessageIsDeleted = msg.isDeleted,
+                    lastMessageFirstPayload = msg.payloads?.firstOrNull(),
+                    lastMessageHasMultiplePayloads = (msg.payloads?.size ?: 0) > 1,
+                    lastMessageIsFromActiveUser = msg.isAuthoredBy(activeUserDomain),
+                )
+            }
+            return this
+        }
     }
 }
