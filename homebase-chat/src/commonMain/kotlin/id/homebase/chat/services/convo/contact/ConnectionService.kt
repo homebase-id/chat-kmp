@@ -27,12 +27,6 @@ class ConnectionService(
     val connections: StateFlow<ConnectionState> =
         _connections.asStateFlow()
 
-    init {
-        scope.launch {
-            refresh()
-        }
-    }
-
     fun start() {
         scope.launch {
             refresh()
