@@ -124,11 +124,9 @@ fun ConversationListPane(
                             ) {
                                 Spacer(modifier = Modifier.width(20.dp))
                                 AnimatedVisibility(
-                                    visible = !uiState.isSearchActive, enter = fadeIn(
-                                        animationSpec = tween(
-                                            300, delayMillis = 200
-                                        )
-                                    ), exit = fadeOut(animationSpec = tween(150))
+                                    visible = !uiState.isSearchActive,
+                                    enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
+                                    exit = fadeOut(animationSpec = tween(150))
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically
