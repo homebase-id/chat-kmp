@@ -120,7 +120,7 @@ class ConversationStream(
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingMessages =
             messageFiles.mapNotNull { file ->
-                ChatMessageStream.mapToMessageData(file, ::resolveDisplayName)
+                ChatMessageStream.mapToMessageData(file, credentialsManager, ::resolveDisplayName)
             }
 
         if (messageFiles.size != incomingMessages.size)
@@ -308,7 +308,7 @@ class ConversationStream(
         )
 
         val latestMsg = selfMessages.records.firstOrNull()?.let {
-            ChatMessageStream.mapToMessageData(it) { file ->
+            ChatMessageStream.mapToMessageData(it, credentialsManager) { file ->
                 file.fileMetadata.originalAuthor?.domainName ?: ""
             }
         }
