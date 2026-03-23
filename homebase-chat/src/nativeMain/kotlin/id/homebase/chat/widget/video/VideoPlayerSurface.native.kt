@@ -22,6 +22,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -36,6 +37,9 @@ import platform.AVFoundation.AVAssetResourceLoaderDelegateProtocol
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVURLAsset
+import platform.AVFoundation.pause
+import platform.AVFoundation.play
+import platform.AVFoundation.resourceLoader
 import platform.AVKit.AVPlayerViewController
 import platform.Foundation.NSData
 import platform.Foundation.NSError
@@ -44,8 +48,9 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUUID
 import platform.Foundation.create
+import platform.Foundation.writeToURL
+import platform.darwin.NSObject
 import platform.darwin.dispatch_queue_create
-import platform.objc.NSObject
 import kotlin.uuid.Uuid
 
 private sealed interface VpsState {
@@ -54,6 +59,7 @@ private sealed interface VpsState {
         val player: AVPlayer,
         val delegate: HomebaseResourceLoaderDelegate, // retain delegate alongside player
     ) : VpsState
+
     data class Error(val message: String) : VpsState
 }
 
@@ -75,7 +81,7 @@ actual fun VideoPlayerSurface(
     }
 
     LaunchedEffect(data) {
-        withContext(Dispatchers.IO) {
+        withContext(Dispatchers.Main) {
             try {
                 val metadata = data.payload.descriptorContent?.let {
                     OdinSystemSerializer.deserialize<VideoMetadata>(it)
@@ -179,7 +185,7 @@ private class HomebaseResourceLoaderDelegate(
         val loadingRequest = shouldWaitForLoadingOfRequestedResource
         val path = loadingRequest.request.URL?.path?.trimStart('/') ?: return false
 
-        scope?.launch(Dispatchers.IO) {
+        scope?.launch(Dispatchers.Main) {
             try {
                 if (path.endsWith(".m3u8")) {
                     val bytes = strippedPlaylist.encodeToByteArray()
@@ -203,7 +209,7 @@ private class HomebaseResourceLoaderDelegate(
                         val length = if (dataRequest.requestsAllDataToEndOfResource) {
                             totalFileSize - start
                         } else {
-                            dataRequest.requestedLength.toLong()
+                            dataRequest.requestedLength
                         }
                         val bytes = driveFileProvider!!.getPayloadBytesDecrypted(
                             driveId = driveId!!,
@@ -227,6 +233,7 @@ private class HomebaseResourceLoaderDelegate(
     }
 }
 
+@OptIn(BetaInteropApi::class)
 private fun ByteArray.toNSData(): NSData = usePinned { pinned ->
     NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
 }
