@@ -150,6 +150,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 6823773BE8887FEA23A8195E /* Build configuration list for PBXNativeTarget "iosApp" */;
 			buildPhases = (
+				43A1B2C3D4E5F6A7B8C9D0E2 /* Increment Build Number */,
 				7E556E29642577F6B7F8336E /* Compile Kotlin Framework */,
 				75264D1454C037FFA6F9EC79 /* Sources */,
 				5FA3011530A4400784B793C9 /* Frameworks */,
@@ -239,6 +240,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :homebase-core:embedAndSignAppleFrameworkForXcode\n";
+		};
+		43A1B2C3D4E5F6A7B8C9D0E2 /* Increment Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Increment Build Number";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ]; then\n  CONFIG_PATH=\"$SRCROOT/Configuration/Config.xcconfig\"\n  VERSION=$(grep \"CURRENT_PROJECT_VERSION\" \"$CONFIG_PATH\" | cut -d'=' -f2)\n  NEXT_VERSION=$((VERSION + 1))\n  sed -i '' \"s/CURRENT_PROJECT_VERSION=.*/CURRENT_PROJECT_VERSION=$NEXT_VERSION/\" \"$CONFIG_PATH\"\n  echo \"Incremented iOS build number to $NEXT_VERSION\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
