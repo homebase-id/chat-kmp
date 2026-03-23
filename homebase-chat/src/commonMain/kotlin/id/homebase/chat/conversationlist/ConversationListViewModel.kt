@@ -59,6 +59,7 @@ import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
+import id.homebase.resources.chat_search_result_pinned
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.cacheDir
@@ -150,7 +151,7 @@ class ConversationListViewModel(
                     _uiState.update {
                         it.copy(
                             activeConversations = enriched
-                                .sortedByDescending { conversation -> conversation.timestamp }
+                                .sortedByDescending { conversation -> conversation.conversation.timestamp }
                                 .toPersistentList()
                         )
                     }
@@ -619,14 +620,32 @@ class ConversationListViewModel(
             is ConversationListUiAction.MarkAsRead -> {
                 viewModelScope.launch {
                     try {
-                        chatMessageActionService.markAsReadLatestFileCreated(
-                            action.conversationId,
-                            action.messageIds
-                        )
+                        if (action.messageIds == null) {
+                            // TODO - mark all as read
+                        } else {
+                            chatMessageActionService.markAsReadLatestFileCreated(
+                                action.conversationId,
+                                action.messageIds
+                            )
+                        }
                     } catch (e: Exception) {
                         sendEvent(
                             ShowErrorMessage(
                                 "Failed to mark message as read: ${e.message}"
+                            )
+                        )
+                    }
+                }
+            }
+
+            is ConversationListUiAction.TogglePinConversation -> {
+                viewModelScope.launch {
+                    try {
+                      // TODO - toggle pinned convo
+                    } catch (e: Exception) {
+                        sendEvent(
+                            ShowErrorMessage(
+                                "Failed to toggle pinned conversation: ${e.message}"
                             )
                         )
                     }
@@ -673,7 +692,7 @@ class ConversationListViewModel(
                             else AttachmentPendingFile.File(Uuid.generateV7(), it)
                         }
                         val conversation = _uiState.value.activeConversations.find {
-                            it.id == action.conversationId
+                            it.conversation.id == action.conversationId
                         }
                         if (newFiles.isEmpty() || conversation == null) return@launch
 
@@ -684,7 +703,7 @@ class ConversationListViewModel(
                             )
                         } else {
                             FullScreenOverlay.AttachmentData(
-                                conversationTitle = conversation.name,
+                                conversationTitle = conversation.conversation.name,
                                 conversationId = action.conversationId,
                                 selected = newFiles.last().attachmentId,
                                 attachments = newFiles,
@@ -714,7 +733,7 @@ class ConversationListViewModel(
                             AttachmentPendingFile.Gallery(Uuid.generateV7(), it)
                         }
                         val conversation = _uiState.value.activeConversations.find {
-                            it.id == action.conversationId
+                            it.conversation.id == action.conversationId
                         }
                         if (newFiles.isEmpty() || conversation == null) return@launch
 
@@ -725,7 +744,7 @@ class ConversationListViewModel(
                             )
                         } else {
                             FullScreenOverlay.AttachmentData(
-                                conversationTitle = conversation.name,
+                                conversationTitle = conversation.conversation.name,
                                 conversationId = action.conversationId,
                                 selected = newFiles.last().attachmentId,
                                 attachments = newFiles,
@@ -1094,24 +1113,43 @@ class ConversationListViewModel(
                 val filterByUnread = uiState.value.filterByUnread
                 val conversationsPool =
                     if (filterByUnread) uiState.value.activeConversations.filter {
-                        it.unreadCount > 0 || it.id == uiState.value.selectedConversationId
+                        it.conversation.unreadCount > 0 || it.conversation.id == uiState.value.selectedConversationId
                     }
                     else uiState.value.activeConversations
 
                 if (searchQuery.isEmpty()) {
+                    val items = mutableListOf<ConversationListContentModel>()
+                    val pinnedItems = conversationsPool
+                        .filter { it.conversation.isPinned }
+                        .map { conv -> ConversationListContentModel.Conversation(conv) }
+                        .toPersistentList()
+                    if (pinnedItems.isNotEmpty()) {
+                        items.add(ConversationListContentModel.Header(MR.string.chat_search_result_pinned))
+                        items.addAll(pinnedItems)
+                    }
+
+                    val normalItems = conversationsPool
+                        .filter { !it.conversation.isPinned }
+                        .map { conv -> ConversationListContentModel.Conversation(conv) }
+                        .toPersistentList()
+                    if (normalItems.isNotEmpty()) {
+                        if (pinnedItems.isNotEmpty()) {
+                            items.add(ConversationListContentModel.Header(MR.string.chat_search_result_conversations))
+                        }
+                        items.addAll(normalItems)
+                    }
+
                     _uiState.update {
                         it.copy(
-                            conversationsContent = if (conversationsPool.isEmpty()) ConversationListContentState.Empty
-                            else ConversationListContentState.Items(conversationsPool.map { conv ->
-                                ConversationListContentModel.Conversation(conv)
-                            }.toPersistentList())
+                            conversationsContent = if (items.isEmpty()) ConversationListContentState.Empty
+                            else ConversationListContentState.Items(items.toPersistentList())
                         )
                     }
                 } else {
                     val result = mutableListOf<ConversationListContentModel>()
 
                     val conversations = conversationsPool.filter { conversation ->
-                        conversation.name.contains(searchQuery, ignoreCase = true)
+                        conversation.conversation.name.contains(searchQuery, ignoreCase = true)
                     }.toPersistentList()
                     if (conversations.isNotEmpty()) {
                         result.add(
