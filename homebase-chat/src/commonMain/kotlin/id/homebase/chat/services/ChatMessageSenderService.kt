@@ -221,7 +221,8 @@ class ChatMessageSenderService(
 
         val messageData = msg.messageAppData.copy(
             deliveryStatus = ChatDeliveryStatus.Sending.value,
-            message = JsonPrimitive(content)
+            message = JsonPrimitive(content),
+            isEdited = true
         )
 
         val built = buildMessageContentAndBundle(
@@ -313,7 +314,7 @@ class ChatMessageSenderService(
     ): MessageBuildResult {
 
         val messageData = preVersionedMessageData.copy(
-            version = ChatProtocol.MessageVersionNumber
+            version = ChatProtocol.MessageVersionNumberOne
         )
 
         val fullJson = OdinSystemSerializer.serialize(messageData)

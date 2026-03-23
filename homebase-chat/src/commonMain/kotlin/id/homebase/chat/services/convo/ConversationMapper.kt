@@ -125,7 +125,7 @@ class ConversationMapper(
                 )
 
             if (lastMsg != null) {
-                ChatMessageStream.mapToMessageData(lastMsg) { homebaseFile ->
+                ChatMessageStream.mapToMessageData(lastMsg, credentialsManager) { homebaseFile ->
                     homebaseFile.fileMetadata.originalAuthor?.domainName ?: ""
 
                 }?.let {
@@ -189,7 +189,9 @@ class ConversationMapper(
         )
 
         if (lastMsg != null) {
-            ChatMessageStream.mapToMessageData(lastMsg) { it.fileMetadata.originalAuthor?.domainName ?: "" }?.let {
+            ChatMessageStream.mapToMessageData(lastMsg, credentialsManager) {
+                it.fileMetadata.originalAuthor?.domainName ?: ""
+            }?.let {
                 m.updateWithLatestMessage(it, domain)
             }
         }
@@ -223,7 +225,9 @@ class ConversationMapper(
         )
 
         if (lastMsg != null) {
-            ChatMessageStream.mapToMessageData(lastMsg) { it.fileMetadata.originalAuthor?.domainName ?: "" }?.let {
+            ChatMessageStream.mapToMessageData(lastMsg, credentialsManager) {
+                it.fileMetadata.originalAuthor?.domainName ?: ""
+            }?.let {
                 m.updateWithLatestMessage(it, domain)
             }
         }

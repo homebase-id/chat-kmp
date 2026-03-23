@@ -37,7 +37,6 @@ import id.homebase.resources.system_conversation_photo_updated
 import id.homebase.resources.system_conversation_title_updated
 import id.homebase.resources.system_group_conversation_member_left
 import id.homebase.resources.system_group_conversation_started
-import io.ktor.client.request.invoke
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -108,7 +107,7 @@ class ChatMessageStream(
         val messages =
             files
                 .filter { it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType }
-                .mapNotNull { mapToMessageData(it, ::resolveDisplayName) }
+                .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) }
 
         messages.groupBy { it.conversationId }.forEach { (conversationId, msgs) ->
             conversationState.upsert(conversationId, msgs)
@@ -137,7 +136,7 @@ class ChatMessageStream(
             )
 
         val messageFile = result.records.singleOrNull() ?: return null
-        return mapToMessageData(messageFile, ::resolveDisplayName)
+        return mapToMessageData(messageFile, credentialsManager, ::resolveDisplayName)
     }
 
     suspend fun fetchMessages(
@@ -165,7 +164,7 @@ class ChatMessageStream(
         return BatchResult(
             records =
                 result.records.mapNotNull { header ->
-                    mapToMessageData(header, ::resolveDisplayName)
+                    mapToMessageData(header, credentialsManager, ::resolveDisplayName)
                 },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
@@ -204,7 +203,7 @@ class ChatMessageStream(
                             ignoreCase = true
                         ) == true
                     }
-                    .mapNotNull { mapToMessageData(it, ::resolveDisplayName) },
+                    .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
@@ -232,7 +231,13 @@ class ChatMessageStream(
             )
 
         return BatchResult(
-            records = result.records.mapNotNull { mapToMessageData(it, ::resolveDisplayName) },
+            records = result.records.mapNotNull {
+                mapToMessageData(
+                    it,
+                    credentialsManager,
+                    ::resolveDisplayName
+                )
+            },
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
@@ -327,10 +332,13 @@ class ChatMessageStream(
 
         suspend fun mapToMessageData(
             header: HomebaseFile,
+            credentialsManager: CredentialsManager,
             displayNameResolver: suspend (HomebaseFile) -> String = {
                 it.fileMetadata.originalAuthor?.domainName ?: ""
             }
         ): MessageUiModel? {
+
+            val domain = credentialsManager.requireActiveDomain()
 
             val metadata = header.fileMetadata
             val appData = metadata.appData
@@ -351,15 +359,15 @@ class ChatMessageStream(
                 val isDeleted = header.fileState == FileState.Deleted ||
                         header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
 
-                val created = UnixTimeUtc(appData.userDate!!).toInstant()
-
                 if (isDeleted) {
                     return MessageUiModel(
                         id = appData.uniqueId ?: header.fileId,
                         globalTransitId = metadata.globalTransitId,
                         fileId = header.fileId,
                         conversationId = appData.groupId!!,
-                        created = created,
+                        created = if (appData.userDate == null)
+                            metadata.created.toInstant() else
+                            UnixTimeUtc(appData.userDate!!).toInstant(),
                         modified = metadata.updated.toInstant(),
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
@@ -395,7 +403,8 @@ class ChatMessageStream(
                     )
                     messageAppData = MessageAppData(
                         message = JsonPrimitive(rendered),
-                        deliveryStatus = delivery
+                        deliveryStatus = delivery,
+                        isEdited = false
                     )
                 } else {
                     val source = OdinSystemSerializer.deserialize<MessageAppData>(content)
@@ -406,13 +415,32 @@ class ChatMessageStream(
 
                 val displayName = displayNameResolver(header)
 
+                val isAuthor = domain == metadata.originalAuthor
+                val authorSpecificDate = if (isAuthor)
+                    metadata.created
+                else
+                    metadata.transitCreated
+
+                val created =
+                    if (messageAppData.version == null && messageAppData.isEdited) {
+                        // older edited messages; use older logic that seems to drop the
+                        // appData.userDate when a message is edited
+                        authorSpecificDate
+                    } else {
+                        if (appData.userDate == null) {
+                            Logger.e { "Message with version ${messageAppData.version} has null userDate. using authorSpecificDate" }
+                            authorSpecificDate
+                        } else
+                            UnixTimeUtc(appData.userDate!!)
+                    }
+
                 return MessageUiModel(
                     id = appData.uniqueId!!,
                     globalTransitId = metadata.globalTransitId,
                     fileId = header.fileId,
                     conversationId = appData.groupId!!,
                     content = messageAppData.getMessage(),
-                    created = created,
+                    created = created.toInstant(),
                     modified = metadata.updated.toInstant(),
                     originalAuthor = metadata.originalAuthor,
                     displayName = displayName,
@@ -432,7 +460,7 @@ class ChatMessageStream(
             } catch (t: Throwable) {
 
                 Logger.e(t) {
-                    "failed while mapping a message with uniqueId ${appData.uniqueId} and fileId ${header.fileId} appData=[${appData}]"
+                    "failed while mapping a message with uniqueId ${appData.uniqueId} and fileId ${header.fileId} appData=[${appData}]. Message: ${t.message}"
                 }
 
                 try {
