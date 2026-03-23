@@ -20,7 +20,7 @@ data class RecipientTransferHistoryEntry(
     val recipient: String,
     val lastUpdated: Long,
     val latestTransferStatus: TransferStatus,
-    val isInOutbox: String,
+    val isInOutbox: Boolean,
     val latestSuccessfullyDeliveredVersionTag: String? = null,
     val isReadByRecipient: Boolean = false
 )

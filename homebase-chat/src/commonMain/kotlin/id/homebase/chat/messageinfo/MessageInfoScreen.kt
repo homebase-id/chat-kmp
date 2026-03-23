@@ -145,6 +145,50 @@ fun MessageInfoUi(
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
+
+                if (uiState.isTransferHistoryLoading) {
+                    Spacer(modifier = Modifier.height(32.dp))
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else if (uiState.transferHistory != null) {
+                    Spacer(modifier = Modifier.height(32.dp))
+                    Text(
+                        text = "Transfer History",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Original Recipients: ${uiState.transferHistory.originalRecipientCount}",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    uiState.transferHistory.history.results.forEach { entry ->
+                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                            Text(
+                                text = "Recipient: ${entry.recipient}",
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                            Text(
+                                text = "Status: ${entry.latestTransferStatus}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = "In Outbox: ${if (entry.isInOutbox) "Yes" else "No"}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = "Read: ${if (entry.isReadByRecipient) "Yes" else "No"}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = "Last Updated: ${formateDateTime(kotlin.time.Instant.fromEpochMilliseconds(entry.lastUpdated))}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
             }
         }
     }
