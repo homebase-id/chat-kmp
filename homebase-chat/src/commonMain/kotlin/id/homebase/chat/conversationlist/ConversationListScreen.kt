@@ -363,9 +363,9 @@ fun ConversationListUi(
             detailPane = {
                 AnimatedPane {
                     val conversation =
-                        uiState.activeConversations.find { it.id == scaffoldNavigator.currentDestination?.contentKey }
+                        uiState.activeConversations.find { it.conversation.id == scaffoldNavigator.currentDestination?.contentKey }
                     if (conversation != null) {
-                        key(conversation.id) {
+                        key(conversation.conversation.id) {
                             ConversationMessagesPane(
                                 conversation = conversation,
                                 uiState = messagesUiState,

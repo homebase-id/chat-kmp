@@ -73,7 +73,6 @@ import id.homebase.resources.app_name
 import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_filter_by_unread_description
 import id.homebase.resources.chat_new_conversation
-import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
 import id.homebase.resources.chat_search_empty_description
 import id.homebase.resources.chat_search_placeholder
@@ -124,11 +123,9 @@ fun ConversationListPane(
                             ) {
                                 Spacer(modifier = Modifier.width(20.dp))
                                 AnimatedVisibility(
-                                    visible = !uiState.isSearchActive, enter = fadeIn(
-                                        animationSpec = tween(
-                                            300, delayMillis = 200
-                                        )
-                                    ), exit = fadeOut(animationSpec = tween(150))
+                                    visible = !uiState.isSearchActive,
+                                    enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
+                                    exit = fadeOut(animationSpec = tween(150))
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically
@@ -420,7 +417,11 @@ fun ConversationLisContentItem(
 ) {
     when (listItem) {
         is ConversationListContentModel.Header -> {
-            Text(stringResource(listItem.resource), modifier = Modifier.padding(16.dp))
+            Text(
+                text = stringResource(listItem.resource),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+            )
         }
 
         is ConversationListContentModel.Conversation -> {
@@ -430,43 +431,34 @@ fun ConversationLisContentItem(
                     onClick = {
                         onUiAction(
                             ConversationListUiAction.ConversationClicked(
-                                listItem.conversation.id, null
+                                listItem.conversation.conversation.id, null
                             )
                         )
-                        onConversationSelected(listItem.conversation.id)
+                        onConversationSelected(listItem.conversation.conversation.id)
                     },
-                    isSelected = listItem.conversation.id == selectedConversationId,
+                    isSelected = listItem.conversation.conversation.id == selectedConversationId,
                 )
             } else {
                 ConversationItem(
-                    avatarModel = listItem.conversation.avatarModel,
-                    groupName = if (listItem.conversation.isWithSelf) stringResource(MR.string.chat_note_to_self)
-                    else listItem.conversation.name,
-                    message = listItem.conversation.lastMessage,
-                    unreadCount = listItem.conversation.unreadCount,
-                    contactOdinId = listItem.conversation.participants.firstOrNull()?.odinId,
-                    timestamp = listItem.conversation.timestamp,
+                    enrichedData = listItem.conversation,
                     onClick = {
-                        onUiAction(
-                            ConversationListUiAction.ConversationClicked(
-                                listItem.conversation.id, null
-                            )
-                        )
-                        onConversationSelected(listItem.conversation.id)
+                        onUiAction(ConversationListUiAction.ConversationClicked(listItem.conversation.conversation.id, null))
+                        onConversationSelected(listItem.conversation.conversation.id)
                     },
                     onContactClick = {
-                        onUiAction(
-                            ConversationListUiAction.ShowConversationSettings(
-                                listItem.conversation.conversation
-                            )
-                        )
+                        onUiAction(ConversationListUiAction.ShowConversationSettings(listItem.conversation.conversation))
                     },
-                    isSelected = listItem.conversation.id == selectedConversationId,
-                    deliveryStatus = listItem.conversation.lastMessageDeliveryStatus,
-                    isDeleted = listItem.conversation.lastMessageIsDeleted,
-                    firstPayload = listItem.conversation.lastMessageFirstPayload,
-                    hasMultiplePayloads = listItem.conversation.lastMessageHasMultiplePayloads,
-                    isFromActiveUser = listItem.conversation.lastMessageIsFromActiveUser,
+                    onArchiveClick = {
+                        onUiAction(ConversationListUiAction.ArchiveConversation(listItem.conversation.conversation.id))
+                    },
+                    onTogglePinClick = {
+                        onUiAction(ConversationListUiAction.TogglePinConversation(listItem.conversation.conversation.id))
+                    },
+                    onMarkAsReadClick = {
+                        onUiAction(ConversationListUiAction.MarkAsRead(listItem.conversation.conversation.id))
+                    },
+                    isSelected = listItem.conversation.conversation.id == selectedConversationId,
+
                 )
             }
         }

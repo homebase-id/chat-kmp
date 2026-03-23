@@ -11,6 +11,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessage
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.avatars.ConversationAvatarModel
@@ -105,7 +106,7 @@ class ConversationMapper(
                 conversationId
             )
 
-            val ui =
+            var ui =
                 ConversationUiModel(
                     id = conversationId,
                     name = title,
@@ -128,7 +129,7 @@ class ConversationMapper(
                     homebaseFile.fileMetadata.originalAuthor?.domainName ?: ""
 
                 }?.let {
-                    ui.updateWithLatestMessage(it, domain)
+                    ui = ui.updateWithLatestMessage(it, domain)
                 }
             }
 
