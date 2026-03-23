@@ -31,6 +31,7 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.image.ImageUtils
+import id.homebase.api.video.FFmpegUtils
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -747,10 +748,21 @@ class ConversationListViewModel(
                     try {
                         val newFiles = action.files.map {
                             val ct = detectContentTypeFromExtensionOrHint(it.name)
-                            if (action.isImage || ct.startsWith("image/") || ct.startsWith("video/"))
-                                AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
-                            else
-                                AttachmentPendingFile.File(Uuid.generateV7(), it)
+                            when {
+                                ct.startsWith("video/") -> {
+                                    val thumbnailBytes = try {
+                                        val thumbPath = FFmpegUtils.grabThumbnail(it.toString())
+                                        if (thumbPath != null) {
+                                            val bytes = fileOperationsProvider.readFileBytes(thumbPath)
+                                            fileOperationsProvider.deleteTempFile(thumbPath)
+                                            bytes
+                                        } else null
+                                    } catch (_: Exception) { null }
+                                    AttachmentPendingFile.FileVideo(Uuid.generateV7(), it, thumbnailBytes)
+                                }
+                                action.isImage || ct.startsWith("image/") -> AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+                                else -> AttachmentPendingFile.File(Uuid.generateV7(), it)
+                            }
                         }
                         val conversation = _uiState.value.activeConversations.find {
                             it.conversation.id == action.conversationId
@@ -1471,6 +1483,18 @@ class ConversationListViewModel(
                     }
 
                     is AttachmentPendingFile.FileImage -> {
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = attachment.file.toString(),
+                                contentType = detectContentTypeFromExtensionOrHint(
+                                    attachment.file.name
+                                ),
+                                displayName = attachment.file.name,
+                            )
+                        )
+                    }
+
+                    is AttachmentPendingFile.FileVideo -> {
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.file.toString(),

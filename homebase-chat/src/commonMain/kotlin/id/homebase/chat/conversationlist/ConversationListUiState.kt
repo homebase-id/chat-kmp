@@ -129,6 +129,7 @@ sealed interface FullScreenOverlay {
 
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     data class FileImage(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
+    data class FileVideo(val id: Uuid, val file: PlatformFile, val thumbnailBytes: ByteArray? = null) : AttachmentPendingFile(id)
     data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
     data class Gallery(val id: Uuid, val image: GalleryImage) : AttachmentPendingFile(id)
     data class Audio(val id: Uuid, val audioFile: PlatformFile, val waveformFile: PlatformFile?, val lengthSeconds: Int) : AttachmentPendingFile(id)
