@@ -117,6 +117,7 @@
     <string name="chat_mark_all_as_read">Markér alle som læste</string>
     <string name="chat_pin">Fastgør</string>
     <string name="chat_unpin">Frigør</string>
+    <string name="chat_search_result_pinned">Fastgjorte</string>
     <string name="chat_search_result_conversations">Samtaler</string>
     <string name="chat_search_result_messages">Beskeder</string>
     <string name="chat_search_result_empty">Ingen resultater fundet for '%1$s'</string>

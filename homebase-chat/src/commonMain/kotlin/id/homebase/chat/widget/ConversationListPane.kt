@@ -417,7 +417,11 @@ fun ConversationLisContentItem(
 ) {
     when (listItem) {
         is ConversationListContentModel.Header -> {
-            Text(stringResource(listItem.resource), modifier = Modifier.padding(16.dp))
+            Text(
+                text = stringResource(listItem.resource),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+            )
         }
 
         is ConversationListContentModel.Conversation -> {
@@ -444,9 +448,15 @@ fun ConversationLisContentItem(
                     onContactClick = {
                         onUiAction(ConversationListUiAction.ShowConversationSettings(listItem.conversation.conversation))
                     },
-                    onArchiveClick = {},
-                    onTogglePinClick = {},
-                    onMarkAsReadClick = {},
+                    onArchiveClick = {
+                        onUiAction(ConversationListUiAction.ArchiveConversation(listItem.conversation.conversation.id))
+                    },
+                    onTogglePinClick = {
+                        onUiAction(ConversationListUiAction.TogglePinConversation(listItem.conversation.conversation.id))
+                    },
+                    onMarkAsReadClick = {
+                        onUiAction(ConversationListUiAction.MarkAsRead(listItem.conversation.conversation.id))
+                    },
                     isSelected = listItem.conversation.conversation.id == selectedConversationId,
 
                 )

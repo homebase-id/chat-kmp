@@ -386,8 +386,8 @@ fun ConversationItemMenuPopup(
                             dismissMenu()
                             onTogglePin()
                         },
-                        text = if (isPinned) stringResource(MR.string.chat_pin) else stringResource(
-                            MR.string.chat_unpin
+                        text = if (isPinned) stringResource(MR.string.chat_unpin) else stringResource(
+                            MR.string.chat_pin
                         ),
                         imageVector = Icons.Default.PushPin,
                     )
