@@ -33,6 +33,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -291,7 +293,11 @@ private fun WaveformImage(
             imageData = imageData,
             contentDescription = "Audio waveform",
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.FillBounds
+            contentScale = ContentScale.FillBounds,
+            colorFilter = ColorFilter.tint(
+                color = MaterialTheme.colorScheme.primary,  // or any color you want
+                blendMode = BlendMode.SrcIn  // This replaces the original color
+            )
         )
 
 //        // Overlay progress indicator
