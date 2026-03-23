@@ -80,7 +80,7 @@ class PayloadBundleEncryptionService(
                 )
 
                 val encryptedThumbnails =
-                    bundle.thumbnails.map { thumb ->
+                    bundle.thumbnails.filter { it.key == payload.key }.map { thumb ->
                         val encryptedBytes = encryptBytes(thumb.thumbnailBytes, keyHeader)
                         thumb.copy(thumbnailBytes = encryptedBytes)
                     }
