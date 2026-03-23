@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
+import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
@@ -107,6 +108,7 @@ fun SentMessageBubble(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
     onShowMore: (() -> Unit)? = null,
+    uploadStatus: UploadStatus? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -229,7 +231,8 @@ fun SentMessageBubble(
                     animatedVisibilityScope = animatedVisibilityScope,
                     downloadingFiles = downloadingFiles,
                     onShowMoreClick = onShowMore,
-                    isPendingSend = message.isPendingSend
+                    isPendingSend = message.isPendingSend,
+                    uploadStatus = uploadStatus,
                 )
                 message.reactionPreview?.let { reactionSummary ->
                     ReactionList(

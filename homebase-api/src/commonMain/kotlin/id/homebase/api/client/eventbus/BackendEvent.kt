@@ -94,7 +94,7 @@ sealed interface BackendEvent {
         // Progress during the sending of an item ]0..100[ %
         data class ItemProgress(
             val driveId: Uuid,
-            val fileId: Uuid,
+            val uniqueId: Uuid,
             val progress: Float,  // 0.0 to 1.0
             val bytesSent: Long? = null
         ) : OutboxEvent  // New: For ongoing upload progress updates

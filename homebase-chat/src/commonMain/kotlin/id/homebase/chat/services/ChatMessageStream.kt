@@ -422,13 +422,22 @@ class ChatMessageStream(
                     metadata.transitCreated
 
                 val created =
-                    if (messageAppData.version == null && messageAppData.isEdited) {
+                    if (messageAppData.version == null) {
                         // older edited messages; use older logic that seems to drop the
                         // appData.userDate when a message is edited
-                        authorSpecificDate
+                        if (messageAppData.isEdited) {
+                            authorSpecificDate
+                        } else {
+                            if (appData.userDate == null) {
+                                Logger.e { "Message (uid: ${appData.uniqueId}) with no version and not edited has null userDate. using authorSpecificDate" }
+                                authorSpecificDate
+                            } else
+                                UnixTimeUtc(appData.userDate!!)
+                        }
+
                     } else {
                         if (appData.userDate == null) {
-                            Logger.e { "Message with version ${messageAppData.version} has null userDate. using authorSpecificDate" }
+                            Logger.e { "Message (uid: ${appData.uniqueId}) with version ${messageAppData.version} has null userDate. using authorSpecificDate" }
                             authorSpecificDate
                         } else
                             UnixTimeUtc(appData.userDate!!)

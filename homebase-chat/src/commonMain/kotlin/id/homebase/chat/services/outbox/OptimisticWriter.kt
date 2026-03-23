@@ -13,6 +13,7 @@ import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.LocalAppMetadata
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -36,7 +37,8 @@ class OptimisticWriter(
         keyHeader: KeyHeader,
         unecryptedMetadata: UploadFileMetadata,
         originalRecipientCount: Int,
-        fileSystemType: FileSystemType
+        fileSystemType: FileSystemType,
+        payloadDescriptors: List<PayloadDescriptor>? = null,
     ) {
 
         val credentials = credentialsManager.requireActiveCredentials()
@@ -70,7 +72,8 @@ class OptimisticWriter(
                 isEncrypted = unecryptedMetadata.isEncrypted,
                 senderOdinId = domain,
                 originalAuthor = domain,
-                versionTag = null
+                versionTag = null,
+                payloads = payloadDescriptors,
             ),
             serverMetadata = ServerMetadata(
                 accessControlList = unecryptedMetadata.accessControlList ?: AccessControlList(

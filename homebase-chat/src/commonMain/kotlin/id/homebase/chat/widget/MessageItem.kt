@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.DecryptedFileKey
+import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import kotlinx.collections.immutable.ImmutableMap
 import kotlin.uuid.Uuid
@@ -22,6 +23,7 @@ fun MessageItem(
     sharedTransitionScope: SharedTransitionScope,
     onUiAction: (ConversationListUiAction) -> Unit,
     downloadingFiles: Set<String>,
+    uploadStatus: UploadStatus? = null,
 ) {
     // TODO: currentOdinId is "" - is that supposed to be the case??
     val odinId: OdinId? = try {
@@ -99,7 +101,8 @@ fun MessageItem(
             animatedVisibilityScope = animatedVisibilityScope,
             sharedTransitionScope = sharedTransitionScope,
             downloadingFiles = downloadingFiles,
-            onShowMore = onShowMore
+            onShowMore = onShowMore,
+            uploadStatus = uploadStatus,
         )
     } else {
         val onMarkAsRead =

@@ -3,7 +3,10 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.PushNotificationOptions
@@ -181,12 +184,22 @@ class ChatMessageSenderService(
             }
 
             // optimistic write after we know it will be sent
+            @OptIn(ExperimentalEncodingApi::class)
+            val payloadDescriptors = encryptedBundle.payloads.map { payload ->
+                PayloadDescriptor(
+                    key = payload.key,
+                    contentType = payload.contentType.ifEmpty { null },
+                    iv = payload.iv?.let { Base64.encode(it) },
+                    descriptorContent = payload.descriptorContent,
+                )
+            }.ifEmpty { null }
             optimisticWriter.writeNewFile(
                 driveId = chatDrive,
                 keyHeader = keyHeader,
                 unecryptedMetadata = unecryptedMetadata,
                 originalRecipientCount = recipients.size,
-                fileSystemType = FileSystemType.Standard
+                fileSystemType = FileSystemType.Standard,
+                payloadDescriptors = payloadDescriptors,
             )
 
             return SendMessageResult(uniqueId = messageUniqueId)

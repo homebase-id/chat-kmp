@@ -45,6 +45,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
+import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.config.chatTargetDrive
@@ -105,7 +106,8 @@ fun MessageBubbleRaw(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     downloadingFiles: Set<String>,
     onShowMoreClick: (() -> Unit)? = null,
-    isPendingSend: Boolean = false
+    isPendingSend: Boolean = false,
+    uploadStatus: UploadStatus? = null,
 ) {
 
     val filteredPayloads = message.payloads?.filter {
@@ -217,7 +219,8 @@ fun MessageBubbleRaw(
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     messageId = message.id,
-                    downloadingFiles = downloadingFiles
+                    downloadingFiles = downloadingFiles,
+                    uploadStatus = uploadStatus,
                 )
                 Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
                     Box(
@@ -293,6 +296,7 @@ fun MessageBubbleRaw(
                                 animatedVisibilityScope = animatedVisibilityScope,
                                 messageId = message.id,
                                 downloadingFiles = downloadingFiles,
+                                uploadStatus = uploadStatus,
                             )
                         }
                         Row(

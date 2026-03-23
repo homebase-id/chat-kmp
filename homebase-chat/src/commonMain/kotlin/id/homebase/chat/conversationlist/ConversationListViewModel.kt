@@ -79,6 +79,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
@@ -176,6 +177,63 @@ class ConversationListViewModel(
                 .collectLatest {
                     if (uiState.value.conversationsContent is ConversationListContentState.Items) {
                         updateListContent()
+                    }
+                }
+        }
+
+        // Track upload progress via outbox and payload bundling events
+        viewModelScope.launch {
+            eventBus.events.filter { it is BackendEvent.PayloadBundlingEvent.Video.PhaseProgress }
+                .collect { event ->
+                    event as BackendEvent.PayloadBundlingEvent.Video.PhaseProgress
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Processing(event.progress))).toPersistentMap()
+                        )
+                    }
+                }
+        }
+
+        viewModelScope.launch {
+            eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemProgress }
+                .collect { event ->
+                    event as BackendEvent.OutboxEvent.ItemProgress
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Uploading(event.progress / 100f))).toPersistentMap()
+                        )
+                    }
+                }
+        }
+
+        viewModelScope.launch {
+            eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemCompleted }
+                .collect { event ->
+                    event as BackendEvent.OutboxEvent.ItemCompleted
+                    viewModelScope.launch {
+                        _messagesUiState.update { state ->
+                            state.copy(
+                                uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Completed)).toPersistentMap()
+                            )
+                        }
+                        delay(800)
+                        _messagesUiState.update { state ->
+                            state.copy(
+                                uploadProgress = (state.uploadProgress - event.uniqueId).toPersistentMap()
+                            )
+                        }
+                    }
+                }
+        }
+
+        viewModelScope.launch {
+            eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemFailed }
+                .collect { event ->
+                    event as BackendEvent.OutboxEvent.ItemFailed
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            uploadProgress = (state.uploadProgress - event.uniqueId).toPersistentMap()
+                        )
                     }
                 }
         }
