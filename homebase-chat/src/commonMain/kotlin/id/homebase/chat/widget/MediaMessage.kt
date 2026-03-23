@@ -165,22 +165,35 @@ private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mod
                     )
                 }
                 is UploadStatus.Uploading -> {
-                    CircularProgressIndicator(
-                        progress = { status.progress },
-                        modifier = Modifier.size(40.dp),
-                        color = Color.White,
-                        trackColor = Color.White.copy(alpha = 0.3f),
-                    )
-                    Text(
-                        text = "${(status.progress * 100).toInt()}%",
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    Text(
-                        text = "Uploading…",
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
+                    if (status.progress >= 1f) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(40.dp),
+                            color = Color.White,
+                            trackColor = Color.White.copy(alpha = 0.3f),
+                        )
+                        Text(
+                            text = "Finalizing…",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            progress = { status.progress },
+                            modifier = Modifier.size(40.dp),
+                            color = Color.White,
+                            trackColor = Color.White.copy(alpha = 0.3f),
+                        )
+                        Text(
+                            text = "${(status.progress * 100).toInt()}%",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        Text(
+                            text = "Uploading…",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
                 }
                 UploadStatus.Completed -> {
                     Icon(

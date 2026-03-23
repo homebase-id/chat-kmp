@@ -429,7 +429,8 @@ class ChatMessageStream(
                             authorSpecificDate
                         } else {
                             if (appData.userDate == null) {
-                                Logger.e { "Message (uid: ${appData.uniqueId}) with no version and not edited has null userDate. using authorSpecificDate" }
+                                Logger.w { "Message (uid: ${appData.uniqueId}) with no version and not edited has null userDate. using authorSpecificDate" }
+                                Logger.w { "See File here: https://${domain}/owner/drives/9ff813aff2d61e2f9b9db189e72d1a11_66ea8355ae4155c39b5a719166b510e3/${appData.uniqueId}" }
                                 authorSpecificDate
                             } else
                                 UnixTimeUtc(appData.userDate!!)
@@ -437,7 +438,8 @@ class ChatMessageStream(
 
                     } else {
                         if (appData.userDate == null) {
-                            Logger.e { "Message (uid: ${appData.uniqueId}) with version ${messageAppData.version} has null userDate. using authorSpecificDate" }
+                            Logger.w { "Message (uid: ${appData.uniqueId}) with version ${messageAppData.version} has null userDate. using authorSpecificDate" }
+                            Logger.w { "See File here: https://${domain}/owner/drives/9ff813aff2d61e2f9b9db189e72d1a11_66ea8355ae4155c39b5a719166b510e3/${appData.uniqueId}" }
                             authorSpecificDate
                         } else
                             UnixTimeUtc(appData.userDate!!)
