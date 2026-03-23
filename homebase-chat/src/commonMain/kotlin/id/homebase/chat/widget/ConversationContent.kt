@@ -385,7 +385,8 @@ fun ConversationContent(
                                         animatedVisibilityScope = animatedVisibilityScope,
                                         sharedTransitionScope = sharedTransitionScope,
                                         onUiAction = onUiAction,
-                                        downloadingFiles = uiState.downloadingFiles
+                                        downloadingFiles = uiState.downloadingFiles,
+                                        uploadStatus = uiState.uploadProgress[messageItem.message.id],
                                     )
                                 }
                             }

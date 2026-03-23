@@ -39,10 +39,17 @@ sealed interface ConversationListUiSheet {
     data class ConnectIdentities(val identities: List<OdinId>) : ConversationListUiSheet
 }
 
+sealed interface UploadStatus {
+    data class Processing(val progress: Float) : UploadStatus
+    data class Uploading(val progress: Float) : UploadStatus
+    data object Completed : UploadStatus
+}
+
 @Immutable
 data class MessageListUiState(
     val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
     val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
+    val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
     val isLoadingMessages: Boolean = true,
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
