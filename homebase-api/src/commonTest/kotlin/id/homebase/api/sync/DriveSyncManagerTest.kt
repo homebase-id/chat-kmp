@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -109,6 +110,204 @@ class DriveSyncManagerTest {
             assertIs<DriveState.Synchronizing>(manager.driveStatuses.value[driveId]?.state)
         }
 
+        db.close()
+    }
+
+    private fun buildManager(
+        db: DatabaseManager,
+        credentialsManager: CredentialsManager,
+        eventBus: EventBus,
+        scope: kotlinx.coroutines.CoroutineScope
+    ): DriveSyncManager {
+        val mockEngine = MockEngine { awaitCancellation() }
+        val httpClient = HttpClient(mockEngine)
+        val driveQueryProvider = DriveQueryProvider(httpClient, credentialsManager)
+        return DriveSyncManager(
+            driveQueryProvider = driveQueryProvider,
+            credentialsManager = credentialsManager,
+            eventBus = eventBus,
+            scope = scope,
+            databaseManager = db
+        )
+    }
+
+    private fun buildCredentials(): CredentialsManager {
+        val credentialsManager = CredentialsManager()
+        credentialsManager.setActiveCredentials(
+            ApiCredentials.create(
+                domain = OdinId("test.homebase.id"),
+                clientAccessToken = "fake-token",
+                sharedSecret = SecureByteArray(ByteArray(16))
+            )
+        )
+        return credentialsManager
+    }
+
+    @Test
+    fun syncStateIsIdleBeforeStart() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+        runTest {
+            val manager = buildManager(db, buildCredentials(), EventBus(), this)
+            assertEquals(SyncState.Idle, manager.syncState.value)
+        }
+        db.close()
+    }
+
+    @Test
+    fun syncStateTransitionsToSyncingOnStartedEvent() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+        runTest {
+            val eventBus = EventBus()
+            val manager = buildManager(db, buildCredentials(), eventBus, this)
+            val driveId = Uuid.random()
+            manager.start(mapOf(driveId to "Drive"))
+            runCurrent()
+
+            eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+            runCurrent()
+
+            assertIs<SyncState.Syncing>(manager.syncState.value)
+        }
+        db.close()
+    }
+
+    @Test
+    fun syncStateTransitionsToCompletedWhenAllDrivesComplete() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+        runTest {
+            val eventBus = EventBus()
+            val manager = buildManager(db, buildCredentials(), eventBus, this)
+            val driveId = Uuid.random()
+            manager.start(mapOf(driveId to "Drive"))
+            runCurrent()
+
+            eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+            runCurrent()
+            eventBus.emit(BackendEvent.DriveEvent.Completed(driveId, totalCount = 5))
+            runCurrent()
+
+            assertIs<SyncState.Completed>(manager.syncState.value)
+        }
+        db.close()
+    }
+
+    @Test
+    fun syncStateTransitionsToFailedOnFailedEvent() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+        runTest {
+            val eventBus = EventBus()
+            val manager = buildManager(db, buildCredentials(), eventBus, this)
+            val driveId = Uuid.random()
+            manager.start(mapOf(driveId to "Drive"))
+            runCurrent()
+
+            eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+            runCurrent()
+            eventBus.emit(BackendEvent.DriveEvent.Failed(driveId, "error"))
+            advanceTimeBy(1)
+
+            assertIs<SyncState.Failed>(manager.syncState.value)
+        }
+        db.close()
+    }
+
+    @Test
+    fun syncAllStartedEventFiredOnTransitionToSyncing() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+        runTest {
+            val eventBus = EventBus()
+            val manager = buildManager(db, buildCredentials(), eventBus, this)
+            val driveId = Uuid.random()
+            manager.start(mapOf(driveId to "Drive"))
+            runCurrent()
+
+            val emittedEvents = mutableListOf<BackendEvent>()
+            val job = launch { eventBus.events.collect { emittedEvents.add(it) } }
+
+            eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+            runCurrent()
+
+            assertTrue(emittedEvents.any { it is BackendEvent.DriveEvent.SyncAllStarted })
+            job.cancel()
+        }
+        db.close()
+    }
+
+    @Test
+    fun syncAllCompletedEventFiredOnTransitionToCompleted() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+        runTest {
+            val eventBus = EventBus()
+            val manager = buildManager(db, buildCredentials(), eventBus, this)
+            val driveId = Uuid.random()
+            manager.start(mapOf(driveId to "Drive"))
+            runCurrent()
+
+            eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+            runCurrent()
+
+            val emittedEvents = mutableListOf<BackendEvent>()
+            val job = launch { eventBus.events.collect { emittedEvents.add(it) } }
+
+            eventBus.emit(BackendEvent.DriveEvent.Completed(driveId, totalCount = 3))
+            runCurrent()
+
+            assertTrue(emittedEvents.any { it is BackendEvent.DriveEvent.SyncAllCompleted })
+            job.cancel()
+        }
+        db.close()
+    }
+
+    @Test
+    fun syncAllFailedEventFiredOnTransitionToFailed() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+        runTest {
+            val eventBus = EventBus()
+            val manager = buildManager(db, buildCredentials(), eventBus, this)
+            val driveId = Uuid.random()
+            manager.start(mapOf(driveId to "Drive"))
+            runCurrent()
+
+            eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+            runCurrent()
+
+            val emittedEvents = mutableListOf<BackendEvent>()
+            val job = launch { eventBus.events.collect { emittedEvents.add(it) } }
+
+            eventBus.emit(BackendEvent.DriveEvent.Failed(driveId, "network error"))
+            advanceTimeBy(1)
+
+            assertTrue(emittedEvents.any { it is BackendEvent.DriveEvent.SyncAllFailed })
+            job.cancel()
+        }
+        db.close()
+    }
+
+    @Test
+    fun numberOfDrivesSyncingReturnsCorrectCount() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+        runTest {
+            val eventBus = EventBus()
+            val manager = buildManager(db, buildCredentials(), eventBus, this)
+            val driveId1 = Uuid.random()
+            val driveId2 = Uuid.random()
+            manager.start(mapOf(driveId1 to "Drive 1", driveId2 to "Drive 2"))
+            runCurrent()
+
+            assertEquals(0, manager.numberOfDrivesSyncing())
+
+            eventBus.emit(BackendEvent.DriveEvent.Started(driveId1))
+            runCurrent()
+            assertEquals(1, manager.numberOfDrivesSyncing())
+
+            eventBus.emit(BackendEvent.DriveEvent.Started(driveId2))
+            runCurrent()
+            assertEquals(2, manager.numberOfDrivesSyncing())
+
+            eventBus.emit(BackendEvent.DriveEvent.Completed(driveId1, totalCount = 0))
+            runCurrent()
+            assertEquals(1, manager.numberOfDrivesSyncing())
+        }
         db.close()
     }
 }
