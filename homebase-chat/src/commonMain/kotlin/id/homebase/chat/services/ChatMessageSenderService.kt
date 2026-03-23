@@ -5,6 +5,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
@@ -40,6 +41,49 @@ class ChatMessageSenderService(
     private val fileOperationsProvider: FileOperationsProvider
 ) {
     private val chatDrive = chatTargetDrive.alias
+
+    suspend fun writePlaceholderMessage(
+        messageUniqueId: Uuid,
+        conversationId: Uuid,
+        messageText: String,
+        payloadDescriptors: List<PayloadDescriptor>?,
+    ) {
+        val keyHeader = KeyHeader.newRandom16()
+        val recipients = conversationStream.getRecipients(conversationId)
+        val isLocalOnly = recipients.isEmpty()
+
+        val messageData = MessageAppData(
+            replyId = null,
+            replyPreview = null,
+            message = JsonPrimitive(messageText),
+            deliveryStatus = ChatDeliveryStatus.Sent.value,
+        ).copy(version = ChatProtocol.MessageVersionNumberOne)
+
+        val content = OdinSystemSerializer.serialize(messageData)
+
+        val unencryptedMetadata = UploadFileMetadata(
+            allowDistribution = !isLocalOnly,
+            isEncrypted = true,
+            appData = UploadAppFileMetaData(
+                uniqueId = messageUniqueId,
+                groupId = conversationId,
+                fileType = ChatProtocol.MessageFileType,
+                dataType = 0,
+                userDate = UnixTimeUtc.now().milliseconds,
+                content = content,
+                previewThumbnail = null,
+            )
+        )
+
+        optimisticWriter.writeNewFile(
+            driveId = chatDrive,
+            keyHeader = keyHeader,
+            unecryptedMetadata = unencryptedMetadata,
+            originalRecipientCount = recipients.size,
+            fileSystemType = FileSystemType.Standard,
+            payloadDescriptors = payloadDescriptors,
+        )
+    }
 
     suspend fun sendNewMessage(
         messageUniqueId: Uuid,
@@ -191,6 +235,14 @@ class ChatMessageSenderService(
                     contentType = payload.contentType.ifEmpty { null },
                     iv = payload.iv?.let { Base64.encode(it) },
                     descriptorContent = payload.descriptorContent,
+                    previewThumbnail = payload.previewThumbnail?.let {
+                        ThumbnailDescriptor(
+                            pixelWidth = it.pixelWidth,
+                            pixelHeight = it.pixelHeight,
+                            contentType = it.contentType,
+                            content = it.content,
+                        )
+                    },
                 )
             }.ifEmpty { null }
             optimisticWriter.writeNewFile(

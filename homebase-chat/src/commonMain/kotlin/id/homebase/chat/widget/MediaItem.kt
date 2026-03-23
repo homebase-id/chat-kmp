@@ -127,15 +127,9 @@ fun MediaItem(
                 }
             }
 
-            val payloadIv =
-                Base64.decode(
-                    payload.iv
-                        ?: throw IllegalStateException(
-                            "encrypted payload requires key header"
-                        )
-                )
+            val payloadIv = payload.iv?.let { Base64.decode(it) }
 
-            if (linkDescriptors != null) {
+            if (payloadIv != null && linkDescriptors != null) {
                 LinkPreviewCard(
                     descriptor = linkDescriptors[0],
                     fileId = fileId,
@@ -161,13 +155,7 @@ fun MediaItem(
             // which would cause Coil to restart the image loading pipeline and cause flickering.
             val imageData =
                 remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
-                    val payloadIv =
-                        Base64.decode(
-                            payload.iv
-                                ?: throw IllegalStateException(
-                                    "encrypted payload requires key header"
-                                )
-                        )
+                    val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
                     HomebaseImageData(
                         driveId = driveId,
                         fileId = fileId,
@@ -181,16 +169,22 @@ fun MediaItem(
                     )
                 }
 
-            HomebaseImage(
-                imageData = imageData,
-                modifier = finalModifier,
-                contentScale = imageContentScale,
-                contentDescription = "Image attachment",
-                onClick = onClick,
-                onLongPress = onLongPress,
-                sharedTransitionScope = sharedTransitionScope,
-                animatedVisibilityScope = animatedVisibilityScope,
-            )
+            if (imageData != null) {
+                HomebaseImage(
+                    imageData = imageData,
+                    modifier = finalModifier,
+                    contentScale = imageContentScale,
+                    contentDescription = "Image attachment",
+                    onClick = onClick,
+                    onLongPress = onLongPress,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                )
+            } else {
+                // IV not yet available (placeholder during upload prep).
+                // Use a plain box respecting parent constraints — the upload overlay covers it.
+                Box(modifier = finalModifier)
+            }
         }
 
         contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {

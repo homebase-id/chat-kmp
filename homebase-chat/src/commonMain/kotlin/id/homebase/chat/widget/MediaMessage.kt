@@ -2,12 +2,14 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -72,12 +74,18 @@ fun MediaMessage(
 ) {
     if (payloads.isEmpty()) return
 
-    Box {
+    Box(modifier = Modifier.animateContentSize()) {
         when (payloads.size) {
             1 -> {
-                // Single media item - constrain to max 50% width (~210dp), preserve aspect
-                // ratio
-                val widthModifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                // Lock width to maxWidth while uploading so the bubble doesn't jump
+                // horizontally when the placeholder transitions to real content.
+                val widthModifier = if (uploadStatus != null) {
+                    modifier
+                        .width(Dimens.MediaBubble.maxWidth)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                } else {
+                    modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                }
                 MediaItem(
                     payload = payloads[0],
                     fileId = fileId,
@@ -146,6 +154,18 @@ private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mod
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             when (status) {
+                UploadStatus.Preparing -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(40.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.3f),
+                    )
+                    Text(
+                        text = "Preparing…",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
                 is UploadStatus.Processing -> {
                     CircularProgressIndicator(
                         progress = { status.progress },

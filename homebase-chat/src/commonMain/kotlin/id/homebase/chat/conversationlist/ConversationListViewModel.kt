@@ -28,6 +28,10 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.image.ImageUtils
+import id.homebase.api.video.FFmpegUtils
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -743,11 +747,22 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val newFiles = action.files.map {
-                            if (action.isImage) AttachmentPendingFile.FileImage(
-                                Uuid.generateV7(),
-                                it
-                            )
-                            else AttachmentPendingFile.File(Uuid.generateV7(), it)
+                            val ct = detectContentTypeFromExtensionOrHint(it.name)
+                            when {
+                                ct.startsWith("video/") -> {
+                                    val thumbnailBytes = try {
+                                        val thumbPath = FFmpegUtils.grabThumbnail(it.toString())
+                                        if (thumbPath != null) {
+                                            val bytes = fileOperationsProvider.readFileBytes(thumbPath)
+                                            fileOperationsProvider.deleteTempFile(thumbPath)
+                                            bytes
+                                        } else null
+                                    } catch (_: Exception) { null }
+                                    AttachmentPendingFile.FileVideo(Uuid.generateV7(), it, thumbnailBytes)
+                                }
+                                action.isImage || ct.startsWith("image/") -> AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+                                else -> AttachmentPendingFile.File(Uuid.generateV7(), it)
+                            }
                         }
                         val conversation = _uiState.value.activeConversations.find {
                             it.conversation.id == action.conversationId
@@ -1452,62 +1467,118 @@ class ConversationListViewModel(
         files: List<AttachmentPendingFile>
     ) {
         viewModelScope.launch {
-            try {
-                val attachments = mutableListOf<AttachmentInput>()
-                files.forEach { attachment ->
-                    when (attachment) {
-                        is AttachmentPendingFile.File -> {
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = attachment.file.toString(),
-                                    contentType = detectContentTypeFromExtensionOrHint(
-                                        attachment.file.name
-                                    ),
-                                    displayName = attachment.file.name,
-                                )
+            val attachments = mutableListOf<AttachmentInput>()
+            files.forEach { attachment ->
+                when (attachment) {
+                    is AttachmentPendingFile.File -> {
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = attachment.file.toString(),
+                                contentType = detectContentTypeFromExtensionOrHint(
+                                    attachment.file.name
+                                ),
+                                displayName = attachment.file.name,
                             )
-                        }
+                        )
+                    }
 
-                        is AttachmentPendingFile.FileImage -> {
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = attachment.file.toString(),
-                                    contentType = detectContentTypeFromExtensionOrHint(
-                                        attachment.file.name
-                                    ),
-                                    displayName = attachment.file.name,
-                                )
+                    is AttachmentPendingFile.FileImage -> {
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = attachment.file.toString(),
+                                contentType = detectContentTypeFromExtensionOrHint(
+                                    attachment.file.name
+                                ),
+                                displayName = attachment.file.name,
                             )
-                        }
+                        )
+                    }
 
-                        is AttachmentPendingFile.Gallery -> {
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = attachment.image.file.toString(),
-                                    contentType = detectContentTypeFromExtensionOrHint(
-                                        attachment.image.fileName
-                                    ),
-                                    displayName = attachment.image.fileName,
-                                )
+                    is AttachmentPendingFile.FileVideo -> {
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = attachment.file.toString(),
+                                contentType = detectContentTypeFromExtensionOrHint(
+                                    attachment.file.name
+                                ),
+                                displayName = attachment.file.name,
                             )
-                        }
+                        )
+                    }
 
-                        is AttachmentPendingFile.Audio -> {
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = attachment.audioFile.toString(),
-                                    contentType = detectContentTypeFromExtensionOrHint(
-                                        attachment.audioFile.name
-                                    ),
-                                    displayName = attachment.audioFile.name,
-                                    waveformFile = attachment.waveformFile?.toString(),
-                                    audioLengthSeconds = attachment.lengthSeconds,
-                                )
+                    is AttachmentPendingFile.Gallery -> {
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = attachment.image.file.toString(),
+                                contentType = detectContentTypeFromExtensionOrHint(
+                                    attachment.image.fileName
+                                ),
+                                displayName = attachment.image.fileName,
                             )
-                        }
+                        )
+                    }
+
+                    is AttachmentPendingFile.Audio -> {
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = attachment.audioFile.toString(),
+                                contentType = detectContentTypeFromExtensionOrHint(
+                                    attachment.audioFile.name
+                                ),
+                                displayName = attachment.audioFile.name,
+                                waveformFile = attachment.waveformFile?.toString(),
+                                audioLengthSeconds = attachment.lengthSeconds,
+                            )
+                        )
                     }
                 }
+            }
 
+            val newMessageId = Uuid.random()
+
+            // Write a placeholder entry to the DB immediately so the message appears in the
+            // list during the build+encrypt phase, before the real optimistic write fires.
+            // For images, read pixel dimensions now so the aspect ratio — and therefore the
+            // bubble size — is stable from the very first frame.
+            val placeholderPayloads = attachments.mapIndexed { index, attachment ->
+                val previewThumbnail = if (attachment.contentType.startsWith("image/")) {
+                    try {
+                        val bytes = fileOperationsProvider.readFileBytes(attachment.filePath)
+                        val naturalSize = ImageUtils.getNaturalSize(bytes)
+                        ThumbnailDescriptor(
+                            pixelWidth = naturalSize.pixelWidth,
+                            pixelHeight = naturalSize.pixelHeight,
+                            contentType = attachment.contentType,
+                        )
+                    } catch (_: Exception) {
+                        null
+                    }
+                } else null
+                PayloadDescriptor(
+                    key = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index",
+                    contentType = attachment.contentType,
+                    iv = null,
+                    descriptorContent = null,
+                    previewThumbnail = previewThumbnail,
+                )
+            }.ifEmpty { null }
+
+            chatMessageSenderService.writePlaceholderMessage(
+                messageUniqueId = newMessageId,
+                conversationId = conversationId,
+                messageText = content,
+                payloadDescriptors = placeholderPayloads,
+            )
+
+            _messagesUiState.update { state ->
+                state.copy(
+                    uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
+                )
+            }
+
+            pendingMessageId = newMessageId
+
+            try {
                 val bundle = MessageAttachmentBuilder.build(
                     attachments = attachments,
                     fileOperationsProvider = fileOperationsProvider,
@@ -1515,8 +1586,6 @@ class ConversationListViewModel(
                         "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
                     })
 
-                val newMessageId = Uuid.random()
-                pendingMessageId = newMessageId
                 chatMessageSenderService.sendNewMessage(
                     messageUniqueId = newMessageId,
                     conversationId = conversationId,
@@ -1526,6 +1595,9 @@ class ConversationListViewModel(
                 )
             } catch (e: Exception) {
                 Logger.e("Failed to send file(s)", e)
+                _messagesUiState.update { state ->
+                    state.copy(uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap())
+                }
                 sendEvent(
                     ShowErrorMessage(
                         "Failed to send file(s): ${e.message}"

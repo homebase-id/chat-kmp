@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -46,6 +47,7 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
@@ -120,7 +122,7 @@ fun FullScreenAttachmentEditor(
                     is AttachmentPendingFile.FileImage -> {
                         AsyncImage(
                             imageLoader = imageLoader,
-                            model = attachment.file.toString(),
+                            model = HomebaseImageData.pending(attachment.file),
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -128,10 +130,46 @@ fun FullScreenAttachmentEditor(
                             contentScale = ContentScale.Fit
                         )
                     }
+                    is AttachmentPendingFile.FileVideo -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (attachment.thumbnailBytes != null) {
+                                AsyncImage(
+                                    imageLoader = imageLoader,
+                                    model = attachment.thumbnailBytes,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.PlayCircle,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(96.dp),
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                            Icon(
+                                Icons.Default.PlayCircle,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = Color.White.copy(alpha = 0.85f)
+                            )
+                        }
+                    }
                     is AttachmentPendingFile.Gallery -> {
                         AsyncImage(
                             imageLoader = imageLoader,
-                            model = attachment.image.thumbnailUri,
+                            model = HomebaseImageData.pending(attachment.image.file),
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -204,16 +242,37 @@ fun FullScreenAttachmentEditor(
                                 is AttachmentPendingFile.FileImage -> {
                                     AsyncImage(
                                         imageLoader = imageLoader,
-                                        model = attachment.file.toString(),
+                                        model = HomebaseImageData.pending(attachment.file),
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                     )
                                 }
+                                is AttachmentPendingFile.FileVideo -> {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (attachment.thumbnailBytes != null) {
+                                            AsyncImage(
+                                                imageLoader = imageLoader,
+                                                model = attachment.thumbnailBytes,
+                                                contentDescription = null,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        }
+                                        Icon(
+                                            Icons.Default.PlayCircle,
+                                            contentDescription = null,
+                                            tint = Color.White.copy(alpha = 0.85f)
+                                        )
+                                    }
+                                }
                                 is AttachmentPendingFile.Gallery -> {
                                     AsyncImage(
                                         imageLoader = imageLoader,
-                                        model = attachment.image.thumbnailUri,
+                                        model = HomebaseImageData.pending(attachment.image.file),
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
