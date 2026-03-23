@@ -5,6 +5,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
@@ -234,6 +235,14 @@ class ChatMessageSenderService(
                     contentType = payload.contentType.ifEmpty { null },
                     iv = payload.iv?.let { Base64.encode(it) },
                     descriptorContent = payload.descriptorContent,
+                    previewThumbnail = payload.previewThumbnail?.let {
+                        ThumbnailDescriptor(
+                            pixelWidth = it.pixelWidth,
+                            pixelHeight = it.pixelHeight,
+                            contentType = it.contentType,
+                            content = it.content,
+                        )
+                    },
                 )
             }.ifEmpty { null }
             optimisticWriter.writeNewFile(

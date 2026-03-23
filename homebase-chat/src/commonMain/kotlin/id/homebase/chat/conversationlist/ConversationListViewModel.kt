@@ -29,6 +29,8 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.image.ImageUtils
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -1512,12 +1514,28 @@ class ConversationListViewModel(
 
             // Write a placeholder entry to the DB immediately so the message appears in the
             // list during the build+encrypt phase, before the real optimistic write fires.
+            // For images, read pixel dimensions now so the aspect ratio — and therefore the
+            // bubble size — is stable from the very first frame.
             val placeholderPayloads = attachments.mapIndexed { index, attachment ->
+                val previewThumbnail = if (attachment.contentType.startsWith("image/")) {
+                    try {
+                        val bytes = fileOperationsProvider.readFileBytes(attachment.filePath)
+                        val naturalSize = ImageUtils.getNaturalSize(bytes)
+                        ThumbnailDescriptor(
+                            pixelWidth = naturalSize.pixelWidth,
+                            pixelHeight = naturalSize.pixelHeight,
+                            contentType = attachment.contentType,
+                        )
+                    } catch (_: Exception) {
+                        null
+                    }
+                } else null
                 PayloadDescriptor(
                     key = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index",
                     contentType = attachment.contentType,
                     iv = null,
                     descriptorContent = null,
+                    previewThumbnail = previewThumbnail,
                 )
             }.ifEmpty { null }
 

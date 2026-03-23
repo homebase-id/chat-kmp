@@ -181,7 +181,9 @@ fun MediaItem(
                     animatedVisibilityScope = animatedVisibilityScope,
                 )
             } else {
-                MediaPlaceholder(emoji = "\uD83D\uDDBC\uFE0F", label = "Image", modifier = finalModifier)
+                // IV not yet available (placeholder during upload prep).
+                // Use a plain box respecting parent constraints — the upload overlay covers it.
+                Box(modifier = finalModifier)
             }
         }
 
