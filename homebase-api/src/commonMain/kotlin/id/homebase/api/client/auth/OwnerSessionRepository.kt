@@ -23,6 +23,19 @@ class OwnerSessionRepository(
     val user: StateFlow<OwnerSession?> = _user
 
     suspend fun load(odinId: OdinId) {
+        // Emit a minimal fallback immediately so the UI can render without waiting for HTTP.
+        // The same fallback shape is already returned by fetch() on network failure.
+        _user.value = OwnerSession(
+            odinId = odinId,
+            displayName = odinId.toString(),
+            firstName = null,
+            surName = null,
+            profileImageFileId = null,
+            profileImageFileKey = null,
+            profileImagePreviewThumbnail = null,
+            profileImageLastModified = null,
+            status = null
+        )
         val updated = fetch(odinId)
         _user.value = updated
     }
