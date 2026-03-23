@@ -80,6 +80,10 @@ class YouAuthFlowManager(
     // Registry for callback routing
     private val callbackRegistry = mutableMapOf<String, AuthCodeFlowState>()
 
+    // True once handleCallback() is invoked, preventing onAppResumed from cancelling a
+    // finalization that is still in-flight on a slow network.
+    @Volatile private var callbackReceived = false
+
     companion object {
         private val TAG = "YouAuthFlowManager"
     }
@@ -99,6 +103,7 @@ class YouAuthFlowManager(
 
     /** Handle an authorization callback URL. */
     suspend fun handleCallback(url: String) {
+        callbackReceived = true
         try {
             Logger.d(tag = TAG) { "Received callback: $url" }
 
@@ -309,6 +314,7 @@ class YouAuthFlowManager(
             _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
         } finally {
             callbackRegistry.remove(state)
+            callbackReceived = false
         }
     }
 
@@ -345,6 +351,7 @@ class YouAuthFlowManager(
         if (_authState.value == YouAuthState.Authenticating) {
             Logger.i(tag = TAG) { "Authentication cancelled by user" }
             callbackRegistry.clear()
+            callbackReceived = false
             _authState.value = YouAuthState.Unauthenticated
             credentialsManager.removeActiveCredentials()
         }
@@ -357,12 +364,16 @@ class YouAuthFlowManager(
      * @param delayMs Optional delay to wait for callback before cancelling (default 500ms)
      */
     suspend fun onAppResumed(delayMs: Long = 500) {
+        // If the deep-link callback already arrived, do not interfere — finalizeAuthentication()
+        // may still be running on a slow network and we must not cancel it.
+        if (callbackReceived) return
+
         if (_authState.value == YouAuthState.Authenticating) {
             // Wait a short time for callback to potentially arrive
             delay(delayMs)
 
-            // If still authenticating, assume user cancelled
-            if (_authState.value == YouAuthState.Authenticating) {
+            // If still authenticating and no callback arrived, assume user cancelled
+            if (!callbackReceived && _authState.value == YouAuthState.Authenticating) {
                 Logger.i(tag = TAG) { "App resumed without auth callback, assuming user cancelled" }
                 cancelAuth()
             }

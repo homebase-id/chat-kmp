@@ -248,8 +248,8 @@ class LoginViewModel(
         }
     }
 
-    private suspend fun handleAuthenticatedUser() {
-        notificationService.reRegister()
+    private fun handleAuthenticatedUser() {
+        viewModelScope.launch { notificationService.reRegister() }
         usernameStorage.saveUsername(_uiState.value.homebaseId)
         _uiState.update {
             it.copy(
