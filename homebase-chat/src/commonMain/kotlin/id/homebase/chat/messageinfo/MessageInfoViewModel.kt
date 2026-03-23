@@ -5,7 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.core.config.AppConfig
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.navigation.Route
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +21,7 @@ class MessageInfoViewModel(
     savedStateHandle: SavedStateHandle,
     private val chatMessageStream: ChatMessageStream,
     private val ownerSessionRepository: OwnerSessionRepository,
+    private val driveFileProvider: DriveFileProvider,
 ) : ViewModel() {
 
     val messageInfo = savedStateHandle.toRoute<Route.MessageInfo>()
@@ -33,16 +37,38 @@ class MessageInfoViewModel(
         viewModelScope.launch {
             try {
                 val message = chatMessageStream.getMessage(Uuid.parse(messageInfo.messageId))
-                _uiState.update { it.copy(message = message, isLoading = false) }
+                _uiState.update {
+                    it.copy(
+                        message = message,
+                        isLoading = false,
+                        isTransferHistoryLoading = true
+                    )
+                }
+
+                try {
+                    val transferHistory =
+                        driveFileProvider.getTransferHistory(
+                            chatTargetDrive.alias,
+                            message?.fileId ?: return@launch
+                        )
+                    _uiState.update {
+                        it.copy(
+                            transferHistory = transferHistory,
+                            isTransferHistoryLoading = false
+                        )
+                    }
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(isTransferHistoryLoading = false) }
+                }
             } catch (_: Exception) {
-                _uiState
+                _uiState.update { it.copy(isLoading = false, isTransferHistoryLoading = false) }
             }
         }
     }
 
     fun onUiAction(action: MessageInfoUiAction) {
         when (action) {
-            is MessageInfoUiAction.BackClicked -> _uiState.update { it.copy(uiEvent = MessageInfoUiEvent.Back)}
+            is MessageInfoUiAction.BackClicked -> _uiState.update { it.copy(uiEvent = MessageInfoUiEvent.Back) }
         }
     }
 
