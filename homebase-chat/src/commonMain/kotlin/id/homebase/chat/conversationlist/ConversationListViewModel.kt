@@ -746,11 +746,11 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val newFiles = action.files.map {
-                            if (action.isImage) AttachmentPendingFile.FileImage(
-                                Uuid.generateV7(),
-                                it
-                            )
-                            else AttachmentPendingFile.File(Uuid.generateV7(), it)
+                            val ct = detectContentTypeFromExtensionOrHint(it.name)
+                            if (action.isImage || ct.startsWith("image/") || ct.startsWith("video/"))
+                                AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+                            else
+                                AttachmentPendingFile.File(Uuid.generateV7(), it)
                         }
                         val conversation = _uiState.value.activeConversations.find {
                             it.conversation.id == action.conversationId

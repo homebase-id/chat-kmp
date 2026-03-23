@@ -46,6 +46,7 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
@@ -120,7 +121,7 @@ fun FullScreenAttachmentEditor(
                     is AttachmentPendingFile.FileImage -> {
                         AsyncImage(
                             imageLoader = imageLoader,
-                            model = attachment.file.toString(),
+                            model = HomebaseImageData.pending(attachment.file),
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -131,7 +132,7 @@ fun FullScreenAttachmentEditor(
                     is AttachmentPendingFile.Gallery -> {
                         AsyncImage(
                             imageLoader = imageLoader,
-                            model = attachment.image.thumbnailUri,
+                            model = HomebaseImageData.pending(attachment.image.file),
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -204,7 +205,7 @@ fun FullScreenAttachmentEditor(
                                 is AttachmentPendingFile.FileImage -> {
                                     AsyncImage(
                                         imageLoader = imageLoader,
-                                        model = attachment.file.toString(),
+                                        model = HomebaseImageData.pending(attachment.file),
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
@@ -213,7 +214,7 @@ fun FullScreenAttachmentEditor(
                                 is AttachmentPendingFile.Gallery -> {
                                     AsyncImage(
                                         imageLoader = imageLoader,
-                                        model = attachment.image.thumbnailUri,
+                                        model = HomebaseImageData.pending(attachment.image.file),
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
