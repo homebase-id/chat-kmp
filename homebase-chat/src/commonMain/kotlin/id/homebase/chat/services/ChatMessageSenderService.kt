@@ -41,6 +41,49 @@ class ChatMessageSenderService(
 ) {
     private val chatDrive = chatTargetDrive.alias
 
+    suspend fun writePlaceholderMessage(
+        messageUniqueId: Uuid,
+        conversationId: Uuid,
+        messageText: String,
+        payloadDescriptors: List<PayloadDescriptor>?,
+    ) {
+        val keyHeader = KeyHeader.newRandom16()
+        val recipients = conversationStream.getRecipients(conversationId)
+        val isLocalOnly = recipients.isEmpty()
+
+        val messageData = MessageAppData(
+            replyId = null,
+            replyPreview = null,
+            message = JsonPrimitive(messageText),
+            deliveryStatus = ChatDeliveryStatus.Sent.value,
+        ).copy(version = ChatProtocol.MessageVersionNumberOne)
+
+        val content = OdinSystemSerializer.serialize(messageData)
+
+        val unencryptedMetadata = UploadFileMetadata(
+            allowDistribution = !isLocalOnly,
+            isEncrypted = true,
+            appData = UploadAppFileMetaData(
+                uniqueId = messageUniqueId,
+                groupId = conversationId,
+                fileType = ChatProtocol.MessageFileType,
+                dataType = 0,
+                userDate = UnixTimeUtc.now().milliseconds,
+                content = content,
+                previewThumbnail = null,
+            )
+        )
+
+        optimisticWriter.writeNewFile(
+            driveId = chatDrive,
+            keyHeader = keyHeader,
+            unecryptedMetadata = unencryptedMetadata,
+            originalRecipientCount = recipients.size,
+            fileSystemType = FileSystemType.Standard,
+            payloadDescriptors = payloadDescriptors,
+        )
+    }
+
     suspend fun sendNewMessage(
         messageUniqueId: Uuid,
         conversationId: Uuid,

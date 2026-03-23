@@ -40,6 +40,7 @@ sealed interface ConversationListUiSheet {
 }
 
 sealed interface UploadStatus {
+    data object Preparing : UploadStatus
     data class Processing(val progress: Float) : UploadStatus
     data class Uploading(val progress: Float) : UploadStatus
     data object Completed : UploadStatus

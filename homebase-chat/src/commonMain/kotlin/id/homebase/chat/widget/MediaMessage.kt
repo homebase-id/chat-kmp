@@ -146,6 +146,18 @@ private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mod
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             when (status) {
+                UploadStatus.Preparing -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(40.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.3f),
+                    )
+                    Text(
+                        text = "Preparing…",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
                 is UploadStatus.Processing -> {
                     CircularProgressIndicator(
                         progress = { status.progress },
