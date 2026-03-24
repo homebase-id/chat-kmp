@@ -6,8 +6,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.common.OdinId
+import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageStream
-import id.homebase.core.config.AppConfig
+import id.homebase.chat.services.toChatDeliveryStatus
+import id.homebase.chat.services.toErrorDetailRes
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.navigation.Route
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +26,8 @@ class MessageInfoViewModel(
     private val chatMessageStream: ChatMessageStream,
     private val ownerSessionRepository: OwnerSessionRepository,
     private val driveFileProvider: DriveFileProvider,
+    private val contactService: ContactService,
+    private val chatMessageActionService: ChatMessageActionService,
 ) : ViewModel() {
 
     val messageInfo = savedStateHandle.toRoute<Route.MessageInfo>()
@@ -41,27 +47,73 @@ class MessageInfoViewModel(
                     it.copy(
                         message = message,
                         isLoading = false,
-                        isTransferHistoryLoading = true
+                        isTransferHistoryLoading = true,
+                        isReactionsLoading = true,
                     )
                 }
 
-                try {
-                    val transferHistory =
-                        driveFileProvider.getTransferHistory(
-                            chatTargetDrive.alias,
-                            message?.fileId ?: return@launch
-                        )
-                    _uiState.update {
-                        it.copy(
-                            transferHistory = transferHistory,
-                            isTransferHistoryLoading = false
-                        )
+                // Load transfer history
+                viewModelScope.launch {
+                    try {
+                        val transferHistory =
+                            driveFileProvider.getTransferHistory(
+                                chatTargetDrive.alias,
+                                message?.fileId ?: return@launch
+                            )
+                        val recipients = transferHistory?.history?.results?.map { entry ->
+                            val odinId = OdinId(entry.recipient)
+                            val displayName = contactService.resolveByOdinId(odinId)?.name
+                                ?: odinId.domainName
+                            RecipientStatusUiModel(
+                                odinId = entry.recipient,
+                                displayName = displayName,
+                                deliveryStatus = entry.toChatDeliveryStatus(),
+                                errorDetailRes = entry.latestTransferStatus.toErrorDetailRes(),
+                            )
+                        } ?: emptyList()
+                        _uiState.update {
+                            it.copy(
+                                recipients = recipients,
+                                isTransferHistoryLoading = false,
+                            )
+                        }
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(isTransferHistoryLoading = false) }
                     }
-                } catch (e: Exception) {
-                    _uiState.update { it.copy(isTransferHistoryLoading = false) }
+                }
+
+                // Load reactions
+                viewModelScope.launch {
+                    try {
+                        val messageId = message?.id ?: return@launch
+                        val rawReactions = chatMessageActionService.getReactions(messageId)
+                        val reactions = rawReactions.map { reaction ->
+                            val displayName = contactService.resolveByOdinId(reaction.odinId)?.name
+                                ?: reaction.odinId.domainName
+                            ReactionUiModel(
+                                odinId = reaction.odinId.domainName,
+                                displayName = displayName,
+                                emoji = reaction.emoji,
+                            )
+                        }
+                        _uiState.update {
+                            it.copy(
+                                reactions = reactions,
+                                isReactionsLoading = false,
+                            )
+                        }
+                    } catch (e: Exception) {
+                        _uiState.update { it.copy(isReactionsLoading = false) }
+                    }
                 }
             } catch (_: Exception) {
-                _uiState.update { it.copy(isLoading = false, isTransferHistoryLoading = false) }
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isTransferHistoryLoading = false,
+                        isReactionsLoading = false,
+                    )
+                }
             }
         }
     }

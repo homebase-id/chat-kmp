@@ -15,11 +15,13 @@ class NotificationSettingsViewModel(
     private val notificationService: NotificationService
 ) : ViewModel() {
 
+    private var debugTapCount = 0
     private val _uiState = MutableStateFlow(NotificationSettingsUiState())
     val uiState: StateFlow<NotificationSettingsUiState> = _uiState.asStateFlow()
 
     init {
         loadPreferences()
+        loadNotificationStatus()
     }
 
     private fun loadPreferences() {
@@ -31,6 +33,25 @@ class NotificationSettingsViewModel(
                 ),
                 includeMutedChatsInBadge = userPreferences.includeMutedChatsInBadge,
             )
+        }
+    }
+
+    private fun loadNotificationStatus() {
+        viewModelScope.launch {
+            try {
+                val token = notificationService.getToken()
+                _uiState.update {
+                    it.copy(
+                        deviceToken = token,
+                        registrationStatus = if (token != null) RegistrationStatus.REGISTERED
+                        else RegistrationStatus.NOT_REGISTERED
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(registrationStatus = RegistrationStatus.ERROR)
+                }
+            }
         }
     }
 
@@ -53,16 +74,55 @@ class NotificationSettingsViewModel(
                 _uiState.update { it.copy(includeMutedChatsInBadge = action.enabled) }
             }
 
-
             NotificationSettingsUiAction.ToggleContentLevelPicker -> {
                 _uiState.update { it.copy(showContentLevelPicker = !it.showContentLevelPicker) }
             }
 
             NotificationSettingsUiAction.ReRegisterPushNotifications -> {
                 viewModelScope.launch {
-                    _uiState.update { it.copy(isReRegistering = true) }
-                    notificationService.reRegister()
-                    _uiState.update { it.copy(isReRegistering = false) }
+                    _uiState.update { it.copy(isReRegistering = true, reRegisterResult = null) }
+                    val result = notificationService.reRegister()
+                    result.fold(
+                        onSuccess = { token ->
+                            _uiState.update {
+                                it.copy(
+                                    isReRegistering = false,
+                                    deviceToken = token,
+                                    registrationStatus = if (token != null) RegistrationStatus.REGISTERED
+                                    else RegistrationStatus.NOT_REGISTERED,
+                                    reRegisterResult = if (token != null) ReRegisterResult.Success(token)
+                                    else ReRegisterResult.Failure("Failed to obtain push token")
+                                )
+                            }
+                        },
+                        onFailure = { error ->
+                            _uiState.update {
+                                it.copy(
+                                    isReRegistering = false,
+                                    registrationStatus = RegistrationStatus.ERROR,
+                                    reRegisterResult = ReRegisterResult.Failure(
+                                        error.message ?: "Unknown error"
+                                    )
+                                )
+                            }
+                        }
+                    )
+                }
+            }
+
+            NotificationSettingsUiAction.DismissReRegisterResult -> {
+                _uiState.update { it.copy(reRegisterResult = null) }
+            }
+
+            NotificationSettingsUiAction.DebugHeaderTapped -> {
+                if (_uiState.value.showDebugInfo) {
+                    debugTapCount = 0
+                    _uiState.update { it.copy(showDebugInfo = false) }
+                } else {
+                    debugTapCount++
+                    if (debugTapCount >= 5) {
+                        _uiState.update { it.copy(showDebugInfo = true) }
+                    }
                 }
             }
 

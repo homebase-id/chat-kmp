@@ -11,18 +11,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import id.homebase.core.ui.theme.ExtendedColors
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -30,9 +34,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
+import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.notifications.rememberOpenSystemNotificationSettings
 import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
@@ -40,6 +47,8 @@ import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_notifications
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -212,6 +221,118 @@ fun NotificationSettingsUi(
                     )
                 }
             }
+
+            // ── Re-register Result Feedback ──
+            uiState.reRegisterResult?.let { result ->
+                LaunchedEffect(result) {
+                    delay(5000)
+                    onAction(NotificationSettingsUiAction.DismissReRegisterResult)
+                }
+
+                val isSuccess = result is ReRegisterResult.Success
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSuccess) ExtendedColors.Success.copy(alpha = 0.12f)
+                    else MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Text(
+                        text = when (result) {
+                            is ReRegisterResult.Success -> "Push notifications re-registered successfully"
+                            is ReRegisterResult.Failure -> "Registration failed: ${result.message}"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isSuccess) ExtendedColors.Success
+                        else MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            // ── Push Notification Status (Debug — tap header 5 times to reveal) ──
+            SectionHeader(
+                title = "Push Notification Status",
+                modifier = Modifier.clickable {
+                    onAction(NotificationSettingsUiAction.DebugHeaderTapped)
+                }
+            )
+
+            if (uiState.showDebugInfo) {
+                val clipboardManager = LocalClipboard.current
+                val scope = rememberCoroutineScope()
+
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        // Token row
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Device Token",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = uiState.deviceToken?.let { token ->
+                                        if (token.length > 12) "${token.take(8)}...${token.takeLast(4)}"
+                                        else token
+                                    } ?: "Not available",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                            }
+                            uiState.deviceToken?.let { token ->
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        clipboardManager.setClipEntry(clipEntryOf(token))
+                                    }
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentCopy,
+                                        contentDescription = "Copy token",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                        // Status row
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Registration Status",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = when (uiState.registrationStatus) {
+                                    RegistrationStatus.UNKNOWN -> "Unknown"
+                                    RegistrationStatus.REGISTERED -> "Registered"
+                                    RegistrationStatus.NOT_REGISTERED -> "Not Registered"
+                                    RegistrationStatus.ERROR -> "Error"
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = when (uiState.registrationStatus) {
+                                    RegistrationStatus.REGISTERED -> ExtendedColors.Success
+                                    RegistrationStatus.ERROR -> MaterialTheme.colorScheme.error
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -219,12 +340,12 @@ fun NotificationSettingsUi(
 // ── Reusable Setting Components ──
 
 @Composable
-private fun SectionHeader(title: String) {
+private fun SectionHeader(title: String, modifier: Modifier = Modifier) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.padding(horizontal = 4.dp)
+        modifier = modifier.padding(horizontal = 4.dp)
     )
 }
 
