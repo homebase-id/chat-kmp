@@ -139,6 +139,23 @@ class ChatMessageStream(
         return mapToMessageData(messageFile, credentialsManager, ::resolveDisplayName)
     }
 
+    suspend fun getMessageFile(messageId: Uuid): HomebaseFile? {
+        val c = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(c.getIdentityId())
+
+        val result =
+            queryBatch.queryBatchAsync(
+                dbm = dbm,
+                driveId = chatDrive,
+                noOfItems = 1,
+                filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+                uniqueIdAnyOf = listOf(messageId),
+                fileSystemType = 0
+            )
+
+        return result.records.singleOrNull()
+    }
+
     suspend fun fetchMessages(
         conversationId: Uuid,
         limit: Int = 1000,
