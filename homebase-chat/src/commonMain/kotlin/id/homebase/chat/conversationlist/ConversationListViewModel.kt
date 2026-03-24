@@ -47,6 +47,7 @@ import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.core.avatars.ConnectionStatus
 import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
@@ -247,20 +248,33 @@ class ConversationListViewModel(
         viewModelScope.launch {
             authConnectionCoordinator.connectionState
                 .collectLatest { state ->
-                    _uiState.update { it.copy(driveIsConnected = state.isConnected) }
+                    val status = when {
+                        state.isConnected -> ConnectionStatus.Connected
+                        state.isDoingInitialConnection -> ConnectionStatus.Connecting
+                        else -> ConnectionStatus.Disconnected
+                    }
+                    _uiState.update { it.copy(connectionStatus = status) }
                 }
         }
 
         // Set isConnecting state
         viewModelScope.launch {
-            eventBus.events.filter { it is BackendEvent.DriveEvent }.collectLatest { event ->
-                when (event) {
-                    is BackendEvent.DriveEvent.SyncAllStarted                    -> _uiState.update { it.copy(driveIsSyncing = true) }
-                    is BackendEvent.DriveEvent.SyncAllCompleted,
-                    is BackendEvent.DriveEvent.SyncAllFailed                     -> _uiState.update { it.copy(driveIsSyncing = false) }
-                    else -> Unit
+            eventBus.events
+                .filter {
+                    it is BackendEvent.SyncAllStarted ||
+                    it is BackendEvent.SyncAllCompleted ||
+                    it is BackendEvent.SyncAllFailed ||
+                    it is BackendEvent.DriveEvent.Failed
                 }
-            }
+                .collectLatest { event ->
+                    when (event) {
+                        is BackendEvent.SyncAllStarted    -> _uiState.update { it.copy(driveIsSyncing = true, hasDriveError = false) }
+                        is BackendEvent.SyncAllCompleted,
+                        is BackendEvent.SyncAllFailed     -> _uiState.update { it.copy(driveIsSyncing = false) }
+                        is BackendEvent.DriveEvent.Failed -> _uiState.update { it.copy(hasDriveError = true) }
+                        else -> Unit
+                    }
+                }
         }
     }
 

@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
+import id.homebase.core.avatars.ConnectionStatus
 import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.EmojiReaction
@@ -29,8 +30,9 @@ data class ConversationListUiState(
     val isSearchActive: Boolean = false,
     val ownerSession: OwnerSession? = null,
     val downloadingFiles: Set<String> = emptySet(),
-    val driveIsConnected: Boolean = false,
+    val connectionStatus: ConnectionStatus = ConnectionStatus.Connecting,
     val driveIsSyncing: Boolean = false,
+    val hasDriveError: Boolean = false,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
 )
