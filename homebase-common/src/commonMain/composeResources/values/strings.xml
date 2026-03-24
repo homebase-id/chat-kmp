@@ -202,7 +202,7 @@
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Audio</string>
     <string name="chat_message_file">File</string>
-    <string name="chat_message_multiple_media">Medias</string>
+    <string name="chat_message_multiple_media">Media</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>
