@@ -62,6 +62,7 @@ import id.homebase.api.client.auth.initials
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
 import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.conversationlist.ConversationListUiState
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
@@ -449,7 +450,12 @@ fun ConversationLisContentItem(
                         onUiAction(ConversationListUiAction.ShowConversationSettings(listItem.conversation.conversation))
                     },
                     onArchiveClick = {
-                        onUiAction(ConversationListUiAction.ArchiveConversation(listItem.conversation.conversation.id))
+                        val convo = listItem.conversation.conversation
+                        if (convo.conversationState == ConversationState.Archived) {
+                            onUiAction(ConversationListUiAction.UnarchiveConversation(convo.id))
+                        } else {
+                            onUiAction(ConversationListUiAction.ArchiveConversation(convo.id))
+                        }
                     },
                     onTogglePinClick = {
                         onUiAction(ConversationListUiAction.TogglePinConversation(listItem.conversation.conversation.id))

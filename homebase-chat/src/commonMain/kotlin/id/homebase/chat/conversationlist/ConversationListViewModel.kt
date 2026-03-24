@@ -705,7 +705,13 @@ class ConversationListViewModel(
             is ConversationListUiAction.TogglePinConversation -> {
                 viewModelScope.launch {
                     try {
-                      // TODO - toggle pinned convo
+                        val conversation = conversationService.getConversation(action.conversationId)
+                            ?: return@launch
+                        if (conversation.isPinned) {
+                            conversationService.unpinConversation(action.conversationId)
+                        } else {
+                            conversationService.pinConversation(action.conversationId)
+                        }
                     } catch (e: Exception) {
                         sendEvent(
                             ShowErrorMessage(
@@ -1079,18 +1085,27 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ArchiveConversation -> {
-                // TODO
-                println("Unhandled: $action")
+                viewModelScope.launch {
+                    conversationService.archiveConversation(action.conversationId)
+                }
+            }
+
+            is ConversationListUiAction.UnarchiveConversation -> {
+                viewModelScope.launch {
+                    conversationService.unarchiveConversation(action.conversationId)
+                }
             }
 
             is ConversationListUiAction.ClearConversation -> {
-                // TODO
-                println("Unhandled: $action")
+                viewModelScope.launch {
+                    conversationService.clearConversation(action.conversationId)
+                }
             }
 
             is ConversationListUiAction.DeleteConversation -> {
-                // TODO
-                println("Unhandled: $action")
+                viewModelScope.launch {
+                    conversationService.deleteConversation(action.conversationId)
+                }
             }
 
             /* Audio recording */

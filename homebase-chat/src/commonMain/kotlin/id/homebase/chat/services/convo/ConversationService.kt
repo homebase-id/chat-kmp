@@ -11,6 +11,9 @@ import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.FileIdFileIdentifier
+import id.homebase.api.client.drives.upload.LocalAppData
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.TransitOptions
@@ -48,7 +51,8 @@ class ConversationService(
     private val introductionProvider: ConnectionIntroductionProvider,
     private val scope: CoroutineScope,
     private val outboxSync: OutboxSync,
-    private val chatMessageSenderService: ChatMessageSenderService
+    private val chatMessageSenderService: ChatMessageSenderService,
+    private val driveUploadProvider: DriveUploadProvider
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -543,6 +547,52 @@ class ConversationService(
         if (!conversation.admins.contains(domain)) {
             throw IllegalStateException("Only group admins can perform this action")
         }
+    }
+
+    suspend fun archiveConversation(conversationId: Uuid) {
+        updateConversationTags(conversationId) { it + ChatProtocol.ConversationArchivedTag }
+    }
+
+    suspend fun unarchiveConversation(conversationId: Uuid) {
+        updateConversationTags(conversationId) { it - ChatProtocol.ConversationArchivedTag }
+    }
+
+    suspend fun pinConversation(conversationId: Uuid) {
+        updateConversationTags(conversationId) { it + ChatProtocol.ConversationPinnedTag }
+    }
+
+    suspend fun unpinConversation(conversationId: Uuid) {
+        updateConversationTags(conversationId) { it - ChatProtocol.ConversationPinnedTag }
+    }
+
+    suspend fun deleteConversation(conversationId: Uuid) {
+        error("not implemented")
+    }
+
+    suspend fun clearConversation(conversationId: Uuid) {
+        error("not implemented")
+    }
+
+    private suspend fun updateConversationTags(
+        conversationId: Uuid,
+        transform: (Set<Uuid>) -> Set<Uuid>
+    ) {
+        val file = getConversationHomebaseFile(conversationId)
+            ?: error("Conversation not found: $conversationId")
+
+        val currentTags = file.fileMetadata.localAppData?.tags?.toSet() ?: emptySet()
+        val newTags = transform(currentTags)
+
+        driveUploadProvider.uploadLocalMetadataTags(
+            file = FileIdFileIdentifier(
+                fileId = file.fileId.toString(),
+                targetDrive = chatTargetDrive
+            ),
+            localAppData = LocalAppData(
+                versionTag = file.fileMetadata.localAppData?.versionTag?.toString(),
+                tags = newTags.map { it.toString() }
+            )
+        )
     }
 
     private suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
