@@ -12,6 +12,8 @@ import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.client.drives.upload.FileIdFileIdentifier
+import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
@@ -35,6 +37,7 @@ import id.homebase.chat.services.StatusMessage
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
@@ -48,7 +51,8 @@ class ConversationService(
     private val introductionProvider: ConnectionIntroductionProvider,
     private val scope: CoroutineScope,
     private val outboxSync: OutboxSync,
-    private val chatMessageSenderService: ChatMessageSenderService
+    private val chatMessageSenderService: ChatMessageSenderService,
+    private val optimisticWriter: OptimisticWriter
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -543,6 +547,60 @@ class ConversationService(
         if (!conversation.admins.contains(domain)) {
             throw IllegalStateException("Only group admins can perform this action")
         }
+    }
+
+    suspend fun archiveConversation(conversationId: Uuid) {
+        updateConversationTags(conversationId) { it + ChatProtocol.ConversationArchivedTag }
+    }
+
+    suspend fun unarchiveConversation(conversationId: Uuid) {
+        updateConversationTags(conversationId) { it - ChatProtocol.ConversationArchivedTag }
+    }
+
+    suspend fun pinConversation(conversationId: Uuid) {
+        updateConversationTags(conversationId) { it + ChatProtocol.ConversationPinnedTag }
+    }
+
+    suspend fun unpinConversation(conversationId: Uuid) {
+        updateConversationTags(conversationId) { it - ChatProtocol.ConversationPinnedTag }
+    }
+
+    suspend fun deleteConversation(conversationId: Uuid) {
+        error("not implemented")
+    }
+
+    suspend fun clearConversation(conversationId: Uuid) {
+        error("not implemented")
+    }
+
+    private suspend fun updateConversationTags(
+        conversationId: Uuid,
+        transform: (Set<Uuid>) -> Set<Uuid>
+    ) {
+        val file = getConversationHomebaseFile(conversationId)
+            ?: error("Conversation not found: $conversationId")
+
+        val currentTags = file.fileMetadata.localAppData?.tags?.toSet() ?: emptySet()
+        val newTags = transform(currentTags)
+
+        optimisticWriter.updateLocalTags(
+            driveId = chatDrive,
+            uniqueId = conversationId,
+            newTags = newTags.toList()
+        )
+
+        outboxSync.tryEnqueue(
+            request = UpdateLocalMetadataTagsOutboxRequest(
+                file = FileIdFileIdentifier(
+                    fileId = file.fileId.toString(),
+                    targetDrive = chatTargetDrive
+                ),
+                versionTag = file.fileMetadata.localAppData?.versionTag?.toString(),
+                tags = newTags.map { it.toString() }
+            ),
+            driveId = chatDrive,
+            uniqueId = conversationId
+        )
     }
 
     private suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {

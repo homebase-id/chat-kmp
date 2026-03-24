@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.common.OdinId
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
@@ -206,6 +207,7 @@ fun ConversationItem(
                 ConversationItemMenuPopup(
                     dismissMenu = { showMenu = false},
                     isPinned = enrichedData.conversation.isPinned,
+                    isArchived = enrichedData.conversation.conversationState == ConversationState.Archived,
                     onMarkAsRead = onMarkAsReadClick,
                     onTogglePin = onTogglePinClick,
                     onArchive = onArchiveClick,

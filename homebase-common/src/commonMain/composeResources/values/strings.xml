@@ -170,6 +170,7 @@
     <string name="chat_group_settings">Group settings</string>
     <string name="chat_delete">Delete</string>
     <string name="chat_archive">Archive</string>
+    <string name="chat_unarchive">Restore</string>
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>

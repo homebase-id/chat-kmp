@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
+import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.eventbus.BackendEvent
@@ -207,6 +209,52 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UploadNewFile,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
+    }
+
+    public suspend fun tryEnqueue(
+        request: UpdateLocalMetadataTagsOutboxRequest,
+        driveId: Uuid,
+        uniqueId: Uuid,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val enqueued = tryEnqueue(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.UpdateLocalMetadataTags,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
+    }
+
+    public suspend fun tryEnqueue(
+        request: UpdateLocalMetadataContentOutboxRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val enqueued = tryEnqueue(
+            driveId = request.driveId,
+            uniqueId = request.fileId,
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.UpdateLocalMetadataContent,
             json = OdinSystemSerializer.serialize(request)
         )
 
