@@ -54,7 +54,7 @@ jobs:
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             VERSION_NAME="${{ github.ref_name }}"
           else
-            VERSION_NAME="0.0.${{ github.run_number }}"
+            VERSION_NAME="1.2.0"
           fi
 
           # Update Config.xcconfig — this is what Xcode actually reads for CFBundleVersion
