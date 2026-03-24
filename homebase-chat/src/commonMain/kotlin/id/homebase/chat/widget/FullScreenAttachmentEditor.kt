@@ -36,7 +36,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +51,7 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.chat.widget.video.LocalVideoPlayerSurface
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
@@ -131,39 +136,53 @@ fun FullScreenAttachmentEditor(
                         )
                     }
                     is AttachmentPendingFile.FileVideo -> {
+                        var isPlaying by remember(attachment.attachmentId) { mutableStateOf(false) }
+                        var firstFrameRendered by remember(attachment.attachmentId) { mutableStateOf(false) }
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp)),
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color.Black),
                             contentAlignment = Alignment.Center
                         ) {
-                            if (attachment.thumbnailBytes != null) {
-                                AsyncImage(
-                                    imageLoader = imageLoader,
-                                    model = attachment.thumbnailBytes,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentScale = ContentScale.Fit
-                                )
-                            } else {
-                                Box(
+                            if (isPlaying) {
+                                LocalVideoPlayerSurface(
+                                    filePath = attachment.file.toString(),
                                     modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Default.PlayCircle,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(96.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
+                                    onFirstFrameRendered = { firstFrameRendered = true },
+                                )
                             }
-                            Icon(
-                                Icons.Default.PlayCircle,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = Color.White.copy(alpha = 0.85f)
-                            )
+                            if (!firstFrameRendered) {
+                                if (attachment.thumbnailBytes != null) {
+                                    AsyncImage(
+                                        imageLoader = imageLoader,
+                                        model = attachment.thumbnailBytes,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.PlayCircle,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(96.dp),
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    Icons.Default.PlayCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clickable { isPlaying = true },
+                                    tint = Color.White.copy(alpha = 0.85f)
+                                )
+                            }
                         }
                     }
                     is AttachmentPendingFile.Gallery -> {
@@ -206,127 +225,15 @@ fun FullScreenAttachmentEditor(
                 Text(data.conversationTitle, style = MaterialTheme.typography.labelSmall)
             }
 
-            LazyRow(
-                modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (data.attachments.size > 1) {
-                    items(data.attachments) { attachment ->
-                        val isSelected = data.attachments[pagerState.currentPage] == attachment
-                        Box(
-                            modifier = Modifier
-                                .size(60.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(
-                                    width = if (isSelected) 2.dp else 0.dp,
-                                    color = if (isSelected) Color.White else Color.Unspecified,
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                                .clickable {
-                                    // Navigate to this image
-                                    scope.launch {
-                                        pagerState.animateScrollToPage(data.attachments.indexOf(attachment))
-                                    }
-                                }
-                        ) {
-                            when (attachment) {
-                                is AttachmentPendingFile.File -> {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(Icons.Default.UploadFile, contentDescription = null)
-                                    }
-                                }
-                                is AttachmentPendingFile.FileImage -> {
-                                    AsyncImage(
-                                        imageLoader = imageLoader,
-                                        model = HomebaseImageData.pending(attachment.file),
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                }
-                                is AttachmentPendingFile.FileVideo -> {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (attachment.thumbnailBytes != null) {
-                                            AsyncImage(
-                                                imageLoader = imageLoader,
-                                                model = attachment.thumbnailBytes,
-                                                contentDescription = null,
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Crop
-                                            )
-                                        }
-                                        Icon(
-                                            Icons.Default.PlayCircle,
-                                            contentDescription = null,
-                                            tint = Color.White.copy(alpha = 0.85f)
-                                        )
-                                    }
-                                }
-                                is AttachmentPendingFile.Gallery -> {
-                                    AsyncImage(
-                                        imageLoader = imageLoader,
-                                        model = HomebaseImageData.pending(attachment.image.file),
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                }
-                                is AttachmentPendingFile.Audio -> {
-                                    // not currently supported
-                                }
-                            }
-
-                            // Show trash overlay on selected image
-                            if (isSelected) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black.copy(alpha = 0.5f))
-                                        .clickable { onRemoveFile(data.conversationId, attachment.attachmentId) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = stringResource(MR.string.chat_message_remove_gallery_image),
-                                        tint = Color.White,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                item {
-                    // Plus button to add more images
-                    IconButton(
-                        onClick = if (isFileMode) onAddFile else onAddImage,
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = stringResource(MR.string.chat_message_add_gallery_image)
-                        )
-                    }
-                }
-            }
         }
 
         Row(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
-                onClick = {
-                    onSaveFile(data.attachments[pagerState.currentPage])
-                },
+                onClick = { onSaveFile(data.attachments[pagerState.currentPage]) },
                 colors = IconButtonDefaults.iconButtonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
                 )
@@ -334,6 +241,111 @@ fun FullScreenAttachmentEditor(
                 Icon(
                     imageVector = Icons.Default.Download,
                     contentDescription = stringResource(MR.string.save)
+                )
+            }
+            LazyRow(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items(data.attachments) { attachment ->
+                    val isSelected = data.attachments[pagerState.currentPage] == attachment
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(
+                                width = if (isSelected) 2.dp else 0.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable {
+                                scope.launch {
+                                    pagerState.animateScrollToPage(data.attachments.indexOf(attachment))
+                                }
+                            }
+                    ) {
+                        when (attachment) {
+                            is AttachmentPendingFile.File -> {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(Icons.Default.UploadFile, contentDescription = null)
+                                }
+                            }
+                            is AttachmentPendingFile.FileImage -> {
+                                AsyncImage(
+                                    imageLoader = imageLoader,
+                                    model = HomebaseImageData.pending(attachment.file),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                            is AttachmentPendingFile.FileVideo -> {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (attachment.thumbnailBytes != null) {
+                                        AsyncImage(
+                                            imageLoader = imageLoader,
+                                            model = attachment.thumbnailBytes,
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    Icon(
+                                        Icons.Default.PlayCircle,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(alpha = 0.85f)
+                                    )
+                                }
+                            }
+                            is AttachmentPendingFile.Gallery -> {
+                                AsyncImage(
+                                    imageLoader = imageLoader,
+                                    model = HomebaseImageData.pending(attachment.image.file),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                            is AttachmentPendingFile.Audio -> {
+                                // not currently supported
+                            }
+                        }
+
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.5f))
+                                    .clickable { onRemoveFile(data.conversationId, attachment.attachmentId) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = stringResource(MR.string.chat_message_remove_gallery_image),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            IconButton(
+                onClick = if (isFileMode) onAddFile else onAddImage,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(MR.string.chat_message_add_gallery_image)
                 )
             }
         }

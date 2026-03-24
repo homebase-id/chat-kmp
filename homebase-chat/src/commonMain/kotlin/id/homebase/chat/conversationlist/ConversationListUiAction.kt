@@ -73,6 +73,10 @@ sealed interface ConversationListUiAction {
 
     data class DeleteConversation(val conversationId: Uuid) : ConversationListUiAction
     data class ArchiveConversation(val conversationId: Uuid) : ConversationListUiAction
+
+    data class UnarchiveConversation(val conversationId: Uuid) : ConversationListUiAction
+
+
     data class ClearConversation(val conversationId: Uuid) : ConversationListUiAction
 
     data class IntroduceEveryone(val conversationId: Uuid) : ConversationListUiAction

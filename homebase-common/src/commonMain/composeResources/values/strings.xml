@@ -31,9 +31,20 @@
     <string name="details">Details</string>
     <string name="you">You</string>
     <string name="recipients">Recipients</string>
-    <string name="sent">Sent</string>
-    <string name="connect">Connect</string>
+    <string name="read_by">Read by</string>
+    <string name="delivered_to">Delivered to</string>
+    <string name="sent_to">Sent to</string>
+    <string name="failed">Failed</string>
     <string name="updated">Updated</string>
+    <string name="reactions">Reactions</string>
+    <string name="sent">Sent</string>
+    <string name="label_sent">Sent: %1$s</string>
+    <string name="label_updated">Updated: %1$s</string>
+    <string name="error_server_not_responding">Server not responding</string>
+    <string name="error_access_denied">Access denied</string>
+    <string name="error_too_many_attempts">Too many attempts</string>
+    <string name="error_delivery_failed">Delivery failed</string>
+    <string name="connect">Connect</string>
     <string name="loading">Loading...</string>
     <string name="connection_requests_banner">%1$s connection request(s)</string>
     <string name="show_more">Show more</string>
@@ -159,6 +170,7 @@
     <string name="chat_group_settings">Group settings</string>
     <string name="chat_delete">Delete</string>
     <string name="chat_archive">Archive</string>
+    <string name="chat_unarchive">Restore</string>
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
@@ -191,7 +203,7 @@
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Audio</string>
     <string name="chat_message_file">File</string>
-    <string name="chat_message_multiple_media">Medias</string>
+    <string name="chat_message_multiple_media">Media</string>
 
     <string name="chat_message_attachment_gallery">Gallery</string>
     <string name="chat_message_attachment_file">File</string>

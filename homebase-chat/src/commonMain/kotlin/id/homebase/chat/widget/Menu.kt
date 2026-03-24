@@ -38,6 +38,7 @@ import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.core.widget.ReactionMenu
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
+import id.homebase.resources.chat_unarchive
 import id.homebase.resources.chat_clear
 import id.homebase.resources.chat_delete
 import id.homebase.resources.chat_filter_by_unread_button
@@ -63,8 +64,11 @@ fun ConversationMenu(
     showMenu: Boolean,
     dismissMenu: () -> Unit,
     isGroup: Boolean,
+    isArchived: Boolean,
+    isPinned: Boolean,
     onConversationInfo: () -> Unit,
     onDelete: () -> Unit,
+    onTogglePin: () -> Unit,
     onArchive: () -> Unit,
     onClear: () -> Unit,
     onIntroduceEveryone: () -> Unit
@@ -98,8 +102,12 @@ fun ConversationMenu(
             text = { Text(text = stringResource(MR.string.chat_delete)) },
             leadingIcon = { Icon(imageVector = Icons.Filled.Delete, contentDescription = null) })
         DropdownMenuItem(
+            onClick = onTogglePin,
+            text = { Text(text = stringResource(if (isPinned) MR.string.chat_unpin else MR.string.chat_pin)) },
+            leadingIcon = { Icon(imageVector = Icons.Filled.PushPin, contentDescription = null) })
+        DropdownMenuItem(
             onClick = onArchive,
-            text = { Text(text = stringResource(MR.string.chat_archive)) },
+            text = { Text(text = stringResource(if (isArchived) MR.string.chat_unarchive else MR.string.chat_archive)) },
             leadingIcon = {
                 Icon(imageVector = Icons.Filled.Archive, contentDescription = null)
             })
@@ -352,6 +360,7 @@ fun ConversationListMenu(
 fun ConversationItemMenuPopup(
     dismissMenu: () -> Unit,
     isPinned: Boolean,
+    isArchived: Boolean,
     onMarkAsRead: () -> Unit,
     onTogglePin: () -> Unit,
     onArchive: () -> Unit,
@@ -397,7 +406,7 @@ fun ConversationItemMenuPopup(
                             dismissMenu()
                             onArchive()
                         },
-                        text = stringResource(MR.string.chat_archive),
+                        text = stringResource(if (isArchived) MR.string.chat_unarchive else MR.string.chat_archive),
                         imageVector = Icons.Default.Archive,
                     )
                 }

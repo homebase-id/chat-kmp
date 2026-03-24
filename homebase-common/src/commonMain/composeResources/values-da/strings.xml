@@ -157,6 +157,7 @@
     <string name="chat_group_settings">Gruppe indstillinger</string>
     <string name="chat_delete">Slet</string>
     <string name="chat_archive">Arkivér</string>
+    <string name="chat_unarchive">Restore</string>
     <string name="chat_clear">Ryd</string>
     <string name="chat_options">Samtale menu</string>
     <string name="chat_no_messages">Ingen beskeder endnu</string>

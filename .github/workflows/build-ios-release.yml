@@ -54,9 +54,14 @@ jobs:
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             VERSION_NAME="${{ github.ref_name }}"
           else
-            VERSION_NAME="0.0.${{ github.run_number }}"
+            VERSION_NAME="1.2.0"
           fi
 
+          # Update Config.xcconfig — this is what Xcode actually reads for CFBundleVersion
+          sed -i '' "s/CURRENT_PROJECT_VERSION=.*/CURRENT_PROJECT_VERSION=$VERSION_CODE/" iosApp/Configuration/Config.xcconfig
+          sed -i '' "s/MARKETING_VERSION=.*/MARKETING_VERSION=$VERSION_NAME/" iosApp/Configuration/Config.xcconfig
+
+          # Also update Info.plist as a fallback
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION_NAME" iosApp/iosApp/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION_NAME" iosApp/iosApp/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION_CODE" iosApp/iosApp/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VERSION_CODE" iosApp/iosApp/Info.plist
 

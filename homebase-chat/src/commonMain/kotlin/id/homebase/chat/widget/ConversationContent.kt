@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.conversationlist.ConversationListUiSheet
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
@@ -253,6 +254,8 @@ fun ConversationContent(
                         showMenu = showConversationMenu,
                         dismissMenu = { showConversationMenu = false },
                         isGroup = conversation.conversation.isGroupConversation,
+                        isArchived = conversation.conversation.conversationState == ConversationState.Archived,
+                        isPinned = conversation.conversation.isPinned,
                         onConversationInfo = {
                             showConversationMenu = false
                             onUiAction(
@@ -269,13 +272,21 @@ fun ConversationContent(
                                 )
                             )
                         },
-                        onArchive = {
+                        onTogglePin = {
                             showConversationMenu = false
                             onUiAction(
-                                ConversationListUiAction.ArchiveConversation(
+                                ConversationListUiAction.TogglePinConversation(
                                     conversation.conversation.id
                                 )
                             )
+                        },
+                        onArchive = {
+                            showConversationMenu = false
+                            if (conversation.conversation.conversationState == ConversationState.Archived) {
+                                onUiAction(ConversationListUiAction.UnarchiveConversation(conversation.conversation.id))
+                            } else {
+                                onUiAction(ConversationListUiAction.ArchiveConversation(conversation.conversation.id))
+                            }
                         },
                         onClear = {
                             showConversationMenu = false

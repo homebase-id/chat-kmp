@@ -32,10 +32,6 @@ class ConversationMapper(
         lastMsg: HomebaseFile?
     ): ConversationUiModel {
 
-        logger.d {
-            "START map | fileId=${conversationFile.fileId} uid=${conversationFile.fileMetadata.appData.uniqueId} state=${conversationFile.fileState}"
-        }
-
         return try {
 
             val domain = credentialsManager.requireActiveDomain()
@@ -49,13 +45,10 @@ class ConversationMapper(
             val conversationId = appData.uniqueId ?: error("Missing uniqueId")
 
             val isDeleted = conversationFile.fileState == FileState.Deleted
+                    || appData.archivalStatus == ArchivalStatus.Removed
+
             if (isDeleted) {
                 return mapDeletedConversation(conversationFile, lastMsg, domain)
-            }
-
-            val isArchived = appData.archivalStatus == ArchivalStatus.Removed
-            if (isArchived) {
-                return mapArchivedConversation(conversationFile, lastMsg, domain)
             }
 
             val conversationData =
@@ -106,6 +99,10 @@ class ConversationMapper(
                 conversationId
             )
 
+            val localTags = metadata.localAppData?.tags ?: emptyList()
+            val isArchivedByTag = localTags.contains(ChatProtocol.ConversationArchivedTag)
+            val isPinnedByTag = localTags.contains(ChatProtocol.ConversationPinnedTag)
+
             var ui =
                 ConversationUiModel(
                     id = conversationId,
@@ -117,11 +114,12 @@ class ConversationMapper(
                     avatarInitials = "",
                     avatarUrl = "",
                     participants = participants,
+                    isPinned = isPinnedByTag,
                     lastRead = localAppData?.lastReadTime?.toInstant()
                         ?: UnixTimeUtc(0).toInstant(),
                     avatarModel = avatarModel,
                     admins = admins,
-                    conversationState = ConversationState.Active
+                    conversationState = if (isArchivedByTag) ConversationState.Archived else ConversationState.Active
                 )
 
             if (lastMsg != null) {
@@ -161,42 +159,6 @@ class ConversationMapper(
                 conversationState = ConversationState.Invalid
             )
         }
-    }
-
-    private suspend fun mapArchivedConversation(
-        conversationFile: HomebaseFile,
-        lastMsg: HomebaseFile?,
-        domain: OdinId
-    ): ConversationUiModel {
-
-        val metadata = conversationFile.fileMetadata
-        val appData = metadata.appData
-
-        val m = ConversationUiModel(
-            id = appData.uniqueId ?: error("Missing uniqueId"),
-            name = "Archived Conversation",
-            lastMessage = " ",
-            timestamp = metadata.created.toInstant(),
-            unreadCount = 0,
-            avatarTiny = appData.previewThumbnail,
-            avatarInitials = "",
-            avatarUrl = "",
-            participants = emptyList(),
-            lastRead = UnixTimeUtc(0).toInstant(),
-            avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
-            admins = setOf(domain),
-            conversationState = ConversationState.Archived
-        )
-
-        if (lastMsg != null) {
-            ChatMessageStream.mapToMessageData(lastMsg, credentialsManager) {
-                it.fileMetadata.originalAuthor?.domainName ?: ""
-            }?.let {
-                m.updateWithLatestMessage(it, domain)
-            }
-        }
-
-        return m
     }
 
     private suspend fun mapDeletedConversation(

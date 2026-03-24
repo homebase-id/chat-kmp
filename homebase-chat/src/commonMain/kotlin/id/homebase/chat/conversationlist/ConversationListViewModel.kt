@@ -70,6 +70,7 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.cacheDir
 import io.github.vinceglb.filekit.delete
 import io.github.vinceglb.filekit.filesDir
+import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.write
 import kotlinx.collections.immutable.toPersistentList
@@ -718,7 +719,13 @@ class ConversationListViewModel(
             is ConversationListUiAction.TogglePinConversation -> {
                 viewModelScope.launch {
                     try {
-                      // TODO - toggle pinned convo
+                        val conversation = conversationService.getConversation(action.conversationId)
+                            ?: return@launch
+                        if (conversation.isPinned) {
+                            conversationService.unpinConversation(action.conversationId)
+                        } else {
+                            conversationService.pinConversation(action.conversationId)
+                        }
                     } catch (e: Exception) {
                         sendEvent(
                             ShowErrorMessage(
@@ -762,11 +769,12 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val newFiles = action.files.map {
-                            val ct = detectContentTypeFromExtensionOrHint(it.name)
+                            val ct = it.mimeType()?.toString() ?: detectContentTypeFromExtensionOrHint(it.name)
                             when {
                                 ct.startsWith("video/") -> {
                                     val thumbnailBytes = try {
-                                        val thumbPath = FFmpegUtils.grabThumbnail(it.toString())
+                                        val resolvedPath = fileOperationsProvider.resolveToFilePath(it.toString())
+                                        val thumbPath = FFmpegUtils.grabThumbnail(resolvedPath)
                                         if (thumbPath != null) {
                                             val bytes = fileOperationsProvider.readFileBytes(thumbPath)
                                             fileOperationsProvider.deleteTempFile(thumbPath)
@@ -818,7 +826,20 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val newFiles = action.files.map {
-                            AttachmentPendingFile.Gallery(Uuid.generateV7(), it)
+                            if (it.mimeType.startsWith("video/")) {
+                                val thumbnailBytes = try {
+                                    val resolvedPath = fileOperationsProvider.resolveToFilePath(it.file.toString())
+                                    val thumbPath = FFmpegUtils.grabThumbnail(resolvedPath)
+                                    if (thumbPath != null) {
+                                        val bytes = fileOperationsProvider.readFileBytes(thumbPath)
+                                        fileOperationsProvider.deleteTempFile(thumbPath)
+                                        bytes
+                                    } else null
+                                } catch (_: Exception) { null }
+                                AttachmentPendingFile.FileVideo(Uuid.generateV7(), it.file, thumbnailBytes)
+                            } else {
+                                AttachmentPendingFile.Gallery(Uuid.generateV7(), it)
+                            }
                         }
                         val conversation = _uiState.value.activeConversations.find {
                             it.conversation.id == action.conversationId
@@ -1078,18 +1099,27 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ArchiveConversation -> {
-                // TODO
-                println("Unhandled: $action")
+                viewModelScope.launch {
+                    conversationService.archiveConversation(action.conversationId)
+                }
+            }
+
+            is ConversationListUiAction.UnarchiveConversation -> {
+                viewModelScope.launch {
+                    conversationService.unarchiveConversation(action.conversationId)
+                }
             }
 
             is ConversationListUiAction.ClearConversation -> {
-                // TODO
-                println("Unhandled: $action")
+                viewModelScope.launch {
+                    conversationService.clearConversation(action.conversationId)
+                }
             }
 
             is ConversationListUiAction.DeleteConversation -> {
-                // TODO
-                println("Unhandled: $action")
+                viewModelScope.launch {
+                    conversationService.deleteConversation(action.conversationId)
+                }
             }
 
             /* Audio recording */
@@ -1489,9 +1519,8 @@ class ConversationListViewModel(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.file.toString(),
-                                contentType = detectContentTypeFromExtensionOrHint(
-                                    attachment.file.name
-                                ),
+                                contentType = attachment.file.mimeType()?.toString()
+                                    ?: detectContentTypeFromExtensionOrHint(attachment.file.name),
                                 displayName = attachment.file.name,
                             )
                         )
@@ -1501,9 +1530,8 @@ class ConversationListViewModel(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.file.toString(),
-                                contentType = detectContentTypeFromExtensionOrHint(
-                                    attachment.file.name
-                                ),
+                                contentType = attachment.file.mimeType()?.toString()
+                                    ?: detectContentTypeFromExtensionOrHint(attachment.file.name),
                                 displayName = attachment.file.name,
                             )
                         )
@@ -1513,9 +1541,8 @@ class ConversationListViewModel(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.file.toString(),
-                                contentType = detectContentTypeFromExtensionOrHint(
-                                    attachment.file.name
-                                ),
+                                contentType = attachment.file.mimeType()?.toString()
+                                    ?: detectContentTypeFromExtensionOrHint(attachment.file.name),
                                 displayName = attachment.file.name,
                             )
                         )
@@ -1525,9 +1552,7 @@ class ConversationListViewModel(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.image.file.toString(),
-                                contentType = detectContentTypeFromExtensionOrHint(
-                                    attachment.image.fileName
-                                ),
+                                contentType = attachment.image.mimeType,
                                 displayName = attachment.image.fileName,
                             )
                         )
@@ -1537,9 +1562,8 @@ class ConversationListViewModel(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.audioFile.toString(),
-                                contentType = detectContentTypeFromExtensionOrHint(
-                                    attachment.audioFile.name
-                                ),
+                                contentType = attachment.audioFile.mimeType()?.toString()
+                                    ?: detectContentTypeFromExtensionOrHint(attachment.audioFile.name),
                                 displayName = attachment.audioFile.name,
                                 waveformFile = attachment.waveformFile?.toString(),
                                 audioLengthSeconds = attachment.lengthSeconds,

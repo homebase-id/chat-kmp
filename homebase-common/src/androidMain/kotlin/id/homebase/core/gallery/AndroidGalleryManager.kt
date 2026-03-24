@@ -1,6 +1,6 @@
 package id.homebase.core.gallery
 
-import android.content.ContentUris
+import  android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
 import io.github.vinceglb.filekit.PlatformFile
@@ -9,50 +9,66 @@ import kotlinx.coroutines.withContext
 
 class AndroidGalleryManager(val context: Context): PlatformGalleryManager {
     override suspend fun fetchGalleryImages(limit: Int): List<GalleryImage> = withContext(Dispatchers.IO) {
-        val images = mutableListOf<GalleryImage>()
-        val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.DATA,
-            MediaStore.Images.Media.DATE_ADDED,
-            MediaStore.Images.Media.MIME_TYPE,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
-            MediaStore.Images.Media.DISPLAY_NAME
+        val images = queryMediaStore(
+            collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            idColumn = MediaStore.Images.Media._ID,
+            dateColumn = MediaStore.Images.Media.DATE_ADDED,
+            mimeColumn = MediaStore.Images.Media.MIME_TYPE,
+            bucketColumn = MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+            displayNameColumn = MediaStore.Images.Media.DISPLAY_NAME,
         )
+        val videos = queryMediaStore(
+            collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            idColumn = MediaStore.Video.Media._ID,
+            dateColumn = MediaStore.Video.Media.DATE_ADDED,
+            mimeColumn = MediaStore.Video.Media.MIME_TYPE,
+            bucketColumn = MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
+            displayNameColumn = MediaStore.Video.Media.DISPLAY_NAME,
+        )
+        (images + videos)
+            .sortedByDescending { it.dateAdded }
+            .take(limit)
+    }
 
+    private fun queryMediaStore(
+        collectionUri: android.net.Uri,
+        idColumn: String,
+        dateColumn: String,
+        mimeColumn: String,
+        bucketColumn: String,
+        displayNameColumn: String,
+    ): List<GalleryImage> {
+        val results = mutableListOf<GalleryImage>()
+        val projection = arrayOf(idColumn, dateColumn, mimeColumn, bucketColumn, displayNameColumn)
         context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            collectionUri,
             projection,
             null,
             null,
-            "${MediaStore.Images.Media.DATE_ADDED} DESC"
+            "$dateColumn DESC"
         )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
-            val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-            val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
-            val bucketColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
-            val displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+            val idIdx = cursor.getColumnIndexOrThrow(idColumn)
+            val dateIdx = cursor.getColumnIndexOrThrow(dateColumn)
+            val mimeIdx = cursor.getColumnIndexOrThrow(mimeColumn)
+            val bucketIdx = cursor.getColumnIndexOrThrow(bucketColumn)
+            val displayNameIdx = cursor.getColumnIndexOrThrow(displayNameColumn)
 
-            var count = 0
-            while (cursor.moveToNext() && count < limit) {
-                val id = cursor.getLong(idColumn)
-                val uri = ContentUris.withAppendedId(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    id
-                ).toString()
-
-                images.add(GalleryImage(
-                    id = id.toString(),
-                    file = PlatformFile(uri),
-                    thumbnailUri = uri,
-                    dateAdded = cursor.getLong(dateColumn),
-                    mimeType = cursor.getString(mimeColumn),
-                    galleryName = cursor.getString(bucketColumn),
-                    fileName = cursor.getString(displayNameColumn)
-                ))
-                count++
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idIdx)
+                val uri = ContentUris.withAppendedId(collectionUri, id).toString()
+                results.add(
+                    GalleryImage(
+                        id = id.toString(),
+                        file = PlatformFile(uri),
+                        thumbnailUri = uri,
+                        dateAdded = cursor.getLong(dateIdx),
+                        mimeType = cursor.getString(mimeIdx),
+                        galleryName = cursor.getString(bucketIdx),
+                        fileName = cursor.getString(displayNameIdx),
+                    )
+                )
             }
         }
-        images
+        return results
     }
 }

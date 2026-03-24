@@ -228,28 +228,33 @@ class ConversationStream(
     }
 
     private fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
-        // Update the existing conversation
-        if (incoming.timestamp >= existing.timestamp) {
-            val updatedConvo =
-                existing.copy(
-                    name = incoming.name,
-                    avatarTiny = incoming.avatarTiny,
-                    avatarUrl = incoming.avatarUrl,
-                    avatarInitials = incoming.avatarInitials,
-                    participants = incoming.participants,
-                    timestamp = incoming.timestamp,
-                    lastMessage = incoming.lastMessage,
-                    lastMessageDeliveryStatus = incoming.lastMessageDeliveryStatus,
-                    lastMessageIsDeleted = incoming.lastMessageIsDeleted,
-                    lastMessageFirstPayload = incoming.lastMessageFirstPayload,
-                    lastMessageHasMultiplePayloads =
-                        incoming.lastMessageHasMultiplePayloads,
-                    lastMessageIsFromActiveUser = incoming.lastMessageIsFromActiveUser
-                )
-            // We should optimize later to not  map the full list
-            _conversations.value =
-                ConversationsData(items = _conversations.value.items.map { if (it.id == existing.id) updatedConvo else it })
+        // isPinned and conversationState are always applied regardless of timestamp ordering
+        val updatedConvo = if (incoming.timestamp >= existing.timestamp) {
+            existing.copy(
+                name = incoming.name,
+                avatarTiny = incoming.avatarTiny,
+                avatarUrl = incoming.avatarUrl,
+                avatarInitials = incoming.avatarInitials,
+                participants = incoming.participants,
+                timestamp = incoming.timestamp,
+                lastMessage = incoming.lastMessage,
+                lastMessageDeliveryStatus = incoming.lastMessageDeliveryStatus,
+                lastMessageIsDeleted = incoming.lastMessageIsDeleted,
+                lastMessageFirstPayload = incoming.lastMessageFirstPayload,
+                lastMessageHasMultiplePayloads = incoming.lastMessageHasMultiplePayloads,
+                lastMessageIsFromActiveUser = incoming.lastMessageIsFromActiveUser,
+                isPinned = incoming.isPinned,
+                conversationState = incoming.conversationState
+            )
+        } else {
+            existing.copy(
+                isPinned = incoming.isPinned,
+                conversationState = incoming.conversationState
+            )
         }
+        // We should optimize later to not map the full list
+        _conversations.value =
+            ConversationsData(items = _conversations.value.items.map { if (it.id == existing.id) updatedConvo else it })
     }
 
     private suspend fun loadConversations() {
