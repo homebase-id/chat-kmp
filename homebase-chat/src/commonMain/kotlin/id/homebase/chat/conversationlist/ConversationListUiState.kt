@@ -32,6 +32,7 @@ data class ConversationListUiState(
     val downloadingFiles: Set<String> = emptySet(),
     val connectionStatus: ConnectionStatus = ConnectionStatus.Connecting,
     val driveIsSyncing: Boolean = false,
+    val hasDriveError: Boolean = false,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
 )

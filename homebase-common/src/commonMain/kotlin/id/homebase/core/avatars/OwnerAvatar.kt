@@ -27,6 +27,7 @@ fun OwnerAvatar(
     initials: String?,
     connectionStatus: ConnectionStatus? = null,
     driveIsSyncing: Boolean? = null,
+    hasDriveError: Boolean = false,
     options: AvatarOptions,
     modifier: Modifier = Modifier,
     sharedTransitionScope: SharedTransitionScope?,
@@ -62,10 +63,11 @@ fun OwnerAvatar(
             )
         }
         if (connectionStatus != null) {
-            val color = when (connectionStatus) {
-                ConnectionStatus.Connected    -> ExtendedColors.Success
-                ConnectionStatus.Connecting   -> Color(0xFFFFA500)
-                ConnectionStatus.Disconnected -> Color.Red
+            val color = when {
+                connectionStatus == ConnectionStatus.Connected && hasDriveError -> Color(0xFFFFC107)
+                connectionStatus == ConnectionStatus.Connected    -> ExtendedColors.Success
+                connectionStatus == ConnectionStatus.Connecting   -> Color(0xFFFFA500)
+                else                                              -> Color.Red
             }
             if (driveIsSyncing == true) {
                 CircularProgressIndicator(

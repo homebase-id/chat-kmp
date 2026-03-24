@@ -259,12 +259,18 @@ class ConversationListViewModel(
         // Set isConnecting state
         viewModelScope.launch {
             eventBus.events
-                .filter { it is BackendEvent.SyncAllStarted || it is BackendEvent.SyncAllCompleted || it is BackendEvent.SyncAllFailed }
+                .filter {
+                    it is BackendEvent.SyncAllStarted ||
+                    it is BackendEvent.SyncAllCompleted ||
+                    it is BackendEvent.SyncAllFailed ||
+                    it is BackendEvent.DriveEvent.Failed
+                }
                 .collectLatest { event ->
                     when (event) {
-                        is BackendEvent.SyncAllStarted   -> _uiState.update { it.copy(driveIsSyncing = true) }
+                        is BackendEvent.SyncAllStarted    -> _uiState.update { it.copy(driveIsSyncing = true, hasDriveError = false) }
                         is BackendEvent.SyncAllCompleted,
-                        is BackendEvent.SyncAllFailed    -> _uiState.update { it.copy(driveIsSyncing = false) }
+                        is BackendEvent.SyncAllFailed     -> _uiState.update { it.copy(driveIsSyncing = false) }
+                        is BackendEvent.DriveEvent.Failed -> _uiState.update { it.copy(hasDriveError = true) }
                         else -> Unit
                     }
                 }

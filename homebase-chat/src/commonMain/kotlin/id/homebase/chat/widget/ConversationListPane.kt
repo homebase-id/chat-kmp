@@ -137,6 +137,7 @@ fun ConversationListPane(
                                                 initials = session.initials(),
                                                 connectionStatus = uiState.connectionStatus,
                                                 driveIsSyncing = uiState.driveIsSyncing,
+                                                hasDriveError = uiState.hasDriveError,
                                                 options = AvatarOptions(
                                                     size = 32.dp, fontSize = 12.sp, onClick = {
                                                         onProfileClick()
