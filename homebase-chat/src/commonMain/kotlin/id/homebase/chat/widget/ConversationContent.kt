@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -64,8 +65,8 @@ import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.data.ConversationState
-import id.homebase.chat.conversationlist.ConversationListUiSheet
 import id.homebase.chat.conversationlist.MessageListContentModel
+import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.createconversation.ContactItem
@@ -78,13 +79,16 @@ import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
+import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_not_connected_disclaimer
+import id.homebase.resources.chat_message_forward_to
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
 import id.homebase.resources.connect
 import id.homebase.resources.menu_back
+import id.homebase.resources.search
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -337,7 +341,7 @@ fun ConversationContent(
             }
 
             Box(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
                 if (!uiState.isLoadingMessages) {
                     LazyColumn(
@@ -412,7 +416,6 @@ fun ConversationContent(
                         state = listState
                     )
                 } else {
-
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
             }
@@ -556,7 +559,7 @@ fun ConversationContentSheets(
 ) {
     when (val sheet = uiState.uiSheet) {
         null -> {}
-        is ConversationListUiSheet.ConnectIdentities -> {
+        is MessageListUiSheet.ConnectIdentities -> {
             val sheetState = rememberModalBottomSheetState()
             val scrollState = rememberScrollState()
 
@@ -575,6 +578,52 @@ fun ConversationContentSheets(
                             avatarInitials = "",
                             onContactClick = {
                                 onUiAction(ConversationListUiAction.ConnectToIdentity(odinId))
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        is MessageListUiSheet.ForwardMessage -> {
+            val sheetState = rememberModalBottomSheetState()
+            val scrollState = rememberScrollState()
+            val searchTextState = remember { TextFieldState() }
+
+            ModalBottomSheet(
+                onDismissRequest = { onUiAction(ConversationListUiAction.DismissSheet) },
+                sheetState = sheetState
+            ) {
+                // Bottom sheet content
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .verticalScroll(scrollState),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = stringResource(MR.string.chat_message_forward_to),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    StyledSearchTextField(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp)
+                            .fillMaxWidth(),
+                        textFieldState = searchTextState,
+                        showSearchIcon = false,
+                        placeHolderText = stringResource(MR.string.search),
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    sheet.identities.forEach { odinId ->
+                        ContactItem(
+                            name = odinId.domainName,
+                            odinId = odinId,
+                            avatarInitials = "",
+                            onContactClick = {
+
                             },
                         )
                     }

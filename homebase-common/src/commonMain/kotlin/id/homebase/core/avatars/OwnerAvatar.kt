@@ -19,6 +19,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.theme.ExtendedColors
+import id.homebase.core.util.ifTrue
 
 @Composable
 fun OwnerAvatar(
@@ -34,7 +35,7 @@ fun OwnerAvatar(
 ) {
     Box(
         modifier = modifier
-            .size(options.size + 6.dp)
+            .ifTrue(driveIsConnected != null) { Modifier.size(options.size + 6.dp) }
     ) {
         if (profileImageData != null) {
             HomebaseImage(

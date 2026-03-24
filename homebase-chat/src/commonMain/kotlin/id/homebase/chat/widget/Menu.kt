@@ -32,6 +32,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.MessageForward
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.isMobile
 import id.homebase.core.widget.ListItemActionNormalIcon
@@ -48,6 +50,7 @@ import id.homebase.resources.chat_group_settings
 import id.homebase.resources.chat_mark_all_as_read
 import id.homebase.resources.chat_message_copy
 import id.homebase.resources.chat_message_edit
+import id.homebase.resources.chat_message_forward
 import id.homebase.resources.chat_message_info
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_pin
@@ -147,6 +150,7 @@ fun ReceivedMessagePopup(
     onMessageInfo: () -> Unit,
     onMarkAsRead: () -> Unit,
     onReply: () -> Unit,
+    onForward: () -> Unit,
     onCopy: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
@@ -188,6 +192,12 @@ fun ReceivedMessagePopup(
                         )
                         ListItemActionNormalIcon(
                             modifier = Modifier.fillMaxWidth(),
+                            onClick = onForward,
+                            text = stringResource(MR.string.chat_message_forward),
+                            imageVector = HomebaseIcons.MessageForward,
+                        )
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
                             onClick = onCopy,
                             text = stringResource(MR.string.chat_message_copy),
                             imageVector = Icons.Default.ContentCopy,
@@ -213,6 +223,7 @@ fun SentMessagePopup(
     onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
     onReply: () -> Unit,
+    onForward: () -> Unit,
     onCopy: () -> Unit,
     onShare: () -> Unit,
     onEdit: () -> Unit,
@@ -252,6 +263,12 @@ fun SentMessagePopup(
                             onClick = onReply,
                             text = stringResource(MR.string.chat_message_reply),
                             imageVector = Icons.AutoMirrored.Filled.Reply,
+                        )
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onForward,
+                            text = stringResource(MR.string.chat_message_forward),
+                            imageVector = HomebaseIcons.MessageForward,
                         )
                         ListItemActionNormalIcon(
                             modifier = Modifier.fillMaxWidth(),

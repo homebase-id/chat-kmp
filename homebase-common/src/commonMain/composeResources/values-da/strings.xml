@@ -40,6 +40,7 @@
     <string name="someone">Nogen</string>
     <string name="leave">Forlad</string>
     <string name="export_log">Eksportér log</string>
+    <string name="send">Send</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -202,6 +203,8 @@
     <string name="chat_message_remove_gallery_image">Tilføj billede</string>
     <string name="chat_message_hide_keyboard">Skjul tastatur</string>
     <string name="chat_message_discard_draft">Kassér kladde?</string>
+
+    <string name="chat_message_forward_to">Videresend til</string>
 
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Søg efter emoji</string>

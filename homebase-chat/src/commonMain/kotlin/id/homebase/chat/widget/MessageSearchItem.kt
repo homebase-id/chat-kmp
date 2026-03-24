@@ -46,7 +46,7 @@ fun MessageSearchItem(
             .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 20.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (contactOdinId != null) {

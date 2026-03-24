@@ -53,6 +53,7 @@
     <string name="someone">Someone</string>
     <string name="leave">Leave</string>
     <string name="export_log">Export log</string>
+    <string name="send">Send</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -216,6 +217,8 @@
     <string name="chat_message_remove_gallery_image">Remove image</string>
     <string name="chat_message_hide_keyboard">Hide keyboard</string>
     <string name="chat_message_discard_draft">Discard draft?</string>
+
+    <string name="chat_message_forward_to">Forward to</string>
 
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Search emoji</string>

@@ -35,17 +35,6 @@ data class ConversationListUiState(
     val uiEvent: ConversationListUiEvent? = null,
 )
 
-sealed interface ConversationListUiSheet {
-    data class ConnectIdentities(val identities: List<OdinId>) : ConversationListUiSheet
-}
-
-sealed interface UploadStatus {
-    data object Preparing : UploadStatus
-    data class Processing(val progress: Float) : UploadStatus
-    data class Uploading(val progress: Float) : UploadStatus
-    data object Completed : UploadStatus
-}
-
 @Immutable
 data class MessageListUiState(
     val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
@@ -61,8 +50,20 @@ data class MessageListUiState(
     val messageReactions: List<EmojiReaction>? = null,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
-    val uiSheet: ConversationListUiSheet? = null,
+    val uiSheet: MessageListUiSheet? = null,
 )
+
+sealed interface MessageListUiSheet {
+    data class ConnectIdentities(val identities: List<OdinId>) : MessageListUiSheet
+    data class ForwardMessage(val messageId: Uuid, val identities: List<OdinId>) : MessageListUiSheet
+}
+
+sealed interface UploadStatus {
+    data object Preparing : UploadStatus
+    data class Processing(val progress: Float) : UploadStatus
+    data class Uploading(val progress: Float) : UploadStatus
+    data object Completed : UploadStatus
+}
 
 @Immutable
 data class DecryptedFileKey(

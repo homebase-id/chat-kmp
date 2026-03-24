@@ -1006,6 +1006,13 @@ class ConversationListViewModel(
                 _messagesUiState.update { it.copy(replyToMessage = action.message) }
             }
 
+            is ConversationListUiAction.ForwardMessage -> {
+                _messagesUiState.update { it.copy(uiSheet = MessageListUiSheet.ForwardMessage(
+                    messageId = action.message.id,
+                    identities = contactService.contacts.value.map { it.odinId },
+                )) }
+            }
+
             is ConversationListUiAction.CancelReplyToMessage -> {
                 _messagesUiState.update { it.copy(replyToMessage = null) }
             }
@@ -1045,7 +1052,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.ConnectIdentities -> {
                 _messagesUiState.update {
                     it.copy(
-                        uiSheet = ConversationListUiSheet.ConnectIdentities(
+                        uiSheet = MessageListUiSheet.ConnectIdentities(
                             action.identities
                         )
                     )

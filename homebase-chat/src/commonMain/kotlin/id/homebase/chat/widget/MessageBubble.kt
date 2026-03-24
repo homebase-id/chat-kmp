@@ -96,6 +96,7 @@ fun SentMessageBubble(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
+    onForward: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onShare: () -> Unit,
     onDelete: () -> Unit,
@@ -186,6 +187,10 @@ fun SentMessageBubble(
                             popupMode = MessagePopupMode.None
                             onReply?.invoke()
                         },
+                        onForward = {
+                            popupMode = MessagePopupMode.None
+                            onForward?.invoke()
+                        },
                         onCopy = {
                             popupMode = MessagePopupMode.None
                             scope.launch {
@@ -271,6 +276,7 @@ fun ReceivedMessageBubble(
     renderAuthorName: Boolean = false,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
+    onForward: (() -> Unit)? = null,
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
@@ -422,6 +428,10 @@ fun ReceivedMessageBubble(
                         onReply = {
                             popupMode = MessagePopupMode.None
                             onReply?.invoke()
+                        },
+                        onForward = {
+                            popupMode = MessagePopupMode.None
+                            onForward?.invoke()
                         },
                         onCopy = {
                             popupMode = MessagePopupMode.None

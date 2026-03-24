@@ -83,6 +83,7 @@ sealed interface ConversationListUiAction {
     data class ShowContactInfo(val odinId: String) : ConversationListUiAction
     data class ShowMessageInfo(val message: MessageUiModel) : ConversationListUiAction
     data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction
+    data class ForwardMessage(val message: MessageUiModel) : ConversationListUiAction
     data object CancelReplyToMessage : ConversationListUiAction
     data class EditMessage(val messageId: Uuid, val versionTag: Uuid, val ignoreDraft: Boolean) :
         ConversationListUiAction
