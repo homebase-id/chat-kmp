@@ -202,4 +202,64 @@ class OptimisticWriter(
             Logger.e("Optimistic update failed: ${e.message}")
         }
     }
+
+    /**
+     * Blindly writes all given tags to the file's localAppData, replacing any existing tags.
+     * Callers are responsible for merging with or removing from the existing tag list as needed.
+     */
+    suspend fun updateLocalTags(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        newTags: List<Uuid>
+    ) {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(credentials.getIdentityId())
+
+        val result = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = driveId,
+            noOfItems = 1,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = listOf(uniqueId)
+        )
+
+        val existingFile = result.records.singleOrNull() ?: return
+
+        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+
+        val updatedFile = existingFile.copy(
+            fileMetadata = existingFile.fileMetadata.copy(
+                localAppData = (existingFile.fileMetadata.localAppData ?: LocalAppMetadata()).copy(
+                    tags = newTags.distinct()
+                ),
+                updated = lastModified
+            )
+        )
+
+        try {
+            val batch = listOf(updatedFile)
+            fileProcessor.baseUpsertEntryZapZap(
+                identityId = credentials.getIdentityId(),
+                driveId = driveId,
+                fileHeaders = batch,
+                cursor = null
+            )
+
+            eventBus.emit(
+                BackendEvent.DriveEvent.BatchReceived(
+                    driveId = driveId,
+                    totalCount = batch.size,
+                    batchCount = batch.size,
+                    latestModified = lastModified,
+                    batchData = batch,
+                    source = BackendEvent.SyncSource.WebSocket
+                )
+            )
+        } catch (e: Exception) {
+            Logger.e("Optimistic tag update failed: ${e.message}")
+        }
+    }
 }

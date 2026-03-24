@@ -11,10 +11,9 @@ import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
-import id.homebase.api.client.drives.upload.DriveUploadProvider
-import id.homebase.api.client.drives.upload.FileIdFileIdentifier
-import id.homebase.api.client.drives.upload.LocalAppData
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.client.drives.upload.FileIdFileIdentifier
+import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
@@ -38,6 +37,7 @@ import id.homebase.chat.services.StatusMessage
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
@@ -52,7 +52,7 @@ class ConversationService(
     private val scope: CoroutineScope,
     private val outboxSync: OutboxSync,
     private val chatMessageSenderService: ChatMessageSenderService,
-    private val driveUploadProvider: DriveUploadProvider
+    private val optimisticWriter: OptimisticWriter
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -583,15 +583,23 @@ class ConversationService(
         val currentTags = file.fileMetadata.localAppData?.tags?.toSet() ?: emptySet()
         val newTags = transform(currentTags)
 
-        driveUploadProvider.uploadLocalMetadataTags(
-            file = FileIdFileIdentifier(
-                fileId = file.fileId.toString(),
-                targetDrive = chatTargetDrive
-            ),
-            localAppData = LocalAppData(
+        optimisticWriter.updateLocalTags(
+            driveId = chatDrive,
+            uniqueId = conversationId,
+            newTags = newTags.toList()
+        )
+
+        outboxSync.tryEnqueue(
+            request = UpdateLocalMetadataTagsOutboxRequest(
+                file = FileIdFileIdentifier(
+                    fileId = file.fileId.toString(),
+                    targetDrive = chatTargetDrive
+                ),
                 versionTag = file.fileMetadata.localAppData?.versionTag?.toString(),
                 tags = newTags.map { it.toString() }
-            )
+            ),
+            driveId = chatDrive,
+            uniqueId = conversationId
         )
     }
 
