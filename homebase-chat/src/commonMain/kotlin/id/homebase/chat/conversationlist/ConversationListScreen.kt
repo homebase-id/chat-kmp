@@ -65,6 +65,7 @@ fun ConversationListScreen(
     onNavigateBack: () -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onNavigateToNewConversation: () -> Unit,
+    onNavigateToArchivedConversations: () -> Unit,
     onNavigateToContactInfo: (odinId: String) -> Unit,
     onNavigateToConversationSettings: (conversationId: String) -> Unit,
     onNavigateToGroupSettings: (conversationId: String) -> Unit,
@@ -100,6 +101,11 @@ fun ConversationListScreen(
             is ConversationListUiEvent.NavigateToNewConversation -> {
                 viewModel.eventConsumed()
                 onNavigateToNewConversation()
+            }
+
+            is ConversationListUiEvent.NavigateToArchivedConversations -> {
+                viewModel.eventConsumed()
+                onNavigateToArchivedConversations()
             }
 
             is ConversationListUiEvent.NavigateToContactInfo -> {

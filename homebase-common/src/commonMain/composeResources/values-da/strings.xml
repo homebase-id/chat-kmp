@@ -23,6 +23,8 @@
     <string name="skip">Spring over</string>
     <string name="next">Næste</string>
     <string name="contacts">Kontakter</string>
+    <string name="groups">Grupper</string>
+    <string name="recents">Seneste</string>
     <string name="members">Medlemmer</string>
     <string name="remove">Fjern</string>
     <string name="discard">Kassér</string>
@@ -40,6 +42,7 @@
     <string name="someone">Nogen</string>
     <string name="leave">Forlad</string>
     <string name="export_log">Eksportér log</string>
+    <string name="send">Send</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -157,7 +160,10 @@
     <string name="chat_group_settings">Gruppe indstillinger</string>
     <string name="chat_delete">Slet</string>
     <string name="chat_archive">Arkivér</string>
-    <string name="chat_unarchive">Restore</string>
+    <string name="chat_archived">Arkiveret</string>
+    <string name="chat_unarchive">Gendan</string>
+    <string name="chat_archived_chats">Arkiverede samtaler</string>
+    <string name="chat_archived_chats_empty">Arkiverede samtaler vil blive vist her</string>
     <string name="chat_clear">Ryd</string>
     <string name="chat_options">Samtale menu</string>
     <string name="chat_no_messages">Ingen beskeder endnu</string>
@@ -172,6 +178,7 @@
     <string name="chat_message_info">Besked info</string>
     <string name="chat_message_reply">Svar</string>
     <string name="chat_message_forward">Videresend</string>
+    <string name="chat_message_forwarded">Besked videresendt</string>
     <string name="chat_message_copy">Kopiér</string>
     <string name="chat_message_reaction">Reaktion'</string>
     <string name="chat_message_edit">Redigér</string>
@@ -202,6 +209,8 @@
     <string name="chat_message_remove_gallery_image">Tilføj billede</string>
     <string name="chat_message_hide_keyboard">Skjul tastatur</string>
     <string name="chat_message_discard_draft">Kassér kladde?</string>
+
+    <string name="chat_message_forward_to">Videresend til</string>
 
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Søg efter emoji</string>

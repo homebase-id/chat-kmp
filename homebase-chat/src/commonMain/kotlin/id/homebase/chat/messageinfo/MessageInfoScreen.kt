@@ -128,7 +128,6 @@ fun MessageInfoUi(
                             ReceivedMessageBubble(
                                 message = message,
                                 decryptedFiles = persistentMapOf(),
-                                onShare = {},
                                 onDelete = {},
                                 onMarkAsRead = {},
                                 onShowReactions = {},

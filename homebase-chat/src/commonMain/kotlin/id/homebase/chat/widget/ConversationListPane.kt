@@ -41,6 +41,7 @@ import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
@@ -62,8 +63,8 @@ import id.homebase.api.client.auth.initials
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
 import id.homebase.chat.conversationlist.ConversationListUiAction
-import id.homebase.chat.data.ConversationState
 import id.homebase.chat.conversationlist.ConversationListUiState
+import id.homebase.chat.data.ConversationState
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.ui.assets.FeatherEdit
@@ -71,6 +72,7 @@ import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
+import id.homebase.resources.chat_archived_chats
 import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_filter_by_unread_description
 import id.homebase.resources.chat_new_conversation
@@ -373,6 +375,23 @@ fun ConversationListPane(
                         }
                     }
 
+                    if (uiState.archivedCount > 0) {
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        onUiAction(ConversationListUiAction.ShowArchivedMessagesClicked)
+                                    },
+                                ) {
+                                    Text(text = stringResource(MR.string.chat_archived_chats) + " (${uiState.archivedCount})")
+                                }
+                            }
+                        }
+                    }
+
                     if (uiState.filterByUnread) {
                         item {
                             Row(
@@ -465,7 +484,6 @@ fun ConversationLisContentItem(
                         onUiAction(ConversationListUiAction.MarkAsRead(listItem.conversation.conversation.id))
                     },
                     isSelected = listItem.conversation.conversation.id == selectedConversationId,
-
                 )
             }
         }

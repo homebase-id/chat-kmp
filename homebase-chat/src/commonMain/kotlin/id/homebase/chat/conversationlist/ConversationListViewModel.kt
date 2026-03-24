@@ -10,11 +10,16 @@ import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageUtils
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.api.video.FFmpegUtils
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DeleteMessage
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
@@ -28,10 +33,7 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
-import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
-import id.homebase.api.image.ImageUtils
-import id.homebase.api.video.FFmpegUtils
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -62,6 +64,7 @@ import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_message_audio_recording_help
+import id.homebase.resources.chat_message_forwarded
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
@@ -73,11 +76,13 @@ import io.github.vinceglb.filekit.filesDir
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.write
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -85,7 +90,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
@@ -109,7 +113,8 @@ class ConversationListViewModel(
     private val audioRecorder: AudioRecorder,
     private val audioWaveFormGenerator: AudioWaveFormGenerator,
     private val eventBus: EventBus,
-    private val contactService: ContactService
+    private val contactService: ContactService,
+    private val driveFileHttpProvider: DriveFileHttpProvider,
 ) : ViewModel() {
 
     private val enricher = ConversationEnricher()
@@ -194,7 +199,9 @@ class ConversationListViewModel(
                     event as BackendEvent.PayloadBundlingEvent.Video.PhaseProgress
                     _messagesUiState.update { state ->
                         state.copy(
-                            uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Processing(event.progress))).toPersistentMap()
+                            uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Processing(
+                                event.progress
+                            ))).toPersistentMap()
                         )
                     }
                 }
@@ -206,7 +213,9 @@ class ConversationListViewModel(
                     event as BackendEvent.OutboxEvent.ItemProgress
                     _messagesUiState.update { state ->
                         state.copy(
-                            uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Uploading(event.progress / 100f))).toPersistentMap()
+                            uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Uploading(
+                                event.progress / 100f
+                            ))).toPersistentMap()
                         )
                     }
                 }
@@ -591,40 +600,36 @@ class ConversationListViewModel(
                                 "encrypted payload requires key header"
                             )
                         )
-                        val fileBytes = chatMessageActionService.getPayloadBytes(
-                            message.fileId,
-                            action.payloadKey,
-                            KeyHeader(payloadIv, message.keyHeader.aesKey)
-                        )
 
                         val fileName = payload.filename() ?: payload.key
+                        var extension = payload.contentType?.substringAfter("/") ?: "bin"
+                        extension = when (extension) {
+                            "jpeg" -> "jpg"
+                            else -> extension
+                        }
+                        val filePath = "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
 
-                        if (fileBytes != null) {
-                            var extension = payload.contentType?.substringAfter("/") ?: "bin"
-                            extension = when (extension) {
-                                "jpeg" -> "jpg"
-                                else -> extension
-                            }
-                            val tempFile = fileOperationsProvider.writeBytesToTempFile(
-                                fileBytes, fileName, ".$extension"
-                            )
+                        val success = driveFileHttpProvider.streamPayloadDecryptedToPath(
+                            driveId = chatTargetDrive.alias,
+                            fileId = message.fileId,
+                            key = action.payloadKey,
+                            keyHeader = KeyHeader(payloadIv, message.keyHeader.aesKey),
+                            outputPath = filePath,
+                            fileOps = fileOperationsProvider,
+                        )
+
+                        if (success) {
                             val decryptedFiles =
                                 _messagesUiState.value.decryptedFiles.toMutableMap()
                             decryptedFiles[DecryptedFileKey(message.fileId, action.payloadKey)] =
-                                tempFile
+                                filePath
                             _messagesUiState.update { it.copy(decryptedFiles = decryptedFiles.toPersistentMap()) }
                         } else {
-                            sendEvent(
-                                ShowErrorMessage(
-                                    "Could not decrypt file"
-                                )
-                            )
+                            sendEvent(ShowErrorMessage("Error downloading file"))
                         }
                     } catch (e: Exception) {
                         sendEvent(
-                            ShowErrorMessage(
-                                "Error downloading file: ${e.message}"
-                            )
+                            ShowErrorMessage("Error downloading file: ${e.message}")
                         )
                     } finally {
                         // 4. Remove from downloadingFiles set
@@ -776,14 +781,26 @@ class ConversationListViewModel(
                                         val resolvedPath = fileOperationsProvider.resolveToFilePath(it.toString())
                                         val thumbPath = FFmpegUtils.grabThumbnail(resolvedPath)
                                         if (thumbPath != null) {
-                                            val bytes = fileOperationsProvider.readFileBytes(thumbPath)
+                                            val bytes =
+                                                fileOperationsProvider.readFileBytes(thumbPath)
                                             fileOperationsProvider.deleteTempFile(thumbPath)
                                             bytes
                                         } else null
-                                    } catch (_: Exception) { null }
-                                    AttachmentPendingFile.FileVideo(Uuid.generateV7(), it, thumbnailBytes)
+                                    } catch (_: Exception) {
+                                        null
+                                    }
+                                    AttachmentPendingFile.FileVideo(
+                                        Uuid.generateV7(),
+                                        it,
+                                        thumbnailBytes
+                                    )
                                 }
-                                action.isImage || ct.startsWith("image/") -> AttachmentPendingFile.FileImage(Uuid.generateV7(), it)
+
+                                action.isImage || ct.startsWith("image/") -> AttachmentPendingFile.FileImage(
+                                    Uuid.generateV7(),
+                                    it
+                                )
+
                                 else -> AttachmentPendingFile.File(Uuid.generateV7(), it)
                             }
                         }
@@ -1020,6 +1037,134 @@ class ConversationListViewModel(
                 _messagesUiState.update { it.copy(replyToMessage = action.message) }
             }
 
+            is ConversationListUiAction.ForwardMessage -> {
+                viewModelScope.launch {
+                    try {
+                        val allConversations = _uiState.value.activeConversations
+                        val allContacts = contactService.contacts.value
+
+                        val selfConversation =
+                            allConversations.firstOrNull { it.conversation.isWithSelf }
+                        val nonSelfConversations =
+                            allConversations.filter { !it.conversation.isWithSelf }
+                        val recentConversations = nonSelfConversations
+                            .filter { !it.conversation.isGroupConversation }
+                            .take(5)
+                        val groupConversations = nonSelfConversations
+                            .filter { it.conversation.isGroupConversation }
+                            .sortedBy { it.getDisplayName().lowercase() }
+                        val sortedContacts = allContacts.sortedBy { it.name.lowercase() }
+
+                        val recipientGroups = buildList {
+                            if (selfConversation != null) {
+                                add(
+                                    RecipientGroupModel(
+                                        recipientType = RecipientType.You,
+                                        recipients = listOf(
+                                            RecipientModel.Conversation(
+                                                selfConversation
+                                            )
+                                        )
+                                    )
+                                )
+                            }
+                            if (recentConversations.isNotEmpty()) {
+                                add(
+                                    RecipientGroupModel(
+                                    recipientType = RecipientType.Recents,
+                                    recipients = recentConversations.map {
+                                        RecipientModel.Conversation(
+                                            it
+                                        )
+                                    }
+                                ))
+                            }
+                            if (sortedContacts.isNotEmpty()) {
+                                add(
+                                    RecipientGroupModel(
+                                    recipientType = RecipientType.Contacts,
+                                    recipients = sortedContacts.map { RecipientModel.Contact(it) }
+                                ))
+                            }
+                            if (groupConversations.isNotEmpty()) {
+                                add(
+                                    RecipientGroupModel(
+                                    recipientType = RecipientType.Groups,
+                                    recipients = groupConversations.map {
+                                        RecipientModel.Conversation(
+                                            it
+                                        )
+                                    }
+                                ))
+                            }
+                        }
+
+                        _messagesUiState.update {
+                            it.copy(
+                                uiSheet = MessageListUiSheet.ForwardMessage(
+                                    message = action.message,
+                                    recipients = recipientGroups.toPersistentList(),
+                                    selectedRecipients = persistentListOf(),
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("Failed to open forward message sheet", e)
+                        sendEvent(
+                            ShowErrorMessage(
+                                "Failed to open forward message sheet: ${e.message}"
+                            )
+                        )
+                    }
+                }
+            }
+
+            is ConversationListUiAction.ForwardMessageSelectRecipient -> {
+                val updatedSheet =
+                    (_messagesUiState.value.uiSheet as? MessageListUiSheet.ForwardMessage)?.let {
+                        if (it.selectedRecipients.contains(action.recipient)) {
+                            val newSelected = it.selectedRecipients - action.recipient
+                            it.copy(selectedRecipients = newSelected.toPersistentList())
+                        } else {
+                            val newSelected = it.selectedRecipients + action.recipient
+                            it.copy(selectedRecipients = newSelected.toPersistentList())
+                        }
+                    }
+                _messagesUiState.update { it.copy(uiSheet = updatedSheet) }
+            }
+
+            is ConversationListUiAction.ForwardMessageSend -> {
+                viewModelScope.launch {
+                    try {
+                        val conversationIds = action.recipients.map { recipientModel ->
+                            when (recipientModel) {
+                                is RecipientModel.Contact -> {
+                                    conversationService.createConversation(
+                                        recipients = listOf(recipientModel.contact.odinId),
+                                        title = "",
+                                        payloadBundle = null,
+                                    )
+                                }
+                                is RecipientModel.Conversation -> recipientModel.conversation.conversation.id
+                            }
+                        }
+                        chatMessageSenderService.forwardMessage(
+                            sourceMessageUniqueId = action.message.id,
+                            targetConversationIds = conversationIds
+                        )
+                        _messagesUiState.update { it.copy(uiSheet = null) }
+                        sendEvent(ShowInfoMessage(MR.string.chat_message_forwarded))
+                    } catch (e: Exception) {
+                        Logger.e("Failed to send forward message", e)
+                        sendEvent(
+                            ShowErrorMessage(
+                                "Failed to send forward message: ${e.message}"
+                            )
+                        )
+                    }
+                }
+            }
+
             is ConversationListUiAction.CancelReplyToMessage -> {
                 _messagesUiState.update { it.copy(replyToMessage = null) }
             }
@@ -1059,7 +1204,7 @@ class ConversationListViewModel(
             is ConversationListUiAction.ConnectIdentities -> {
                 _messagesUiState.update {
                     it.copy(
-                        uiSheet = ConversationListUiSheet.ConnectIdentities(
+                        uiSheet = MessageListUiSheet.ConnectIdentities(
                             action.identities
                         )
                     )
@@ -1108,6 +1253,10 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     conversationService.unarchiveConversation(action.conversationId)
                 }
+            }
+
+            is ConversationListUiAction.ShowArchivedMessagesClicked -> {
+                _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToArchivedConversations) }
             }
 
             is ConversationListUiAction.ClearConversation -> {
@@ -1247,9 +1396,18 @@ class ConversationListViewModel(
                     }
 
                     val normalItems = conversationsPool
-                        .filter { !it.conversation.isPinned }
+                        .filter { !it.conversation.isPinned && it.conversation.conversationState == ConversationState.Active }
                         .map { conv -> ConversationListContentModel.Conversation(conv) }
                         .toPersistentList()
+                    if (normalItems.isNotEmpty()) {
+                        if (pinnedItems.isNotEmpty()) {
+                            items.add(ConversationListContentModel.Header(MR.string.chat_search_result_conversations))
+                        }
+                        items.addAll(normalItems)
+                    }
+
+                    val archivedCount = conversationsPool.count { it.conversation.conversationState == ConversationState.Archived }
+
                     if (normalItems.isNotEmpty()) {
                         if (pinnedItems.isNotEmpty()) {
                             items.add(ConversationListContentModel.Header(MR.string.chat_search_result_conversations))
@@ -1260,7 +1418,8 @@ class ConversationListViewModel(
                     _uiState.update {
                         it.copy(
                             conversationsContent = if (items.isEmpty()) ConversationListContentState.Empty
-                            else ConversationListContentState.Items(items.toPersistentList())
+                            else ConversationListContentState.Items(items.toPersistentList()),
+                            archivedCount = archivedCount
                         )
                     }
                 } else {

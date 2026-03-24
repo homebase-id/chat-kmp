@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.sp
 import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
+import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
@@ -278,6 +280,72 @@ fun ContactItem(
             ),
             sharedTransitionScope = null,
             animatedVisibilityScope = null
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            subTitle?.let {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = subTitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        annotation?.let {
+            Text(
+                text = annotation,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (selectionMode) {
+            val tint = if(isSelectionEnabled) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.4f)
+            if (isSelected) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = tint)
+            } else {
+                Icon(Icons.Outlined.Circle, contentDescription = null, tint = tint)
+            }
+        }
+    }
+}
+
+@Composable
+fun GroupOrConversationItem(
+    avatarModel: ConversationAvatarModel,
+    name: String,
+    subTitle: String? = null,
+    annotation: String? = null,
+    selectionMode: Boolean = false,
+    isSelectionEnabled: Boolean= true,
+    isSelected: Boolean = false,
+    onContactClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = {
+                if (selectionMode && !isSelectionEnabled) return@clickable
+                onContactClick()
+            })
+            .padding(horizontal = 12.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ConversationAvatar(
+            avatarModel = avatarModel,
+            options = AvatarOptions(
+                size = 28.dp,
+                fontSize = 12.sp,
+            ),
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

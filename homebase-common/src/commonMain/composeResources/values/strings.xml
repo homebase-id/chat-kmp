@@ -25,6 +25,8 @@
     <string name="skip">Skip</string>
     <string name="next">Next</string>
     <string name="contacts">Contacts</string>
+    <string name="groups">Groups</string>
+    <string name="recents">Recents</string>
     <string name="members">Members</string>
     <string name="remove">Remove</string>
     <string name="discard">Discard</string>
@@ -53,6 +55,7 @@
     <string name="someone">Someone</string>
     <string name="leave">Leave</string>
     <string name="export_log">Export log</string>
+    <string name="send">Send</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -170,7 +173,10 @@
     <string name="chat_group_settings">Group settings</string>
     <string name="chat_delete">Delete</string>
     <string name="chat_archive">Archive</string>
+    <string name="chat_archived">Archived</string>
     <string name="chat_unarchive">Restore</string>
+    <string name="chat_archived_chats">Archived conversations</string>
+    <string name="chat_archived_chats_empty">Archived conversations will be shown here</string>
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
@@ -186,6 +192,7 @@
     <string name="chat_message_info">Message info</string>
     <string name="chat_message_reply">Reply</string>
     <string name="chat_message_forward">Forward</string>
+    <string name="chat_message_forwarded">Message forwarded</string>
     <string name="chat_message_copy">Copy</string>
     <string name="chat_message_reaction">Reaction</string>
     <string name="chat_message_edit">Edit</string>
@@ -216,6 +223,8 @@
     <string name="chat_message_remove_gallery_image">Remove image</string>
     <string name="chat_message_hide_keyboard">Hide keyboard</string>
     <string name="chat_message_discard_draft">Discard draft?</string>
+
+    <string name="chat_message_forward_to">Forward to</string>
 
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Search emoji</string>

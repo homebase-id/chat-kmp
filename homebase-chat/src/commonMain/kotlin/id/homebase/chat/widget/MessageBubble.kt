@@ -96,6 +96,7 @@ fun SentMessageBubble(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
+    onForward: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onShare: () -> Unit,
     onDelete: () -> Unit,
@@ -186,6 +187,10 @@ fun SentMessageBubble(
                             popupMode = MessagePopupMode.None
                             onReply?.invoke()
                         },
+                        onForward = {
+                            popupMode = MessagePopupMode.None
+                            onForward?.invoke()
+                        },
                         onCopy = {
                             popupMode = MessagePopupMode.None
                             scope.launch {
@@ -271,7 +276,7 @@ fun ReceivedMessageBubble(
     renderAuthorName: Boolean = false,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
-    onShare: () -> Unit,
+    onForward: (() -> Unit)? = null,
     onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
@@ -423,24 +428,21 @@ fun ReceivedMessageBubble(
                             popupMode = MessagePopupMode.None
                             onReply?.invoke()
                         },
+                        onForward = {
+                            popupMode = MessagePopupMode.None
+                            onForward?.invoke()
+                        },
                         onCopy = {
                             popupMode = MessagePopupMode.None
                             scope.launch {
                                 clipboardManager.setClipEntry(clipEntryOf(message.content))
                             }
                         },
-                        onMarkAsRead = {
-                            popupMode = MessagePopupMode.None
-                            onMarkAsRead()
-                        },
                         onDelete = {
                             popupMode = MessagePopupMode.None
                             onDelete()
                         },
-                        onShare = {
-                            popupMode = MessagePopupMode.None
-                            onShare()
-                        })
+                        )
                 }
             }
             if (showEmojiPicker) {

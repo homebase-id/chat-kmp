@@ -6,6 +6,7 @@ import org.jetbrains.compose.resources.StringResource
 sealed interface ConversationListUiEvent {
     data object NavigateBack : ConversationListUiEvent
     data object NavigateToNewConversation : ConversationListUiEvent
+    data object NavigateToArchivedConversations : ConversationListUiEvent
     data class NavigateToContactInfo(val odinId: String) : ConversationListUiEvent
     data class NavigateToGroupSettings(val conversationId: String) : ConversationListUiEvent
     data class NavigateToConversationSettings(val conversationId: String) : ConversationListUiEvent

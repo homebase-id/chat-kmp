@@ -3,6 +3,7 @@ package id.homebase.core.di
 import id.homebase.api.di.apiModule
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersViewModel
+import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactinfo.ContactInfoViewModel
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
@@ -17,10 +18,10 @@ import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.PayloadBundleEncryptionService
-import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.contact.DriveContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
@@ -64,6 +65,7 @@ val appModule = module {
     viewModelOf(::AppLoadingViewModel)
     viewModelOf(::HomeViewModel)
     viewModelOf(::ConversationListViewModel)
+    viewModelOf(::ArchivedConversationsViewModel)
     viewModelOf(::CreateConversationViewModel)
     viewModelOf(::CreateConversationGroupViewModel)
     viewModelOf(::SelectMembersViewModel)
