@@ -1131,16 +1131,22 @@ class ConversationListViewModel(
             is ConversationListUiAction.ForwardMessageSend -> {
                 viewModelScope.launch {
                     try {
-//                        action.recipients.forEach { recipient ->
-//                            val newMessageId = Uuid.random()
-//                            chatMessageSenderService.sendNewMessage(
-//                                messageUniqueId = newMessageId,
-//                                conversationId = conversationId,
-//                                messageText = action.message.content,
-//                                previousMessageUniqueId = null,
-//                                payloadBundle = null,
-//                            )
-//                        }
+                        val conversationIds = action.recipients.map { recipientModel ->
+                            when (recipientModel) {
+                                is RecipientModel.Contact -> {
+                                    conversationService.createConversation(
+                                        recipients = listOf(recipientModel.contact.odinId),
+                                        title = "",
+                                        payloadBundle = null,
+                                    )
+                                }
+                                is RecipientModel.Conversation -> recipientModel.conversation.conversation.id
+                            }
+                        }
+                        chatMessageSenderService.forwardMessage(
+                            sourceMessageUniqueId = action.message.id,
+                            targetConversationIds = conversationIds
+                        )
                         _messagesUiState.update { it.copy(uiSheet = null) }
                         sendEvent(ShowInfoMessage(MR.string.chat_message_forwarded))
                     } catch (e: Exception) {
