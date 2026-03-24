@@ -25,7 +25,7 @@ fun OwnerAvatar(
     odinId: OdinId,
     profileImageData: HomebaseImageData?,
     initials: String?,
-    driveIsConnected: Boolean? = null,
+    connectionStatus: ConnectionStatus? = null,
     driveIsSyncing: Boolean? = null,
     options: AvatarOptions,
     modifier: Modifier = Modifier,
@@ -61,13 +61,18 @@ fun OwnerAvatar(
                 modifier = modifier
             )
         }
-        if (driveIsConnected != null) {
+        if (connectionStatus != null) {
+            val color = when (connectionStatus) {
+                ConnectionStatus.Connected    -> ExtendedColors.Success
+                ConnectionStatus.Connecting   -> Color(0xFFFFA500)
+                ConnectionStatus.Disconnected -> Color.Red
+            }
             if (driveIsSyncing == true) {
                 CircularProgressIndicator(
                     modifier = modifier
                         .align(Alignment.BottomEnd)
                         .size(16.dp),
-                    color = if (driveIsConnected) ExtendedColors.Success else Color.Red,
+                    color = color,
                     strokeWidth = 4.dp
                 )
             } else {
@@ -76,7 +81,7 @@ fun OwnerAvatar(
                         .align(Alignment.BottomEnd)
                         .size(16.dp)
                         .clip(CircleShape)
-                        .background(if (driveIsConnected) ExtendedColors.Success else Color.Red)
+                        .background(color)
                         .border(
                             width = 1.dp,
                             color = Color.Black,

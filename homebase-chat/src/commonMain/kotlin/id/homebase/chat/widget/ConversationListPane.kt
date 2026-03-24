@@ -135,7 +135,7 @@ fun ConversationListPane(
                                                 odinId = session.odinId,
                                                 profileImageData = null,
                                                 initials = session.initials(),
-                                                driveIsConnected = uiState.driveIsConnected,
+                                                connectionStatus = uiState.connectionStatus,
                                                 driveIsSyncing = uiState.driveIsSyncing,
                                                 options = AvatarOptions(
                                                     size = 32.dp, fontSize = 12.sp, onClick = {
