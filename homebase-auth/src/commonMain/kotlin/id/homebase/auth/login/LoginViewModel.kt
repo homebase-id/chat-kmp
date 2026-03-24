@@ -4,9 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.common.OdinId
+import id.homebase.api.exception.AuthInProgressException
+import id.homebase.api.isIos
 import id.homebase.api.sync.DriveState
 import id.homebase.api.sync.DriveSyncManager
-import id.homebase.api.isIos
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -25,7 +26,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
@@ -136,13 +136,9 @@ class LoginViewModel(
                     circles =
                         listOf(CONFIRMED_CONNECTIONS_CIRCLE_ID, AUTO_CONNECTIONS_CIRCLE_ID)
                 )
-                if (authUrl.isNotBlank()) {
-                    _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenAuthUrl(authUrl)) }
-                } else {
-                    _uiState.update {
-                        it.copy(isLoading = false, errorMessage = "Authentication already in progress")
-                    }
-                }
+                _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenAuthUrl(authUrl)) }
+            } catch (_: AuthInProgressException) {
+                // ignore
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, errorMessage = e.message ?: "Login failed")
@@ -169,28 +165,31 @@ class LoginViewModel(
             driveSyncManager.driveStatuses.collect { statuses ->
                 val progresses = statuses.values.map { status ->
                     when (val state = status.state) {
-                        is DriveState.Initialized   -> DriveProgress(
+                        is DriveState.Initialized -> DriveProgress(
                             driveId = status.driveId.toString(),
-                            name    = status.label,
+                            name = status.label,
                         )
+
                         is DriveState.Synchronizing -> DriveProgress(
                             driveId = status.driveId.toString(),
-                            name    = status.label,
-                            count   = state.count,
-                            total   = state.count,
+                            name = status.label,
+                            count = state.count,
+                            total = state.count,
                         )
-                        is DriveState.Completed     -> DriveProgress(
-                            driveId   = status.driveId.toString(),
-                            name      = status.label,
-                            completed = true,
-                            progress  = 1f,
-                            count     = state.totalCount,
-                            total     = state.totalCount,
-                        )
-                        is DriveState.Failed        -> DriveProgress(
+
+                        is DriveState.Completed -> DriveProgress(
                             driveId = status.driveId.toString(),
-                            name    = status.label,
-                            error   = state.message,
+                            name = status.label,
+                            completed = true,
+                            progress = 1f,
+                            count = state.totalCount,
+                            total = state.totalCount,
+                        )
+
+                        is DriveState.Failed -> DriveProgress(
+                            driveId = status.driveId.toString(),
+                            name = status.label,
+                            error = state.message,
                         )
                     }
                 }
