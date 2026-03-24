@@ -255,7 +255,7 @@ class OptimisticWriter(
                     batchCount = batch.size,
                     latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.WebSocket
+                    source = BackendEvent.SyncSource.DriveSync
                 )
             )
         } catch (e: Exception) {
