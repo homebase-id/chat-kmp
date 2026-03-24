@@ -36,7 +36,7 @@ fun OwnerAvatar(
 ) {
     Box(
         modifier = modifier
-            .ifTrue(driveIsConnected != null) { Modifier.size(options.size + 6.dp) }
+            .ifTrue(connectionStatus != null) { Modifier.size(options.size + 6.dp) }
     ) {
         if (profileImageData != null) {
             HomebaseImage(
