@@ -1,5 +1,6 @@
 package id.homebase.chat.messageinfo
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -23,18 +25,32 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import id.homebase.api.common.OdinId
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.widget.ReceivedMessageBubble
 import id.homebase.chat.widget.SentMessageBubble
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.util.formateDateTime
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_info
+import id.homebase.resources.delivered_to
 import id.homebase.resources.details
+import id.homebase.resources.failed
+import id.homebase.resources.label_sent
+import id.homebase.resources.label_updated
 import id.homebase.resources.menu_back
-import id.homebase.resources.sent
-import id.homebase.resources.updated
+import id.homebase.resources.reactions
+import id.homebase.resources.read_by
+import id.homebase.resources.sent_to
 import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.compose.resources.stringResource
 
@@ -79,117 +95,236 @@ fun MessageInfoUi(
                 },
             )
         }) { padding ->
-        Column(modifier = Modifier
-            .consumeWindowInsets(padding)
-            .padding(padding)
-            .padding(16.dp)
-            .verticalScroll(scrollState)
+        Column(
+            modifier = Modifier
+                .consumeWindowInsets(padding)
+                .padding(padding)
+                .verticalScroll(scrollState)
         ) {
             if (uiState.isLoading) {
                 Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
             } else {
                 Spacer(modifier = Modifier.height(16.dp))
                 uiState.message?.let { message ->
-                    if (message.isAuthoredBy(uiState.ownerSession?.odinId)) {
-                        SentMessageBubble(
-                            message = message,
-                            decryptedFiles = persistentMapOf(),
-                            onEdit = {},
-                            onShare = {},
-                            onDelete = {},
-                            onMediaClick = {},
-                            onClickMessageId = {},
-                            onShowReactions = {},
-                            downloadingFiles = emptySet(),
-                        )
-                    } else {
-                        ReceivedMessageBubble(
-                            message = message,
-                            decryptedFiles = persistentMapOf(),
-                            onShare = {},
-                            onDelete = {},
-                            onMarkAsRead = {},
-                            onShowReactions = {},
-                            onMediaClick = {},
-                            onClickMessageId = {},
-                            downloadingFiles = emptySet(),
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(32.dp))
-                Text(
-                    text = stringResource(MR.string.details),
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Row(modifier = Modifier.padding(top = 16.dp)) {
-                    Text(
-                        text = stringResource(MR.string.sent) + ": ",
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    Text(
-                        text = uiState.message?.created?.let { formateDateTime(it) } ?: "",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                }
-                Row(modifier = Modifier.padding(top = 16.dp)) {
-                    Text(
-                        text = stringResource(MR.string.updated) + ": ",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(
-                        text = uiState.message?.modified?.let { formateDateTime(it) }
-                            ?: uiState.message?.created?.let { formateDateTime(it) } ?: "",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                }
-
-                if (uiState.isTransferHistoryLoading) {
-                    Spacer(modifier = Modifier.height(32.dp))
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                } else if (uiState.transferHistory != null) {
-                    Spacer(modifier = Modifier.height(32.dp))
-                    Text(
-                        text = "Transfer History",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Original Recipients: ${uiState.transferHistory.originalRecipientCount}",
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    uiState.transferHistory.history.results.forEach { entry ->
-                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-                            Text(
-                                text = "Recipient: ${entry.recipient}",
-                                style = MaterialTheme.typography.labelMedium
+                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        if (message.isAuthoredBy(uiState.ownerSession?.odinId)) {
+                            SentMessageBubble(
+                                message = message,
+                                decryptedFiles = persistentMapOf(),
+                                onEdit = {},
+                                onShare = {},
+                                onDelete = {},
+                                onMediaClick = {},
+                                onClickMessageId = {},
+                                onShowReactions = {},
+                                downloadingFiles = emptySet(),
                             )
-                            Text(
-                                text = "Status: ${entry.latestTransferStatus}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                text = "In Outbox: ${if (entry.isInOutbox) "Yes" else "No"}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                text = "Read: ${if (entry.isReadByRecipient) "Yes" else "No"}",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                text = "Last Updated: ${formateDateTime(kotlin.time.Instant.fromEpochMilliseconds(entry.lastUpdated))}",
-                                style = MaterialTheme.typography.bodyMedium
+                        } else {
+                            ReceivedMessageBubble(
+                                message = message,
+                                decryptedFiles = persistentMapOf(),
+                                onShare = {},
+                                onDelete = {},
+                                onMarkAsRead = {},
+                                onShowReactions = {},
+                                onMediaClick = {},
+                                onClickMessageId = {},
+                                downloadingFiles = emptySet(),
                             )
                         }
                     }
                 }
+
+                // Details section
+                SectionHeader(
+                    text = stringResource(MR.string.details),
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                Text(
+                    text = stringResource(
+                        MR.string.label_sent,
+                        uiState.message?.created?.let { formateDateTime(it) } ?: "",
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                )
+                Text(
+                    text = stringResource(
+                        MR.string.label_updated,
+                        uiState.message?.modified?.let { formateDateTime(it) }
+                            ?: uiState.message?.created?.let { formateDateTime(it) } ?: "",
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                )
+
+                // Recipients section grouped by status
+                if (uiState.isTransferHistoryLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { CircularProgressIndicator() }
+                } else if (uiState.recipients.isNotEmpty()) {
+                    // Merge Sending into Sent to avoid duplicate "Sent to" sections
+                    val normalizedRecipients = remember(uiState.recipients) {
+                        uiState.recipients.map { recipient ->
+                            if (recipient.deliveryStatus == ChatDeliveryStatus.Sending) {
+                                recipient.copy(deliveryStatus = ChatDeliveryStatus.Sent)
+                            } else {
+                                recipient
+                            }
+                        }
+                    }
+                    val grouped = remember(normalizedRecipients) {
+                        normalizedRecipients.groupBy { it.deliveryStatus }
+                    }
+
+                    val statusOrder = listOf(
+                        ChatDeliveryStatus.Read,
+                        ChatDeliveryStatus.Delivered,
+                        ChatDeliveryStatus.Sent,
+                        ChatDeliveryStatus.Failed,
+                    )
+
+                    statusOrder.forEach { status ->
+                        val entries = grouped[status] ?: return@forEach
+                        val label = when (status) {
+                            ChatDeliveryStatus.Read -> stringResource(MR.string.read_by)
+                            ChatDeliveryStatus.Delivered -> stringResource(MR.string.delivered_to)
+                            ChatDeliveryStatus.Sent -> stringResource(MR.string.sent_to)
+                            ChatDeliveryStatus.Failed -> stringResource(MR.string.failed)
+                            else -> return@forEach
+                        }
+                        SectionHeader(
+                            text = label,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        entries.forEach { recipient ->
+                            RecipientRow(
+                                recipient = recipient,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
+                }
+
+                // Reactions section
+                if (uiState.isReactionsLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { CircularProgressIndicator() }
+                } else if (uiState.reactions.isNotEmpty()) {
+                    SectionHeader(
+                        text = stringResource(MR.string.reactions),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    uiState.reactions.forEach { reaction ->
+                        ReactionRow(
+                            reaction = reaction,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun SectionHeader(text: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .padding(bottom = 4.dp)
+                .semantics { heading() },
+        )
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun RecipientRow(recipient: RecipientStatusUiModel, modifier: Modifier = Modifier) {
+    val odinId = remember(recipient.odinId) { OdinId(recipient.odinId) }
+    val errorText = recipient.errorDetailRes?.let { stringResource(it) }
+    val accessibilityDescription = buildString {
+        append(recipient.displayName)
+        if (errorText != null) {
+            append(", ")
+            append(errorText)
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clearAndSetSemantics { contentDescription = accessibilityDescription },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        PublicAvatar(
+            odinId = odinId,
+            initials = recipient.displayName.firstOrNull()?.toString(),
+            options = AvatarOptions(size = 40.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = recipient.displayName,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            if (errorText != null) {
+                Text(
+                    text = errorText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReactionRow(reaction: ReactionUiModel, modifier: Modifier = Modifier) {
+    val odinId = remember(reaction.odinId) { OdinId(reaction.odinId) }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clearAndSetSemantics {
+                contentDescription = "${reaction.displayName}, ${reaction.emoji}"
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        PublicAvatar(
+            odinId = odinId,
+            initials = reaction.displayName.firstOrNull()?.toString(),
+            options = AvatarOptions(size = 40.dp),
+        )
+        Text(
+            text = reaction.displayName,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = reaction.emoji,
+            style = MaterialTheme.typography.headlineMedium,
+        )
     }
 }

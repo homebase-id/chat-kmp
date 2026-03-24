@@ -17,6 +17,17 @@ enum class NotificationContentLevel(val code: String, val displayName: String) {
     }
 }
 
+/** Push notification registration status. */
+enum class RegistrationStatus {
+    UNKNOWN, REGISTERED, NOT_REGISTERED, ERROR
+}
+
+/** Result of a re-registration attempt. */
+sealed interface ReRegisterResult {
+    data class Success(val token: String) : ReRegisterResult
+    data class Failure(val message: String) : ReRegisterResult
+}
+
 /** UI state for the notification settings screen. */
 data class NotificationSettingsUiState(
     val playWhileAppOpen: Boolean = true,
@@ -25,6 +36,10 @@ data class NotificationSettingsUiState(
     val isReRegistering: Boolean = false,
     val showContentLevelPicker: Boolean = false,
     val isPermissionGranted: Boolean = false,
+    val deviceToken: String? = null,
+    val registrationStatus: RegistrationStatus = RegistrationStatus.UNKNOWN,
+    val reRegisterResult: ReRegisterResult? = null,
+    val showDebugInfo: Boolean = false,
 )
 
 /** Actions from the notification settings UI. */
@@ -36,4 +51,6 @@ sealed interface NotificationSettingsUiAction {
     data object ReRegisterPushNotifications : NotificationSettingsUiAction
     data object RequestPermission : NotificationSettingsUiAction
     data object OpenSystemNotificationSettings : NotificationSettingsUiAction
+    data object DismissReRegisterResult : NotificationSettingsUiAction
+    data object DebugHeaderTapped : NotificationSettingsUiAction
 }

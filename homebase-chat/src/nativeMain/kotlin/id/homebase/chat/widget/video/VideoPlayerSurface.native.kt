@@ -185,7 +185,8 @@ private class HomebaseResourceLoaderDelegate(
         val loadingRequest = shouldWaitForLoadingOfRequestedResource
         val path = loadingRequest.request.URL?.path?.trimStart('/') ?: return false
 
-        scope?.launch(Dispatchers.Main) {
+        scope?.la
+        unch(Dispatchers.Main) {
             try {
                 if (path.endsWith(".m3u8")) {
                     val bytes = strippedPlaylist.encodeToByteArray()

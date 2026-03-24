@@ -1,0 +1,95 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Homebase Chat — a Kotlin Multiplatform (KMP) chat application targeting Android, iOS, Desktop (macOS/Windows/Linux), and Web (partial). Built with Compose Multiplatform, using MVVM architecture with Koin DI.
+
+## Build & Run Commands
+
+```bash
+# Android
+./gradlew androidApp:installDebug
+./gradlew androidApp:assembleRelease    # requires HOMEBASE_KEYSTORE_PASS env var
+
+# Desktop
+./gradlew desktopApp:run
+./gradlew desktopApp:hotRunJvm --auto   # hot reload
+
+# iOS — open iosApp/ in Xcode and run
+
+# Web (currently disabled in settings.gradle.kts)
+./gradlew webApp:wasmJsBrowserDevelopmentRun --no-configuration-cache
+```
+
+## Testing
+
+```bash
+# JVM tests (common + api modules)
+./gradlew homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
+
+# Platform-specific
+./gradlew androidApp:testDebugUnitTest
+./gradlew desktopApp:desktopTest
+./gradlew iosSimulatorArm64Test          # requires booted iOS simulator
+```
+
+## Module Architecture
+
+```
+homebase-api          — Core layer: HTTP client (Ktor), database (SQLDelight), crypto, sync engine
+    ↑
+homebase-common       — Shared UI components, theme, settings, notifications, permissions, image/audio utils
+homebase-auth         — Authentication screens and logic
+homebase-chat         — Chat features: conversations, messaging, groups, media, encryption services
+    ↑
+homebase-core         — App orchestration: navigation (AppNavHost), DI setup (Koin), top-level screens
+    ↑
+androidApp / desktopApp / iosApp  — Platform entry points
+```
+
+**Module namespace:** `id.homebase.*` — api, core, chat, feed (android app)
+
+## KMP Source Set Convention
+
+Each module follows the standard KMP layout:
+- `src/commonMain/kotlin/` — Shared code (bulk of logic)
+- `src/androidMain/kotlin/` — Android implementations (OkHttp, ExoPlayer, SQLCipher)
+- `src/jvmMain/kotlin/` — Desktop implementations (VLC-J, JDBC SQLite)
+- `src/nativeMain/kotlin/` — iOS implementations (Darwin networking, native SQLite)
+- `src/webMain/kotlin/` — Web implementations (partial)
+
+Use `expect`/`actual` declarations for platform-specific code. The flag `-Xexpect-actual-classes` is enabled.
+
+## Key Technology Choices
+
+- **DI:** Koin — all modules registered in `homebase-core/.../di/AppModule.kt`
+- **Database:** SQLDelight (`OdinDatabase`) with SQLCipher encryption on Android, encrypted JDBC on Desktop
+- **Networking:** Ktor client with platform-specific engines (OkHttp/Darwin/CIO)
+- **Navigation:** Compose Navigation via `AppNavHost` in homebase-core
+- **Serialization:** kotlinx.serialization (JSON)
+- **Images:** Coil3
+- **State:** ViewModels with StateFlow, separate `*UiState` data classes
+- **Logging:** Kermit
+- **Notifications:** KMPNotifier (cross-platform)
+
+## Build Configuration
+
+- **Java 17** required (Temurin distribution in CI)
+- **Gradle config cache** enabled
+- **Version catalog:** `gradle/libs.versions.toml` — all dependency versions managed here
+- **Android:** compileSdk 36, minSdk 27, targetSdk 36
+- **Kotlin:** 2.3.10, Compose Multiplatform 1.10.2
+
+## iOS Framework
+
+homebase-core exports as `ComposeApp` framework, transitively exporting homebase-api and homebase-common. Other modules export individual frameworks (`homebase-commonKit`, `homebase-authKit`, `homebase-chatKit`).
+
+## CI/CD
+
+GitHub Actions workflows in `.github/workflows/`:
+- `build-check.yml` — assembleDebug + createDistributable on push/PR to main
+- `test.yml` — runs platform-specific tests (JVM, desktop, iOS simulator)
+- `lint.yml` — code linting
+- `build-android-release.yml`, `build-ios-release.yml`, `build-mobile-release.yml` — release builds

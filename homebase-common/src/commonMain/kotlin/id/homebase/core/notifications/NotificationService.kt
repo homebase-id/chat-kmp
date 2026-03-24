@@ -73,20 +73,24 @@ class NotificationService(private val api: PushNotificationApi, private val scop
     private fun registerToken(token: String) {
         scope.launch {
             try {
-                val platformName = Platform.osName
-                val friendlyName = "${Platform.osName} | ${Platform.osVersion}"
-
-                Logger.i(tag = "NotificationService") {
-                    "Registering token with server... ($friendlyName)"
-                }
-                api.subscribe(
-                    deviceToken = token, devicePlatform = platformName, friendlyName = friendlyName
-                )
-                Logger.i(tag = "NotificationService") { "Token registered successfully" }
+                registerTokenSuspend(token)
             } catch (e: Exception) {
                 Logger.e(tag = "NotificationService") { "Failed to register token: ${e.message}" }
             }
         }
+    }
+
+    private suspend fun registerTokenSuspend(token: String) {
+        val platformName = Platform.osName
+        val friendlyName = "${Platform.osName} | ${Platform.osVersion}"
+
+        Logger.i(tag = "NotificationService") {
+            "Registering token with server... ($friendlyName)"
+        }
+        api.subscribe(
+            deviceToken = token, devicePlatform = platformName, friendlyName = friendlyName
+        )
+        Logger.i(tag = "NotificationService") { "Token registered successfully" }
     }
 
     /** Parses the raw payload data map and creates a local notification display. */
@@ -147,18 +151,25 @@ class NotificationService(private val api: PushNotificationApi, private val scop
         }
     }
 
-    /** Re-registers push notifications by deleting and re-fetching the token. */
-    suspend fun reRegister(): String? {
-        deleteToken()
-        // getToken() will trigger onNewToken listener if a new token is generated,
-        // or we might need to manually call registerToken if getToken returns immediately.
-        // But KMPNotifier onNewToken is usually called when underlying token changes.
-        // If we simply call getToken(), it returns the token.
-        // If we deleted it, getToken() should fetch a new one.
-        val newToken = getToken()
-        if (newToken != null) {
-            registerToken(newToken)
+    /** Re-registers push notifications by deleting and re-fetching the token.
+     *  Returns Result.success with the new token, or Result.failure with the error.
+     *  Unlike the public deleteToken()/getToken(), errors are NOT swallowed here
+     *  so the caller gets proper feedback. */
+    suspend fun reRegister(): Result<String?> {
+        return try {
+            Logger.i(tag = "NotificationService") { "Re-registering: unsubscribing old token..." }
+            api.unsubscribe()
+            NotifierManager.getPushNotifier().deleteMyToken()
+
+            Logger.i(tag = "NotificationService") { "Re-registering: fetching new token..." }
+            val newToken = NotifierManager.getPushNotifier().getToken()
+            if (newToken != null) {
+                registerTokenSuspend(newToken)
+            }
+            Result.success(newToken)
+        } catch (e: Exception) {
+            Logger.e(tag = "NotificationService") { "Re-register failed: ${e.message}" }
+            Result.failure(e)
         }
-        return newToken
     }
 }

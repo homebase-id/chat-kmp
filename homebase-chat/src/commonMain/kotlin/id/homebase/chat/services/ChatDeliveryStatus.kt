@@ -1,5 +1,29 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.drives.files.RecipientTransferHistoryEntry
+import id.homebase.api.client.drives.files.TransferStatus
+import id.homebase.resources.MR
+import id.homebase.resources.error_access_denied
+import id.homebase.resources.error_delivery_failed
+import id.homebase.resources.error_server_not_responding
+import id.homebase.resources.error_too_many_attempts
+import org.jetbrains.compose.resources.StringResource
+
+fun RecipientTransferHistoryEntry.toChatDeliveryStatus(): ChatDeliveryStatus = when {
+    TransferStatus.isFailedStatus(latestTransferStatus) -> ChatDeliveryStatus.Failed
+    isReadByRecipient -> ChatDeliveryStatus.Read
+    latestTransferStatus == TransferStatus.Delivered -> ChatDeliveryStatus.Delivered
+    isInOutbox -> ChatDeliveryStatus.Sending
+    else -> ChatDeliveryStatus.Sent
+}
+
+fun TransferStatus.toErrorDetailRes(): StringResource? = when (this) {
+    TransferStatus.RecipientServerNotResponding -> MR.string.error_server_not_responding
+    TransferStatus.RecipientIdentityReturnedAccessDenied -> MR.string.error_access_denied
+    TransferStatus.SendingServerTooManyAttempts -> MR.string.error_too_many_attempts
+    else -> if (TransferStatus.isFailedStatus(this)) MR.string.error_delivery_failed else null
+}
+
 enum class ChatDeliveryStatus(val value: Int) {
     /** Message is currently being sent; Used for optimistic updates */
     Sending(15),
