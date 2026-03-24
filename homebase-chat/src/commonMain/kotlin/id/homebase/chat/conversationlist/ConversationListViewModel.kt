@@ -252,11 +252,12 @@ class ConversationListViewModel(
 
         // Set isConnecting state
         viewModelScope.launch {
-            eventBus.events.filter { it is BackendEvent.DriveEvent }.collectLatest { state ->
-                if (state is BackendEvent.DriveEvent.SyncAllCompleted || state is BackendEvent.DriveEvent.Completed) {
-                    _uiState.update { it.copy(driveIsSyncing = false) }
-                } else if (state is BackendEvent.DriveEvent.Started || state is BackendEvent.DriveEvent.SyncAllStarted) {
-                    _uiState.update { it.copy(driveIsSyncing = true) }
+            eventBus.events.filter { it is BackendEvent.DriveEvent }.collectLatest { event ->
+                when (event) {
+                    is BackendEvent.DriveEvent.SyncAllStarted                    -> _uiState.update { it.copy(driveIsSyncing = true) }
+                    is BackendEvent.DriveEvent.SyncAllCompleted,
+                    is BackendEvent.DriveEvent.SyncAllFailed                     -> _uiState.update { it.copy(driveIsSyncing = false) }
+                    else -> Unit
                 }
             }
         }
