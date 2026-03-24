@@ -45,11 +45,11 @@ class DriveSyncManager(
             syncState.collect { current ->
                 when {
                     previous !is SyncState.Syncing && current is SyncState.Syncing ->
-                        eventBus.emit(BackendEvent.DriveEvent.SyncAllStarted)
+                        eventBus.emit(BackendEvent.SyncAllStarted)
                     previous is SyncState.Syncing && current is SyncState.Completed ->
-                        eventBus.emit(BackendEvent.DriveEvent.SyncAllCompleted)
+                        eventBus.emit(BackendEvent.SyncAllCompleted)
                     previous is SyncState.Syncing && current is SyncState.Failed ->
-                        eventBus.emit(BackendEvent.DriveEvent.SyncAllFailed)
+                        eventBus.emit(BackendEvent.SyncAllFailed)
                 }
                 previous = current
             }
