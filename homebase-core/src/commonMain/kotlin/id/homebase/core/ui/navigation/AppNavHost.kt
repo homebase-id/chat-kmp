@@ -42,6 +42,7 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
+import id.homebase.chat.archivedconversations.ArchivedConversationsScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
@@ -282,6 +283,9 @@ fun AppNavHost(
                                 onNavigateToNewConversation = {
                                     navController.navigate(Route.CreateConversation)
                                 },
+                                onNavigateToArchivedConversations = {
+                                    navController.navigate(Route.ArchivedConversations)
+                                },
                                 onNavigateToContactInfo = {
                                     navController.navigate(Route.ContactInfo(it))
                                 },
@@ -347,6 +351,26 @@ fun AppNavHost(
                                     navController.navigate(Route.ChatList(conversationId.toString())) {
                                         popUpTo(Route.CreateConversation) { inclusive = true }
                                     }
+                                },
+                            )
+                        }
+                    }
+
+                    composable<Route.ArchivedConversations> {
+                        if (isAuthenticated) {
+                            ArchivedConversationsScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                                onShowConversation = { conversationId ->
+                                    navController.navigate(Route.ChatList(conversationId)) {
+                                        popUpTo(Route.ArchivedConversations) { inclusive = true }
+                                    }
+                                },
+                                onNavigateToConversationSettings = { conversationId ->
+                                    navController.navigate(Route.ConversationSettings(conversationId))
+                                },
+                                onNavigateToGroupSettings = { conversationId ->
+                                    navController.navigate(Route.GroupSettings(conversationId))
                                 },
                             )
                         }

@@ -277,7 +277,6 @@ fun ReceivedMessageBubble(
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
-    onShare: () -> Unit,
     onDelete: () -> Unit,
     onMarkAsRead: () -> Unit,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
@@ -439,18 +438,11 @@ fun ReceivedMessageBubble(
                                 clipboardManager.setClipEntry(clipEntryOf(message.content))
                             }
                         },
-                        onMarkAsRead = {
-                            popupMode = MessagePopupMode.None
-                            onMarkAsRead()
-                        },
                         onDelete = {
                             popupMode = MessagePopupMode.None
                             onDelete()
                         },
-                        onShare = {
-                            popupMode = MessagePopupMode.None
-                            onShare()
-                        })
+                        )
                 }
             }
             if (showEmojiPicker) {

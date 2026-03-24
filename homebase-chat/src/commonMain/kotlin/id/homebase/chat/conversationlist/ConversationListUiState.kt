@@ -26,6 +26,7 @@ import kotlin.uuid.Uuid
 data class ConversationListUiState(
     val activeConversations: ImmutableList<EnrichedConversationUiModel> = persistentListOf(),
     val conversationsContent: ConversationListContentState = ConversationListContentState.Loading,
+    val archivedCount: Int = 0,
     val selectedConversationId: Uuid? = null,
     val filterByUnread: Boolean = false,
     val isSearchActive: Boolean = false,

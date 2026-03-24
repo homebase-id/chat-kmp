@@ -33,6 +33,7 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -1250,6 +1251,10 @@ class ConversationListViewModel(
                 }
             }
 
+            is ConversationListUiAction.ShowArchivedMessagesClicked -> {
+                _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToArchivedConversations) }
+            }
+
             is ConversationListUiAction.ClearConversation -> {
                 viewModelScope.launch {
                     conversationService.clearConversation(action.conversationId)
@@ -1387,9 +1392,18 @@ class ConversationListViewModel(
                     }
 
                     val normalItems = conversationsPool
-                        .filter { !it.conversation.isPinned }
+                        .filter { !it.conversation.isPinned && it.conversation.conversationState == ConversationState.Active }
                         .map { conv -> ConversationListContentModel.Conversation(conv) }
                         .toPersistentList()
+                    if (normalItems.isNotEmpty()) {
+                        if (pinnedItems.isNotEmpty()) {
+                            items.add(ConversationListContentModel.Header(MR.string.chat_search_result_conversations))
+                        }
+                        items.addAll(normalItems)
+                    }
+
+                    val archivedCount = conversationsPool.count { it.conversation.conversationState == ConversationState.Archived }
+
                     if (normalItems.isNotEmpty()) {
                         if (pinnedItems.isNotEmpty()) {
                             items.add(ConversationListContentModel.Header(MR.string.chat_search_result_conversations))
@@ -1400,7 +1414,8 @@ class ConversationListViewModel(
                     _uiState.update {
                         it.copy(
                             conversationsContent = if (items.isEmpty()) ConversationListContentState.Empty
-                            else ConversationListContentState.Items(items.toPersistentList())
+                            else ConversationListContentState.Items(items.toPersistentList()),
+                            archivedCount = archivedCount
                         )
                     }
                 } else {

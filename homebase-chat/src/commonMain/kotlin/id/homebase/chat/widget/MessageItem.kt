@@ -118,7 +118,6 @@ fun MessageItem(
             onMessageInfo = onMessageInfo,
             onReply = onReply,
             onForward = onForward,
-            onShare = onShare,
             onDelete = onDelete,
             onMarkAsRead = onMarkAsRead,
             onAddReaction = onAddReaction,

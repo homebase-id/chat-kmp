@@ -19,6 +19,7 @@ sealed interface ConversationListUiAction {
     data object ClearSelection : ConversationListUiAction
     data object FilterByUnreadClicked : ConversationListUiAction
     data object ClearFilterByUnreadClicked : ConversationListUiAction
+    data object ShowArchivedMessagesClicked : ConversationListUiAction
     data class ConnectIdentities(val identities: List<OdinId>) : ConversationListUiAction
     data class ConnectToIdentity(val odinId: OdinId) : ConversationListUiAction
     data object DismissSheet : ConversationListUiAction

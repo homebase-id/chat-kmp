@@ -40,7 +40,6 @@ import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.core.widget.ReactionMenu
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
-import id.homebase.resources.chat_unarchive
 import id.homebase.resources.chat_clear
 import id.homebase.resources.chat_delete
 import id.homebase.resources.chat_filter_by_unread_button
@@ -55,6 +54,7 @@ import id.homebase.resources.chat_message_info
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_pin
 import id.homebase.resources.chat_settings
+import id.homebase.resources.chat_unarchive
 import id.homebase.resources.chat_unpin
 import id.homebase.resources.delete
 import id.homebase.resources.save
@@ -148,11 +148,9 @@ fun ReceivedMessagePopup(
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
     onMessageInfo: () -> Unit,
-    onMarkAsRead: () -> Unit,
     onReply: () -> Unit,
     onForward: () -> Unit,
     onCopy: () -> Unit,
-    onShare: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Popup(
@@ -378,8 +376,8 @@ fun ConversationItemMenuPopup(
     dismissMenu: () -> Unit,
     isPinned: Boolean,
     isArchived: Boolean,
-    onMarkAsRead: () -> Unit,
-    onTogglePin: () -> Unit,
+    onMarkAsRead: (() -> Unit)? = null,
+    onTogglePin: (() -> Unit)? = null,
     onArchive: () -> Unit,
 ) {
     Popup(
@@ -397,26 +395,30 @@ fun ConversationItemMenuPopup(
                 Column(
                     modifier = Modifier.width(IntrinsicSize.Max)
                 ) {
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            dismissMenu()
-                            onMarkAsRead()
-                        },
-                        text = stringResource(MR.string.chat_mark_all_as_read),
-                        imageVector = Icons.Default.MarkChatRead,
-                    )
-                    ListItemActionNormalIcon(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            dismissMenu()
-                            onTogglePin()
-                        },
-                        text = if (isPinned) stringResource(MR.string.chat_unpin) else stringResource(
-                            MR.string.chat_pin
-                        ),
-                        imageVector = Icons.Default.PushPin,
-                    )
+                    if (onMarkAsRead != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                dismissMenu()
+                                onMarkAsRead()
+                            },
+                            text = stringResource(MR.string.chat_mark_all_as_read),
+                            imageVector = Icons.Default.MarkChatRead,
+                        )
+                    }
+                    if (onTogglePin != null) {
+                        ListItemActionNormalIcon(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                dismissMenu()
+                                onTogglePin()
+                            },
+                            text = if (isPinned) stringResource(MR.string.chat_unpin) else stringResource(
+                                MR.string.chat_pin
+                            ),
+                            imageVector = Icons.Default.PushPin,
+                        )
+                    }
                     ListItemActionNormalIcon(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {

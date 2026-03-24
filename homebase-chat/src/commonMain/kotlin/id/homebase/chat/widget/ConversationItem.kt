@@ -50,6 +50,7 @@ import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.resources.MR
+import id.homebase.resources.chat_archived
 import id.homebase.resources.chat_message_audio
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_file
@@ -65,9 +66,9 @@ import org.jetbrains.compose.resources.stringResource
 fun ConversationItem(
     enrichedData: EnrichedConversationUiModel,
     onClick: () -> Unit,
-    onTogglePinClick: () -> Unit,
+    onTogglePinClick: (() -> Unit)? = null,
     onArchiveClick: () -> Unit,
-    onMarkAsReadClick: () -> Unit,
+    onMarkAsReadClick: (() -> Unit)? = null,
     onContactClick: (odinId: OdinId) -> Unit,
     isSelected: Boolean,
 ) {
@@ -200,6 +201,15 @@ fun ConversationItem(
                 } else if (enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
                     Spacer(modifier = Modifier.width(4.dp))
                     DeliveryStatus(isPendingSend = false, deliveryStatus = enrichedData.conversation.lastMessageDeliveryStatus)
+                }
+                if (enrichedData.conversation.conversationState == ConversationState.Archived) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(stringResource(MR.string.chat_archived),
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
                 }
             }
 
