@@ -3,11 +3,51 @@ package id.homebase.api.image
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import co.touchlab.kermit.Logger
+import id.homebase.api.lib.image.ImageFormatDetector
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.IRect
 import org.jetbrains.skia.Surface
 import org.jetbrains.skia.Rect
+
+/**
+ * Desktop/JVM: Convert HEIC to JPEG using the bundled FFmpeg binary.
+ */
+actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? {
+    return try {
+        if (!id.homebase.api.video.FFmpegBinaryManager.isAvailable()) {
+            Logger.w(tag = "convertHeicToJpeg") { "FFmpeg not available, cannot convert HEIC" }
+            return null
+        }
+        val tmpDir = System.getProperty("java.io.tmpdir")
+        val inputFile = java.io.File(tmpDir, "heic_input_${System.nanoTime()}.heic")
+        val outputFile = java.io.File(tmpDir, "heic_output_${System.nanoTime()}.jpg")
+        try {
+            inputFile.writeBytes(heicBytes)
+            val command = listOf(
+                id.homebase.api.video.FFmpegBinaryManager.ffmpegPath(),
+                "-y", "-i", inputFile.absolutePath,
+                "-q:v", "2",
+                outputFile.absolutePath
+            )
+            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            process.inputStream.bufferedReader().use { it.readText() }
+            val completed = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
+            if (completed && process.exitValue() == 0 && outputFile.exists()) {
+                outputFile.readBytes()
+            } else {
+                Logger.w(tag = "convertHeicToJpeg") { "FFmpeg HEIC conversion failed (exit=${if (completed) process.exitValue() else -1})" }
+                null
+            }
+        } finally {
+            inputFile.delete()
+            outputFile.delete()
+        }
+    } catch (e: Exception) {
+        Logger.e(throwable = e, tag = "convertHeicToJpeg") { "Desktop HEIC conversion failed" }
+        null
+    }
+}
 
 /**
  * Desktop/JVM implementation: Convert ByteArray to ImageBitmap using Skia
@@ -28,7 +68,10 @@ actual fun ByteArray.toImageBitmap(): ImageBitmap? {
 actual object ImageUtils {
 
     private fun decodeImage(bytes: ByteArray): Image {
-        return Image.makeFromEncoded(bytes)
+        val inputBytes = if (ImageFormatDetector.isHeic(bytes)) {
+            convertHeicToJpeg(bytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
+        } else bytes
+        return Image.makeFromEncoded(inputBytes)
     }
 
     private fun encodedFormatFor(format: ImageFormat): EncodedImageFormat = when (format) {

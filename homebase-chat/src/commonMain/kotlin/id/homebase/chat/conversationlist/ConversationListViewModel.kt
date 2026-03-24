@@ -31,6 +31,7 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.image.ImageUtils
+import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.video.FFmpegUtils
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
@@ -1484,12 +1485,24 @@ class ConversationListViewModel(
                     }
 
                     is AttachmentPendingFile.FileImage -> {
+                        var filePath = attachment.file.toString()
+                        var contentType = detectContentTypeFromExtensionOrHint(attachment.file.name)
+                        if (contentType == "image/heic" || contentType == "image/heif") {
+                            val heicBytes = fileOperationsProvider.readFileBytes(filePath)
+                            val jpegBytes = convertHeicToJpeg(heicBytes)
+                            if (jpegBytes != null) {
+                                filePath = fileOperationsProvider.writeBytesToTempFile(
+                                    jpegBytes,
+                                    "heic_converted_",
+                                    ".jpg"
+                                )
+                                contentType = "image/jpeg"
+                            }
+                        }
                         attachments.add(
                             AttachmentInput(
-                                filePath = attachment.file.toString(),
-                                contentType = detectContentTypeFromExtensionOrHint(
-                                    attachment.file.name
-                                ),
+                                filePath = filePath,
+                                contentType = contentType,
                                 displayName = attachment.file.name,
                             )
                         )
@@ -1508,12 +1521,25 @@ class ConversationListViewModel(
                     }
 
                     is AttachmentPendingFile.Gallery -> {
+                        var filePath = attachment.image.file.toString()
+                        var contentType =
+                            detectContentTypeFromExtensionOrHint(attachment.image.fileName)
+                        if (contentType == "image/heic" || contentType == "image/heif") {
+                            val heicBytes = fileOperationsProvider.readFileBytes(filePath)
+                            val jpegBytes = convertHeicToJpeg(heicBytes)
+                            if (jpegBytes != null) {
+                                filePath = fileOperationsProvider.writeBytesToTempFile(
+                                    jpegBytes,
+                                    "heic_converted_",
+                                    ".jpg"
+                                )
+                                contentType = "image/jpeg"
+                            }
+                        }
                         attachments.add(
                             AttachmentInput(
-                                filePath = attachment.image.file.toString(),
-                                contentType = detectContentTypeFromExtensionOrHint(
-                                    attachment.image.fileName
-                                ),
+                                filePath = filePath,
+                                contentType = contentType,
                                 displayName = attachment.image.fileName,
                             )
                         )

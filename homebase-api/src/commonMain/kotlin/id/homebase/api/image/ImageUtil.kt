@@ -65,6 +65,12 @@ expect object ImageUtils {
 }
 
 /**
+ * Convert HEIC/HEIF image bytes to JPEG bytes.
+ * Returns null if conversion is not supported or fails on this platform.
+ */
+expect fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray?
+
+/**
  * Common helper to calculate target dimensions for aspect-preserving resize
  */
 internal fun calculateTargetDimensions(
