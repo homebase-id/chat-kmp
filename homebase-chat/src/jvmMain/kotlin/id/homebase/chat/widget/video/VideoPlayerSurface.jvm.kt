@@ -1,24 +1,45 @@
 package id.homebase.chat.widget.video
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.delay
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
@@ -167,9 +188,10 @@ actual fun VideoPlayerSurface(
 }
 
 @Composable
-private fun VlcjPlayer(
+internal fun VlcjPlayer(
     videoPath: String,
     modifier: Modifier,
+    onFirstFrameRendered: () -> Unit = {},
 ) {
     val vlcFound = remember { NativeDiscovery().discover() }
 
@@ -188,10 +210,47 @@ private fun VlcjPlayer(
     // the recomposition rate. Bitmap and pixel buffer are reused across frames to avoid GC.
     val pendingFrame = remember { AtomicReference<ImageBitmap?>(null) }
     var currentFrame by remember { mutableStateOf<ImageBitmap?>(null) }
+    var isPlaying by remember(videoPath) { mutableStateOf(true) }
+    var position by remember(videoPath) { mutableFloatStateOf(0f) }
+    var duration by remember(videoPath) { mutableFloatStateOf(0f) }
+    var isSeeking by remember { mutableStateOf(false) }
+
+    var firstFrameFired by remember(videoPath) { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while (true) {
-            withFrameNanos { pendingFrame.getAndSet(null)?.let { currentFrame = it } }
+            withFrameNanos {
+                pendingFrame.getAndSet(null)?.let {
+                    currentFrame = it
+                    if (!firstFrameFired) {
+                        firstFrameFired = true
+                        onFirstFrameRendered()
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(videoPath) {
+        while (true) {
+            if (!isSeeking) {
+                val len = mediaPlayer.status().length().toFloat()
+                val pos = mediaPlayer.status().time().toFloat()
+                val nowPlaying = mediaPlayer.status().isPlaying
+                if (len > 0f) {
+                    duration = len
+                    position = pos
+                }
+                if (isPlaying && !nowPlaying && len > 0f && pos >= len - 600) {
+                    // reached end — reset to beginning
+                    mediaPlayer.controls().setTime(0)
+                    position = 0f
+                    isPlaying = false
+                } else {
+                    isPlaying = nowPlaying
+                }
+            }
+            delay(500)
         }
     }
 
@@ -249,5 +308,114 @@ private fun VlcjPlayer(
         } else {
             CircularProgressIndicator()
         }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .background(Color.Black.copy(alpha = 0.5f))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            IconButton(onClick = {
+                if (isPlaying) {
+                    mediaPlayer.controls().setPause(true)
+                } else {
+                    mediaPlayer.controls().play()
+                }
+                isPlaying = !isPlaying
+            }) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = Color.White,
+                )
+            }
+            Text(
+                text = formatMs(position.toLong()),
+                color = Color.White,
+                fontSize = 12.sp,
+            )
+            SeekBar(
+                fraction = if (duration > 0f) position / duration else 0f,
+                onSeek = { fraction ->
+                    isSeeking = true
+                    position = fraction * duration
+                    mediaPlayer.controls().setTime(position.toLong())
+                },
+                onSeekFinished = { isSeeking = false },
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = formatMs(duration.toLong()),
+                color = Color.White,
+                fontSize = 12.sp,
+            )
+        }
     }
+}
+
+@Composable
+private fun SeekBar(
+    fraction: Float,
+    onSeek: (Float) -> Unit,
+    onSeekFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val trackColor = Color.White.copy(alpha = 0.4f)
+    val fillColor = Color.White
+    val thumbRadius = 6.dp
+
+    Box(
+        modifier = modifier
+            .height(36.dp)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    down.consume()
+                    val width = size.width.toFloat()
+                    onSeek((down.position.x / width).coerceIn(0f, 1f))
+                    do {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: break
+                        change.consume()
+                        onSeek((change.position.x / width).coerceIn(0f, 1f))
+                    } while (event.changes.any { it.pressed })
+                    onSeekFinished()
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.fillMaxWidth().height(4.dp)) {
+            val trackY = size.height / 2f
+            // Track background
+            drawLine(
+                color = trackColor,
+                start = Offset(0f, trackY),
+                end = Offset(size.width, trackY),
+                strokeWidth = size.height,
+            )
+            // Filled portion
+            drawLine(
+                color = fillColor,
+                start = Offset(0f, trackY),
+                end = Offset(size.width * fraction, trackY),
+                strokeWidth = size.height,
+            )
+            // Thumb
+            drawCircle(
+                color = fillColor,
+                radius = thumbRadius.toPx(),
+                center = Offset(size.width * fraction, trackY),
+            )
+        }
+    }
+}
+
+private fun formatMs(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 }
