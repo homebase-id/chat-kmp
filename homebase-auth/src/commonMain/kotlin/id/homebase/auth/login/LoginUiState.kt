@@ -1,6 +1,8 @@
 package id.homebase.auth.login
 
 import androidx.compose.runtime.Immutable
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 
 @Immutable
 data class LoginUiState(
@@ -8,7 +10,7 @@ data class LoginUiState(
     val isLoading: Boolean = false,
     val isAuthenticated: Boolean = false,
     val errorMessage: String? = null,
-    val driveProgresses: List<DriveProgress> = emptyList(),
+    val driveProgresses: ImmutableList<DriveProgress> = persistentListOf(),
     val uiEvent: LoginUiEvent? = null
 )
 

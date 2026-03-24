@@ -25,6 +25,8 @@
     <string name="skip">Skip</string>
     <string name="next">Next</string>
     <string name="contacts">Contacts</string>
+    <string name="groups">Groups</string>
+    <string name="recents">Recents</string>
     <string name="members">Members</string>
     <string name="remove">Remove</string>
     <string name="discard">Discard</string>
@@ -187,6 +189,7 @@
     <string name="chat_message_info">Message info</string>
     <string name="chat_message_reply">Reply</string>
     <string name="chat_message_forward">Forward</string>
+    <string name="chat_message_forwarded">Message forwarded</string>
     <string name="chat_message_copy">Copy</string>
     <string name="chat_message_reaction">Reaction</string>
     <string name="chat_message_edit">Edit</string>

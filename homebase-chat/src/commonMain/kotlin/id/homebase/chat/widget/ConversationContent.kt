@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
@@ -24,15 +25,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +53,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -68,8 +72,12 @@ import id.homebase.chat.data.ConversationState
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.chat.conversationlist.RecipientGroupModel
+import id.homebase.chat.conversationlist.RecipientModel
+import id.homebase.chat.conversationlist.RecipientType
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.createconversation.ContactItem
+import id.homebase.chat.createconversation.GroupOrConversationItem
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
@@ -86,14 +94,19 @@ import id.homebase.resources.chat_message_forward_to
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
+import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.connect
+import id.homebase.resources.contacts
+import id.homebase.resources.groups
 import id.homebase.resources.menu_back
+import id.homebase.resources.recents
 import id.homebase.resources.search
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -220,14 +233,16 @@ fun ConversationContent(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ConversationAvatar(
                             modifier = Modifier.focusable(), // to avoid textfield focus
-                            avatarModel = conversation.conversation.avatarModel, options = AvatarOptions(
+                            avatarModel = conversation.conversation.avatarModel,
+                            options = AvatarOptions(
                                 size = 32.dp, fontSize = 12.sp, onClick = {
                                     onUiAction(
                                         ConversationListUiAction.ShowConversationSettings(
                                             conversation.conversation
                                         )
                                     )
-                                }))
+                                })
+                        )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
                             Text(
@@ -361,7 +376,9 @@ fun ConversationContent(
                                             modifier = Modifier.fillMaxWidth()
                                                 .padding(horizontal = 16.dp)
                                                 .padding(bottom = 16.dp),
-                                            displayName = if (conversation.conversation.isWithSelf) stringResource(MR.string.chat_note_to_self) else conversation.conversation.name,
+                                            displayName = if (conversation.conversation.isWithSelf) stringResource(
+                                                MR.string.chat_note_to_self
+                                            ) else conversation.conversation.name,
                                             avatarModel = conversation.conversation.avatarModel,
                                         )
 
@@ -526,7 +543,8 @@ fun ConversationContent(
                                 showAttachmentSheet = false
                                 onUiAction(
                                     ConversationListUiAction.AttachGalleryItem(
-                                        conversationId = conversation.conversation.id, files = listOf(it)
+                                        conversationId = conversation.conversation.id,
+                                        files = listOf(it)
                                     )
                                 )
                                 // Handle image selection
@@ -555,7 +573,8 @@ fun ConversationContent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationContentSheets(
-    uiState: MessageListUiState, onUiAction: (ConversationListUiAction) -> Unit
+    uiState: MessageListUiState,
+    onUiAction: (ConversationListUiAction) -> Unit,
 ) {
     when (val sheet = uiState.uiSheet) {
         null -> {}
@@ -587,19 +606,43 @@ fun ConversationContentSheets(
 
         is MessageListUiSheet.ForwardMessage -> {
             val sheetState = rememberModalBottomSheetState()
-            val scrollState = rememberScrollState()
-            val searchTextState = remember { TextFieldState() }
+            val isSearching = sheet.searchTextState.text.isNotEmpty()
+            val scope = rememberCoroutineScope()
+
+            val filteredRecipients = remember(sheet.searchTextState.text) {
+                if (isSearching) {
+                    val query = sheet.searchTextState.text.toString()
+                    sheet.recipients.mapNotNull { group ->
+                        val matchingRecipients = group.recipients.filter { recipient ->
+                            when (recipient) {
+                                is RecipientModel.Contact -> recipient.contact.name.contains(
+                                    query,
+                                    ignoreCase = true
+                                )
+                                        || recipient.contact.odinId.domainName.contains(
+                                    query,
+                                    ignoreCase = true
+                                )
+
+                                is RecipientModel.Conversation -> recipient.conversation.getDisplayName()
+                                    .contains(query, ignoreCase = true)
+                            }
+                        }
+                        if (matchingRecipients.isEmpty()) null
+                        else group.copy(recipients = matchingRecipients)
+                    }
+                } else {
+                    sheet.recipients
+                }
+            }
 
             ModalBottomSheet(
                 onDismissRequest = { onUiAction(ConversationListUiAction.DismissSheet) },
-                sheetState = sheetState
+                sheetState = sheetState,
             ) {
-                // Bottom sheet content
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .verticalScroll(scrollState),
+                        .fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -612,25 +655,137 @@ fun ConversationContentSheets(
                         modifier = Modifier
                             .padding(horizontal = 16.dp)
                             .fillMaxWidth(),
-                        textFieldState = searchTextState,
+                        textFieldState = sheet.searchTextState,
                         showSearchIcon = false,
                         placeHolderText = stringResource(MR.string.search),
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    sheet.identities.forEach { odinId ->
-                        ContactItem(
-                            name = odinId.domainName,
-                            odinId = odinId,
-                            avatarInitials = "",
-                            onContactClick = {
-
-                            },
-                        )
+                    RecipientsSelectorList(
+                        modifier = Modifier.weight(1f),
+                        recipientGroups = filteredRecipients,
+                        selectedRecipients = sheet.selectedRecipients,
+                        onRecipientSelected = {
+                            onUiAction(ConversationListUiAction.ForwardMessageSelectRecipient(it))
+                            scope.launch {
+                                sheetState.expand()
+                            }
+                        }
+                    )
+                    AnimatedVisibility(
+                        visible = sheet.selectedRecipients.isNotEmpty(),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        ) {
+                            HorizontalDivider()
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = sheet.selectedRecipients.joinToString { it.name },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(16.dp))
+                                BlueBackgroundIconButton(
+                                    onClick = {
+                                        onUiAction(ConversationListUiAction.ForwardMessageSend(sheet.message, sheet.selectedRecipients))
+                                    },
+                                    imageVector = Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = stringResource(MR.string.chat_send_message_button),
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+fun RecipientsSelectorList(
+    modifier: Modifier = Modifier,
+    recipientGroups: List<RecipientGroupModel>,
+    selectedRecipients: List<RecipientModel>,
+    onRecipientSelected: (RecipientModel) -> Unit,
+) {
+    val listState = rememberLazyListState()
+    LazyColumn(
+        modifier = modifier,
+        state = listState,
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+    ) {
+        recipientGroups.forEach { group ->
+            if (group.recipientType != RecipientType.You) {
+                item {
+                    Text(
+                        text = group.recipientType.translatedName(),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                }
+            }
+            items(group.recipients) { recipient ->
+                RecipientItem(
+                    recipientModel = recipient,
+                    isSelected = selectedRecipients.contains(recipient),
+                    onRecipientSelected = {
+                        onRecipientSelected(it)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecipientType.translatedName(): String {
+    return when (this) {
+        RecipientType.You -> ""
+        RecipientType.Recents -> stringResource(MR.string.recents)
+        RecipientType.Contacts -> stringResource(MR.string.contacts)
+        RecipientType.Groups -> stringResource(MR.string.groups)
+    }
+}
+
+@Composable
+fun RecipientItem(
+    recipientModel: RecipientModel,
+    isSelected: Boolean,
+    onRecipientSelected: (RecipientModel) -> Unit,
+) {
+    when (recipientModel) {
+        is RecipientModel.Contact -> {
+            ContactItem(
+                name = recipientModel.contact.name,
+                subTitle = recipientModel.contact.odinId.domainName,
+                selectionMode = true,
+                isSelected = isSelected,
+                odinId = recipientModel.contact.odinId,
+                avatarInitials = recipientModel.contact.avatarInitials,
+                onContactClick = {
+                    onRecipientSelected(recipientModel)
+                },
+            )
+        }
+
+        is RecipientModel.Conversation -> {
+            GroupOrConversationItem(
+                avatarModel = recipientModel.conversation.conversation.avatarModel,
+                name = recipientModel.conversation.getDisplayName(),
+                selectionMode = true,
+                isSelected = isSelected,
+                onContactClick = {
+                    onRecipientSelected(recipientModel)
+                },
+            )
+        }
+    }
+
 }
 
 @Composable

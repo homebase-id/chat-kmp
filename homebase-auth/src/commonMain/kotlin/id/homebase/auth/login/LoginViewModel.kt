@@ -22,6 +22,7 @@ import id.homebase.core.util.StartupState
 import id.homebase.core.util.mapToStartupState
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -193,7 +194,7 @@ class LoginViewModel(
                         )
                     }
                 }
-                _uiState.update { it.copy(driveProgresses = progresses) }
+                _uiState.update { it.copy(driveProgresses = progresses.toImmutableList()) }
             }
         }
     }

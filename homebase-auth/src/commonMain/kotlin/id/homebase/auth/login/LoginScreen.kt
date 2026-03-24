@@ -40,8 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -72,6 +72,8 @@ import id.homebase.resources.login_sub_title
 import id.homebase.resources.login_successful
 import id.homebase.resources.login_title
 import id.homebase.resources.login_try_again_button
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -192,7 +194,7 @@ fun LoginUi(
 /* ---------- STATES ---------- */
 
 @Composable
-private fun LoginLoading(driveProgresses: List<DriveProgress>) {
+private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = stringResource(MR.string.loading),
@@ -210,7 +212,10 @@ private fun LoginLoading(driveProgresses: List<DriveProgress>) {
             )
         } else {
             driveProgresses.forEach { drive ->
-                DriveProgressRow(drive = drive)
+                DriveProgressRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    drive = drive
+                )
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
@@ -218,11 +223,14 @@ private fun LoginLoading(driveProgresses: List<DriveProgress>) {
 }
 
 @Composable
-private fun DriveProgressRow(drive: DriveProgress) {
+private fun DriveProgressRow(
+    modifier: Modifier = Modifier,
+    drive: DriveProgress
+) {
     val successColor = Color(0xFF4CAF50)
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().height(36.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -430,7 +438,7 @@ fun LoginUiLoadingPreview() {
                 isLoading = true,
                 isAuthenticated = false,
                 errorMessage = null,
-                driveProgresses = listOf(
+                driveProgresses = persistentListOf(
                     DriveProgress(driveId = "uuid-chat", name = "Chat", completed = true, total = 42, count = 42, progress = 1f),
                     DriveProgress(driveId = "uuid-feed", name = "Feed", count = 17, total = 17, progress = null),
                     DriveProgress(driveId = "uuid-contact", name = "Contact", error = "Network error"),

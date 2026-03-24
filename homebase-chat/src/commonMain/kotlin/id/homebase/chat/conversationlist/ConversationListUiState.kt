@@ -1,10 +1,12 @@
 package id.homebase.chat.conversationlist
 
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.gallery.GalleryImage
@@ -55,7 +57,12 @@ data class MessageListUiState(
 
 sealed interface MessageListUiSheet {
     data class ConnectIdentities(val identities: List<OdinId>) : MessageListUiSheet
-    data class ForwardMessage(val messageId: Uuid, val identities: List<OdinId>) : MessageListUiSheet
+    data class ForwardMessage(
+        val message: MessageUiModel,
+        val recipients: ImmutableList<RecipientGroupModel>,
+        val selectedRecipients: ImmutableList<RecipientModel> = persistentListOf(),
+        val searchTextState: TextFieldState = TextFieldState(),
+    ) : MessageListUiSheet
 }
 
 sealed interface UploadStatus {
@@ -94,6 +101,25 @@ sealed class MessageListContentModel(val id: String) {
     data class System(val text: String, val created: Instant) : MessageListContentModel(created.toString())
     data class Message(val message: MessageUiModel) :
         MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
+}
+
+@Immutable
+data class RecipientGroupModel(
+    val recipientType: RecipientType,
+    val recipients: List<RecipientModel>
+)
+
+enum class RecipientType {
+    You,
+    Recents,
+    Contacts,
+    Groups
+}
+
+@Immutable
+sealed class RecipientModel(val name: String) {
+    data class Conversation(val conversation: EnrichedConversationUiModel) : RecipientModel(conversation.getDisplayName())
+    data class Contact(val contact: ContactUiModel) : RecipientModel(contact.name)
 }
 
 @Immutable

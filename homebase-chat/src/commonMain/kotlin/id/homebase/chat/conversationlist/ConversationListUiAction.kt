@@ -84,6 +84,8 @@ sealed interface ConversationListUiAction {
     data class ShowMessageInfo(val message: MessageUiModel) : ConversationListUiAction
     data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction
     data class ForwardMessage(val message: MessageUiModel) : ConversationListUiAction
+    data class ForwardMessageSend(val message: MessageUiModel, val recipients: List<RecipientModel>) : ConversationListUiAction
+    data class ForwardMessageSelectRecipient(val recipient: RecipientModel) : ConversationListUiAction
     data object CancelReplyToMessage : ConversationListUiAction
     data class EditMessage(val messageId: Uuid, val versionTag: Uuid, val ignoreDraft: Boolean) :
         ConversationListUiAction
