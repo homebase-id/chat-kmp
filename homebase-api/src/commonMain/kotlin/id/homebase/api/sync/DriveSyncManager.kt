@@ -9,8 +9,11 @@ import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.delay
@@ -29,7 +32,29 @@ class DriveSyncManager(
     private val _driveStatuses = MutableStateFlow<Map<Uuid, DriveStatus>>(emptyMap())
     val driveStatuses: StateFlow<Map<Uuid, DriveStatus>> = _driveStatuses.asStateFlow()
 
+    val syncState: StateFlow<SyncState> = _driveStatuses
+        .map { computeSyncState(it) }
+        .stateIn(scope, SharingStarted.Eagerly, SyncState.Idle)
+
+    fun numberOfDrivesSyncing(): Int =
+        _driveStatuses.value.values.count { it.state is DriveState.Synchronizing }
+
     init {
+        scope.launch {
+            var previous: SyncState = SyncState.Idle
+            syncState.collect { current ->
+                when {
+                    previous !is SyncState.Syncing && current is SyncState.Syncing ->
+                        eventBus.emit(BackendEvent.DriveEvent.SyncAllStarted)
+                    previous is SyncState.Syncing && current is SyncState.Completed ->
+                        eventBus.emit(BackendEvent.DriveEvent.SyncAllCompleted)
+                    previous is SyncState.Syncing && current is SyncState.Failed ->
+                        eventBus.emit(BackendEvent.DriveEvent.SyncAllFailed)
+                }
+                previous = current
+            }
+        }
+
         scope.launch {
             eventBus.events.collect { event ->
                 when (event) {
@@ -98,13 +123,9 @@ class DriveSyncManager(
     }
 
     suspend fun syncAll() {
-        eventBus.emit(BackendEvent.DriveEvent.SyncAllStarted)
-
         val snapshot = driveSyncs.values.toList()
         val jobs = snapshot.mapNotNull { it.sync() }
         jobs.joinAll()
-
-        eventBus.emit(BackendEvent.DriveEvent.SyncAllCompleted)
     }
 
     suspend fun syncAllFailed() {

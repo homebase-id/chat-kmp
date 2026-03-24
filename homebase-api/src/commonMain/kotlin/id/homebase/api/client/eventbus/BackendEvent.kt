@@ -43,6 +43,8 @@ sealed interface BackendEvent {
 
         data object SyncAllCompleted: BackendEvent
 
+        data object SyncAllFailed: BackendEvent
+
         data class Started(
             override val driveId: Uuid,
         ) : DriveEvent // Only raised by Drive.sync()
