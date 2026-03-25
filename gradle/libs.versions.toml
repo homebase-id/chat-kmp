@@ -44,6 +44,7 @@ robolectric = "4.16.1"
 navigation = "2.9.2"
 koin = "4.1.1"
 filekit = "0.13.0"
+androidx-work = "2.10.1"
 atomicfu = "0.31.0"
 runner = "1.0.2"
 espressoCore = "3.0.2"
@@ -52,6 +53,7 @@ uiToolingPreview = "1.10.5"
 kotlinStdlib = "2.3.10"
 googleAccompanist = "0.37.3"
 kmpnotifier = "1.6.1"
+firebase-messaging = "24.0.3"
 google-services = "4.4.4"
 
 [libraries]
@@ -81,6 +83,7 @@ androidx-test-core = { module = "androidx.test:core", version.ref = "androidx-te
 androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-testExt" }
 androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "androidx-espresso" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
+androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "androidx-work" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 androidx-lifecycle-viewmodelCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
@@ -152,6 +155,7 @@ kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", versio
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "googleAccompanist" }
 accompanist-systemuicontroller = { module = "com.google.accompanist:accompanist-systemuicontroller", version.ref = "googleAccompanist" }
 kmpnotifier = { module = "io.github.mirzemehdi:kmpnotifier", version.ref = "kmpnotifier" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
 kache-file = { module = "com.mayakapps.kache:file-kache", version.ref = "kache" }
 kache = { module = "com.mayakapps.kache:kache", version.ref = "kache" }
 
