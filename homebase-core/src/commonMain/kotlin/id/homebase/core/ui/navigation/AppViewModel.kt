@@ -67,9 +67,10 @@ class AppViewModel(
         notificationService.isAppInForeground = false
     }
 
-    /** Update which conversation the user is currently viewing (null = none). */
-    fun setActiveConversation(conversationId: String?) {
+    /** Update which conversation/screen the user is currently viewing. */
+    fun setActiveConversation(conversationId: String?, isOnChatList: Boolean) {
         notificationService.activeConversationId = conversationId
+        notificationService.isOnChatListScreen = isOnChatList
     }
 
     /** Collects notification events from NotificationService and forwards to UI. */

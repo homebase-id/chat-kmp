@@ -48,6 +48,9 @@ class NotificationService(
     /** Set by the UI layer to suppress notifications for the currently viewed conversation. */
     var activeConversationId: String? = null
 
+    /** Set by the UI layer when the conversation list screen is visible. */
+    var isOnChatListScreen: Boolean = false
+
     /** Set by the UI layer to indicate whether the app is in the foreground. */
     var isAppInForeground: Boolean = false
 
@@ -158,13 +161,14 @@ class NotificationService(
 
                 if (notification.options.silent) return@launch
 
-                // Suppress notification if the user is viewing the same conversation
+                // Suppress chat notifications when user is on the conversation list
+                // or viewing the same conversation — they can already see the updates
                 val conversationId = resolveConversationId(notification)
                 if (isAppInForeground && conversationId != null &&
-                    conversationId == activeConversationId
+                    (isOnChatListScreen || conversationId == activeConversationId)
                 ) {
                     Logger.d(tag = "NotificationService") {
-                        "Suppressing notification — user is viewing conversation $conversationId"
+                        "Suppressing notification — user is on chat screen"
                     }
                     return@launch
                 }
