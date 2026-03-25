@@ -1455,13 +1455,6 @@ class ConversationListViewModel(
                         .filter { !it.conversation.isPinned && it.conversation.conversationState == ConversationState.Active }
                         .map { conv -> ConversationListContentModel.Conversation(conv) }
                         .toPersistentList()
-                    if (normalItems.isNotEmpty()) {
-                        if (pinnedItems.isNotEmpty()) {
-                            items.add(ConversationListContentModel.Header(MR.string.chat_search_result_conversations))
-                        }
-                        items.addAll(normalItems)
-                    }
-
                     val archivedCount =
                         conversationsPool.count { it.conversation.conversationState == ConversationState.Archived }
 
