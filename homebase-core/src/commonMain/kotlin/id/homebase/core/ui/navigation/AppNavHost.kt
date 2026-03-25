@@ -137,14 +137,15 @@ fun AppNavHost(
     // Track active conversation + auth guard + notification permission
     LaunchedEffect(authState, currentDestination) {
         // Update active conversation for notification suppression
-        val isOnChatList = currentDestination?.hasRoute(Route.ChatList::class) == true
+        val isChatRoute = currentDestination?.hasRoute(Route.ChatList::class) == true
+        val activeConversationId = if (isChatRoute) {
+            try {
+                navController.currentBackStackEntry?.toRoute<Route.ChatList>()?.conversationId
+            } catch (_: Exception) { null }
+        } else null
         viewModel.setActiveConversation(
-            conversationId = if (isOnChatList) {
-                try {
-                    navController.currentBackStackEntry?.toRoute<Route.ChatList>()?.conversationId
-                } catch (_: Exception) { null }
-            } else null,
-            isOnChatList = isOnChatList,
+            conversationId = activeConversationId,
+            isOnChatList = isChatRoute && activeConversationId == null,
         )
 
         // Auth guard - navigate to login when unauthenticated
