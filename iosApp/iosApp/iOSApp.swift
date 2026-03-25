@@ -101,7 +101,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       NotifierManager.shared.onApplicationDidReceiveRemoteNotification(userInfo: userInfo)
       let orchestrator = BackgroundSyncOrchestrator.companion.fromKoin()
       orchestrator.triggerSync { success in
-          completionHandler(success ? .newData : .failed)
+          completionHandler(success == true ? .newData : .failed)
       }
   }
     
