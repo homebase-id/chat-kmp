@@ -87,48 +87,58 @@ fun MessageItem(
             }
         }
 
-        SentMessageBubble(
-            message = message,
-            decryptedFiles = decryptedFiles,
-            onMessageInfo = onMessageInfo,
-            onReply = onReply,
-            onForward = onForward,
-            onEdit = onEdit,
-            onShare = onShare,
-            onDelete = onDelete,
-            onMediaClick = onMediaClick,
-            onClickMessageId = onClickMessageId,
-            onRequestDecryptedFile = onDecryptFile,
-            onAddReaction = onAddReaction,
-            onShowReactions = onShowReactions,
-            animatedVisibilityScope = animatedVisibilityScope,
-            sharedTransitionScope = sharedTransitionScope,
-            downloadingFiles = downloadingFiles,
-            onShowMore = onShowMore,
-            uploadStatus = uploadStatus,
-        )
+        SwipeableMessageWrapper(
+            onSwipeRight = onReply,
+            onSwipeLeft = onMessageInfo,
+        ) {
+            SentMessageBubble(
+                message = message,
+                decryptedFiles = decryptedFiles,
+                onMessageInfo = onMessageInfo,
+                onReply = onReply,
+                onForward = onForward,
+                onEdit = onEdit,
+                onShare = onShare,
+                onDelete = onDelete,
+                onMediaClick = onMediaClick,
+                onClickMessageId = onClickMessageId,
+                onRequestDecryptedFile = onDecryptFile,
+                onAddReaction = onAddReaction,
+                onShowReactions = onShowReactions,
+                animatedVisibilityScope = animatedVisibilityScope,
+                sharedTransitionScope = sharedTransitionScope,
+                downloadingFiles = downloadingFiles,
+                onShowMore = onShowMore,
+                uploadStatus = uploadStatus,
+            )
+        }
     } else {
         val onMarkAsRead =
             remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(message.conversationId, listOf(message.id))) } }
 
-        ReceivedMessageBubble(
-            message = message,
-            decryptedFiles = decryptedFiles,
-            renderAuthorName = renderAuthorName,
-            onMessageInfo = onMessageInfo,
-            onReply = onReply,
-            onForward = onForward,
-            onDelete = onDelete,
-            onMarkAsRead = onMarkAsRead,
-            onAddReaction = onAddReaction,
-            onShowReactions = onShowReactions,
-            onMediaClick = onMediaClick,
-            onClickMessageId = onClickMessageId,
-            onRequestDecryptedFile = onDecryptFile,
-            animatedVisibilityScope = animatedVisibilityScope,
-            sharedTransitionScope = sharedTransitionScope,
-            downloadingFiles = downloadingFiles,
-            onShowMore = onShowMore
-        )
+        SwipeableMessageWrapper(
+            onSwipeRight = onReply,
+            onSwipeLeft = null,
+        ) {
+            ReceivedMessageBubble(
+                message = message,
+                decryptedFiles = decryptedFiles,
+                renderAuthorName = renderAuthorName,
+                onMessageInfo = onMessageInfo,
+                onReply = onReply,
+                onForward = onForward,
+                onDelete = onDelete,
+                onMarkAsRead = onMarkAsRead,
+                onAddReaction = onAddReaction,
+                onShowReactions = onShowReactions,
+                onMediaClick = onMediaClick,
+                onClickMessageId = onClickMessageId,
+                onRequestDecryptedFile = onDecryptFile,
+                animatedVisibilityScope = animatedVisibilityScope,
+                sharedTransitionScope = sharedTransitionScope,
+                downloadingFiles = downloadingFiles,
+                onShowMore = onShowMore
+            )
+        }
     }
 }

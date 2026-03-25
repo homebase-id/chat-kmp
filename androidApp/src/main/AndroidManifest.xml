@@ -67,6 +67,21 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <!-- Notification action receivers -->
+        <receiver
+            android:name=".receivers.NotificationReplyReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="id.homebase.feed.NOTIFICATION_REPLY" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".receivers.NotificationMarkReadReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="id.homebase.feed.NOTIFICATION_MARK_READ" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

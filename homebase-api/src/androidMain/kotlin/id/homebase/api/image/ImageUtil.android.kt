@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.scale
 import co.touchlab.kermit.Logger
+import id.homebase.api.lib.image.ImageFormatDetector
 import java.io.ByteArrayOutputStream
 
 /**
@@ -52,16 +53,39 @@ actual fun ByteArray.toImageBitmap(): ImageBitmap? {
 }
 
 /**
+ * Android: Convert HEIC to JPEG using BitmapFactory (supports HEIC on API 28+).
+ */
+actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? {
+    return try {
+        val options = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val bitmap = BitmapFactory.decodeByteArray(heicBytes, 0, heicBytes.size, options)
+            ?: return null
+        val stream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
+        bitmap.recycle()
+        stream.toByteArray()
+    } catch (e: Exception) {
+        Logger.e(throwable = e, tag = "convertHeicToJpeg") { "Android HEIC conversion failed" }
+        null
+    }
+}
+
+/**
  * Android implementation of ImageUtils using Android Bitmap APIs
  */
 actual object ImageUtils {
 
     private fun decodeBitmap(bytes: ByteArray): Bitmap {
+        val inputBytes = if (ImageFormatDetector.isHeic(bytes)) {
+            convertHeicToJpeg(bytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
+        } else bytes
         val options = BitmapFactory.Options().apply {
             inPreferredConfig = Bitmap.Config.ARGB_8888
             inMutable = true
         }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        return BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
             ?: throw IllegalArgumentException("Failed to decode image bytes")
     }
 
@@ -199,10 +223,13 @@ actual object ImageUtils {
     }
 
     actual fun getNaturalSize(srcBytes: ByteArray): ImageSize {
+        val inputBytes = if (ImageFormatDetector.isHeic(srcBytes)) {
+            convertHeicToJpeg(srcBytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG for size detection")
+        } else srcBytes
         val options = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
         }
-        BitmapFactory.decodeByteArray(srcBytes, 0, srcBytes.size, options)
+        BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
         return ImageSize(options.outWidth, options.outHeight)
     }
 }

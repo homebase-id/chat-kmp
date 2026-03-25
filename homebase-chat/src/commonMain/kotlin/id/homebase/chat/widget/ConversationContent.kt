@@ -526,6 +526,14 @@ fun ConversationContent(
                         onRecordingStopped = { onUiAction(ConversationListUiAction.StopRecording) },
                         onRecordingCancelled = { onUiAction(ConversationListUiAction.CancelRecording) },
                         onRecordingHelp = { onUiAction(ConversationListUiAction.ShowRecordingHelp) },
+                        onPasteImage = { imageBytes ->
+                            onUiAction(
+                                ConversationListUiAction.AttachClipboardImage(
+                                    conversationId = conversation.conversation.id,
+                                    imageBytes = imageBytes,
+                                )
+                            )
+                        },
                         onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) })
 
                     EmojiSelectorSheet(

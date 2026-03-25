@@ -39,8 +39,34 @@ object ImageFormatDetector {
             bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() -> "image/webp"
             // BMP: 42 4D
             bytes[0] == 0x42.toByte() && bytes[1] == 0x4D.toByte() -> "image/bmp"
+            // HEIC/HEIF: ISOBMFF container with ftyp box
+            isHeic(bytes) -> "image/heic"
             else -> "application/octet-stream"
         }
+    }
+
+    /**
+     * Detects if bytes represent a HEIC/HEIF image (ISOBMFF container with ftyp box).
+     * Checks for 'ftyp' at offset 4 and known HEIC brand identifiers at offset 8.
+     */
+    fun isHeic(bytes: ByteArray): Boolean {
+        if (bytes.size < 12) return false
+
+        // Check for 'ftyp' at offset 4
+        val ftyp = bytes[4] == 0x66.toByte() && // f
+                   bytes[5] == 0x74.toByte() && // t
+                   bytes[6] == 0x79.toByte() && // y
+                   bytes[7] == 0x70.toByte()    // p
+        if (!ftyp) return false
+
+        // Check brand at offset 8 (4 chars)
+        val brand = try {
+            bytes.sliceArray(8..11).decodeToString()
+        } catch (_: Exception) {
+            return false
+        }
+
+        return brand in listOf("heic", "heix", "hevc", "hevx", "mif1", "msf1")
     }
 
     /**

@@ -30,6 +30,16 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Read version info
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'version.name=' gradle/version.properties | cut -d'=' -f2)
+          BASE=$(grep 'version.code.base=' gradle/version.properties | cut -d'=' -f2)
+          VERSION_CODE=$((BASE + ${{ github.run_number }}))
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+
       - name: Decode Homebase Keystore
         id: decode_keystore
         env:
@@ -43,12 +53,9 @@ jobs:
 
       - name: Build Android Bundle
         run: |
-          VERSION_CODE=$((803 + ${{ github.run_number }} * 10 + ${{ github.run_attempt }}))
-          VERSION_NAME="${{ github.ref_type == 'tag' && github.ref_name || format('dev.{0}', github.run_number) }}"
-
           ./gradlew --no-daemon :androidApp:bundleRelease \
-            -PVERSION_CODE=$VERSION_CODE \
-            -PVERSION_NAME="$VERSION_NAME"
+            -PVERSION_CODE=${{ steps.version.outputs.VERSION_CODE }} \
+            -PVERSION_NAME="${{ steps.version.outputs.VERSION_NAME }}"
         env:
           SIGNING_KEYSTORE_FILE_PATH: ${{ steps.decode_keystore.outputs.KEYSTORE_FILE_PATH }}
           SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}

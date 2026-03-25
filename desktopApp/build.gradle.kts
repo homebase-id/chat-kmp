@@ -1,5 +1,9 @@
+import java.util.Properties
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+
+val versionProps = Properties()
+versionProps.load(rootProject.file("gradle/version.properties").inputStream())
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -97,6 +101,28 @@ tasks.matching { it.name.contains("KotlinMetadata") }.configureEach {
     }
 }
 
+// Generate version.properties into JVM resources so JvmPlatformInfo can read it at runtime
+val generateVersionProperties by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/resources/version")
+    // Resolve values at configuration time to be configuration-cache compatible
+    val versionCode = (providers.gradleProperty("VERSION_CODE").orNull)
+        ?: versionProps.getProperty("version.code.base")
+    val versionName = (providers.gradleProperty("VERSION_NAME").orNull)
+        ?: versionProps.getProperty("version.name")
+    inputs.property("versionCode", versionCode)
+    inputs.property("versionName", versionName)
+    outputs.dir(outputDir)
+    doLast {
+        val outFile = outputDir.get().file("version.properties").asFile
+        outFile.parentFile.mkdirs()
+        outFile.writeText("version.name=$versionName\nversion.code=$versionCode\n")
+    }
+}
+
+kotlin.sourceSets.named("jvmMain") {
+    resources.srcDir(generateVersionProperties.map { it.outputs.files.singleFile })
+}
+
 compose.desktop {
     application {
         mainClass = "id.homebase.app.MainKt"
@@ -135,7 +161,7 @@ compose.desktop {
             }
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Homebase Chat"
-            packageVersion = "1.0.0"
+            packageVersion = versionProps.getProperty("version.name")
         }
     }
 }

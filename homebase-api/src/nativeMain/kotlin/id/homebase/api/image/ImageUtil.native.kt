@@ -2,11 +2,37 @@ package id.homebase.api.image
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import id.homebase.api.lib.image.ImageFormatDetector
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.IRect
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.Surface
+import platform.Foundation.dataWithBytes
+
+/**
+ * iOS: Convert HEIC to JPEG using native UIImage APIs.
+ */
+@OptIn(ExperimentalForeignApi::class)
+actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? {
+    return try {
+        val nsData = heicBytes.usePinned { pinned ->
+            platform.Foundation.NSData.dataWithBytes(pinned.addressOf(0), heicBytes.size.toULong())
+        }
+        val uiImage = platform.UIKit.UIImage.imageWithData(nsData) ?: return null
+        val jpegData = platform.UIKit.UIImageJPEGRepresentation(uiImage, 0.95) ?: return null
+        ByteArray(jpegData.length.toInt()).also { bytes ->
+            bytes.usePinned { pinned ->
+                platform.posix.memcpy(pinned.addressOf(0), jpegData.bytes, jpegData.length)
+            }
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
 
 /**
  * iOS implementation: Convert ByteArray to ImageBitmap using Skia
@@ -25,7 +51,11 @@ actual fun ByteArray.toImageBitmap(): ImageBitmap? {
 actual object ImageUtils {
 
     private fun decodeImage(bytes: ByteArray): Image {
-        return Image.makeFromEncoded(bytes)
+        val inputBytes = if (ImageFormatDetector.isHeic(bytes)) {
+            convertHeicToJpeg(bytes)
+                ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
+        } else bytes
+        return Image.makeFromEncoded(inputBytes)
     }
 
     private fun encodedFormatFor(format: ImageFormat): EncodedImageFormat = when (format) {
@@ -164,21 +194,25 @@ actual object ImageUtils {
             0 -> {
                 canvas.drawImage(srcImage, 0f, 0f)
             }
+
             90 -> {
                 canvas.translate(newW.toFloat(), 0f)
                 canvas.rotate(90f)
                 canvas.drawImage(srcImage, 0f, 0f)
             }
+
             180 -> {
                 canvas.translate(newW.toFloat(), newH.toFloat())
                 canvas.rotate(180f)
                 canvas.drawImage(srcImage, 0f, 0f)
             }
+
             270 -> {
                 canvas.translate(0f, newH.toFloat())
                 canvas.rotate(270f)
                 canvas.drawImage(srcImage, 0f, 0f)
             }
+
             else -> {
                 // For arbitrary angles, rotate around center
                 val centerX = newW / 2f

@@ -8,9 +8,16 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.core.notifications.BadgeManager
+import id.homebase.core.notifications.NotificationNavigationEvent
+import id.homebase.core.notifications.RichNotificationData
+import id.homebase.core.notifications.NotificationService
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -19,12 +26,20 @@ import kotlin.coroutines.cancellation.CancellationException
 class AppViewModel(
     private val connectionRequestService: ConnectionRequestService,
     private val credentialsManager: CredentialsManager,
+    private val notificationService: NotificationService,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
+    private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 1)
+    val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
+
     private var credentialsJob: Job? = null
     private var listenForConnectionRequestsJob: Job? = null
+
+    init {
+        collectNotificationEvents()
+    }
 
     fun refreshData() {
         credentialsJob?.cancel()
@@ -38,6 +53,48 @@ class AppViewModel(
                 }
             }
         }
+    }
+
+    /** Called when the app enters RESUMED state. */
+    fun onResumed() {
+        notificationService.isAppInForeground = true
+        refreshData()
+        BadgeManager.clear()
+    }
+
+    /** Called when the app leaves RESUMED state. */
+    fun onPaused() {
+        notificationService.isAppInForeground = false
+    }
+
+    /** Update which conversation/screen the user is currently viewing. */
+    fun setActiveConversation(conversationId: String?, isOnChatList: Boolean) {
+        notificationService.activeConversationId = conversationId
+        notificationService.isOnChatListScreen = isOnChatList
+    }
+
+    /** Collects notification events from NotificationService and forwards to UI. */
+    private fun collectNotificationEvents() {
+        viewModelScope.launch {
+            notificationService.navigationEvents.collect { event ->
+                _navigationEvents.tryEmit(event)
+            }
+        }
+        viewModelScope.launch {
+            notificationService.inAppNotificationEvents.collect { event ->
+                _uiState.update { it.copy(inAppNotification = event) }
+            }
+        }
+    }
+
+    fun dismissInAppBanner() {
+        _uiState.update { it.copy(inAppNotification = null) }
+    }
+
+    /** Routes an in-app banner tap through NotificationService's click handler. */
+    fun onInAppBannerTapped(payloadData: Map<String, String>) {
+        dismissInAppBanner()
+        notificationService.handleNotificationClicked(payloadData)
     }
 
     private fun listenForConnectionRequests() {
@@ -64,4 +121,5 @@ class AppViewModel(
 data class AppUiState(
     val currentOdinId: OdinId? = null,
     val incomingRequests: List<IncomingConnectionRequestUiModel> = listOf(),
+    val inAppNotification: RichNotificationData? = null,
 )

@@ -1,9 +1,14 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.googleServices)
 }
+
+val versionProps = Properties()
+versionProps.load(rootProject.file("gradle/version.properties").inputStream())
 
 android {
     namespace = "id.homebase.feed"
@@ -15,8 +20,10 @@ android {
         applicationId = "id.homebase.feed"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = (project.findProperty("VERSION_CODE") as String?)?.toInt() ?: 403
-        versionName = project.findProperty("VERSION_NAME") as String? ?: "1.0.0"
+        versionCode = (project.findProperty("VERSION_CODE") as String?)?.toInt()
+            ?: versionProps.getProperty("version.code.base").toInt()
+        versionName = project.findProperty("VERSION_NAME") as String?
+            ?: versionProps.getProperty("version.name")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

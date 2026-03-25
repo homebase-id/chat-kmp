@@ -2,6 +2,8 @@ package id.homebase.api.image
 
 import androidx.compose.ui.graphics.ImageBitmap
 
+actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? = null
+
 actual fun ByteArray.toImageBitmap(): ImageBitmap? {
     TODO("Not yet implemented")
 }

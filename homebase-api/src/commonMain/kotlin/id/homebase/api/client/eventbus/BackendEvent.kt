@@ -13,6 +13,18 @@ sealed interface BackendEvent {
         WebSocket
     }
 
+    sealed interface DriveResult {
+        data object Success : DriveResult
+        data class Failure(
+            val errorMessage: String
+        ) : DriveResult
+    }
+
+    sealed interface SyncAllResult {
+        data object Success : SyncAllResult
+        data object Failure : SyncAllResult
+    }
+
     sealed interface CircleNetworkEvent : BackendEvent {
 
         data class ConnectionRequestReceived(val sender: OdinId) : CircleNetworkEvent
@@ -43,16 +55,11 @@ sealed interface BackendEvent {
             override val driveId: Uuid,
         ) : DriveEvent // Only raised by Drive.sync()
 
-        data class Completed(
+        data class Stopped(
             override val driveId: Uuid,
-            val totalCount: Int
-        ) : DriveEvent  // Only raised by Drive.sync() when a drive is fully synced
-
-        data class Failed(
-            override val driveId: Uuid,
-            val errorMessage: String,  // Or add throwable: Throwable
-            val source: SyncSource = SyncSource.DriveSync
-        ) : DriveEvent
+            val totalCount: Int,  // records fetched so far — always present (0 if failed immediately)
+            val result: DriveResult
+        ) : DriveEvent  // Only raised by Drive.sync() when a drive finishes (success or failure)
 
         data class BatchReceived(
             override val driveId: Uuid,
@@ -150,8 +157,7 @@ sealed interface BackendEvent {
 
     // Emitted when a full sync-all-drives operation starts/finishes
     data object SyncAllStarted : BackendEvent
-    data object SyncAllCompleted : BackendEvent
-    data object SyncAllFailed : BackendEvent
+    data class SyncAllStopped(val result: SyncAllResult) : BackendEvent
 
     // We go online / offline when the websocket listener is connected / disconnected
     data object Connecting : BackendEvent

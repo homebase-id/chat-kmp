@@ -4,6 +4,11 @@ env:
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to TestFlight and Play Store internal track'
+        type: boolean
+        default: false
   push:
     tags:
       - "*"
@@ -30,6 +35,16 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Read version info
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'version.name=' gradle/version.properties | cut -d'=' -f2)
+          BASE=$(grep 'version.code.base=' gradle/version.properties | cut -d'=' -f2)
+          VERSION_CODE=$((BASE + ${{ github.run_number }}))
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+
       - name: Decode Homebase Keystore
         id: decode_keystore
         env:
@@ -43,15 +58,9 @@ jobs:
 
       - name: Build Android Bundle
         run: |
-          VERSION_CODE=$((803 + ${{ github.run_number }} * 10 + ${{ github.run_attempt }}))
-          VERSION_NAME="${{ github.ref_type == 'tag' && github.ref_name || format('dev.{0}', github.run_number) }}"
-
-          echo "VERSION_CODE=$VERSION_CODE"
-          echo "VERSION_NAME=$VERSION_NAME"
-
           ./gradlew --no-daemon :androidApp:bundleRelease \
-            -PVERSION_CODE=$VERSION_CODE \
-            -PVERSION_NAME="$VERSION_NAME"
+            -PVERSION_CODE=${{ steps.version.outputs.VERSION_CODE }} \
+            -PVERSION_NAME="${{ steps.version.outputs.VERSION_NAME }}"
         env:
           SIGNING_KEYSTORE_FILE_PATH: ${{ steps.decode_keystore.outputs.KEYSTORE_FILE_PATH }}
           SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
@@ -67,6 +76,21 @@ jobs:
         with:
           name: homebase-id-app-android
           path: androidApp/build/outputs/bundle/release/homebase-id-app.aab
+
+      ## --- Play Store Internal Track Upload ---
+      ## Uncomment when GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret is configured.
+      ## Create a service account in Google Cloud Console, grant it access in
+      ## Play Console (Setup > API access), then store the JSON key as a secret.
+      #
+      # - name: Upload to Play Store (internal track)
+      #   if: inputs.publish == true || startsWith(github.ref, 'refs/tags/v')
+      #   uses: r0adkll/upload-google-play@v1
+      #   with:
+      #     serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+      #     packageName: id.homebase.feed
+      #     releaseFiles: androidApp/build/outputs/bundle/release/homebase-id-app.aab
+      #     track: internal
+      #     status: completed
 
 
   build-ios:
@@ -117,13 +141,9 @@ jobs:
 
       - name: Set iOS version
         run: |
-          VERSION_CODE=$((803 + ${{ github.run_number }} * 10 + ${{ github.run_attempt }}))
-
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            VERSION_NAME="${{ github.ref_name }}"
-          else
-            VERSION_NAME="0.0.${{ github.run_number }}"
-          fi
+          VERSION_NAME=$(grep 'version.name=' gradle/version.properties | cut -d'=' -f2)
+          BASE=$(grep 'version.code.base=' gradle/version.properties | cut -d'=' -f2)
+          VERSION_CODE=$((BASE + ${{ github.run_number }}))
 
           echo "Setting iOS version to $VERSION_NAME ($VERSION_CODE)"
 
@@ -155,6 +175,36 @@ jobs:
         with:
           name: ios-app
           path: iosApp.ipa
+
+      ## --- TestFlight Upload ---
+      ## Uncomment when App Store Connect API key secrets are configured.
+      ## Create an API key in App Store Connect (Users and Access > Integrations >
+      ## App Store Connect API), then store:
+      ##   APPSTORE_API_KEY_ID      — the Key ID
+      ##   APPSTORE_API_ISSUER_ID   — the Issuer ID
+      ##   APPSTORE_API_PRIVATE_KEY — contents of the .p8 file
+      ##
+      ## You will also need an App Store distribution provisioning profile stored
+      ## as FEED_IOS_APPSTORE_PROVISION_BASE64, and change export-options above
+      ## to iosApp/options-appstore.plist when publishing.
+      #
+      # - name: Setup App Store Connect API key
+      #   if: inputs.publish == true || startsWith(github.ref, 'refs/tags/v')
+      #   run: |
+      #     mkdir -p "${{ runner.temp }}/private_keys"
+      #     echo "${{ secrets.APPSTORE_API_PRIVATE_KEY }}" > \
+      #       "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8"
+      #
+      # - name: Upload to TestFlight
+      #   if: inputs.publish == true || startsWith(github.ref, 'refs/tags/v')
+      #   run: |
+      #     xcrun altool --upload-app \
+      #       --type ios \
+      #       --file iosApp.ipa \
+      #       --apiKey "${{ secrets.APPSTORE_API_KEY_ID }}" \
+      #       --apiIssuer "${{ secrets.APPSTORE_API_ISSUER_ID }}"
+      #   env:
+      #     API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/private_keys
 
 
 

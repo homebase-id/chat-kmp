@@ -8,11 +8,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.lifecycleScope
+import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.ActivityProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
+import id.homebase.core.notifications.NotificationService
+import id.homebase.core.notifications.RichNotificationDisplayer
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.init
 import io.github.vinceglb.filekit.manualFileKitCoreInitialization
@@ -22,6 +25,7 @@ import org.koin.android.ext.android.inject
 class MainActivity : AppCompatActivity() {
 
     val youAuthFlowManager: YouAuthFlowManager by inject()
+    private val notificationService: NotificationService by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -32,6 +36,9 @@ class MainActivity : AppCompatActivity() {
 
         // Notify KMPNotifier of activity create
         NotifierManager.onCreateOrOnNewIntent(intent)
+
+        // Handle custom notification tap intent
+        handleNotificationIntent(intent)
 
         // Initialize FileKit
         FileKit.manualFileKitCoreInitialization(this)
@@ -47,6 +54,9 @@ class MainActivity : AppCompatActivity() {
 
         // Notify KMPNotifier of new intent
         NotifierManager.onCreateOrOnNewIntent(intent)
+
+        // Handle custom notification tap intent
+        handleNotificationIntent(intent)
     }
 
     override fun onResume() {
@@ -71,6 +81,39 @@ class MainActivity : AppCompatActivity() {
             val callbackURL = data.toString()
             lifecycleScope.launch { youAuthFlowManager.handleCallback(callbackURL) }
         }
+    }
+
+    /**
+     * Handles intents from custom notification taps (created by RichNotificationDisplayer).
+     * Extracts the payload data from intent extras and routes via NotificationService.
+     */
+    private fun handleNotificationIntent(intent: Intent) {
+        // Check for our always-present marker extra (works for all notification types,
+        // not just chat notifications that carry a conversationId)
+        if (!intent.getBooleanExtra(RichNotificationDisplayer.EXTRA_NOTIFICATION_TAP, false)) return
+
+        val conversationId = intent.getStringExtra(
+            RichNotificationDisplayer.EXTRA_NOTIFICATION_CONVERSATION_ID
+        )
+        Logger.i(tag = "MainActivity") {
+            "Notification intent detected (conversation: $conversationId)"
+        }
+
+        // Build PayloadData map from intent extras (RichNotificationDisplayer puts all
+        // original notification payload entries as extras)
+        val extras = intent.extras ?: return
+        val payloadData = mutableMapOf<String, Any>()
+        for (key in extras.keySet()) {
+            @Suppress("DEPRECATION")
+            extras.get(key)?.let { payloadData[key] = it }
+        }
+
+        notificationService.handleNotificationClicked(payloadData)
+
+        // Clear the notification extras so we don't re-handle on config change
+        intent.removeExtra(RichNotificationDisplayer.EXTRA_NOTIFICATION_TAP)
+        intent.removeExtra(RichNotificationDisplayer.EXTRA_NOTIFICATION_CONVERSATION_ID)
+        intent.removeExtra("data")
     }
 }
 

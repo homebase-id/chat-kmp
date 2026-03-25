@@ -32,6 +32,7 @@ import id.homebase.core.notifications.NotificationService
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
+import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
@@ -81,6 +82,7 @@ val appModule = module {
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
+    viewModelOf(::HelpViewModel)
     viewModelOf(::LoginViewModel)
 }
 

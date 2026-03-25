@@ -101,6 +101,7 @@ import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.core.audio.rememberRecordAudioPermissionState
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
@@ -143,7 +144,7 @@ fun MessageInputBar(
     onRecordingCancelled: () -> Unit,
     onRecordingHelp: () -> Unit,
     onSendMessage: (String, LinkPreview?) -> Unit,
-
+    onPasteImage: ((ByteArray) -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -239,6 +240,7 @@ fun MessageInputBar(
                 onFocused = onFocused,
                 onEmojiClick = onEmojiClick,
                 onAddAttachmentClick = onAddAttachmentClick,
+                onPasteImage = onPasteImage,
                 sendMessage = {
                     showExpanded = false
                     sendMessage()
@@ -269,6 +271,7 @@ fun MessageInputBar(
                 onRecordingStopped = onRecordingStopped,
                 onRecordingCancelled = onRecordingCancelled,
                 onRecordingHelp = onRecordingHelp,
+                onPasteImage = onPasteImage,
                 onSendMessage = { sendMessage() },
                 onCancelEdit = onCancelEdit
             )
@@ -286,6 +289,7 @@ fun MessageTextFieldExpanded(
     onCancelLinkPreview: () -> Unit,
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
+    onPasteImage: ((ByteArray) -> Unit)? = null,
     onFocused: () -> Unit = {},
     sendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
@@ -312,6 +316,28 @@ fun MessageTextFieldExpanded(
                 .onFocusChanged { focusState ->
                     if (focusState.isFocused) {
                         onFocused()
+                    }
+                }
+                .onPreviewKeyEvent { keyEvent ->
+                    if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
+                        when {
+                            keyEvent.key == Key.Enter && keyEvent.isCtrlPressed -> {
+                                sendMessage()
+                                true
+                            }
+                            keyEvent.key == Key.V && keyEvent.isCtrlPressed && onPasteImage != null -> {
+                                val imageBytes = getImageFromClipboard()
+                                if (imageBytes != null) {
+                                    onPasteImage.invoke(imageBytes)
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            else -> false
+                        }
+                    } else {
+                        false
                     }
                 },
             placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
@@ -400,6 +426,7 @@ fun MessageTextFieldCompact(
     onRecordingStopped: () -> Unit,
     onRecordingCancelled: () -> Unit,
     onRecordingHelp: () -> Unit,
+    onPasteImage: ((ByteArray) -> Unit)? = null,
     onFocused: () -> Unit = {},
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
@@ -525,12 +552,22 @@ fun MessageTextFieldCompact(
                                     }
                                 }
                                 .onPreviewKeyEvent { keyEvent ->
-                                    if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                                        if (keyEvent.isCtrlPressed) {
-                                            onSendMessage()
-                                            true
-                                        } else {
-                                            false
+                                    if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
+                                        when {
+                                            keyEvent.key == Key.Enter && keyEvent.isCtrlPressed -> {
+                                                onSendMessage()
+                                                true
+                                            }
+                                            keyEvent.key == Key.V && keyEvent.isCtrlPressed && onPasteImage != null -> {
+                                                val imageBytes = getImageFromClipboard()
+                                                if (imageBytes != null) {
+                                                    onPasteImage.invoke(imageBytes)
+                                                    true
+                                                } else {
+                                                    false
+                                                }
+                                            }
+                                            else -> false
                                         }
                                     } else {
                                         false
