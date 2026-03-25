@@ -24,5 +24,9 @@
 -keep class com.sun.jna.** { *; }
 -keep class * implements com.sun.jna.** { *; }
 
+# AndroidX WorkManager / Room
+-keep class androidx.work.impl.** { *; }
+-keep class androidx.room.** { *; }
+
 # Homebase API
 -keep class id.homebase.api.** { *; }
