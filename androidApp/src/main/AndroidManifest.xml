@@ -58,11 +58,6 @@
                 <data android:scheme="homebase-fchat" />
             </intent-filter>
         </activity>
-        <!-- Remove KMPNotifier's auto-registered FCM service so ours takes sole ownership -->
-        <service
-            android:name="com.mmk.kmpnotifier.firebase.KMPNotifierFirebaseMessagingService"
-            tools:node="remove" />
-
         <!-- FCM service: fast payload parsing + WorkManager expedited sync scheduling -->
         <service
             android:name=".DriveFcmService"
