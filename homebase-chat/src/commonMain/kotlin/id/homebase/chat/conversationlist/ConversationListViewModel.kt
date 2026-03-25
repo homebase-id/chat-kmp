@@ -272,15 +272,15 @@ class ConversationListViewModel(
             eventBus.events
                 .filter {
                     it is BackendEvent.SyncAllStarted ||
-                    it is BackendEvent.SyncAllStopped ||
-                    it is BackendEvent.DriveEvent.Stopped
+                    it is BackendEvent.SyncAllStopped
                 }
                 .collectLatest { event ->
                     when (event) {
-                        is BackendEvent.SyncAllStarted     -> _uiState.update { it.copy(driveIsSyncing = true, hasDriveError = false) }
-                        is BackendEvent.SyncAllStopped     -> _uiState.update { it.copy(driveIsSyncing = false) }
-                        is BackendEvent.DriveEvent.Stopped -> if (event.result is BackendEvent.DriveResult.Failure)
-                            _uiState.update { it.copy(hasDriveError = true) }
+                        is BackendEvent.SyncAllStarted -> _uiState.update { it.copy(driveIsSyncing = true, hasDriveError = false) }
+                        is BackendEvent.SyncAllStopped -> _uiState.update { it.copy(
+                            driveIsSyncing = false,
+                            hasDriveError = event.result is BackendEvent.SyncAllResult.Failure
+                        )}
                         else -> Unit
                     }
                 }
