@@ -206,7 +206,7 @@ class LoginViewModel(
                 authConnectionCoordinator.connectionState,
                 youAuthFlowManager.authState
             ) { connectionState, authState ->
-                authState.mapToStartupState(connectionState.isDoingInitialConnection)
+                authState.mapToStartupState(connectionState.isConnecting)
             }
                 .distinctUntilChanged() // Ensures only unique combined results are emitted
                 .catch { error ->

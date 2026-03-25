@@ -260,7 +260,7 @@ class ConversationListViewModel(
                 .collectLatest { state ->
                     val status = when {
                         state.isConnected -> ConnectionStatus.Connected
-                        state.isDoingInitialConnection -> ConnectionStatus.Connecting
+                        state.isConnecting -> ConnectionStatus.Connecting
                         else -> ConnectionStatus.Disconnected
                     }
                     _uiState.update { it.copy(connectionStatus = status) }
