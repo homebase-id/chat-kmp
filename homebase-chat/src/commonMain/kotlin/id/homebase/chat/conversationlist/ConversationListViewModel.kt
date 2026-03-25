@@ -33,13 +33,8 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
-import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
-import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
-import id.homebase.api.video.FFmpegUtils
 import id.homebase.chat.data.ConversationState
-
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -277,15 +272,22 @@ class ConversationListViewModel(
             eventBus.events
                 .filter {
                     it is BackendEvent.SyncAllStarted ||
-                    it is BackendEvent.SyncAllCompleted ||
-                    it is BackendEvent.SyncAllFailed ||
-                    it is BackendEvent.DriveEvent.Failed
+                            it is BackendEvent.SyncAllCompleted ||
+                            it is BackendEvent.SyncAllFailed ||
+                            it is BackendEvent.DriveEvent.Failed
                 }
                 .collectLatest { event ->
                     when (event) {
-                        is BackendEvent.SyncAllStarted    -> _uiState.update { it.copy(driveIsSyncing = true, hasDriveError = false) }
+                        is BackendEvent.SyncAllStarted -> _uiState.update {
+                            it.copy(
+                                driveIsSyncing = true,
+                                hasDriveError = false
+                            )
+                        }
+
                         is BackendEvent.SyncAllCompleted,
-                        is BackendEvent.SyncAllFailed     -> _uiState.update { it.copy(driveIsSyncing = false) }
+                        is BackendEvent.SyncAllFailed -> _uiState.update { it.copy(driveIsSyncing = false) }
+
                         is BackendEvent.DriveEvent.Failed -> _uiState.update { it.copy(hasDriveError = true) }
                         else -> Unit
                     }
@@ -613,7 +615,8 @@ class ConversationListViewModel(
                             "jpeg" -> "jpg"
                             else -> extension
                         }
-                        val filePath = "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
+                        val filePath =
+                            "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
 
                         val success = driveFileHttpProvider.streamPayloadDecryptedToPath(
                             driveId = chatTargetDrive.alias,
@@ -730,8 +733,9 @@ class ConversationListViewModel(
             is ConversationListUiAction.TogglePinConversation -> {
                 viewModelScope.launch {
                     try {
-                        val conversation = conversationService.getConversation(action.conversationId)
-                            ?: return@launch
+                        val conversation =
+                            conversationService.getConversation(action.conversationId)
+                                ?: return@launch
                         if (conversation.isPinned) {
                             conversationService.unpinConversation(action.conversationId)
                         } else {
@@ -780,11 +784,13 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         val newFiles = action.files.map {
-                            val ct = it.mimeType()?.toString() ?: detectContentTypeFromExtensionOrHint(it.name)
+                            val ct = it.mimeType()?.toString()
+                                ?: detectContentTypeFromExtensionOrHint(it.name)
                             when {
                                 ct.startsWith("video/") -> {
                                     val thumbnailBytes = try {
-                                        val resolvedPath = fileOperationsProvider.resolveToFilePath(it.toString())
+                                        val resolvedPath =
+                                            fileOperationsProvider.resolveToFilePath(it.toString())
                                         val thumbPath = FFmpegUtils.grabThumbnail(resolvedPath)
                                         if (thumbPath != null) {
                                             val bytes =
@@ -851,15 +857,22 @@ class ConversationListViewModel(
                         val newFiles = action.files.map {
                             if (it.mimeType.startsWith("video/")) {
                                 val thumbnailBytes = try {
-                                    val resolvedPath = fileOperationsProvider.resolveToFilePath(it.file.toString())
+                                    val resolvedPath =
+                                        fileOperationsProvider.resolveToFilePath(it.file.toString())
                                     val thumbPath = FFmpegUtils.grabThumbnail(resolvedPath)
                                     if (thumbPath != null) {
                                         val bytes = fileOperationsProvider.readFileBytes(thumbPath)
                                         fileOperationsProvider.deleteTempFile(thumbPath)
                                         bytes
                                     } else null
-                                } catch (_: Exception) { null }
-                                AttachmentPendingFile.FileVideo(Uuid.generateV7(), it.file, thumbnailBytes)
+                                } catch (_: Exception) {
+                                    null
+                                }
+                                AttachmentPendingFile.FileVideo(
+                                    Uuid.generateV7(),
+                                    it.file,
+                                    thumbnailBytes
+                                )
                             } else {
                                 AttachmentPendingFile.Gallery(Uuid.generateV7(), it)
                             }
@@ -1077,31 +1090,31 @@ class ConversationListViewModel(
                             if (recentConversations.isNotEmpty()) {
                                 add(
                                     RecipientGroupModel(
-                                    recipientType = RecipientType.Recents,
-                                    recipients = recentConversations.map {
-                                        RecipientModel.Conversation(
-                                            it
-                                        )
-                                    }
-                                ))
+                                        recipientType = RecipientType.Recents,
+                                        recipients = recentConversations.map {
+                                            RecipientModel.Conversation(
+                                                it
+                                            )
+                                        }
+                                    ))
                             }
                             if (sortedContacts.isNotEmpty()) {
                                 add(
                                     RecipientGroupModel(
-                                    recipientType = RecipientType.Contacts,
-                                    recipients = sortedContacts.map { RecipientModel.Contact(it) }
-                                ))
+                                        recipientType = RecipientType.Contacts,
+                                        recipients = sortedContacts.map { RecipientModel.Contact(it) }
+                                    ))
                             }
                             if (groupConversations.isNotEmpty()) {
                                 add(
                                     RecipientGroupModel(
-                                    recipientType = RecipientType.Groups,
-                                    recipients = groupConversations.map {
-                                        RecipientModel.Conversation(
-                                            it
-                                        )
-                                    }
-                                ))
+                                        recipientType = RecipientType.Groups,
+                                        recipients = groupConversations.map {
+                                            RecipientModel.Conversation(
+                                                it
+                                            )
+                                        }
+                                    ))
                             }
                         }
 
@@ -1151,6 +1164,7 @@ class ConversationListViewModel(
                                         payloadBundle = null,
                                     )
                                 }
+
                                 is RecipientModel.Conversation -> recipientModel.conversation.conversation.id
                             }
                         }
@@ -1412,7 +1426,8 @@ class ConversationListViewModel(
                         items.addAll(normalItems)
                     }
 
-                    val archivedCount = conversationsPool.count { it.conversation.conversationState == ConversationState.Archived }
+                    val archivedCount =
+                        conversationsPool.count { it.conversation.conversationState == ConversationState.Archived }
 
                     if (normalItems.isNotEmpty()) {
                         if (pinnedItems.isNotEmpty()) {
