@@ -316,10 +316,10 @@ class NotificationService(
         else -> "messages"
     }
 
-    /** Extracts conversation ID for chat/community notifications. */
+    /** Extracts conversation ID for chat notifications. */
     private fun resolveConversationId(notification: PushNotification): String? {
         val appId = notification.options.appId
-        return if (appId == AppConfig.APP_ID || appId == COMMUNITY_APP_ID) {
+        return if (appId == Uuid.parse(AppConfig.APP_ID).toString()) {
             notification.options.typeId
         } else null
     }
