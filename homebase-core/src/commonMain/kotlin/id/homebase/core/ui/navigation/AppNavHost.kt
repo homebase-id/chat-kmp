@@ -3,6 +3,7 @@ package id.homebase.core.ui.navigation
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -64,14 +66,13 @@ import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
-import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
-import id.homebase.core.notifications.NotificationService
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
+import id.homebase.core.widget.InAppNotificationBanner
 import kotlinx.coroutines.awaitCancellation
-import org.koin.compose.koinInject
+import kotlinx.coroutines.delay
 import org.koin.compose.viewmodel.koinViewModel
 
 sealed class TopLevelRoute(
@@ -121,60 +122,52 @@ fun AppNavHost(
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Launch a coroutine that observes the lifecycle
-    val notificationService = koinInject<NotificationService>()
-
+    // Lifecycle: foreground tracking, refresh, badge clear
     LaunchedEffect(lifecycleOwner) {
-        // Repeat the block every time the lifecycle enters RESUMED state
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             try {
-                notificationService.isAppInForeground = true
-                viewModel.refreshData()
-                BadgeManager.clear()
+                viewModel.onResumed()
                 awaitCancellation()
             } finally {
-                notificationService.isAppInForeground = false
+                viewModel.onPaused()
             }
         }
     }
 
-    // Track which conversation is currently being viewed
-    LaunchedEffect(currentDestination) {
-        notificationService.activeConversationId =
+    // Track active conversation + auth guard + notification permission
+    LaunchedEffect(authState, currentDestination) {
+        // Update active conversation for notification suppression
+        viewModel.setActiveConversation(
             if (currentDestination?.hasRoute(Route.ChatList::class) == true) {
                 try {
                     navController.currentBackStackEntry?.toRoute<Route.ChatList>()?.conversationId
-                } catch (_: Exception) {
-                    null
-                }
-            } else {
-                null
-            }
-    }
+                } catch (_: Exception) { null }
+            } else null
+        )
 
-
-
-    // Global auth guard - navigate to login when unauthenticated
-    LaunchedEffect(authState, currentDestination) {
+        // Auth guard - navigate to login when unauthenticated
         if (authState is YouAuthState.Unauthenticated || authState is YouAuthState.Error) {
-            // Only navigate if we're not already on the login screen and NavHost is initialized
-            if (currentDestination != null && !currentDestination.hasRoute(Route.Login::class)&& !currentDestination.hasRoute(Route.AppLoading::class)) {
+            if (currentDestination != null && !currentDestination.hasRoute(Route.Login::class) && !currentDestination.hasRoute(Route.AppLoading::class)) {
                 navController.navigate(Route.Login) {
                     popUpTo(0) { inclusive = true }
                 }
             }
         }
+
+        // Notification permission request
+        if (currentDestination != null && !currentDestination.hasRoute(Route.Login::class) && !currentDestination.hasRoute(Route.AppLoading::class)) {
+            if (authState is YouAuthState.Authenticated && !hasNotificationPermission) {
+                permissionManager.askPermission(PermissionType.NOTIFICATION)
+            }
+        }
     }
 
-    // Handle notification tap navigation
+    // Handle notification tap navigation (needs navController, stays in composable)
     LaunchedEffect(Unit) {
-        notificationService.navigationEvents.collect { event ->
+        viewModel.navigationEvents.collect { event ->
             when (event) {
                 is NotificationNavigationEvent.OpenConversation -> {
                     navController.navigate(Route.ChatList(event.conversationId)) {
-                        // Pop back to ChatList (no conversationId) so we don't stack
-                        // duplicate ChatList entries, and use launchSingleTop so
-                        // navigation works even when already on the ChatList screen.
                         popUpTo(Route.ChatList()) { inclusive = true }
                         launchSingleTop = true
                     }
@@ -185,12 +178,12 @@ fun AppNavHost(
         }
     }
 
-    // Show notification permission popup when relevant
-    LaunchedEffect(authState, currentDestination) {
-        if (currentDestination != null && !currentDestination.hasRoute(Route.Login::class) && !currentDestination.hasRoute(Route.AppLoading::class)) {
-            if (authState is YouAuthState.Authenticated && !hasNotificationPermission) {
-                permissionManager.askPermission(PermissionType.NOTIFICATION)
-            }
+    // Auto-dismiss in-app banner after 4 seconds
+    val inAppNotification = uiState.inAppNotification
+    LaunchedEffect(inAppNotification) {
+        if (inAppNotification != null) {
+            delay(4000)
+            viewModel.dismissInAppBanner()
         }
     }
 
@@ -217,10 +210,11 @@ fun AppNavHost(
                 }
             }
         }) { paddingValues ->
-        Row(
+        Box(
             modifier = Modifier.fillMaxSize().consumeWindowInsets(paddingValues)
                 .padding(paddingValues)
         ) {
+        Row(modifier = Modifier.fillMaxSize()) {
             if (showNavigationRail && isAuthenticated) {
                 NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
                     topLevelRoutes.forEach { topLevelRoute ->
@@ -539,6 +533,23 @@ fun AppNavHost(
                     }
                 }
             }
+        }
+
+        // In-app notification banner overlay
+        InAppNotificationBanner(
+            event = uiState.inAppNotification,
+            visible = uiState.inAppNotification != null,
+            onTap = { data ->
+                viewModel.dismissInAppBanner()
+                data.conversationId?.let { conversationId ->
+                    navController.navigate(Route.ChatList(conversationId)) {
+                        popUpTo(Route.ChatList()) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            },
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
         }
     }
 }

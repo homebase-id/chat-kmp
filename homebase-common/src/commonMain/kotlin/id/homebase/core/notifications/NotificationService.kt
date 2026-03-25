@@ -42,8 +42,8 @@ class NotificationService(
     private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(replay = 1)
     val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
 
-    private val _inAppNotificationEvents = MutableSharedFlow<InAppNotificationEvent>(extraBufferCapacity = 1)
-    val inAppNotificationEvents: SharedFlow<InAppNotificationEvent> = _inAppNotificationEvents.asSharedFlow()
+    private val _inAppNotificationEvents = MutableSharedFlow<RichNotificationData>(extraBufferCapacity = 1)
+    val inAppNotificationEvents: SharedFlow<RichNotificationData> = _inAppNotificationEvents.asSharedFlow()
 
     /** Set by the UI layer to suppress notifications for the currently viewed conversation. */
     var activeConversationId: String? = null
@@ -225,15 +225,7 @@ class NotificationService(
 
                 if (isAppInForeground && richData.conversationId != null) {
                     // Show in-app banner instead of system notification
-                    _inAppNotificationEvents.tryEmit(
-                        InAppNotificationEvent(
-                            conversationId = richData.conversationId,
-                            senderName = richData.senderName,
-                            senderId = richData.senderId,
-                            body = richData.body,
-                            timestamp = richData.timestamp,
-                        )
-                    )
+                    _inAppNotificationEvents.tryEmit(richData)
                 } else {
                     showRichNotification(richData)
                     BadgeManager.increment()
