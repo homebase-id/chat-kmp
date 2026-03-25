@@ -8,6 +8,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
 
+      MainViewControllerKt.initKoin()
       FirebaseApp.configure() //important
       
       //By default showPushNotification value is true.
