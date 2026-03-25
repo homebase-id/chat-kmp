@@ -21,7 +21,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -71,6 +70,7 @@ import id.homebase.core.notifications.NotificationService
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
+import kotlinx.coroutines.awaitCancellation
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -127,18 +127,14 @@ fun AppNavHost(
     LaunchedEffect(lifecycleOwner) {
         // Repeat the block every time the lifecycle enters RESUMED state
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            // Refresh logic here (e.g., fetch data)
-            viewModel.refreshData()
-            BadgeManager.clear()
-            notificationService.isAppInForeground = true
-        }
-    }
-
-    // Track app going to background
-    DisposableEffect(lifecycleOwner) {
-        onDispose {
-            notificationService.isAppInForeground = false
-            notificationService.activeConversationId = null
+            try {
+                notificationService.isAppInForeground = true
+                viewModel.refreshData()
+                BadgeManager.clear()
+                awaitCancellation()
+            } finally {
+                notificationService.isAppInForeground = false
+            }
         }
     }
 
