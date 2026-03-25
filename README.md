@@ -49,9 +49,16 @@ Configure signing and user in Xcode.
 **Run all tests (JVM)**
 Currently only tests found in common and api module.
 ```
-./gradlew ./gradlew homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
+./gradlew homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
 ```
 To add to IDE as run option in menu, click "Edit configurations" in Run/debug menu, add gradle task, name it "AllTests" and paste below into run field:
 ```
 homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
+```
+
+## Linting
+### KtLint
+Run on specified module:
+```
+./gradlew <module-name>:ktLintCheck
 ```
