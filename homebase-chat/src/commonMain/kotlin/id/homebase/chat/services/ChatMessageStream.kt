@@ -72,7 +72,7 @@ class ChatMessageStream(
                         isSyncing = true
                     }
 
-                    is BackendEvent.DriveEvent.Completed, is BackendEvent.DriveEvent.Failed -> {
+                    is BackendEvent.DriveEvent.Stopped -> {
                         isSyncing = false
                         refreshLoadedConversations()
                     }

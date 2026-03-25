@@ -12,9 +12,9 @@ sealed interface StartupState {
     data object Unauthenticated : StartupState
 }
 
-fun YouAuthState.mapToStartupState(isDoingInitialConnection: Boolean): StartupState {
+fun YouAuthState.mapToStartupState(isConnecting: Boolean): StartupState {
     return when (this) {
-        is YouAuthState.Authenticated ->  if (isDoingInitialConnection) StartupState.Loading else StartupState.Authenticated
+        is YouAuthState.Authenticated ->  if (isConnecting) StartupState.Loading else StartupState.Authenticated
         is YouAuthState.Error -> StartupState.Error(this.message)
         YouAuthState.Authenticating -> StartupState.Authenticating
         YouAuthState.Initializing -> StartupState.Loading

@@ -41,7 +41,8 @@ class DriveContactService(
     init {
         scope.launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.DriveEvent.Completed &&
+                if (event is BackendEvent.DriveEvent.Stopped &&
+                    event.result is BackendEvent.DriveResult.Success &&
                     event.driveId == contactDrive
                 ) {
                     refresh()
