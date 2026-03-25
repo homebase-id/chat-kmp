@@ -105,7 +105,7 @@ private suspend fun FileMetadata.decryptAppData(
     val decryptedBytes = try {
         keyHeader.decrypt(encryptedBytes)
     } catch (_: Throwable) {
-        Logger.e("Decryption failure")
+        Logger.e("Decryption failure for AppData content")
         """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}""".toByteArray(Charsets.UTF_8)
     }
 
@@ -135,7 +135,9 @@ private suspend fun FileMetadata.decryptLocalAppData(
     val decryptedBytes = try {
         keyHeader.decryptWithIv(encryptedBytes, ivBytes)
     } catch (e: Throwable) {
-        throw FileDecryptionException.ContentDecryptionFailed(e)
+        Logger.e("Decryption failure for LocalAppData content")
+        """{}""".toByteArray(Charsets.UTF_8)
+//        throw FileDecryptionException.ContentDecryptionFailed(e)
     }
 
     return this.copy(
