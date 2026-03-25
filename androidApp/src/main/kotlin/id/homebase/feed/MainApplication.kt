@@ -1,6 +1,10 @@
 package id.homebase.feed
 
 import android.app.Application
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
 import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration
@@ -13,6 +17,7 @@ import id.homebase.core.di.allModules
 import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.notifications.RichNotificationDisplayer
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
 import org.koin.android.ext.koin.androidContext
@@ -61,12 +66,23 @@ class MainApplication : Application(), KoinComponent {
         // Set up uncaught exception handler for crash logging
         setupCrashHandler()
 
+        // Provide application context for rich notifications
+        RichNotificationDisplayer.initialize(this)
+
+        // Create notification channels (Android O+)
+        createNotificationChannels()
+
         // Initialize KMPNotifier for push notifications
         NotifierManager.initialize(
             configuration =
                 NotificationPlatformConfiguration.Android(
                     notificationIconResId = R.mipmap.ic_launcher_foreground,
                     showPushNotification = true,
+                    notificationChannelData =
+                        NotificationPlatformConfiguration.Android.NotificationChannelData(
+                            id = "messages",
+                            name = "Messages",
+                        ),
                 )
         )
 
@@ -74,6 +90,38 @@ class MainApplication : Application(), KoinComponent {
         // before the UI composes are not lost
         val notificationService: NotificationService = get()
         notificationService.startListening()
+    }
+
+    private fun createNotificationChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = getSystemService(NotificationManager::class.java)
+
+            // Messages channel — chat, mail, community (high priority for heads-up)
+            nm.createNotificationChannel(
+                NotificationChannel("messages", "Messages", NotificationManager.IMPORTANCE_HIGH).apply {
+                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+                    enableVibration(true)
+                    setShowBadge(true)
+                    description = "Chat messages, mail, and community notifications"
+                }
+            )
+
+            // Social channel — followers, connection requests, introductions
+            nm.createNotificationChannel(
+                NotificationChannel("social", "Social", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+                    description = "Followers, connection requests, and introductions"
+                }
+            )
+
+            // Feed channel — posts, reactions, comments
+            nm.createNotificationChannel(
+                NotificationChannel("feed", "Feed", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+                    description = "New posts, reactions, and comments"
+                }
+            )
+        }
     }
 
     private fun setupCrashHandler() {

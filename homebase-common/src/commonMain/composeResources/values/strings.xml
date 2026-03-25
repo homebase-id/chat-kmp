@@ -102,8 +102,18 @@
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
     <string name="settings_notifications">Notifications</string>
+    <string name="settings_help">Help</string>
     <string name="settings_logout">Log out</string>
     <string name="settings_delete_account">Delete my account</string>
+
+    <!-- Help screen -->
+    <string name="help_support_center">Support Center</string>
+    <string name="help_contact_us">Contact Us</string>
+    <string name="help_submit_debug_log">Submit Debug Log</string>
+    <string name="help_debug_log_description">Debug logs can help Homebase fix issues and crashes.</string>
+    <string name="help_version">Version</string>
+    <string name="help_terms_privacy">Terms &amp; Privacy Policy</string>
+    <string name="help_copyright">Copyright © 2024–2026 Homebase</string>
     <string name="settings_delete_account_dialog_title">Delete your account?</string>
     <string name="settings_delete_account_dialog_text">Your account is much more than only this app. If you want to remove your account, you can do so in the owner console.</string>
     <string name="settings_open_owner_console">Open owner console</string>

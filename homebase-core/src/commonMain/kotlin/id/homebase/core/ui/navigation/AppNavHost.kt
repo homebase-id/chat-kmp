@@ -21,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,6 +38,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.toRoute
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
@@ -57,14 +59,19 @@ import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
+import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
+import id.homebase.core.notifications.BadgeManager
+import id.homebase.core.notifications.NotificationNavigationEvent
+import id.homebase.core.notifications.NotificationService
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
 sealed class TopLevelRoute(
@@ -115,12 +122,38 @@ fun AppNavHost(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // Launch a coroutine that observes the lifecycle
+    val notificationService = koinInject<NotificationService>()
+
     LaunchedEffect(lifecycleOwner) {
         // Repeat the block every time the lifecycle enters RESUMED state
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             // Refresh logic here (e.g., fetch data)
             viewModel.refreshData()
+            BadgeManager.clear()
+            notificationService.isAppInForeground = true
         }
+    }
+
+    // Track app going to background
+    DisposableEffect(lifecycleOwner) {
+        onDispose {
+            notificationService.isAppInForeground = false
+            notificationService.activeConversationId = null
+        }
+    }
+
+    // Track which conversation is currently being viewed
+    LaunchedEffect(currentDestination) {
+        notificationService.activeConversationId =
+            if (currentDestination?.hasRoute(Route.ChatList::class) == true) {
+                try {
+                    navController.currentBackStackEntry?.toRoute<Route.ChatList>()?.conversationId
+                } catch (_: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
     }
 
 
@@ -133,6 +166,25 @@ fun AppNavHost(
                 navController.navigate(Route.Login) {
                     popUpTo(0) { inclusive = true }
                 }
+            }
+        }
+    }
+
+    // Handle notification tap navigation
+    LaunchedEffect(Unit) {
+        notificationService.navigationEvents.collect { event ->
+            when (event) {
+                is NotificationNavigationEvent.OpenConversation -> {
+                    navController.navigate(Route.ChatList(event.conversationId)) {
+                        // Pop back to ChatList (no conversationId) so we don't stack
+                        // duplicate ChatList entries, and use launchSingleTop so
+                        // navigation works even when already on the ChatList screen.
+                        popUpTo(Route.ChatList()) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+                is NotificationNavigationEvent.OpenUrl ->
+                    uriHandler.openUrl(event.url)
             }
         }
     }
@@ -459,6 +511,9 @@ fun AppNavHost(
                                 onNavigateToAppearance = {
                                     navController.navigate(Route.AppearanceSettings)
                                 },
+                                onNavigateToHelp = {
+                                    navController.navigate(Route.Help)
+                                },
                             )
                         }
                     }
@@ -474,6 +529,14 @@ fun AppNavHost(
                     composable<Route.AppearanceSettings> {
                         if (isAuthenticated) {
                             AppearanceSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() })
+                        }
+                    }
+
+                    composable<Route.Help> {
+                        if (isAuthenticated) {
+                            HelpScreen(
                                 viewModel = koinViewModel(),
                                 onBackClick = { navController.popBackStack() })
                         }

@@ -1,0 +1,157 @@
+package id.homebase.chat.widget
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import id.homebase.core.util.isMobile
+import kotlinx.coroutines.launch
+import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+
+@Composable
+fun SwipeableMessageWrapper(
+    onSwipeRight: (() -> Unit)?,
+    onSwipeLeft: (() -> Unit)?,
+    enabled: Boolean = isMobile(),
+    content: @Composable () -> Unit,
+) {
+    if (!enabled || (onSwipeRight == null && onSwipeLeft == null)) {
+        content()
+        return
+    }
+
+    val density = LocalDensity.current
+    val thresholdPx = with(density) { 72.dp.toPx() }
+    val maxOffsetPx = with(density) { 100.dp.toPx() }
+    val offsetX = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    var hapticFired by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        // Reply icon (left side, revealed on swipe right)
+        if (onSwipeRight != null && offsetX.value > 0f) {
+            val progress = (offsetX.value / thresholdPx).coerceIn(0f, 1f)
+            Box(
+                modifier = Modifier
+                    .padding(start = 12.dp)
+                    .size(32.dp)
+                    .scale(0.5f + 0.5f * progress)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceContainerHighest,
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Reply,
+                    contentDescription = "Reply",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        // Info icon (right side, revealed on swipe left)
+        if (onSwipeLeft != null && offsetX.value < 0f) {
+            val progress = (offsetX.value.absoluteValue / thresholdPx).coerceIn(0f, 1f)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp)
+                    .size(32.dp)
+                    .scale(0.5f + 0.5f * progress)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceContainerHighest,
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = "Info",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        // Message content
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .pointerInput(onSwipeRight, onSwipeLeft) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            val currentOffset = offsetX.value
+                            if (currentOffset > thresholdPx && onSwipeRight != null) {
+                                onSwipeRight()
+                            } else if (currentOffset < -thresholdPx && onSwipeLeft != null) {
+                                onSwipeLeft()
+                            }
+                            hapticFired = false
+                            scope.launch {
+                                offsetX.animateTo(0f, spring())
+                            }
+                        },
+                        onDragCancel = {
+                            hapticFired = false
+                            scope.launch {
+                                offsetX.animateTo(0f, spring())
+                            }
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            scope.launch {
+                                var newValue = offsetX.value + dragAmount
+                                // Clamp: only allow right if onSwipeRight exists, left if onSwipeLeft exists
+                                if (onSwipeRight == null) newValue = newValue.coerceAtMost(0f)
+                                if (onSwipeLeft == null) newValue = newValue.coerceAtLeast(0f)
+                                newValue = newValue.coerceIn(-maxOffsetPx, maxOffsetPx)
+                                offsetX.snapTo(newValue)
+
+                                // Fire haptic at threshold
+                                if (!hapticFired && newValue.absoluteValue >= thresholdPx) {
+                                    hapticFired = true
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                } else if (hapticFired && newValue.absoluteValue < thresholdPx) {
+                                    hapticFired = false
+                                }
+                            }
+                        },
+                    )
+                }
+        ) {
+            content()
+        }
+    }
+}
