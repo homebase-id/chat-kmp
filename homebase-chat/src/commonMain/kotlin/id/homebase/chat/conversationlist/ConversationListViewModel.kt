@@ -261,7 +261,7 @@ class ConversationListViewModel(
                 .collectLatest { state ->
                     val status = when {
                         state.isConnected -> ConnectionStatus.Connected
-                        state.isDoingInitialConnection -> ConnectionStatus.Connecting
+                        state.isConnecting -> ConnectionStatus.Connecting
                         else -> ConnectionStatus.Disconnected
                     }
                     _uiState.update { it.copy(connectionStatus = status) }
@@ -273,23 +273,15 @@ class ConversationListViewModel(
             eventBus.events
                 .filter {
                     it is BackendEvent.SyncAllStarted ||
-                            it is BackendEvent.SyncAllCompleted ||
-                            it is BackendEvent.SyncAllFailed ||
-                            it is BackendEvent.DriveEvent.Failed
+                    it is BackendEvent.SyncAllStopped
                 }
                 .collectLatest { event ->
                     when (event) {
-                        is BackendEvent.SyncAllStarted -> _uiState.update {
-                            it.copy(
-                                driveIsSyncing = true,
-                                hasDriveError = false
-                            )
-                        }
-
-                        is BackendEvent.SyncAllCompleted,
-                        is BackendEvent.SyncAllFailed -> _uiState.update { it.copy(driveIsSyncing = false) }
-
-                        is BackendEvent.DriveEvent.Failed -> _uiState.update { it.copy(hasDriveError = true) }
+                        is BackendEvent.SyncAllStarted -> _uiState.update { it.copy(driveIsSyncing = true, hasDriveError = false) }
+                        is BackendEvent.SyncAllStopped -> _uiState.update { it.copy(
+                            driveIsSyncing = false,
+                            hasDriveError = event.result is BackendEvent.SyncAllResult.Failure
+                        )}
                         else -> Unit
                     }
                 }

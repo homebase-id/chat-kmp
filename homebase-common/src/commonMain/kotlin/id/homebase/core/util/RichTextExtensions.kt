@@ -48,7 +48,7 @@ fun RichTextState.applyDefaultStyling(
     linkColor: Color = LightColors.Primary,
 ): RichTextState {
     return this.apply {
-        config.listIndent = 0
+        config.listIndent = 20
         config.linkColor = linkColor
         config.linkTextDecoration = TextDecoration.Underline
     }

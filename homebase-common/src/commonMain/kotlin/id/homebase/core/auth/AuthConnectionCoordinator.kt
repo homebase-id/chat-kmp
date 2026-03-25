@@ -53,6 +53,13 @@ class AuthConnectionCoordinator(
                 }
             }
         }
+        scope.launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.Connecting) {
+                    _connectionState.update { it.copy(isConnecting = true) }
+                }
+            }
+        }
     }
 
     suspend fun onAuthStateChanged(state: YouAuthState) {
@@ -98,24 +105,26 @@ class AuthConnectionCoordinator(
                         } catch (e: Exception) {
                             Logger.e(e) { "syncAll() failed on connect" }
                         } finally {
-                            _connectionState.update { it.copy(isDoingInitialConnection = false) }
+                            if (_connectionState.value.isConnected) {
+                                _connectionState.update { it.copy(isConnecting = false) }
+                            }
                             outboxSync.clearCheckout()
                             outboxSync.send()
                         }
                     }
                 },
                 onDisconnected = {
-                    _connectionState.update { it.copy(isConnected = false, isDoingInitialConnection = false) }
+                    _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
                     driveSyncManager.pause()
                 },
                 onConnectError = {
-                    _connectionState.update { it.copy(isConnected = false, isDoingInitialConnection = false) }
+                    _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
                 }
             ).also { it.start() }
     }
 
     private fun disconnect() {
-        _connectionState.update { it.copy(isConnected = false, isDoingInitialConnection = true) }
+        _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
         wsClient?.close()
         wsClient = null
         driveSyncManager.stop()
@@ -124,6 +133,6 @@ class AuthConnectionCoordinator(
 
 @Immutable
 data class AuthConnectionState(
-    val isDoingInitialConnection: Boolean = true,
+    val isConnecting: Boolean = true,
     val isConnected: Boolean = false,
 )
