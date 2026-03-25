@@ -31,7 +31,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                    didReceiveRemoteNotification userInfo: [AnyHashable : Any],
                    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
       NotifierManager.shared.onApplicationDidReceiveRemoteNotification(userInfo: userInfo)
-      completionHandler(.newData)
+      let orchestrator = BackgroundSyncOrchestrator.companion.fromKoin()
+      orchestrator.triggerSync { success in
+          completionHandler(success ? .newData : .failed)
+      }
   }
     
 }

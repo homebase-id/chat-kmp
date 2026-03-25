@@ -103,7 +103,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.filekit.dialogs.compose)
     implementation(libs.kermit)
-
+    implementation(libs.androidx.work.runtime)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

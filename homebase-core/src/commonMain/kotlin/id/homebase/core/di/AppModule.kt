@@ -26,6 +26,7 @@ import id.homebase.chat.services.convo.contact.DriveContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.settings.UserPreferences
@@ -45,6 +46,7 @@ val appModule = module {
     single { UserPreferences(get()) }
 
     singleOf(::AuthConnectionCoordinator)
+    singleOf(::BackgroundSyncOrchestrator)
 
     factoryOf(::PayloadBundleEncryptionService)
     factoryOf(::OptimisticWriter)
