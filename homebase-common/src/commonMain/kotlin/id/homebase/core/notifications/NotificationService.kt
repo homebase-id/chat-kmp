@@ -108,6 +108,27 @@ class NotificationService(
         NotifierManager.setLogger { message -> Logger.d(tag = "KMPNotifier") { message } }
     }
 
+    /**
+     * Called from platform FCM service when a new token is received.
+     * Forwards to the same listener path as KMPNotifier's built-in service.
+     */
+    fun onNewFcmToken(token: String) {
+        Logger.i(tag = "NotificationService") { "New push token (from FCM service): $token" }
+        registerToken(token)
+    }
+
+    /**
+     * Called from platform FCM service when a message is received.
+     * Since DriveFcmService overrides KMPNotifier's MyFirebaseMessagingService,
+     * we handle the payload directly here.
+     */
+    fun onFcmMessageReceived(title: String?, body: String?, data: Map<String, String>) {
+        Logger.i(tag = "NotificationService") {
+            "FCM message received — title=$title body=$body data=$data"
+        }
+        handleIncomingPayload(data)
+    }
+
     private fun registerToken(token: String) {
         scope.launch {
             val maxAttempts = 5
