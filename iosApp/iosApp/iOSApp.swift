@@ -115,6 +115,20 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onOpenURL { url in
+                    handleShareURL(url)
+                }
         }
+    }
+
+    /// Handles `homebase-share://send?conversationId=X` URLs from the share extension.
+    private func handleShareURL(_ url: URL) {
+        guard url.scheme == "homebase-share",
+              url.host == "send",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let conversationId = components.queryItems?.first(where: { $0.name == "conversationId" })?.value
+        else { return }
+
+        ShareHandlerBridge.shared.handleIncomingShare(conversationId: conversationId)
     }
 }

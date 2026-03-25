@@ -20,7 +20,10 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.share.ShareConversationCacheWriter
+import id.homebase.core.share.ShareableConversation
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,7 +35,8 @@ class ConversationStream(
     private val contactService: ContactService,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val shareCacheWriter: ShareConversationCacheWriter,
 ) {
 
     private val chatDrive = chatTargetDrive.alias
@@ -253,6 +257,7 @@ class ConversationStream(
     private suspend fun loadConversations() {
         val result = fetchConversations()
         _conversations.value = ConversationsData(items = result)
+        updateShareCache(result)
     }
 
     fun start() {
@@ -329,6 +334,27 @@ class ConversationStream(
         val conversation = getConversationById(conversationId) ?: return listOf()
         val recipients = conversation.participants.filter { it != domain }
         return recipients
+    }
+
+    private fun updateShareCache(conversations: List<ConversationUiModel>) {
+        scope.launch(Dispatchers.Default) {
+            try {
+                val domain = credentialsManager.getActiveDomain()?.domainName ?: return@launch
+                val shareable = conversations.map { convo ->
+                    ShareableConversation(
+                        id = convo.id.toString(),
+                        displayName = convo.getDisplayName(),
+                        avatarInitials = convo.avatarInitials,
+                        isGroup = convo.isGroupConversation,
+                        participantCount = convo.participants.size,
+                        lastMessageTimestamp = convo.timestamp.toEpochMilliseconds(),
+                    )
+                }
+                shareCacheWriter.updateCache(shareable, domain)
+            } catch (e: Exception) {
+                Logger.e("ConversationStream") { "Failed to update share cache: ${e.message}" }
+            }
+        }
     }
 }
 

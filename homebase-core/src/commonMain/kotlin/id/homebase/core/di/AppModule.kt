@@ -29,6 +29,8 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.share.ShareConversationCacheWriter
+import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
@@ -49,6 +51,9 @@ val appModule = module {
 
     factoryOf(::PayloadBundleEncryptionService)
     factoryOf(::OptimisticWriter)
+
+    singleOf(::ShareConversationCacheWriter)
+    singleOf(::ShareContentProcessor)
 
     singleOf(::ConnectionService)
     singleOf(::DriveContactService)
