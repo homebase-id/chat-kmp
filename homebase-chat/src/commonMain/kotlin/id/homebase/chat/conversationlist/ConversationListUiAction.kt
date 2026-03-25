@@ -110,4 +110,9 @@ sealed interface ConversationListUiAction {
     data object StopRecording : ConversationListUiAction
     data object CancelRecording : ConversationListUiAction
     data object ShowRecordingHelp : ConversationListUiAction
+
+    data class AttachClipboardImage(
+        val conversationId: Uuid,
+        val imageBytes: ByteArray,
+    ) : ConversationListUiAction
 }

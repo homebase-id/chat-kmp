@@ -50,6 +50,7 @@ import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.avatars.ConnectionStatus
 import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
@@ -1280,6 +1281,49 @@ class ConversationListViewModel(
             is ConversationListUiAction.DeleteConversation -> {
                 viewModelScope.launch {
                     conversationService.deleteConversation(action.conversationId)
+                }
+            }
+
+            /* Clipboard image paste */
+            is ConversationListUiAction.AttachClipboardImage -> {
+                viewModelScope.launch {
+                    try {
+                        val tempPath = fileOperationsProvider.writeBytesToTempFile(
+                            action.imageBytes,
+                            "clipboard_image",
+                            "png"
+                        )
+                        val platformFile = platformFileFromPath(tempPath)
+                        val newFile = AttachmentPendingFile.FileImage(
+                            Uuid.generateV7(),
+                            platformFile
+                        )
+                        val conversation = _uiState.value.activeConversations.find {
+                            it.conversation.id == action.conversationId
+                        }
+                        if (conversation == null) return@launch
+
+                        val overlay = _messagesUiState.value.fullScreenOverlay
+                        val newOverlay = if (overlay is FullScreenOverlay.AttachmentData) {
+                            overlay.copy(
+                                attachments = overlay.attachments + newFile,
+                            )
+                        } else {
+                            FullScreenOverlay.AttachmentData(
+                                conversationTitle = conversation.conversation.name,
+                                conversationId = action.conversationId,
+                                selected = newFile.attachmentId,
+                                attachments = listOf(newFile),
+                            )
+                        }
+
+                        _messagesUiState.update {
+                            it.copy(fullScreenOverlay = newOverlay)
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("Failed to attach clipboard image", e)
+                        sendEvent(ShowErrorMessage("Failed to paste image: ${e.message}"))
+                    }
                 }
             }
 

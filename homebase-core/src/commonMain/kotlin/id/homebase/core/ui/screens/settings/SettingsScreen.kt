@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.Brightness6
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -59,6 +60,7 @@ import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_notifications
+import id.homebase.resources.settings_help
 import id.homebase.resources.settings_open_owner_console
 import org.jetbrains.compose.resources.stringResource
 
@@ -68,6 +70,7 @@ fun SettingsScreen(
     onBackClick: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
+    onNavigateToHelp: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val uriHandler = getUriHandler()
@@ -119,7 +122,8 @@ fun SettingsScreen(
         onAction = viewModel::onAction,
         onBackClick = onBackClick,
         onNavigateToNotifications = onNavigateToNotifications,
-        onNavigateToAppearance = onNavigateToAppearance
+        onNavigateToAppearance = onNavigateToAppearance,
+        onNavigateToHelp = onNavigateToHelp
     )
 }
 
@@ -131,6 +135,7 @@ fun SettingsUi(
     onBackClick: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
+    onNavigateToHelp: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
 
@@ -198,6 +203,12 @@ fun SettingsUi(
                 onClick = onNavigateToAppearance
             )
             Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
+                text = stringResource(MR.string.settings_help),
+                onClick = onNavigateToHelp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
@@ -236,7 +247,8 @@ fun SettingsUiPreview() {
             onAction = {},
             onBackClick = {},
             onNavigateToNotifications = {},
-            onNavigateToAppearance = {}
+            onNavigateToAppearance = {},
+            onNavigateToHelp = {}
         )
     }
 }

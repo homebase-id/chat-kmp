@@ -22,6 +22,11 @@ data class PushNotificationPayloadOptions(
     val silent: Boolean = false,
     val unEncryptedMessage: String? = null,
     val peerSubscriptionId: String? = null,
+    // TODO: Encrypted notification body support — when backend sends keyHeader,
+    // use EncryptedKeyHeader.decryptAesToKeyHeader() + KeyHeader.decrypt() to
+    // decrypt encryptedBody before display. See NotificationService.decryptNotificationBody().
+    val keyHeader: String? = null,
+    val encryptedBody: String? = null,
 )
 
 /** Wrapper for push notification messages as delivered by the backend. */

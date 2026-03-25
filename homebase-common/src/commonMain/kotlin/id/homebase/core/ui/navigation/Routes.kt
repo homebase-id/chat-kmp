@@ -76,4 +76,8 @@ sealed class Route {
     @Serializable
     @SerialName("appearance-settings")
     data object AppearanceSettings : Route()
+
+    @Serializable
+    @SerialName("help")
+    data object Help : Route()
 }
