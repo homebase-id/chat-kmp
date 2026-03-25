@@ -111,7 +111,8 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.filekit.dialogs.compose)
     implementation(libs.kermit)
-
+    implementation(libs.androidx.work.runtime)
+    implementation(libs.firebase.messaging)
 
     debugImplementation(libs.androidx.ui.tooling)
 }
