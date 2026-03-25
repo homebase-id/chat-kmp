@@ -53,6 +53,13 @@ class AuthConnectionCoordinator(
                 }
             }
         }
+        scope.launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.Connecting) {
+                    _connectionState.update { it.copy(isConnecting = true) }
+                }
+            }
+        }
     }
 
     suspend fun onAuthStateChanged(state: YouAuthState) {
@@ -107,17 +114,17 @@ class AuthConnectionCoordinator(
                     }
                 },
                 onDisconnected = {
-                    _connectionState.update { it.copy(isConnected = false, isConnecting = true) }
+                    _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
                     driveSyncManager.pause()
                 },
                 onConnectError = {
-                    _connectionState.update { it.copy(isConnected = false, isConnecting = true) }
+                    _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
                 }
             ).also { it.start() }
     }
 
     private fun disconnect() {
-        _connectionState.update { it.copy(isConnected = false, isConnecting = true) }
+        _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
         wsClient?.close()
         wsClient = null
         driveSyncManager.stop()
