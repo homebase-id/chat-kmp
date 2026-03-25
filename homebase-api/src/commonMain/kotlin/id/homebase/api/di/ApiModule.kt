@@ -7,6 +7,7 @@ import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.DriveOutboxUploader
@@ -44,6 +45,7 @@ val apiModule = module {
     singleOf(::CredentialsManager)
     singleOf(::OwnerSessionRepository)
     singleOf(::DriveSyncManager)
+    singleOf(::DriveFileHttpProvider)
     singleOf(::DriveFileProviderCached)
     single<OutboxUploader> { DriveOutboxUploader(get(), get()) }
     singleOf(::OutboxSync)

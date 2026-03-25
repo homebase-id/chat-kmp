@@ -45,7 +45,7 @@ data class ConversationUiModel(
         get() = id == ChatProtocol.ConversationWithYourselfId
 
 
-    fun getDisplay(): String {
+    fun getDisplayName(): String {
         if (name.isEmpty() || name.isBlank()) {
             return participants.first().domainName
         }

@@ -773,7 +773,7 @@ private fun BoxScope.RecordingInProgress(
 }
 
 @Composable
-private fun BlueBackgroundIconButton(
+fun BlueBackgroundIconButton(
     onClick: () -> Unit,
     imageVector: ImageVector,
     contentDescription: String?,

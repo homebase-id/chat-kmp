@@ -14,6 +14,7 @@ import id.homebase.api.crypto.EccKeySize
 import id.homebase.api.crypto.generateEccKeyPair
 import id.homebase.api.crypto.publicKeyToJwkBase64Url
 import id.homebase.api.decodeUrl
+import id.homebase.api.exception.AuthInProgressException
 import id.homebase.api.generateUuidBytes
 import id.homebase.api.generateUuidString
 import id.homebase.api.storage.SecureStorage
@@ -27,8 +28,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlin.concurrent.Volatile
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
 
 /** Authentication state for the YouAuth flow. */
@@ -189,7 +190,7 @@ class YouAuthFlowManager(
             _authState.value is YouAuthState.Authenticated
         ) {
             Logger.e(tag = TAG) { "Already authenticating or authenticated" }
-            return ""
+            throw AuthInProgressException()
         }
 
         _authState.value = YouAuthState.Authenticating
@@ -244,8 +245,8 @@ class YouAuthFlowManager(
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error starting authorization" }
             _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
+            throw e
         }
-        return ""
     }
 
     /** Complete the authentication flow after browser callback. */

@@ -1,12 +1,15 @@
 package id.homebase.chat.conversationlist
 
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
+import id.homebase.core.avatars.ConnectionStatus
 import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.EmojiReaction
@@ -24,27 +27,18 @@ import kotlin.uuid.Uuid
 data class ConversationListUiState(
     val activeConversations: ImmutableList<EnrichedConversationUiModel> = persistentListOf(),
     val conversationsContent: ConversationListContentState = ConversationListContentState.Loading,
+    val archivedCount: Int = 0,
     val selectedConversationId: Uuid? = null,
     val filterByUnread: Boolean = false,
     val isSearchActive: Boolean = false,
     val ownerSession: OwnerSession? = null,
     val downloadingFiles: Set<String> = emptySet(),
-    val driveIsConnected: Boolean = false,
+    val connectionStatus: ConnectionStatus = ConnectionStatus.Connecting,
     val driveIsSyncing: Boolean = false,
+    val hasDriveError: Boolean = false,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
 )
-
-sealed interface ConversationListUiSheet {
-    data class ConnectIdentities(val identities: List<OdinId>) : ConversationListUiSheet
-}
-
-sealed interface UploadStatus {
-    data object Preparing : UploadStatus
-    data class Processing(val progress: Float) : UploadStatus
-    data class Uploading(val progress: Float) : UploadStatus
-    data object Completed : UploadStatus
-}
 
 @Immutable
 data class MessageListUiState(
@@ -61,8 +55,25 @@ data class MessageListUiState(
     val messageReactions: List<EmojiReaction>? = null,
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
-    val uiSheet: ConversationListUiSheet? = null,
+    val uiSheet: MessageListUiSheet? = null,
 )
+
+sealed interface MessageListUiSheet {
+    data class ConnectIdentities(val identities: List<OdinId>) : MessageListUiSheet
+    data class ForwardMessage(
+        val message: MessageUiModel,
+        val recipients: ImmutableList<RecipientGroupModel>,
+        val selectedRecipients: ImmutableList<RecipientModel> = persistentListOf(),
+        val searchTextState: TextFieldState = TextFieldState(),
+    ) : MessageListUiSheet
+}
+
+sealed interface UploadStatus {
+    data object Preparing : UploadStatus
+    data class Processing(val progress: Float) : UploadStatus
+    data class Uploading(val progress: Float) : UploadStatus
+    data object Completed : UploadStatus
+}
 
 @Immutable
 data class DecryptedFileKey(
@@ -93,6 +104,25 @@ sealed class MessageListContentModel(val id: String) {
     data class System(val text: String, val created: Instant) : MessageListContentModel(created.toString())
     data class Message(val message: MessageUiModel) :
         MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
+}
+
+@Immutable
+data class RecipientGroupModel(
+    val recipientType: RecipientType,
+    val recipients: List<RecipientModel>
+)
+
+enum class RecipientType {
+    You,
+    Recents,
+    Contacts,
+    Groups
+}
+
+@Immutable
+sealed class RecipientModel(val name: String) {
+    data class Conversation(val conversation: EnrichedConversationUiModel) : RecipientModel(conversation.getDisplayName())
+    data class Contact(val contact: ContactUiModel) : RecipientModel(contact.name)
 }
 
 @Immutable

@@ -19,6 +19,7 @@ sealed interface ConversationListUiAction {
     data object ClearSelection : ConversationListUiAction
     data object FilterByUnreadClicked : ConversationListUiAction
     data object ClearFilterByUnreadClicked : ConversationListUiAction
+    data object ShowArchivedMessagesClicked : ConversationListUiAction
     data class ConnectIdentities(val identities: List<OdinId>) : ConversationListUiAction
     data class ConnectToIdentity(val odinId: OdinId) : ConversationListUiAction
     data object DismissSheet : ConversationListUiAction
@@ -73,12 +74,19 @@ sealed interface ConversationListUiAction {
 
     data class DeleteConversation(val conversationId: Uuid) : ConversationListUiAction
     data class ArchiveConversation(val conversationId: Uuid) : ConversationListUiAction
+
+    data class UnarchiveConversation(val conversationId: Uuid) : ConversationListUiAction
+
+
     data class ClearConversation(val conversationId: Uuid) : ConversationListUiAction
 
     data class IntroduceEveryone(val conversationId: Uuid) : ConversationListUiAction
     data class ShowContactInfo(val odinId: String) : ConversationListUiAction
     data class ShowMessageInfo(val message: MessageUiModel) : ConversationListUiAction
     data class ReplyToMessage(val message: MessageUiModel) : ConversationListUiAction
+    data class ForwardMessage(val message: MessageUiModel) : ConversationListUiAction
+    data class ForwardMessageSend(val message: MessageUiModel, val recipients: List<RecipientModel>) : ConversationListUiAction
+    data class ForwardMessageSelectRecipient(val recipient: RecipientModel) : ConversationListUiAction
     data object CancelReplyToMessage : ConversationListUiAction
     data class EditMessage(val messageId: Uuid, val versionTag: Uuid, val ignoreDraft: Boolean) :
         ConversationListUiAction

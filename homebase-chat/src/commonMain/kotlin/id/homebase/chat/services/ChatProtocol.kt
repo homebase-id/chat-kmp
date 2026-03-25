@@ -29,6 +29,12 @@ object ChatProtocol {
     /** Indicates a file was optimistically written and not coming from the server */
     val isPendingSendTag = Uuid.parse("6e87beb3-412a-4a8c-aaec-b21a7ec620a7")
 
+    /** Local metadata tag: conversation has been archived by the user */
+    val ConversationArchivedTag = Uuid.parse("a569e5cd-6fd8-41e0-8ccc-b6b31dac6b73")
+
+    /** Local metadata tag: conversation has been pinned by the user */
+    val ConversationPinnedTag = Uuid.parse("3f7e4c1d-5a2b-4f89-b3e7-9c1d2e3f4a5b")
+
     const val ARCHIVAL_STATUS_DELETED = 2
 
     const val DEFAULT_PAYLOAD_DESCRIPTOR_KEY = "pld_desc"

@@ -3,9 +3,13 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
@@ -38,7 +42,8 @@ class ChatMessageSenderService(
     private val scope: CoroutineScope,
     private val chatMessageStream: ChatMessageStream,
     private val optimisticWriter: OptimisticWriter,
-    private val fileOperationsProvider: FileOperationsProvider
+    private val fileOperationsProvider: FileOperationsProvider,
+    private val driveFileProvider: DriveFileProvider
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -371,6 +376,123 @@ class ChatMessageSenderService(
         error("Failed to update chat message")
     }
 
+
+    @OptIn(ExperimentalEncodingApi::class)
+    suspend fun forwardMessage(
+        sourceMessageUniqueId: Uuid,
+        targetConversationIds: List<Uuid>
+    ): List<SendMessageResult> {
+        val sourceFile = chatMessageStream.getMessageFile(sourceMessageUniqueId)
+            ?: throw IllegalArgumentException("source message not found: $sourceMessageUniqueId")
+
+        val content = sourceFile.fileMetadata.appData.content
+            ?: throw IllegalArgumentException("source message has no content")
+
+        val messageAppData = OdinSystemSerializer.deserialize<MessageAppData>(content)
+
+        val fullText = chatMessageStream.loadFullMessage(
+            conversationId = sourceFile.fileMetadata.appData.groupId!!,
+            messageId = sourceMessageUniqueId
+        ) ?: messageAppData.getMessage()
+
+        val forwardData = messageAppData.copy(
+            replyPreview = null,
+            message = JsonPrimitive(fullText),
+            deliveryStatus = ChatDeliveryStatus.Sent.value,
+            isEdited = false
+        )
+
+        val mediaBundle = buildMediaPayloadBundle(sourceFile)
+
+        val built = buildMessageContentAndBundle(
+            preVersionedMessageData = forwardData,
+            payloadBundle = mediaBundle,
+            fileOperationsProvider = fileOperationsProvider
+        )
+
+        return targetConversationIds.map { conversationId ->
+            sendMessageInternal(
+                messageUniqueId = Uuid.random(),
+                conversationId = conversationId,
+                content = built.headerContent,
+                notificationText = "You have a new message",
+                previousMessageUniqueId = null,
+                payloadBundle = built.payloadBundle
+            )
+        }
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private suspend fun buildMediaPayloadBundle(source: HomebaseFile): PayloadBundle? {
+        val mediaDescriptors = source.fileMetadata.payloads
+            ?.filter { !it.keyEquals(ChatProtocol.DefaultPayloadKey) }
+            ?: return null
+
+        if (mediaDescriptors.isEmpty()) return null
+
+        val payloadFiles = mutableListOf<PayloadFile>()
+        val thumbnailFiles = mutableListOf<ThumbnailFile>()
+        val previewThumbs = mutableListOf<EmbeddedThumb>()
+
+        for (descriptor in mediaDescriptors) {
+            val ivBytes = descriptor.iv?.let { Base64.decode(it) } ?: continue
+            val keyHeader = KeyHeader(iv = ivBytes, aesKey = source.keyHeader.aesKey)
+
+
+            //TODO: optimization - if we share the location of the
+            // temp file we don't have to rewrite it to disk?
+            val response = driveFileProvider.getPayloadBytesDecrypted(
+                driveId = chatDrive,
+                fileId = source.fileId,
+                key = descriptor.key,
+                keyHeader = keyHeader
+            ) ?: continue
+
+            val tempPath = fileOperationsProvider.writeBytesToTempFile(
+                bytes = response.bytes,
+                prefix = "fwd_${descriptor.key}",
+                suffix = ""
+            )
+
+            payloadFiles += PayloadFile(
+                key = descriptor.key,
+                filePath = tempPath,
+                contentType = descriptor.contentType ?: "",
+                descriptorContent = descriptor.descriptorContent,
+                previewThumbnail = descriptor.previewThumbnail?.toEmbeddedThumb()
+            )
+
+            descriptor.previewThumbnail?.toEmbeddedThumb()?.let { previewThumbs += it }
+
+            descriptor.thumbnails?.forEach { thumb ->
+                val width = thumb.pixelWidth ?: return@forEach
+                val height = thumb.pixelHeight ?: return@forEach
+                val thumbResponse = driveFileProvider.getThumbBytesDecrypted(
+                    driveId = chatDrive,
+                    fileId = source.fileId,
+                    payloadKey = descriptor.key,
+                    keyHeader = keyHeader,
+                    width = width,
+                    height = height
+                ) ?: return@forEach
+                thumbnailFiles += ThumbnailFile(
+                    pixelWidth = width,
+                    pixelHeight = height,
+                    thumbnailBytes = thumbResponse.bytes,
+                    key = descriptor.key,
+                    contentType = thumbResponse.contentType
+                )
+            }
+        }
+
+        if (payloadFiles.isEmpty()) return null
+
+        return PayloadBundle(
+            payloads = payloadFiles,
+            thumbnails = thumbnailFiles,
+            previewThumbs = previewThumbs
+        )
+    }
 
     suspend fun buildMessageContentAndBundle(
         preVersionedMessageData: MessageAppData,

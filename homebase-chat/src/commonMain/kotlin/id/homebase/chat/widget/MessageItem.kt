@@ -37,6 +37,8 @@ fun MessageItem(
         remember(message.id) { { onUiAction(ConversationListUiAction.ShowMessageInfo(message)) } }
     val onReply =
         remember(message.id) { { onUiAction(ConversationListUiAction.ReplyToMessage(message)) } }
+    val onForward =
+        remember(message.id) { { onUiAction(ConversationListUiAction.ForwardMessage(message)) } }
     val onShare =
         remember(message.id) { { onUiAction(ConversationListUiAction.ShareMessage(message)) } }
     val onDelete =
@@ -90,6 +92,7 @@ fun MessageItem(
             decryptedFiles = decryptedFiles,
             onMessageInfo = onMessageInfo,
             onReply = onReply,
+            onForward = onForward,
             onEdit = onEdit,
             onShare = onShare,
             onDelete = onDelete,
@@ -114,7 +117,7 @@ fun MessageItem(
             renderAuthorName = renderAuthorName,
             onMessageInfo = onMessageInfo,
             onReply = onReply,
-            onShare = onShare,
+            onForward = onForward,
             onDelete = onDelete,
             onMarkAsRead = onMarkAsRead,
             onAddReaction = onAddReaction,
