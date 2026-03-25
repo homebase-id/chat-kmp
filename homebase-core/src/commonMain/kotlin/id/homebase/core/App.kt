@@ -9,11 +9,12 @@ import androidx.compose.runtime.getValue
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.core.di.allModules
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.AppNavHost
 import id.homebase.core.ui.theme.HomebaseTheme
-import org.koin.compose.KoinContext
+import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 
 /** Main application entry point. Sets up Koin DI, theme, and navigation. */
@@ -22,7 +23,7 @@ import org.koin.compose.koinInject
 fun KoinApp(
     onNavHostReady: suspend (NavController) -> Unit = {},
 ) {
-    KoinContext { App(onNavHostReady = onNavHostReady) }
+    KoinApplication(application = { modules(allModules) }) { App(onNavHostReady = onNavHostReady) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
