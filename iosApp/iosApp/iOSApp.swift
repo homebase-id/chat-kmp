@@ -51,6 +51,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       UNUserNotificationCenter.current().setNotificationCategories([messageCategory])
   }
 
+  // Present notifications while the app is in the foreground
+  func userNotificationCenter(
+      _ center: UNUserNotificationCenter,
+      willPresent notification: UNNotification,
+      withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+      completionHandler([.banner, .sound, .badge])
+  }
+
   // Handle notification action responses (reply, mark as read)
   func userNotificationCenter(
       _ center: UNUserNotificationCenter,

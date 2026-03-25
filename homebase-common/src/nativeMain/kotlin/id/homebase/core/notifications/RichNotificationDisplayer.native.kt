@@ -48,8 +48,8 @@ actual class RichNotificationDisplayer actual constructor() {
             setUserInfo(userInfo)
         }
 
-        // Attach sender avatar image
-        data.senderImageBytes?.let { bytes ->
+        // Attach sender avatar image (guard empty arrays — addressOf(0) crashes on empty pinned)
+        data.senderImageBytes?.takeIf { it.isNotEmpty() }?.let { bytes ->
             try {
                 val tempDir = NSTemporaryDirectory()
                 val fileName = "${NSUUID().UUIDString}.jpg"

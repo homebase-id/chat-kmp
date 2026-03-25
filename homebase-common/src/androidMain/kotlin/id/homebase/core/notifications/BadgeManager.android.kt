@@ -9,7 +9,8 @@ import android.content.Context
  * clear() cancels all notifications (resetting badge count).
  */
 actual object BadgeManager {
-    private var badgeCount = 0
+    internal var badgeCount = 0
+        private set
 
     actual fun increment() {
         badgeCount++

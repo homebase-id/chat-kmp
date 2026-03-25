@@ -22,3 +22,4 @@ captures
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
 iosApp/iosApp.xcodeproj/project.xcworkspace/
+xcuserdata/

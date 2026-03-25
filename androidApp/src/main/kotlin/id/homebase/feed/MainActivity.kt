@@ -88,13 +88,15 @@ class MainActivity : AppCompatActivity() {
      * Extracts the payload data from intent extras and routes via NotificationService.
      */
     private fun handleNotificationIntent(intent: Intent) {
-        // Check for our custom notification marker extra
+        // Check for our always-present marker extra (works for all notification types,
+        // not just chat notifications that carry a conversationId)
+        if (!intent.getBooleanExtra(RichNotificationDisplayer.EXTRA_NOTIFICATION_TAP, false)) return
+
         val conversationId = intent.getStringExtra(
             RichNotificationDisplayer.EXTRA_NOTIFICATION_CONVERSATION_ID
-        ) ?: return
-
+        )
         Logger.i(tag = "MainActivity") {
-            "Notification intent detected for conversation: $conversationId"
+            "Notification intent detected (conversation: $conversationId)"
         }
 
         // Build PayloadData map from intent extras (RichNotificationDisplayer puts all
@@ -109,6 +111,7 @@ class MainActivity : AppCompatActivity() {
         notificationService.handleNotificationClicked(payloadData)
 
         // Clear the notification extras so we don't re-handle on config change
+        intent.removeExtra(RichNotificationDisplayer.EXTRA_NOTIFICATION_TAP)
         intent.removeExtra(RichNotificationDisplayer.EXTRA_NOTIFICATION_CONVERSATION_ID)
         intent.removeExtra("data")
     }

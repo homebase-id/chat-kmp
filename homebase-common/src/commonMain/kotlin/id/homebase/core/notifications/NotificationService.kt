@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.random.Random
+import kotlin.uuid.Uuid
 
 /**
  * Central notification service that wraps KMPNotifier and handles incoming push/local
@@ -42,8 +43,10 @@ class NotificationService(
     private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(replay = 1)
     val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
 
-    private val _inAppNotificationEvents = MutableSharedFlow<RichNotificationData>(extraBufferCapacity = 1)
-    val inAppNotificationEvents: SharedFlow<RichNotificationData> = _inAppNotificationEvents.asSharedFlow()
+    private val _inAppNotificationEvents =
+        MutableSharedFlow<RichNotificationData>(extraBufferCapacity = 1)
+    val inAppNotificationEvents: SharedFlow<RichNotificationData> =
+        _inAppNotificationEvents.asSharedFlow()
 
     /** Set by the UI layer to suppress notifications for the currently viewed conversation. */
     var activeConversationId: String? = null
@@ -314,8 +317,13 @@ class NotificationService(
             val tagId = notification.options.tagId
             //TODO: COMMUNITY_APP_ID needs to be use openURL
             val event = when (appId) {
-                AppConfig.APP_ID, COMMUNITY_APP_ID ->
+                Uuid.parse(AppConfig.APP_ID).toString() ->
                     NotificationNavigationEvent.OpenConversation(typeId)
+
+                COMMUNITY_APP_ID ->
+                    NotificationNavigationEvent.OpenUrl(
+                        "https://${notification.senderId}/apps/community/redirect/${typeId}/${tagId}"
+                    )
 
                 OWNER_APP_ID ->
                     NotificationNavigationEvent.OpenUrl(

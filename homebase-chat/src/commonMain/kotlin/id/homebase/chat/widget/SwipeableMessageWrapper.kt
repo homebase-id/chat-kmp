@@ -3,6 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -15,9 +16,10 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -30,10 +32,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import id.homebase.core.util.isMobile
-import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 
 @Composable
 fun SwipeableMessageWrapper(
@@ -50,18 +50,31 @@ fun SwipeableMessageWrapper(
     val density = LocalDensity.current
     val thresholdPx = with(density) { 72.dp.toPx() }
     val maxOffsetPx = with(density) { 100.dp.toPx() }
-    val offsetX = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
+    // Use plain float state during drag (no coroutines needed), Animatable only for spring-back
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    val animatable = remember { Animatable(0f) }
     val haptic = LocalHapticFeedback.current
     var hapticFired by remember { mutableStateOf(false) }
+
+    // The displayed offset: drag value while dragging, animated value while springing back
+    val displayOffset = if (isDragging) dragOffset else animatable.value
+
+    // Spring back to 0 when drag ends
+    LaunchedEffect(isDragging) {
+        if (!isDragging) {
+            animatable.snapTo(dragOffset)
+            animatable.animateTo(0f, spring())
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.CenterStart,
     ) {
         // Reply icon (left side, revealed on swipe right)
-        if (onSwipeRight != null && offsetX.value > 0f) {
-            val progress = (offsetX.value / thresholdPx).coerceIn(0f, 1f)
+        if (onSwipeRight != null && displayOffset > 0f) {
+            val progress = (displayOffset / thresholdPx).coerceIn(0f, 1f)
             Box(
                 modifier = Modifier
                     .padding(start = 12.dp)
@@ -83,8 +96,8 @@ fun SwipeableMessageWrapper(
         }
 
         // Info icon (right side, revealed on swipe left)
-        if (onSwipeLeft != null && offsetX.value < 0f) {
-            val progress = (offsetX.value.absoluteValue / thresholdPx).coerceIn(0f, 1f)
+        if (onSwipeLeft != null && displayOffset < 0f) {
+            val progress = (displayOffset.absoluteValue / thresholdPx).coerceIn(0f, 1f)
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -109,43 +122,38 @@ fun SwipeableMessageWrapper(
         // Message content
         Box(
             modifier = Modifier
-                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .offset { IntOffset(displayOffset.roundToInt(), 0) }
                 .pointerInput(onSwipeRight, onSwipeLeft) {
                     detectHorizontalDragGestures(
+                        onDragStart = {
+                            isDragging = true
+                            hapticFired = false
+                        },
                         onDragEnd = {
-                            val currentOffset = offsetX.value
-                            if (currentOffset > thresholdPx && onSwipeRight != null) {
+                            if (dragOffset > thresholdPx && onSwipeRight != null) {
                                 onSwipeRight()
-                            } else if (currentOffset < -thresholdPx && onSwipeLeft != null) {
+                            } else if (dragOffset < -thresholdPx && onSwipeLeft != null) {
                                 onSwipeLeft()
                             }
-                            hapticFired = false
-                            scope.launch {
-                                offsetX.animateTo(0f, spring())
-                            }
+                            isDragging = false
                         },
                         onDragCancel = {
-                            hapticFired = false
-                            scope.launch {
-                                offsetX.animateTo(0f, spring())
-                            }
+                            isDragging = false
                         },
                         onHorizontalDrag = { _, dragAmount ->
-                            scope.launch {
-                                var newValue = offsetX.value + dragAmount
-                                // Clamp: only allow right if onSwipeRight exists, left if onSwipeLeft exists
-                                if (onSwipeRight == null) newValue = newValue.coerceAtMost(0f)
-                                if (onSwipeLeft == null) newValue = newValue.coerceAtLeast(0f)
-                                newValue = newValue.coerceIn(-maxOffsetPx, maxOffsetPx)
-                                offsetX.snapTo(newValue)
+                            var newValue = dragOffset + dragAmount
+                            // Clamp: only allow right if onSwipeRight exists, left if onSwipeLeft exists
+                            if (onSwipeRight == null) newValue = newValue.coerceAtMost(0f)
+                            if (onSwipeLeft == null) newValue = newValue.coerceAtLeast(0f)
+                            newValue = newValue.coerceIn(-maxOffsetPx, maxOffsetPx)
+                            dragOffset = newValue
 
-                                // Fire haptic at threshold
-                                if (!hapticFired && newValue.absoluteValue >= thresholdPx) {
-                                    hapticFired = true
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                } else if (hapticFired && newValue.absoluteValue < thresholdPx) {
-                                    hapticFired = false
-                                }
+                            // Fire haptic at threshold
+                            if (!hapticFired && newValue.absoluteValue >= thresholdPx) {
+                                hapticFired = true
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            } else if (hapticFired && newValue.absoluteValue < thresholdPx) {
+                                hapticFired = false
                             }
                         },
                     )

@@ -73,6 +73,9 @@ actual class RichNotificationDisplayer actual constructor() {
             addNotificationActions(context, builder, data)
         }
 
+        // Set badge count on the notification (used by launcher badge integrations)
+        builder.setNumber(BadgeManager.badgeCount)
+
         // Lock screen privacy: show generic content
         val publicBuilder = NotificationCompat.Builder(context, data.channelId)
             .setSmallIcon(context.applicationInfo.icon)
@@ -121,6 +124,7 @@ actual class RichNotificationDisplayer actual constructor() {
         // Pass the notification data so handleNotificationIntent can route
         data.payloadData.forEach { (key, value) -> launchIntent.putExtra(key, value) }
         launchIntent.putExtra(EXTRA_NOTIFICATION_CONVERSATION_ID, data.conversationId)
+        launchIntent.putExtra(EXTRA_NOTIFICATION_TAP, true)
 
         return PendingIntent.getActivity(
             context,
@@ -143,7 +147,8 @@ actual class RichNotificationDisplayer actual constructor() {
             .setAutoCancel(true)
             .build()
 
-        nm.notify(SUMMARY_NOTIFICATION_ID, summary)
+        val summaryId = SUMMARY_ID_OFFSET + (data.conversationId?.hashCode()?.and(0x7FFFFFFF) ?: 0)
+        nm.notify(summaryId, summary)
     }
 
     private fun addNotificationActions(
@@ -201,7 +206,8 @@ actual class RichNotificationDisplayer actual constructor() {
     }
 
     companion object {
-        private const val SUMMARY_NOTIFICATION_ID = 0
+        /** Reserved offset so summary IDs don't collide with per-message notification IDs. */
+        private const val SUMMARY_ID_OFFSET = 100_000
 
         const val ACTION_REPLY = "id.homebase.feed.NOTIFICATION_REPLY"
         const val ACTION_MARK_READ = "id.homebase.feed.NOTIFICATION_MARK_READ"
@@ -209,6 +215,8 @@ actual class RichNotificationDisplayer actual constructor() {
         const val EXTRA_NOTIFICATION_ID = "notification_id"
         const val EXTRA_REPLY_TEXT = "reply_text"
         const val EXTRA_NOTIFICATION_CONVERSATION_ID = "notification_conversation_id"
+        /** Marker extra — always present on intents created by [buildContentIntent]. */
+        const val EXTRA_NOTIFICATION_TAP = "notification_tap"
 
         /** Application context, set during app initialization. */
         internal var appContext: Context? = null
