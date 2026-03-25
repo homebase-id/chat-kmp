@@ -66,7 +66,7 @@ class DriveSyncManager(
                     }
                     is BackendEvent.DriveEvent.Stopped -> when (val r = event.result) {
                         is BackendEvent.DriveResult.Success -> updateState(event.driveId) {
-                            it.copy(state = DriveState.Completed(totalCount = r.totalCount))
+                            it.copy(state = DriveState.Completed(totalCount = event.totalCount))
                         }
                         is BackendEvent.DriveResult.Failure -> {
                             updateState(event.driveId) {

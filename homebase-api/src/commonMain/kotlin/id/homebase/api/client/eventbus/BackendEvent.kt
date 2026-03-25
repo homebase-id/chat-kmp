@@ -14,10 +14,9 @@ sealed interface BackendEvent {
     }
 
     sealed interface DriveResult {
-        data class Success(val totalCount: Int) : DriveResult
+        data object Success : DriveResult
         data class Failure(
-            val errorMessage: String,
-            val source: SyncSource = SyncSource.DriveSync
+            val errorMessage: String
         ) : DriveResult
     }
 
@@ -58,6 +57,7 @@ sealed interface BackendEvent {
 
         data class Stopped(
             override val driveId: Uuid,
+            val totalCount: Int,  // records fetched so far — always present (0 if failed immediately)
             val result: DriveResult
         ) : DriveEvent  // Only raised by Drive.sync() when a drive finishes (success or failure)
 

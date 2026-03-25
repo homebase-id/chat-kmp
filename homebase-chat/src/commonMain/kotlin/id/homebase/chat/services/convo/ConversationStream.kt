@@ -64,17 +64,15 @@ class ConversationStream(
                         isSyncing = true
                     }
 
-                    is BackendEvent.DriveEvent.Stopped -> when (val r = event.result) {
+                    is BackendEvent.DriveEvent.Stopped -> when (event.result) {
                         is BackendEvent.DriveResult.Success -> {
                             isSyncing = false
                             start()
                         }
                         is BackendEvent.DriveResult.Failure -> {
-                            if (r.source == BackendEvent.SyncSource.DriveSync) {
-                                isSyncing = false
-                                Logger.e { "Failed during drive sync" }
-                                start()
-                            }
+                            isSyncing = false
+                            Logger.e { "Failed during drive sync" }
+                            start()
                         }
                     }
 
