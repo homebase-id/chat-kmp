@@ -6,7 +6,7 @@ import id.homebase.core.config.syncLabeledDrives
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.koin.core.context.GlobalContext
+import org.koin.mp.KoinPlatformTools
 
 class BackgroundSyncOrchestrator(
     private val credentialsManager: CredentialsManager,
@@ -32,7 +32,7 @@ class BackgroundSyncOrchestrator(
     }
 
     companion object {
-        fun fromKoin(): BackgroundSyncOrchestrator = GlobalContext.get().get()
+        fun fromKoin(): BackgroundSyncOrchestrator = KoinPlatformTools.defaultContext().get().get()
     }
 }
 
