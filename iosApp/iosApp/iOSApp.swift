@@ -9,7 +9,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
 
-      MainViewControllerKt.initKoin()
       FirebaseApp.configure() //important
 
       //By default showPushNotification value is true.
@@ -99,10 +98,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                    didReceiveRemoteNotification userInfo: [AnyHashable : Any],
                    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
       NotifierManager.shared.onApplicationDidReceiveRemoteNotification(userInfo: userInfo)
-      let orchestrator = BackgroundSyncOrchestrator.companion.fromKoin()
-      orchestrator.triggerSync { success in
-          completionHandler(success ? .newData : .failed)
-      }
+      completionHandler(.newData)
   }
     
 }
