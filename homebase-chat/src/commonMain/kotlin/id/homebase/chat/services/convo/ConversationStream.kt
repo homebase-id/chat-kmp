@@ -64,22 +64,17 @@ class ConversationStream(
                         isSyncing = true
                     }
 
-                    is BackendEvent.DriveEvent.Completed -> {
-                        isSyncing = false
-                        // After the drive has been synchronized we fetch all conversations once
-                        // and their unread counts
-                        start()
-                        // From this point on we need to process all incoming messages /
-                        // conversations
-                        // so that everything in the client is up to date.
-                    }
-
-                    is BackendEvent.DriveEvent.Failed -> {
-                        if (event.source == BackendEvent.SyncSource.DriveSync) {
+                    is BackendEvent.DriveEvent.Stopped -> when (val r = event.result) {
+                        is BackendEvent.DriveResult.Success -> {
                             isSyncing = false
-                            Logger.e { "Failed during drive sync" }
                             start()
-                            // Optionally handle failure, e.g., log or partial refresh
+                        }
+                        is BackendEvent.DriveResult.Failure -> {
+                            if (r.source == BackendEvent.SyncSource.DriveSync) {
+                                isSyncing = false
+                                Logger.e { "Failed during drive sync" }
+                                start()
+                            }
                         }
                     }
 

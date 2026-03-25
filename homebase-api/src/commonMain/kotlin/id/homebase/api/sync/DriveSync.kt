@@ -188,9 +188,9 @@ class DriveSync(
                     Logger.e("Drive $driveId sync failed ($cursorInfo): $reason")
                     killroy.value = false // don't retry on terminal failure; reconnect will re-sync
                     eventBus.emit(
-                        BackendEvent.DriveEvent.Failed(
+                        BackendEvent.DriveEvent.Stopped(
                             driveId,
-                            "Sync failed: $reason"
+                            BackendEvent.DriveResult.Failure("Sync failed: $reason")
                         )
                     )
                     break
@@ -210,11 +210,11 @@ class DriveSync(
 
         try {
             dbDeferreds.awaitAll()  // Suspends until all complete; rethrows the first exception if any
-            eventBus.emit(BackendEvent.DriveEvent.Completed(driveId, totalCount))
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, BackendEvent.DriveResult.Success(totalCount)))
             Logger.d("Drive $driveId synchronized with $totalCount records read.")
         } catch (e: Exception) {
             Logger.e("Sync failed due to DB error: ${e.message}")
-            eventBus.emit(BackendEvent.DriveEvent.Failed(driveId, e.message ?: "DB upsert failed"))
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, BackendEvent.DriveResult.Failure(e.message ?: "DB upsert failed")))
         }
     }
 }

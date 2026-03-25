@@ -47,9 +47,9 @@ class DriveSyncManager(
                     previous !is SyncState.Syncing && current is SyncState.Syncing ->
                         eventBus.emit(BackendEvent.SyncAllStarted)
                     previous is SyncState.Syncing && current is SyncState.Completed ->
-                        eventBus.emit(BackendEvent.SyncAllCompleted)
+                        eventBus.emit(BackendEvent.SyncAllStopped(BackendEvent.SyncAllResult.Success))
                     previous is SyncState.Syncing && current is SyncState.Failed ->
-                        eventBus.emit(BackendEvent.SyncAllFailed)
+                        eventBus.emit(BackendEvent.SyncAllStopped(BackendEvent.SyncAllResult.Failure))
                 }
                 previous = current
             }
@@ -64,16 +64,18 @@ class DriveSyncManager(
                     is BackendEvent.DriveEvent.BatchReceived -> updateState(event.driveId) {
                         it.copy(state = DriveState.Synchronizing(count = event.totalCount))
                     }
-                    is BackendEvent.DriveEvent.Completed     -> updateState(event.driveId) {
-                        it.copy(state = DriveState.Completed(totalCount = event.totalCount))
-                    }
-                    is BackendEvent.DriveEvent.Failed        -> {
-                        updateState(event.driveId) {
-                            it.copy(state = DriveState.Failed(event.errorMessage))
+                    is BackendEvent.DriveEvent.Stopped -> when (val r = event.result) {
+                        is BackendEvent.DriveResult.Success -> updateState(event.driveId) {
+                            it.copy(state = DriveState.Completed(totalCount = r.totalCount))
                         }
-                        scope.launch {
-                            delay(1000L)
-                            driveSyncs[event.driveId]?.sync()
+                        is BackendEvent.DriveResult.Failure -> {
+                            updateState(event.driveId) {
+                                it.copy(state = DriveState.Failed(r.errorMessage))
+                            }
+                            scope.launch {
+                                delay(1000L)
+                                driveSyncs[event.driveId]?.sync()
+                            }
                         }
                     }
                     else -> Unit
