@@ -230,7 +230,7 @@ class NotificationService(
                     payloadData = payloadMap,
                 )
 
-                if (isAppInForeground && richData.conversationId != null) {
+                if (isAppInForeground) {
                     // Show in-app banner instead of system notification
                     _inAppNotificationEvents.tryEmit(richData)
                 } else {

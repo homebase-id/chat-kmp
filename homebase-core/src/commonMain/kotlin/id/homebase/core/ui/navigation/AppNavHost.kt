@@ -542,13 +542,7 @@ fun AppNavHost(
             event = uiState.inAppNotification,
             visible = uiState.inAppNotification != null,
             onTap = { data ->
-                viewModel.dismissInAppBanner()
-                data.conversationId?.let { conversationId ->
-                    navController.navigate(Route.ChatList(conversationId)) {
-                        popUpTo(Route.ChatList()) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                }
+                viewModel.onInAppBannerTapped(data.payloadData)
             },
             modifier = Modifier.align(Alignment.TopCenter),
         )

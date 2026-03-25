@@ -15,7 +15,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       //When set showPushNotification to false foreground push  notification will not be shown.
       //You can still get notification content using #onPushNotification listener method.C
       NotifierManager.shared.initialize(configuration: NotificationPlatformConfigurationIos(
-            showPushNotification: true,
+            showPushNotification: false,
             askNotificationPermissionOnStart: true,
             notificationSoundName: nil
           )
@@ -57,7 +57,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       willPresent notification: UNNotification,
       withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
-      completionHandler([.banner, .sound, .badge])
+      // Don't present system notification in foreground — NotificationService
+      // will show an in-app banner via Compose instead.
+      completionHandler([])
   }
 
   // Handle notification action responses (reply, mark as read)

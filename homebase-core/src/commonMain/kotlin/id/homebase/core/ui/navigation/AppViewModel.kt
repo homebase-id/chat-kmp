@@ -91,6 +91,12 @@ class AppViewModel(
         _uiState.update { it.copy(inAppNotification = null) }
     }
 
+    /** Routes an in-app banner tap through NotificationService's click handler. */
+    fun onInAppBannerTapped(payloadData: Map<String, String>) {
+        dismissInAppBanner()
+        notificationService.handleNotificationClicked(payloadData)
+    }
+
     private fun listenForConnectionRequests() {
         listenForConnectionRequestsJob?.cancel()
         listenForConnectionRequestsJob = viewModelScope.launch {

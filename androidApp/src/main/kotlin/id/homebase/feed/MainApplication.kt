@@ -77,7 +77,7 @@ class MainApplication : Application(), KoinComponent {
             configuration =
                 NotificationPlatformConfiguration.Android(
                     notificationIconResId = R.mipmap.ic_launcher_foreground,
-                    showPushNotification = true,
+                    showPushNotification = false,
                     notificationChannelData =
                         NotificationPlatformConfiguration.Android.NotificationChannelData(
                             id = "messages",
