@@ -98,7 +98,9 @@ class AuthConnectionCoordinator(
                         } catch (e: Exception) {
                             Logger.e(e) { "syncAll() failed on connect" }
                         } finally {
-                            _connectionState.update { it.copy(isConnecting = false) }
+                            if (_connectionState.value.isConnected) {
+                                _connectionState.update { it.copy(isConnecting = false) }
+                            }
                             outboxSync.clearCheckout()
                             outboxSync.send()
                         }
