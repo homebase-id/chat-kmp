@@ -1,5 +1,6 @@
 import UIKit
 import SwiftUI
+import Intents
 
 /// Main entry point for the iOS Share Extension.
 /// Checks auth, loads the conversation cache, shows a picker,
@@ -9,7 +10,7 @@ class ShareViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        // 1. Check authentication via shared keychain
+        // 1. Check authentication via App Group cache
         guard ShareAuthChecker.isAuthenticated() else {
             showError(
                 title: "Not Signed In",
@@ -18,10 +19,16 @@ class ShareViewController: UIViewController {
             return
         }
 
-        // 2. Load conversation cache from App Group
+        // 2. Check if launched from a share suggestion (tapped a recommended contact)
+        if let conversationId = extractConversationIdFromIntent() {
+            handleSelection(conversationIds: [conversationId])
+            return
+        }
+
+        // 3. Load conversation cache from App Group
         let (conversations, _) = ShareConversationCacheReader.load()
 
-        // 3. Present SwiftUI picker
+        // 4. Present SwiftUI picker
         let pickerView = SharePickerView(
             conversations: conversations,
             onSelect: { [weak self] conversationIds in
@@ -43,6 +50,16 @@ class ShareViewController: UIViewController {
             hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         hostingController.didMove(toParent: self)
+    }
+
+    // MARK: - Intent Detection
+
+    /// Extract conversation ID from INSendMessageIntent when launched via share suggestion.
+    private func extractConversationIdFromIntent() -> String? {
+        guard let intent = extensionContext?.intent as? INSendMessageIntent else {
+            return nil
+        }
+        return intent.conversationIdentifier
     }
 
     // MARK: - Selection Handling

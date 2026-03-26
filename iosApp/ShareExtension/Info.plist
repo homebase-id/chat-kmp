@@ -23,6 +23,10 @@
 				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
 				<integer>10</integer>
 			</dict>
+			<key>IntentsSupported</key>
+			<array>
+				<string>INSendMessageIntent</string>
+			</array>
 		</dict>
 	</dict>
 </dict>
