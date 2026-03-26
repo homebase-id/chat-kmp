@@ -30,8 +30,9 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.VideoMetadata
+import id.homebase.api.video.VideoContent
+import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -75,57 +76,35 @@ actual fun VideoPlayerSurface(
 
         withContext(Dispatchers.IO) {
             try {
-                val metadata = data.payload.descriptorContent?.let {
-                    OdinSystemSerializer.deserialize<VideoMetadata>(it)
-                } ?: run {
-                    Log.e("VideoPlayer", "Missing video metadata for fileId=${data.fileId}")
-                    state = VpsState.Error("Missing video metadata")
-                    return@withContext
-                }
-
-                val dir = File(context.cacheDir, "hbvid_${UUID.randomUUID()}").also { it.mkdirs() }
-                tempDir = dir
-
-                val hlsPlaylist = metadata.hlsPlaylist
-                if (metadata.isSegmented && hlsPlaylist != null) {
-                    val strippedPlaylist = hlsPlaylist.lines()
-                        .filter { !it.startsWith("#EXT-X-KEY") }
-                        .joinToString("\n")
-
-                    val dataSourceFactory = DataSource.Factory {
-                        HomebaseVideoDataSource(
-                            strippedPlaylist = strippedPlaylist,
-                            driveFileProvider = driveFileProvider,
-                            driveId = data.driveId,
-                            fileId = data.fileId,
-                            payloadKey = data.payloadKey,
-                            keyHeader = data.keyHeader,
-                        )
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider)) {
+                    is VideoContent.Hls -> {
+                        val dataSourceFactory = DataSource.Factory {
+                            HomebaseVideoDataSource(
+                                strippedPlaylist = content.strippedPlaylist,
+                                driveFileProvider = driveFileProvider,
+                                driveId = data.driveId,
+                                fileId = data.fileId,
+                                payloadKey = data.payloadKey,
+                                keyHeader = data.keyHeader,
+                            )
+                        }
+                        val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
+                            .createMediaSource(MediaItem.fromUri("homebase://video/index.m3u8"))
+                        withContext(Dispatchers.Main) {
+                            player.setMediaSource(mediaSource)
+                            player.prepare()
+                            state = VpsState.Ready
+                        }
                     }
-                    val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(MediaItem.fromUri("homebase://video/index.m3u8"))
-
-                    withContext(Dispatchers.Main) {
-                        player.setMediaSource(mediaSource)
-                        player.prepare()
-                        state = VpsState.Ready
-                    }
-                } else {
-                    val bytesResponse = driveFileProvider.getPayloadBytesDecrypted(
-                        driveId = data.driveId,
-                        fileId = data.fileId,
-                        key = data.payloadKey,
-                        keyHeader = data.keyHeader,
-                    ) ?: run {
-                        Log.e("VideoPlayer", "Failed to download video for fileId=${data.fileId}")
-                        state = VpsState.Error("Failed to download video")
-                        return@withContext
-                    }
-                    val file = File(dir, "video.mp4").also { it.writeBytes(bytesResponse.bytes) }
-                    withContext(Dispatchers.Main) {
-                        player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
-                        player.prepare()
-                        state = VpsState.Ready
+                    is VideoContent.Mp4 -> {
+                        val dir = File(context.cacheDir, "hbvid_${UUID.randomUUID()}").also { it.mkdirs() }
+                        tempDir = dir
+                        val file = File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                        withContext(Dispatchers.Main) {
+                            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                            player.prepare()
+                            state = VpsState.Ready
+                        }
                     }
                 }
             } catch (e: Exception) {
