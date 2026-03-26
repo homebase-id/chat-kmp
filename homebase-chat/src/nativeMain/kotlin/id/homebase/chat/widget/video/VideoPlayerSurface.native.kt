@@ -21,6 +21,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.cinterop.BetaInteropApi
@@ -72,6 +73,7 @@ actual fun VideoPlayerSurface(
     modifier: Modifier,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val videoPreloader = koinInject<VideoPreloader>()
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<NSURL?>(null) }
@@ -106,15 +108,22 @@ actual fun VideoPlayerSurface(
                         state = VpsState.Playing(player = player, delegate = delegate)
                     }
                     is VideoContent.Mp4 -> {
-                        val dir = NSURL.fileURLWithPath(NSTemporaryDirectory())
-                            .URLByAppendingPathComponent("hbvid_${NSUUID().UUIDString()}")!!
-                        NSFileManager.defaultManager.createDirectoryAtURL(dir, true, null, null)
-                        tempDir = dir
-                        val mp4Url = dir.URLByAppendingPathComponent("video.mp4")!!
-                        val (_, writeElapsed) = measureTimedValue {
-                            content.bytes.toNSData().writeToURL(mp4Url, atomically = true)
+                        val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
+                        val mp4Url = if (preloadedPath != null) {
+                            Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
+                            NSURL.fileURLWithPath(preloadedPath)
+                        } else {
+                            val dir = NSURL.fileURLWithPath(NSTemporaryDirectory())
+                                .URLByAppendingPathComponent("hbvid_${NSUUID().UUIDString()}")!!
+                            NSFileManager.defaultManager.createDirectoryAtURL(dir, true, null, null)
+                            tempDir = dir
+                            val url = dir.URLByAppendingPathComponent("video.mp4")!!
+                            val (_, writeElapsed) = measureTimedValue {
+                                content.bytes.toNSData().writeToURL(url, atomically = true)
+                            }
+                            Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
+                            url
                         }
-                        Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
                         state = VpsState.Playing(
                             player = AVPlayer(uRL = mp4Url),
                             delegate = HomebaseResourceLoaderDelegate.empty(),

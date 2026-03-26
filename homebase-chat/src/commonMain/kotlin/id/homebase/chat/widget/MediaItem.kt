@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -27,6 +28,12 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPreloader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+import org.koin.compose.koinInject
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
@@ -192,6 +199,19 @@ fun MediaItem(
                 payload.iv?.let { Base64.decode(it) }
             }
             if (payloadIv != null) {
+                val perPayloadKeyHeader = remember(payloadIv, keyHeader.aesKey) {
+                    KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
+                }
+                val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent) {
+                    VideoPlayerData(
+                        fileId = fileId,
+                        driveId = driveId,
+                        payloadKey = payload.key,
+                        keyHeader = perPayloadKeyHeader,
+                        descriptorContent = payload.descriptorContent,
+                    )
+                }
+                VideoPreloadEffect(videoPlayerData)
                 val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
                     HomebaseImageData(
                         driveId = driveId,
@@ -202,7 +222,7 @@ fun MediaItem(
                         requestedSize = ImageSize.THUMB_MEDIUM,
                         lastModified = payload.lastModified,
                         isEncrypted = true,
-                        keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
+                        keyHeader = perPayloadKeyHeader,
                     )
                 }
                 Box(modifier = finalModifier) {
@@ -264,6 +284,16 @@ fun MediaItem(
                 label = "Unknown",
                 modifier = baseModifier,
             )
+        }
+    }
+}
+
+@Composable
+private fun VideoPreloadEffect(data: VideoPlayerData) {
+    val preloader = koinInject<VideoPreloader>()
+    LaunchedEffect(data.fileId, data.payloadKey) {
+        withContext(Dispatchers.Default) {
+            preloader.preload(data)
         }
     }
 }

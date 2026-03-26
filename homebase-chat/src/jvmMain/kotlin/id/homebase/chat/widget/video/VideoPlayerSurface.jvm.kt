@@ -45,6 +45,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
 import kotlin.time.measureTimedValue
 import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
@@ -77,6 +78,7 @@ actual fun VideoPlayerSurface(
     modifier: Modifier,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val videoPreloader = koinInject<VideoPreloader>()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
     var httpServer by remember(data) { mutableStateOf<HttpServer?>(null) }
@@ -152,11 +154,18 @@ actual fun VideoPlayerSurface(
                         state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                     }
                     is VideoContent.Mp4 -> {
-                        val (mp4File, writeElapsed) = measureTimedValue {
-                            File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                        val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
+                        val mp4Path = if (preloadedPath != null) {
+                            Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
+                            preloadedPath
+                        } else {
+                            val (mp4File, writeElapsed) = measureTimedValue {
+                                File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                            }
+                            Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
+                            mp4File.absolutePath
                         }
-                        Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
-                        state = VpsState.Playing(mp4File.absolutePath)
+                        state = VpsState.Playing(mp4Path)
                     }
                 }
             } catch (e: Exception) {

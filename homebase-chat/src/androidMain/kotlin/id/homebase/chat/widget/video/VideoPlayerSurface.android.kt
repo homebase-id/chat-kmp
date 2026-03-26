@@ -35,6 +35,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlin.time.TimeSource
@@ -61,6 +62,7 @@ actual fun VideoPlayerSurface(
 ) {
     val context = LocalContext.current
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val videoPreloader = koinInject<VideoPreloader>()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
     var exoPlayer by remember(data) { mutableStateOf<ExoPlayer?>(null) }
@@ -115,12 +117,21 @@ actual fun VideoPlayerSurface(
                         }
                     }
                     is VideoContent.Mp4 -> {
-                        val dir = File(context.cacheDir, "hbvid_${UUID.randomUUID()}").also { it.mkdirs() }
-                        tempDir = dir
-                        val (file, writeElapsed) = measureTimedValue {
-                            File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                        val file = run {
+                            val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
+                            if (preloadedPath != null) {
+                                Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
+                                File(preloadedPath)
+                            } else {
+                                val dir = File(context.cacheDir, "hbvid_${UUID.randomUUID()}").also { it.mkdirs() }
+                                tempDir = dir
+                                val (f, writeElapsed) = measureTimedValue {
+                                    File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                                }
+                                Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
+                                f
+                            }
                         }
-                        Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
                         withContext(Dispatchers.Main) {
                             player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
                             val prepareStart = TimeSource.Monotonic.markNow()

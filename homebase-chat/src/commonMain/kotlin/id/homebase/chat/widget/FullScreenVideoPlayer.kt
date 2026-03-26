@@ -41,7 +41,7 @@ fun FullScreenVideoPlayer(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var isPlaying by remember(data) { mutableStateOf(false) }
+    var isPlaying by remember(data) { mutableStateOf(true) }
 
     val payloadIv = remember(data.payload.iv) {
         data.payload.iv?.let { Base64.decode(it) }
