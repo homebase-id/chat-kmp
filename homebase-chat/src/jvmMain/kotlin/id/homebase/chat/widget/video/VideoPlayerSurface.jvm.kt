@@ -41,6 +41,9 @@ import androidx.compose.ui.unit.sp
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.delay
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.video.VideoContent
+import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -90,7 +93,7 @@ actual fun VideoPlayerSurface(
                     .also { it.mkdirs() }
                 tempDir = dir
 
-                when (val content = resolveVideoContent(data, driveFileProvider)) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider)) {
                     is VideoContent.Hls -> {
                         File(dir, "index.m3u8").writeText(content.strippedPlaylist)
 

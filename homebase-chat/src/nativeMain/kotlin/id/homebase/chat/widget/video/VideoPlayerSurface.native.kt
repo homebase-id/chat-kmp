@@ -19,6 +19,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.video.VideoContent
+import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -81,7 +84,7 @@ actual fun VideoPlayerSurface(
     LaunchedEffect(data) {
         withContext(Dispatchers.Main) {
             try {
-                when (val content = resolveVideoContent(data, driveFileProvider)) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider)) {
                     is VideoContent.Hls -> {
                         val delegate = HomebaseResourceLoaderDelegate(
                             strippedPlaylist = content.strippedPlaylist,

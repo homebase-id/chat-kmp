@@ -30,6 +30,9 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.video.VideoContent
+import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -73,7 +76,7 @@ actual fun VideoPlayerSurface(
 
         withContext(Dispatchers.IO) {
             try {
-                when (val content = resolveVideoContent(data, driveFileProvider)) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider)) {
                     is VideoContent.Hls -> {
                         val dataSourceFactory = DataSource.Factory {
                             HomebaseVideoDataSource(
