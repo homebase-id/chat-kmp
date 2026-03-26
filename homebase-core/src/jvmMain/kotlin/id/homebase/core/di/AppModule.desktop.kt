@@ -13,6 +13,7 @@ import id.homebase.core.audio.JvmWaveFormGenerator
 import id.homebase.core.gallery.JvmGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
+import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.settings.createSettings
 import id.homebase.core.util.JvmPlatformInfo
@@ -33,6 +34,7 @@ actual fun platformModule(): Module = module {
         // Coil's memory cache is still enabled by default for fast UI redraws
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
+                    add(HomebaseImageKeyer())
                     add(HomebaseImageFetcher.Factory(get()))
                     add(PublicImageFetcher.Factory(get()))
                 }
