@@ -4,6 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
@@ -41,6 +46,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -55,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -140,6 +147,16 @@ fun ConversationContent(
     val keyboardController = LocalSoftwareKeyboardController.current
     val isKeyboardVisible by keyboardAsState()
     var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
+    val coroutineScope = rememberCoroutineScope()
+    var showScrollToBottom by remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            if (totalItems == 0) return@snapshotFlow false
+            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@snapshotFlow false
+            lastVisibleIndex < totalItems - 1
+        }.collect { showScrollToBottom = it }
+    }
 
     // Add this state to track keyboard height
     var keyboardHeight by remember { mutableStateOf(0.dp) }
@@ -433,6 +450,31 @@ fun ConversationContent(
                         state = listState
                     )
 
+                    Column(
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                            .padding(end = 16.dp, bottom = 16.dp),
+                    ) {
+                        AnimatedVisibility(
+                            visible = showScrollToBottom,
+                            enter = fadeIn() + scaleIn(),
+                            exit = fadeOut() + scaleOut(),
+                        ) {
+                            SmallFloatingActionButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                                    }
+                                },
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Scroll to bottom",
+                                )
+                            }
+                        }
+                    }
 
                 } else {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
