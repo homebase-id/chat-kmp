@@ -159,6 +159,8 @@ public class DriveFileHttpProvider(
                         if (total > 0L) {
                             callback(bytesReceived.toFloat() / total.toFloat())
                         }
+                        // if Content-Length is absent we still get called — progress stays
+                        // at the synthetic milestones emitted by the caller
                     }
                 }
             }

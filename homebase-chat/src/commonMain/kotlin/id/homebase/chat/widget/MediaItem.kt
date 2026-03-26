@@ -4,8 +4,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,13 +12,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -30,10 +30,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.video.VideoMetadata
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloader
 import kotlinx.coroutines.Dispatchers
@@ -217,8 +219,18 @@ fun MediaItem(
                         descriptorContent = payload.descriptorContent,
                     )
                 }
+                val isHls = remember(payload.descriptorContent) {
+                    payload.descriptorContent?.let {
+                        OdinSystemSerializer.deserialize<VideoMetadata>(it).isSegmented
+                    } ?: false
+                }
+                var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
                 var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
-                VideoPreloadEffect(videoPlayerData) { preloadProgress = it }
+                VideoPreloadEffect(
+                    data = videoPlayerData,
+                    onPreloading = { isPreloading = it },
+                    onProgress = { preloadProgress = it },
+                )
                 val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
                     HomebaseImageData(
                         driveId = driveId,
@@ -251,16 +263,35 @@ fun MediaItem(
                             .align(Alignment.Center),
                         tint = Color.White.copy(alpha = 0.85f)
                     )
-                    if (preloadProgress in 0.01f..0.99f) {
-                        LinearProgressIndicator(
-                            progress = { preloadProgress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(3.dp)
-                                .align(Alignment.BottomCenter),
-                            color = Color.White,
-                            trackColor = Color.White.copy(alpha = 0.3f),
-                        )
+                    Text(
+                        text = if (isHls) "HLS" else "MP4",
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
+                            .padding(horizontal = 3.dp, vertical = 1.dp),
+                    )
+                    if (isPreloading) {
+                        Box(
+                            modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.4f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (preloadProgress > 0f) {
+                                CircularProgressIndicator(
+                                    progress = { preloadProgress },
+                                    modifier = Modifier.size(40.dp),
+                                    color = Color.White,
+                                    trackColor = Color.White.copy(alpha = 0.3f),
+                                )
+                            } else {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(40.dp),
+                                    color = Color.White,
+                                    trackColor = Color.White.copy(alpha = 0.3f),
+                                )
+                            }
+                        }
                     }
                 }
             } else {
@@ -307,11 +338,17 @@ fun MediaItem(
 }
 
 @Composable
-private fun VideoPreloadEffect(data: VideoPlayerData, onProgress: (Float) -> Unit) {
+private fun VideoPreloadEffect(
+    data: VideoPlayerData,
+    onPreloading: (Boolean) -> Unit,
+    onProgress: (Float) -> Unit,
+) {
     val preloader = koinInject<VideoPreloader>()
     LaunchedEffect(data.fileId, data.payloadKey) {
         withContext(Dispatchers.Default) {
+            onPreloading(true)
             preloader.preload(data, onProgress = onProgress)
+            onPreloading(false)
         }
     }
 }
