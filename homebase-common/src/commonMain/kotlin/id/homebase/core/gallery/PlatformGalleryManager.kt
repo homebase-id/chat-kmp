@@ -16,4 +16,8 @@ data class GalleryImage(
     val mimeType: String,
     val fileName: String,
     val galleryName: String,
-)
+) {
+    fun isVideo(): Boolean {
+        return mimeType.startsWith("video/")
+    }
+}

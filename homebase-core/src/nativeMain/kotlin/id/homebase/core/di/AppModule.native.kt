@@ -38,7 +38,7 @@ actual fun platformModule(): Module = module {
                 .components {
                     add(HomebaseImageKeyer())
                     add(PHAssetFetcher.Factory())
-                    add(HomebaseImageFetcher.Factory(get()))
+                    add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
                 }
                 .build()

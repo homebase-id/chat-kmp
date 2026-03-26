@@ -361,9 +361,9 @@ fun MessageBubbleRaw(
                     // Find MediaMessage index (after author and reply preview)
                     var mediaIndex = 0
                     if (authorName != null) mediaIndex++
+                    val replyIndex = if (message.messageAppData.replyPreview != null) mediaIndex else -1
                     if (message.messageAppData.replyPreview != null) mediaIndex++
 
-                    //val authorIndex = if (authorName != null) 0 else -1
                     val textIndex = if (hasMedia) mediaIndex + 1 else mediaIndex
                     val showMoreIndex = textIndex + 1
                     val infoIndex = showMoreIndex + 1
@@ -374,6 +374,7 @@ fun MessageBubbleRaw(
 
                     // Measure up to text content
                     for (i in 0 until textIndex) {
+                        if (i == replyIndex) continue
                         val placeable = measurables[i].measure(constraints)
                         placeables += placeable
                         if (hasMedia && i == mediaIndex) {
@@ -393,6 +394,12 @@ fun MessageBubbleRaw(
                         else constraints
                     )
 
+                    // Measure reply, set width to minium of text
+                    val replyPlaceable = if (replyIndex != -1) measurables[replyIndex].measure(
+                        constraints.copy(minWidth = textPlaceable.width)
+                    ) else null
+                    val replyWidth = replyPlaceable?.width ?: 0
+
                     // Measure show more text
                     val showMorePlaceable = measurables[showMoreIndex].measure(constraints)
 
@@ -404,6 +411,7 @@ fun MessageBubbleRaw(
                     val finalHeight: Int
                     val infoX: Int
                     val infoY: Int
+                    val replyHeight = replyPlaceable?.height ?: 0
 
                     if (layoutResult != null && layoutResult.lineCount > 0) {
                         val lastLineIndex = layoutResult.lineCount - 1
@@ -420,39 +428,47 @@ fun MessageBubbleRaw(
                         if (fitsOnLastLine) {
                             finalWidth = maxOf(
                                 mediaWidth,
+                                replyWidth,
                                 textPlaceable.width,
                                 (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
                                 authorWidth
                             )
                             val lastLineBottom = layoutResult.getLineBottom(lastLineIndex)
                             infoY =
-                                placeables.sumOf { it.height } + lastLineBottom.toInt() + 8.dp.roundToPx() - infoPlaceable.height
+                                placeables.sumOf { it.height } + replyHeight + lastLineBottom.toInt() + 8.dp.roundToPx() - infoPlaceable.height
                             infoX = finalWidth - infoPlaceable.width - textRowPadding
                             finalHeight =
                                 placeables.sumOf { it.height } +
+                                        replyHeight +
                                         textPlaceable.height +
                                         (showMorePlaceable.height)
                         } else {
                             finalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
-                            infoY = placeables.sumOf { it.height } + textPlaceable.height
+                            infoY = placeables.sumOf { it.height } + replyHeight + textPlaceable.height
                             infoX = finalWidth - infoPlaceable.width - 8.dp.roundToPx()
                             finalHeight =
                                 placeables.sumOf { it.height } +
+                                        replyHeight +
                                         textPlaceable.height +
                                         (showMorePlaceable.height) +
                                         infoPlaceable.height +
                                         8.dp.roundToPx()
                         }
                     } else {
-                        finalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
-                        infoY = placeables.sumOf { it.height } + textPlaceable.height
+                        finalWidth = maxOf(mediaWidth, replyWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
+                        infoY = placeables.sumOf { it.height } + replyHeight + textPlaceable.height
                         infoX = finalWidth - infoPlaceable.width
                         finalHeight =
-                            placeables.sumOf { it.height } + textPlaceable.height + infoPlaceable.height
+                            placeables.sumOf { it.height } + replyHeight + textPlaceable.height + infoPlaceable.height
                     }
 
                     layout(finalWidth, finalHeight) {
                         var yPos = 0
+                        replyPlaceable?.let {
+                            it.placeRelative(0, yPos)
+                            yPos += it.height
+                        }
+
                         placeables.forEach { placeable ->
                             placeable.placeRelative(0, yPos)
                             yPos += placeable.height

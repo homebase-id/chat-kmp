@@ -10,12 +10,14 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlin.uuid.Uuid
 
 @Composable
 fun MessageItem(
     message: MessageUiModel,
+    userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     currentOdinId: String,
     renderAuthorName: Boolean = false,
@@ -93,6 +95,7 @@ fun MessageItem(
         ) {
             SentMessageBubble(
                 message = message,
+                userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
                 onMessageInfo = onMessageInfo,
                 onReply = onReply,
@@ -122,6 +125,7 @@ fun MessageItem(
         ) {
             ReceivedMessageBubble(
                 message = message,
+                userDefaultReactions = userDefaultReactions,
                 decryptedFiles = decryptedFiles,
                 renderAuthorName = renderAuthorName,
                 onMessageInfo = onMessageInfo,

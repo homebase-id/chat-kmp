@@ -10,8 +10,8 @@ import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
-import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.registerShareHandler
 import id.homebase.core.share.unregisterShareHandler
@@ -78,12 +78,6 @@ class AppViewModel(
         notificationService.isAppInForeground = false
     }
 
-    /** Update which conversation/screen the user is currently viewing. */
-    fun setActiveConversation(conversationId: String?, isOnChatList: Boolean) {
-        notificationService.activeConversationId = conversationId
-        notificationService.isOnChatListScreen = isOnChatList
-    }
-
     /** Collects notification events from NotificationService and forwards to UI. */
     private fun collectNotificationEvents() {
         viewModelScope.launch {
@@ -119,7 +113,7 @@ class AppViewModel(
         if (pending != null) {
             _navigationEvents.tryEmit(NotificationNavigationEvent.OpenConversation(conversationId))
         } else {
-            Logger.w("AppViewModel") { "No pending shared content found for conversation: $conversationId" }
+            Logger.w(tag = "AppViewModel") { "No pending shared content found for conversation: $conversationId" }
         }
     }
 

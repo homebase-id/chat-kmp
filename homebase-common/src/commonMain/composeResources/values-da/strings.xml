@@ -43,6 +43,7 @@
     <string name="leave">Forlad</string>
     <string name="export_log">Eksportér log</string>
     <string name="send">Send</string>
+    <string name="media">Medie</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>

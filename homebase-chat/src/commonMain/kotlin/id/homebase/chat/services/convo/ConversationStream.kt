@@ -26,7 +26,6 @@ import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareableConversation
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -416,7 +415,7 @@ class ConversationStream(
                 }
             }
         } catch (e: Exception) {
-            Logger.e("ConversationStream") { "Failed to update share cache: ${e.message}" }
+            Logger.e(tag = "ConversationStream") { "Failed to update share cache: ${e.message}" }
         }
     }
 }

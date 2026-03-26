@@ -29,6 +29,8 @@ import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_emoji_options
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.stringResource
 
@@ -74,25 +76,27 @@ private fun extractEmoji(reactionContent: String): String? {
  * Shows a scrollable row of emoji buttons that can be selected to add a reaction to a message.
  * Automatically dismisses when an emoji is selected.
  *
+ * @param userDefaultReactions List of default reactions to show in the menu
  * @param onSelect Callback invoked when user selects an emoji reaction
  * @param onShowAllEmojis Callback invoked when emoji full selector should be shown
  */
 @Composable
 fun ReactionMenu(
+    modifier: Modifier = Modifier,
+    userDefaultReactions : ImmutableList<String> = persistentListOf(),
     onSelect: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
 ) {
-    val reactions = listOf("👍", "❤️", "😂", "😮", "😢")
+    val reactions = userDefaultReactions.take(6) + listOf("❤️", "👍", "👎", "😂", "😮", "😢").take(6 - minOf(6, userDefaultReactions.size))
     val scrollState = rememberScrollState()
 
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .wrapContentWidth()
             .padding(top = 4.dp),
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
         shadowElevation = 4.dp,
-        tonalElevation = 2.dp
+        tonalElevation = 4.dp
     ) {
         Row(
             modifier = Modifier
@@ -107,7 +111,7 @@ fun ReactionMenu(
                 ) {
                     Text(
                         text = emoji,
-                        fontSize = 20.sp
+                        fontSize = 24.sp
                     )
                 }
             }

@@ -39,7 +39,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.toRoute
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
@@ -48,6 +47,7 @@ import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.archivedconversations.ArchivedConversationsScreen
 import id.homebase.chat.contactinfo.ContactInfoScreen
 import id.homebase.chat.conversationlist.ConversationListScreen
+import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
 import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
@@ -55,6 +55,8 @@ import id.homebase.chat.editconversationgroup.EditConversationGroupScreen
 import id.homebase.chat.groupsettings.GroupSettingsScreen
 import id.homebase.chat.messageinfo.MessageInfoScreen
 import id.homebase.chat.selectmembers.SelectMembersScreen
+import id.homebase.core.navigation.ActiveConversation
+import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
@@ -66,7 +68,6 @@ import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
-import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
@@ -74,13 +75,7 @@ import id.homebase.core.widget.InAppNotificationBanner
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import org.koin.compose.viewmodel.koinViewModel
-
-sealed class TopLevelRoute(
-    val route: Route, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector
-) {
-    data object Chat : TopLevelRoute(Route.ChatList(), "Chats", BootstrapChat)
-    data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
-}
+import kotlin.uuid.Uuid
 
 @Composable
 fun AppNavHost(
@@ -138,15 +133,7 @@ fun AppNavHost(
     LaunchedEffect(authState, currentDestination) {
         // Update active conversation for notification suppression
         val isChatRoute = currentDestination?.hasRoute(Route.ChatList::class) == true
-        val activeConversationId = if (isChatRoute) {
-            try {
-                navController.currentBackStackEntry?.toRoute<Route.ChatList>()?.conversationId
-            } catch (_: Exception) { null }
-        } else null
-        viewModel.setActiveConversation(
-            conversationId = activeConversationId,
-            isOnChatList = isChatRoute && activeConversationId == null,
-        )
+        ActiveConversation.setDisplayingChatList(isChatRoute)
 
         // Auth guard - navigate to login when unauthenticated
         if (authState is YouAuthState.Unauthenticated || authState is YouAuthState.Error) {
@@ -170,9 +157,10 @@ fun AppNavHost(
         viewModel.navigationEvents.collect { event ->
             when (event) {
                 is NotificationNavigationEvent.OpenConversation -> {
-                    navController.navigate(Route.ChatList(event.conversationId)) {
-                        popUpTo<Route.ChatList> { inclusive = true }
+                    Uuid.parseOrNull(event.conversationId)?.let {
+                        navController.selectConversationOnChatList(it)
                     }
+                    navController.popBackStack(Route.ChatList, inclusive = false)
                 }
                 is NotificationNavigationEvent.OpenUrl ->
                     uriHandler.openUrl(event.url)
@@ -202,7 +190,7 @@ fun AppNavHost(
                             ) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList()) { saveState = true }
+                                    popUpTo(Route.ChatList) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -226,7 +214,7 @@ fun AppNavHost(
                             selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                             onClick = {
                                 navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList()) { saveState = true }
+                                    popUpTo(Route.ChatList) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -283,7 +271,7 @@ fun AppNavHost(
                         AppLoadingScreen(
                             viewModel = koinViewModel(),
                             onNavigateToMainScreen = {
-                                navController.navigate(Route.ChatList()) {
+                                navController.navigate(Route.ChatList) {
                                     popUpTo(Route.AppLoading) { inclusive = true }
                                 }
                             },
@@ -299,7 +287,7 @@ fun AppNavHost(
                         LoginScreen(
                             viewModel = koinViewModel(),
                             onNavigateHome = {
-                                navController.navigate(Route.ChatList()) {
+                                navController.navigate(Route.ChatList) {
                                     popUpTo(Route.Login) { inclusive = true }
                                 }
                             },
@@ -315,10 +303,20 @@ fun AppNavHost(
                         }
                     }
 
-                    composable<Route.ChatList> {
+                    composable<Route.ChatList> { backStackEntry ->
                         if (isAuthenticated) {
+                            val conversationListViewModel: ConversationListViewModel = koinViewModel()
+                            val pendingConversationId by backStackEntry.savedStateHandle.getStateFlow<String?>("pendingConversationId", null).collectAsState()
+                            LaunchedEffect(pendingConversationId) {
+                                pendingConversationId?.let { idStr ->
+                                    Uuid.parseOrNull(idStr)?.let {
+                                        conversationListViewModel.selectConversation(it)
+                                        backStackEntry.savedStateHandle["pendingConversationId"] = null
+                                    }
+                                }
+                            }
                             ConversationListScreen(
-                                viewModel = koinViewModel(),
+                                viewModel = conversationListViewModel,
                                 extendPermissionViewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
                                 onNavigateToSettingsScreen = {
@@ -363,9 +361,8 @@ fun AppNavHost(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
                                 onShowConversation = { conversationId ->
-                                    navController.navigate(Route.ChatList(conversationId.toString())) {
-                                        popUpTo(Route.CreateConversation) { inclusive = true }
-                                    }
+                                    navController.selectConversationOnChatList(conversationId)
+                                    navController.popBackStack(Route.CreateConversation, inclusive = true)
                                 },
                                 onShowCreateGroup = {
                                     navController.navigate(Route.CreateConversationSelectMembers)
@@ -392,9 +389,8 @@ fun AppNavHost(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
                                 onShowConversation = { conversationId ->
-                                    navController.navigate(Route.ChatList(conversationId.toString())) {
-                                        popUpTo(Route.CreateConversation) { inclusive = true }
-                                    }
+                                    navController.selectConversationOnChatList(conversationId)
+                                    navController.popBackStack(Route.ChatList, inclusive = false)
                                 },
                             )
                         }
@@ -406,9 +402,8 @@ fun AppNavHost(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
                                 onShowConversation = { conversationId ->
-                                    navController.navigate(Route.ChatList(conversationId)) {
-                                        popUpTo(Route.ArchivedConversations) { inclusive = true }
-                                    }
+                                    navController.selectConversationOnChatList(conversationId)
+                                    navController.popBackStack(Route.ArchivedConversations, inclusive = true)
                                 },
                                 onNavigateToConversationSettings = { conversationId ->
                                     navController.navigate(Route.ConversationSettings(conversationId))
@@ -550,3 +545,13 @@ fun AppNavHost(
     }
 }
 
+private fun NavHostController.selectConversationOnChatList(conversationId: Uuid) {
+    getBackStackEntry<Route.ChatList>().savedStateHandle["pendingConversationId"] = conversationId.toString()
+}
+
+sealed class TopLevelRoute(
+    val route: Route, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
+    data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
+}

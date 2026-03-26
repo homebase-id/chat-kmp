@@ -76,7 +76,7 @@ class ArchivedConversationsViewModel(
 
             is ArchivedConversationsUiAction.ShowConversation -> {
                 _uiState.update {
-                    it.copy(uiEvent = ArchivedConversationsUiEvent.NavigateToConversation(action.conversationId.toString()))
+                    it.copy(uiEvent = ArchivedConversationsUiEvent.NavigateToConversation(action.conversationId))
                 }
             }
 
@@ -132,7 +132,7 @@ data class ArchivedConversationsUiState(
 sealed interface ArchivedConversationsUiEvent {
     data object Back : ArchivedConversationsUiEvent
     data class Error(val errorMessage: String) : ArchivedConversationsUiEvent
-    data class NavigateToConversation(val conversationId: String) : ArchivedConversationsUiEvent
+    data class NavigateToConversation(val conversationId: Uuid) : ArchivedConversationsUiEvent
     data class NavigateToGroupSettings(val conversationId: String) : ArchivedConversationsUiEvent
     data class NavigateToConversationSettings(val conversationId: String) : ArchivedConversationsUiEvent
 }

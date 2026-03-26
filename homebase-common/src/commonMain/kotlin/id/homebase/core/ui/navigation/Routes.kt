@@ -47,7 +47,7 @@ sealed class Route {
 
     @Serializable
     @SerialName("conversation")
-    data class ChatList(val conversationId: String? = null) : Route()
+    data object ChatList : Route()
 
     @Serializable
     @SerialName("conversation-settings")
