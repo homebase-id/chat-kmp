@@ -41,8 +41,6 @@ import androidx.compose.ui.unit.sp
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.delay
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -88,28 +86,16 @@ actual fun VideoPlayerSurface(
     LaunchedEffect(data) {
         withContext(Dispatchers.IO) {
             try {
-                val metadata = data.payload.descriptorContent?.let {
-                    OdinSystemSerializer.deserialize<VideoMetadata>(it)
-                } ?: run {
-                    state = VpsState.Error("Missing video metadata")
-                    return@withContext
-                }
-
                 val dir = File(System.getProperty("java.io.tmpdir"), "hbvid_${UUID.randomUUID()}")
                     .also { it.mkdirs() }
                 tempDir = dir
 
-                val hlsPlaylist = metadata.hlsPlaylist
-                if (metadata.isSegmented && hlsPlaylist != null) {
-                    // Write only the playlist — segments are fetched on demand by the proxy.
-                    // Strip #EXT-X-KEY: data from getPayloadBytesDecrypted is already decrypted.
-                    val strippedPlaylist = hlsPlaylist.lines()
-                        .filter { !it.startsWith("#EXT-X-KEY") }
-                        .joinToString("\n")
-                    File(dir, "index.m3u8").writeText(strippedPlaylist)
+                when (val content = resolveVideoContent(data, driveFileProvider)) {
+                    is VideoContent.Hls -> {
+                        File(dir, "index.m3u8").writeText(content.strippedPlaylist)
 
-                    val totalSize = metadata.fileSize
-                    val server = HttpServer.create(InetSocketAddress(0), 0).apply {
+                        val totalSize = content.metadata.fileSize
+                        val server = HttpServer.create(InetSocketAddress(0), 0).apply {
                         createContext("/") { exchange ->
                             val name = exchange.requestURI.path.trimStart('/')
                             if (name.endsWith(".m3u8")) {
@@ -157,20 +143,13 @@ actual fun VideoPlayerSurface(
                         executor = Executors.newFixedThreadPool(4)
                         start()
                     }
-                    httpServer = server
-                    state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
-                } else {
-                    val bytesResponse = driveFileProvider.getPayloadBytesDecrypted(
-                        driveId = data.driveId,
-                        fileId = data.fileId,
-                        key = data.payloadKey,
-                        keyHeader = data.keyHeader,
-                    ) ?: run {
-                        state = VpsState.Error("Failed to download video")
-                        return@withContext
+                        httpServer = server
+                        state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                     }
-                    File(dir, "video.mp4").writeBytes(bytesResponse.bytes)
-                    state = VpsState.Playing(File(dir, "video.mp4").absolutePath)
+                    is VideoContent.Mp4 -> {
+                        File(dir, "video.mp4").writeBytes(content.bytes)
+                        state = VpsState.Playing(File(dir, "video.mp4").absolutePath)
+                    }
                 }
             } catch (e: Exception) {
                 state = VpsState.Error(e.message ?: "Playback error")
