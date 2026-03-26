@@ -124,7 +124,9 @@ class ConversationListViewModel(
     private val _uiState = MutableStateFlow(ConversationListUiState())
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
-    private val _messagesUiState = MutableStateFlow(MessageListUiState())
+    private val _messagesUiState = MutableStateFlow(MessageListUiState(
+        userDefaultReactions = userPreferences.preferredUserReactions.toPersistentList()
+    ))
     val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
 
     val conversationSearchTextState = TextFieldState()
@@ -752,6 +754,14 @@ class ConversationListViewModel(
             is ConversationListUiAction.ToggleReaction -> {
                 viewModelScope.launch {
                     try {
+                        val newTopReactions = _messagesUiState.value.userDefaultReactions.toMutableList()
+                        newTopReactions.remove(action.reaction)
+                        newTopReactions.add(0, action.reaction)
+                        _messagesUiState.update {
+                            it.copy(userDefaultReactions = newTopReactions.toPersistentList())
+                        }
+                        userPreferences.preferredUserReactions = newTopReactions
+
                         chatMessageActionService.toggleReaction(
                             action.conversationId,
                             action.messageId,

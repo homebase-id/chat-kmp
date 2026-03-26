@@ -30,6 +30,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_emoji_options
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.stringResource
 
@@ -82,11 +83,11 @@ private fun extractEmoji(reactionContent: String): String? {
 @Composable
 fun ReactionMenu(
     modifier: Modifier = Modifier,
-    userDefaultReactions : ImmutableList<String>? = null,
+    userDefaultReactions : ImmutableList<String> = persistentListOf(),
     onSelect: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
 ) {
-    val reactions = if (userDefaultReactions.isNullOrEmpty()) listOf("❤️", "👍", "👎", "😂", "😮", "😢") else userDefaultReactions
+    val reactions = userDefaultReactions.take(6) + listOf("❤️", "👍", "👎", "😂", "😮", "😢").take(6 - minOf(6, userDefaultReactions.size))
     val scrollState = rememberScrollState()
 
     Surface(

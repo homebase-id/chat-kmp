@@ -75,8 +75,8 @@ import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.media
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -106,6 +106,7 @@ import kotlin.uuid.Uuid
 @Composable
 fun SentMessageBubble(
     message: MessageUiModel,
+    userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     onMessageInfo: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
@@ -184,7 +185,7 @@ fun SentMessageBubble(
                     SentMessagePopup(
                         mode = popupMode,
                         message = message,
-                        userDefaultReactions = persistentListOf(),
+                        userDefaultReactions = userDefaultReactions,
                         dismissMenu = { popupMode = MessagePopupMode.None },
                         onSelectEmoji = { reaction ->
                             popupMode = MessagePopupMode.None
@@ -267,6 +268,41 @@ fun SentMessageBubble(
     }
 }
 
+@Composable
+fun SentMessageBubbleDisplayOnly(
+    modifier: Modifier = Modifier,
+    message: MessageUiModel
+) {
+    Box(
+        modifier = modifier
+    ) {
+        MessageBubbleRaw(
+            modifier = Modifier.padding(
+                bottom = if (message.reactionPreview == null) 0.dp
+                else 26.dp
+            ),
+            message = message,
+            decryptedFiles = persistentMapOf(),
+            sentByYou = true,
+            onMediaClick = {},
+            onClickMessageId = {},
+            sharedTransitionScope = null,
+            animatedVisibilityScope = null,
+            downloadingFiles = emptySet(),
+            onRequestDecryptedFile = null,
+            onLongClick = {},
+        )
+        message.reactionPreview?.let { reactionSummary ->
+            ReactionList(
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
+                reactionSummary = reactionSummary,
+                onClick = { },
+                onLongClick = { },
+            )
+        }
+    }
+}
+
 /**
  * Displays a message bubble for messages received from other users.
  *
@@ -287,6 +323,7 @@ fun SentMessageBubble(
 @Composable
 fun ReceivedMessageBubble(
     message: MessageUiModel,
+    userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     renderAuthorName: Boolean = false,
     onMessageInfo: (() -> Unit)? = null,
@@ -427,7 +464,7 @@ fun ReceivedMessageBubble(
                     ReceivedMessagePopup(
                         mode = popupMode,
                         message = message,
-                        userDefaultReactions = persistentListOf(),
+                        userDefaultReactions = userDefaultReactions,
                         dismissMenu = { popupMode = MessagePopupMode.None },
                         onSelectEmoji = { reaction ->
                             popupMode = MessagePopupMode.None
@@ -470,6 +507,41 @@ fun ReceivedMessageBubble(
             }
         }
         Spacer(modifier = Modifier.width(16.dp))
+    }
+}
+
+@Composable
+fun ReceivedMessageBubbleDisplayOnly(
+    modifier: Modifier = Modifier,
+    message: MessageUiModel
+) {
+    Box(
+        modifier = modifier
+    ) {
+        MessageBubbleRaw(
+            modifier = Modifier.padding(
+                bottom = if (message.reactionPreview == null) 0.dp
+                else 26.dp
+            ),
+            message = message,
+            decryptedFiles = persistentMapOf(),
+            sentByYou = false,
+            onMediaClick = {},
+            onClickMessageId = {},
+            sharedTransitionScope = null,
+            animatedVisibilityScope = null,
+            downloadingFiles = emptySet(),
+            onRequestDecryptedFile = null,
+            onLongClick = {},
+        )
+        message.reactionPreview?.let { reactionSummary ->
+            ReactionList(
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
+                reactionSummary = reactionSummary,
+                onClick = { },
+                onLongClick = { },
+            )
+        }
     }
 }
 
@@ -606,27 +678,17 @@ fun SentMessageBubblePreview() {
     HomebaseTheme {
         Surface {
             Column {
-                ReceivedMessageBubble(
+                ReceivedMessageBubbleDisplayOnly(
                     message = testMessageUiModel("g"),
-                    decryptedFiles = persistentMapOf(),
-                    onDelete = {},
-                    onMediaClick = {},
-                    onClickMessageId = {},
-                    onShowReactions = {},
-                    onMarkAsRead = {},
-                    downloadingFiles = emptySet(),
                 )
-                SentMessageBubble(
-                    message = testMessageUiModel("g"),
-                    decryptedFiles = persistentMapOf(),
-                    onEdit = {},
-                    onShare = {},
-                    onDelete = {},
-                    onMediaClick = {},
-                    onClickMessageId = {},
-                    onShowReactions = {},
-                    downloadingFiles = emptySet(),
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    SentMessageBubbleDisplayOnly(
+                        message = testMessageUiModel("Message 😀"),
+                    )
+                }
             }
         }
     }
@@ -638,27 +700,18 @@ fun SentMessageBubblePreviewDark() {
     HomebaseTheme(darkTheme = true) {
         Surface {
             Column {
-                ReceivedMessageBubble(
+                ReceivedMessageBubbleDisplayOnly(
                     message = testMessageUiModel("Message 😀"),
-                    decryptedFiles = persistentMapOf(),
-                    onDelete = {},
-                    onMediaClick = {},
-                    onClickMessageId = {},
-                    onShowReactions = {},
-                    onMarkAsRead = {},
-                    downloadingFiles = emptySet(),
                 )
-                SentMessageBubble(
-                    message = testMessageUiModel("Message 😀"),
-                    decryptedFiles = persistentMapOf(),
-                    onEdit = {},
-                    onShare = {},
-                    onDelete = {},
-                    onMediaClick = {},
-                    onClickMessageId = {},
-                    onShowReactions = {},
-                    downloadingFiles = emptySet(),
-                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    SentMessageBubbleDisplayOnly(
+                        message = testMessageUiModel("Message 😀"),
+                    )
+                }
             }
         }
     }

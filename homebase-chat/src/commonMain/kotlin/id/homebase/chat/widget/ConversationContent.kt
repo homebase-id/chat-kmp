@@ -427,6 +427,7 @@ fun ConversationContent(
                                 is MessageListContentModel.Message -> {
                                     MessageItem(
                                         message = messageItem.message,
+                                        userDefaultReactions = uiState.userDefaultReactions,
                                         decryptedFiles = uiState.decryptedFiles,
                                         currentOdinId = uiState.ownerSession?.odinId?.domainName
                                             ?: "",

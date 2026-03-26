@@ -26,6 +26,10 @@ class UserPreferences(private val settings: Settings) {
             _preferenceState.value = _preferenceState.value.copy(theme = value)
         }
 
+    var preferredUserReactions: List<String>
+        get() = settings.getStringOrNull("preferred_user_reactions")?.split(",") ?: listOf()
+        set(value) = settings.putString("preferred_user_reactions", value.joinToString(","))
+
     // Notification preferences
     var playWhileAppOpen: Boolean
         get() = settings.getBoolean("notification_play_while_app_open", true)

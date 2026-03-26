@@ -47,7 +47,6 @@ import id.homebase.core.ui.assets.MessageForward
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.isMobile
 import id.homebase.core.widget.ListItemActionNormalIcon
-import id.homebase.core.widget.ReactionList
 import id.homebase.core.widget.ReactionMenu
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archive
@@ -72,7 +71,6 @@ import id.homebase.resources.save
 import id.homebase.resources.settings
 import id.homebase.resources.share
 import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -185,34 +183,10 @@ fun ReceivedMessagePopup(
                 Spacer(modifier = Modifier.height(8.dp))
             }
             if (mode == MessagePopupMode.All) {
-                Box(
+                ReceivedMessageBubbleDisplayOnly(
                     modifier = Modifier.padding(horizontal = 16.dp),
-                ) {
-                    MessageBubbleRaw(
-                        modifier = Modifier.padding(
-                            bottom = if (message.reactionPreview == null) 0.dp
-                            else 26.dp
-                        ),
-                        message = message,
-                        decryptedFiles = persistentMapOf(),
-                        sentByYou = false,
-                        onMediaClick = {},
-                        onClickMessageId = {},
-                        sharedTransitionScope = null,
-                        animatedVisibilityScope = null,
-                        downloadingFiles = emptySet(),
-                        onRequestDecryptedFile = null,
-                        onLongClick = {},
-                    )
-                    message.reactionPreview?.let { reactionSummary ->
-                        ReactionList(
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(start = 4.dp),
-                            reactionSummary = reactionSummary,
-                            onClick = { },
-                            onLongClick = { },
-                        )
-                    }
-                }
+                    message = message,
+                )
                 Spacer(modifier = Modifier.height(8.dp))
             }
             if (mode == MessagePopupMode.Menu || mode == MessagePopupMode.All) {
@@ -298,34 +272,10 @@ fun SentMessagePopup(
                 Spacer(modifier = Modifier.height(8.dp))
             }
             if (mode == MessagePopupMode.All) {
-                Box(
+                SentMessageBubbleDisplayOnly(
                     modifier = Modifier.padding(horizontal = 16.dp),
-                ) {
-                    MessageBubbleRaw(
-                        modifier = Modifier.padding(
-                            bottom = if (message.reactionPreview == null) 0.dp
-                            else 26.dp
-                        ),
-                        message = message,
-                        decryptedFiles = persistentMapOf(),
-                        sentByYou = true,
-                        onMediaClick = {},
-                        onClickMessageId = {},
-                        sharedTransitionScope = null,
-                        animatedVisibilityScope = null,
-                        downloadingFiles = emptySet(),
-                        onRequestDecryptedFile = null,
-                        onLongClick = {},
-                    )
-                    message.reactionPreview?.let { reactionSummary ->
-                        ReactionList(
-                            modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
-                            reactionSummary = reactionSummary,
-                            onClick = { },
-                            onLongClick = { },
-                        )
-                    }
-                }
+                    message = message,
+                )
                 Spacer(modifier = Modifier.height(8.dp))
             }
             if (mode == MessagePopupMode.Menu || mode == MessagePopupMode.All) {

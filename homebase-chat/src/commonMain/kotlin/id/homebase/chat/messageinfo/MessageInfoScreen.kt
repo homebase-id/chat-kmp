@@ -35,8 +35,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatDeliveryStatus
-import id.homebase.chat.widget.ReceivedMessageBubble
-import id.homebase.chat.widget.SentMessageBubble
+import id.homebase.chat.widget.ReceivedMessageBubbleDisplayOnly
+import id.homebase.chat.widget.SentMessageBubbleDisplayOnly
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.util.formateDateTime
@@ -51,7 +51,6 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.reactions
 import id.homebase.resources.read_by
 import id.homebase.resources.sent_to
-import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -111,29 +110,18 @@ fun MessageInfoUi(
             } else {
                 Spacer(modifier = Modifier.height(16.dp))
                 uiState.message?.let { message ->
-                    Box(modifier = Modifier.padding(horizontal = 16.dp)) {
-                        if (message.isAuthoredBy(uiState.ownerSession?.odinId)) {
-                            SentMessageBubble(
+                    val isSentByYou = message.isAuthoredBy(uiState.ownerSession?.odinId)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = if (isSentByYou) Arrangement.End else Arrangement.Start
+                    ) {
+                        if (isSentByYou) {
+                            SentMessageBubbleDisplayOnly(
                                 message = message,
-                                decryptedFiles = persistentMapOf(),
-                                onEdit = {},
-                                onShare = {},
-                                onDelete = {},
-                                onMediaClick = {},
-                                onClickMessageId = {},
-                                onShowReactions = {},
-                                downloadingFiles = emptySet(),
                             )
                         } else {
-                            ReceivedMessageBubble(
+                            ReceivedMessageBubbleDisplayOnly(
                                 message = message,
-                                decryptedFiles = persistentMapOf(),
-                                onDelete = {},
-                                onMarkAsRead = {},
-                                onShowReactions = {},
-                                onMediaClick = {},
-                                onClickMessageId = {},
-                                downloadingFiles = emptySet(),
                             )
                         }
                     }
