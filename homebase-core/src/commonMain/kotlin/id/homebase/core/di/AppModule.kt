@@ -18,6 +18,7 @@ import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
@@ -63,6 +64,7 @@ val appModule = module {
     singleOf(::ConversationStream)
     singleOf(::ConversationService)
     singleOf(::ChatMessageStream)
+    singleOf(::ShareSuggestionDonor)
     singleOf(::ChatMessageSenderService)
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)

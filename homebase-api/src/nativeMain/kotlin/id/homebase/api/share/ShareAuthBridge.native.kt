@@ -27,6 +27,7 @@ import platform.Security.kSecAttrAccount
 import platform.Security.kSecAttrService
 import platform.Security.kSecClass
 import platform.Security.kSecClassGenericPassword
+import platform.Security.kSecAttrAccessGroup
 import platform.Security.kSecValueData
 
 /**
@@ -36,6 +37,7 @@ import platform.Security.kSecValueData
 actual object ShareAuthBridge {
 
     private const val SERVICE = "id.homebase.share.auth"
+    private const val ACCESS_GROUP = "group.id.homebase.chat"
     private const val KEY_AUTH_ACTIVE = "share_auth_active"
     private const val KEY_USER_DOMAIN = "share_user_domain"
 
@@ -102,6 +104,10 @@ actual object ShareAuthBridge {
         val serviceCf = CFBridgingRetain(SERVICE)
         CFDictionarySetValue(dict, kSecAttrService, serviceCf)
         CFRelease(serviceCf)
+
+        val groupCf = CFBridgingRetain(ACCESS_GROUP)
+        CFDictionarySetValue(dict, kSecAttrAccessGroup, groupCf)
+        CFRelease(groupCf)
 
         val keyCf = CFBridgingRetain(key)
         CFDictionarySetValue(dict, kSecAttrAccount, keyCf)

@@ -22,6 +22,10 @@ actual class ShareCacheStorage(private val context: Context) {
         return if (file.exists()) file.readText() else null
     }
 
+    actual fun clearConversationCache() {
+        File(cacheDir, CONVERSATION_CACHE_FILE).delete()
+    }
+
     actual fun writeSharedContent(json: String) {
         File(cacheDir, SHARED_CONTENT_FILE).writeText(json)
     }
@@ -41,6 +45,10 @@ actual class ShareCacheStorage(private val context: Context) {
 
     actual fun getSharedFilesDirectory(): String {
         return File(cacheDir, SHARED_FILES_SUBDIR).also { it.mkdirs() }.absolutePath
+    }
+
+    actual fun writeGroupAvatar(conversationId: String, imageBytes: ByteArray) {
+        // No-op on Android — share shortcuts use HomebaseImageLoader directly
     }
 
     companion object {

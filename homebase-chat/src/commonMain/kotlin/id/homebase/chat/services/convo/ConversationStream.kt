@@ -20,6 +20,9 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.image.HomebaseImageLoader
+import id.homebase.core.image.ImageSize
+import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareableConversation
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +30,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -37,10 +42,13 @@ class ConversationStream(
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
     private val shareCacheWriter: ShareConversationCacheWriter,
+    private val imageLoader: HomebaseImageLoader,
+    private val cacheStorage: ShareCacheStorage,
 ) {
 
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
+    private val _shareableConversations = MutableStateFlow<List<ShareableConversation>>(emptyList())
     private var isSyncing = false // Track if chat drive sync is in progress
 
     private val mapper: ConversationMapper = ConversationMapper(
@@ -48,6 +56,8 @@ class ConversationStream(
     )
 
     val conversations: StateFlow<ConversationsData> = _conversations.asStateFlow()
+    val shareableConversations: StateFlow<List<ShareableConversation>> =
+        _shareableConversations.asStateFlow()
 
     init {
         scope.launch {
@@ -73,6 +83,7 @@ class ConversationStream(
                             isSyncing = false
                             start()
                         }
+
                         is BackendEvent.DriveResult.Failure -> {
                             isSyncing = false
                             Logger.e { "Failed during drive sync" }
@@ -257,13 +268,28 @@ class ConversationStream(
     private suspend fun loadConversations() {
         val result = fetchConversations()
         _conversations.value = ConversationsData(items = result)
-        updateShareCache(result)
     }
 
     fun start() {
         scope.launch {
             loadConversations()
             updateUnreadCounts()
+        }
+
+        // Reactively update share cache when conversations or contacts change,
+        // so the iOS share extension always has resolved display names.
+        scope.launch {
+            @OptIn(kotlinx.coroutines.FlowPreview::class)
+            combine(
+                _conversations,
+                contactService.contacts,
+            ) { convos, contacts -> Pair(convos, contacts) }
+                .debounce(500) // Avoid rapid writes during initial load
+                .collect { (convos, contacts) ->
+                    if (convos.dataReady) {
+                        updateShareCache(convos.items, contacts)
+                    }
+                }
         }
     }
 
@@ -336,24 +362,61 @@ class ConversationStream(
         return recipients
     }
 
-    private fun updateShareCache(conversations: List<ConversationUiModel>) {
-        scope.launch(Dispatchers.Default) {
-            try {
-                val domain = credentialsManager.getActiveDomain()?.domainName ?: return@launch
-                val shareable = conversations.map { convo ->
-                    ShareableConversation(
-                        id = convo.id.toString(),
-                        displayName = convo.getDisplayName(),
-                        avatarInitials = convo.avatarInitials,
-                        isGroup = convo.isGroupConversation,
-                        participantCount = convo.participants.size,
-                        lastMessageTimestamp = convo.timestamp.toEpochMilliseconds(),
-                    )
+    private suspend fun updateShareCache(
+        conversations: List<ConversationUiModel>,
+        contacts: List<id.homebase.chat.data.ContactUiModel>,
+    ) {
+        try {
+            val activeDomain = credentialsManager.getActiveDomain() ?: return
+            val domain = activeDomain.domainName
+            val contactMap = contacts.associateBy { it.odinId }
+
+            val shareable = conversations.map { convo ->
+                val otherParticipant = convo.participants
+                    .firstOrNull { it != activeDomain }
+
+                val avatarUrl = if (!convo.isGroupConversation && otherParticipant != null) {
+                    "https://${otherParticipant.domainName}/pub/image"
+                } else null
+
+                // Resolve contact name using the same contact map pattern as ConversationEnricher
+                val displayName = if (!convo.isGroupConversation && otherParticipant != null) {
+                    contactMap[otherParticipant]?.name ?: convo.getDisplayName()
+                } else {
+                    convo.getDisplayName()
                 }
-                shareCacheWriter.updateCache(shareable, domain)
-            } catch (e: Exception) {
-                Logger.e("ConversationStream") { "Failed to update share cache: ${e.message}" }
+
+                ShareableConversation(
+                    id = convo.id.toString(),
+                    displayName = displayName,
+                    avatarInitials = convo.avatarInitials,
+                    isGroup = convo.isGroupConversation,
+                    participantCount = convo.participants.size,
+                    lastMessageTimestamp = convo.timestamp.toEpochMilliseconds(),
+                    avatarUrl = avatarUrl,
+                )
             }
+            _shareableConversations.value = shareable
+            shareCacheWriter.updateCache(shareable, domain)
+
+            // Pre-cache group avatar images for the iOS share extension
+            for (convo in conversations) {
+                if (convo.avatarModel.type == ConversationAvatarModel.Type.ConversationImage) {
+                    val imageData = convo.avatarModel.imageData ?: continue
+                    try {
+                        val cached = imageLoader.loadThumbnail(imageData, ImageSize.THUMB_SMALL)
+                        if (cached != null) {
+                            cacheStorage.writeGroupAvatar(convo.id.toString(), cached.bytes)
+                        }
+                    } catch (e: Exception) {
+                        Logger.d(tag = "ConversationStream") {
+                            "Failed to cache group avatar for ${convo.id}: ${e.message}"
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Logger.e("ConversationStream") { "Failed to update share cache: ${e.message}" }
         }
     }
 }

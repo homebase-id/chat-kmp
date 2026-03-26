@@ -19,14 +19,13 @@ class ShareViewController: UIViewController {
         }
 
         // 2. Load conversation cache from App Group
-        let (conversations, updatedAt) = ShareConversationCacheReader.load()
+        let (conversations, _) = ShareConversationCacheReader.load()
 
         // 3. Present SwiftUI picker
         let pickerView = SharePickerView(
             conversations: conversations,
-            updatedAt: updatedAt,
-            onSelect: { [weak self] conversationId in
-                self?.handleSelection(conversationId: conversationId)
+            onSelect: { [weak self] conversationIds in
+                self?.handleSelection(conversationIds: conversationIds)
             },
             onCancel: { [weak self] in
                 self?.cancelExtension()
@@ -48,19 +47,22 @@ class ShareViewController: UIViewController {
 
     // MARK: - Selection Handling
 
-    private func handleSelection(conversationId: String) {
-        guard let extensionContext = extensionContext else {
+    private func handleSelection(conversationIds: [String]) {
+        guard let extensionContext = extensionContext,
+              let firstId = conversationIds.first else {
             cancelExtension()
             return
         }
 
+        let joinedIds = conversationIds.joined(separator: ",")
+
         // Save shared content to App Group
         SharedContentSaver.save(
             extensionContext: extensionContext,
-            conversationId: conversationId
+            conversationId: joinedIds
         ) { [weak self] success in
             if success {
-                self?.openMainApp(conversationId: conversationId)
+                self?.openMainApp(conversationIds: joinedIds)
             } else {
                 self?.showError(
                     title: "Error",
@@ -71,8 +73,8 @@ class ShareViewController: UIViewController {
     }
 
     /// Open the main app via URL scheme to complete the send.
-    private func openMainApp(conversationId: String) {
-        guard let url = URL(string: "homebase-share://send?conversationId=\(conversationId)") else {
+    private func openMainApp(conversationIds: String) {
+        guard let url = URL(string: "homebase-share://send?conversationIds=\(conversationIds)") else {
             cancelExtension()
             return
         }

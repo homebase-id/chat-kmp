@@ -64,6 +64,10 @@
 
                 <data android:scheme="homebase-fchat" />
             </intent-filter>
+
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/share_shortcuts" />
         </activity>
         <!-- FCM service: fast payload parsing + WorkManager expedited sync scheduling -->
         <service
@@ -112,7 +116,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
             </intent-filter>
+
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/share_shortcuts" />
         </activity>
+
+        <!-- Direct Share target definition -->
+        <meta-data
+            android:name="android.service.chooser.chooser_target_service"
+            android:value="androidx.sharetarget.ChooserTargetServiceCompat" />
 
 
         <!-- Notification action receivers -->

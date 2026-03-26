@@ -24,6 +24,10 @@ actual class ShareCacheStorage {
         return if (file.exists()) file.readText() else null
     }
 
+    actual fun clearConversationCache() {
+        File(cacheDir, "conversation_cache.json").delete()
+    }
+
     actual fun writeSharedContent(json: String) {
         File(cacheDir, "shared_content.json").writeText(json)
     }
@@ -40,5 +44,9 @@ actual class ShareCacheStorage {
 
     actual fun getSharedFilesDirectory(): String {
         return File(cacheDir, "shared_files").also { it.mkdirs() }.absolutePath
+    }
+
+    actual fun writeGroupAvatar(conversationId: String, imageBytes: ByteArray) {
+        // No-op on desktop
     }
 }

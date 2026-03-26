@@ -35,7 +35,8 @@ class AppViewModel(
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
-    private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 1)
+    private val _navigationEvents =
+        MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 5)
     val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
 
     private var credentialsJob: Job? = null
@@ -113,7 +114,7 @@ class AppViewModel(
      * pending shared content from [ShareContentProcessor].
      */
     fun handleShareIntent(conversationId: String) {
-        Logger.i("AppViewModel") { "Handling share intent for conversation: $conversationId" }
+        Logger.i(tag = "AppViewModel") { "Handling share intent for conversation: $conversationId" }
         val pending = shareContentProcessor.readPendingContent()
         if (pending != null) {
             _navigationEvents.tryEmit(NotificationNavigationEvent.OpenConversation(conversationId))

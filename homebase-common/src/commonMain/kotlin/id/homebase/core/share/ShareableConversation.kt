@@ -15,6 +15,7 @@ data class ShareableConversation(
     val isGroup: Boolean,
     val participantCount: Int,
     val lastMessageTimestamp: Long,
+    val avatarUrl: String? = null,
 )
 
 /**

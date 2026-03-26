@@ -1,5 +1,7 @@
 package id.homebase.feed.share
 
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,21 +18,25 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import kotlin.uuid.ExperimentalUuidApi
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,29 +47,91 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import id.homebase.chat.data.ConversationUiModel
+import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.EnrichedConversationUiModel
+import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.widget.StyledSearchTextField
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
+private const val RECENTS_COUNT = 5
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun SharePickerScreen(
     conversationStream: ConversationStream,
+    contactService: ContactService,
+    ownerSessionRepository: OwnerSessionRepository,
     sharedContent: SharedContent,
     isSending: Boolean,
-    onConversationSelected: (Uuid) -> Unit,
+    onSendToConversations: (Set<Uuid>) -> Unit,
     onCancel: () -> Unit,
 ) {
     val conversationsData by conversationStream.conversations.collectAsState()
-    var searchQuery by remember { mutableStateOf("") }
+    val contactsState by contactService.contacts.collectAsState()
+    val ownerSession by ownerSessionRepository.user.collectAsState()
+    val searchFieldState = remember { TextFieldState() }
+    var selectedIds by remember { mutableStateOf(emptySet<Uuid>()) }
+    val enricher = remember { ConversationEnricher() }
 
-    val filteredConversations = remember(conversationsData.items, searchQuery) {
-        if (searchQuery.isBlank()) {
-            conversationsData.items
-        } else {
-            conversationsData.items.filter {
-                it.getDisplayName().contains(searchQuery, ignoreCase = true)
+    // Enrich conversations with contact names — same pattern as ConversationListViewModel
+    val enrichedConversations by remember {
+        derivedStateOf {
+            val session = ownerSession ?: return@derivedStateOf emptyList()
+            val contactMap = contactsState.associateBy { it.odinId }
+            conversationsData.items.map { enricher.enrich(it, contactMap, session) }
+        }
+    }
+
+    val searchQuery by remember {
+        derivedStateOf { searchFieldState.text.toString() }
+    }
+    val isSearchActive by remember {
+        derivedStateOf { searchQuery.isNotBlank() }
+    }
+
+    val filteredConversations by remember {
+        derivedStateOf {
+            if (!isSearchActive) {
+                enrichedConversations
+            } else {
+                enrichedConversations.filter {
+                    it.getDisplayName().contains(searchQuery, ignoreCase = true)
+                }
             }
+        }
+    }
+
+    val recents by remember {
+        derivedStateOf {
+            enrichedConversations
+                .sortedByDescending { it.conversation.timestamp }
+                .take(RECENTS_COUNT)
+        }
+    }
+
+    val recentIds by remember {
+        derivedStateOf { recents.map { it.conversation.id }.toSet() }
+    }
+
+    val contacts by remember {
+        derivedStateOf {
+            enrichedConversations
+                .filter { !it.conversation.isGroupConversation && it.conversation.id !in recentIds }
+                .sortedByDescending { it.conversation.timestamp }
+                .distinctBy { it.getDisplayName().lowercase() }
+                .sortedBy { it.getDisplayName().lowercase() }
+        }
+    }
+
+    val groups by remember {
+        derivedStateOf {
+            enrichedConversations
+                .filter { it.conversation.isGroupConversation && it.conversation.id !in recentIds }
+                .sortedBy { it.getDisplayName().lowercase() }
         }
     }
 
@@ -78,6 +146,14 @@ fun SharePickerScreen(
                 },
             )
         },
+        bottomBar = {
+            if (selectedIds.isNotEmpty() && !isSending) {
+                ShareSendBar(
+                    count = selectedIds.size,
+                    onSend = { onSendToConversations(selectedIds) },
+                )
+            }
+        },
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -85,14 +161,12 @@ fun SharePickerScreen(
                 .padding(paddingValues)
         ) {
             // Search bar
-            TextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
+            StyledSearchTextField(
+                textFieldState = searchFieldState,
+                placeHolderText = "Search conversations...",
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search conversations...") },
-                singleLine = true,
             )
 
             // Shared content preview
@@ -111,7 +185,7 @@ fun SharePickerScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text("Sending...")
+                        Text("Sending to ${selectedIds.size} conversation${if (selectedIds.size > 1) "s" else ""}...")
                     }
                 }
             } else if (!conversationsData.dataReady) {
@@ -121,16 +195,91 @@ fun SharePickerScreen(
                 ) {
                     CircularProgressIndicator()
                 }
-            } else {
+            } else if (isSearchActive) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(
                         items = filteredConversations,
-                        key = { it.id },
-                    ) { conversation ->
+                        key = { it.conversation.id },
+                    ) { enriched ->
                         ConversationPickerItem(
-                            conversation = conversation,
-                            onClick = { onConversationSelected(conversation.id) },
+                            enriched = enriched,
+                            isSelected = enriched.conversation.id in selectedIds,
+                            onClick = {
+                                selectedIds = if (enriched.conversation.id in selectedIds) {
+                                    selectedIds - enriched.conversation.id
+                                } else {
+                                    selectedIds + enriched.conversation.id
+                                }
+                            },
                         )
+                    }
+                }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    if (recents.isNotEmpty()) {
+                        stickyHeader(key = "header_recents") {
+                            SectionHeader("Recents")
+                        }
+                        items(
+                            items = recents,
+                            key = { "recent_${it.conversation.id}" },
+                        ) { enriched ->
+                            ConversationPickerItem(
+                                enriched = enriched,
+                                isSelected = enriched.conversation.id in selectedIds,
+                                onClick = {
+                                    selectedIds = if (enriched.conversation.id in selectedIds) {
+                                        selectedIds - enriched.conversation.id
+                                    } else {
+                                        selectedIds + enriched.conversation.id
+                                    }
+                                },
+                            )
+                        }
+                    }
+
+                    if (contacts.isNotEmpty()) {
+                        stickyHeader(key = "header_contacts") {
+                            SectionHeader("Contacts")
+                        }
+                        items(
+                            items = contacts,
+                            key = { "contact_${it.conversation.id}" },
+                        ) { enriched ->
+                            ConversationPickerItem(
+                                enriched = enriched,
+                                isSelected = enriched.conversation.id in selectedIds,
+                                onClick = {
+                                    selectedIds = if (enriched.conversation.id in selectedIds) {
+                                        selectedIds - enriched.conversation.id
+                                    } else {
+                                        selectedIds + enriched.conversation.id
+                                    }
+                                },
+                            )
+                        }
+                    }
+
+                    if (groups.isNotEmpty()) {
+                        stickyHeader(key = "header_groups") {
+                            SectionHeader("Groups")
+                        }
+                        items(
+                            items = groups,
+                            key = { "group_${it.conversation.id}" },
+                        ) { enriched ->
+                            ConversationPickerItem(
+                                enriched = enriched,
+                                isSelected = enriched.conversation.id in selectedIds,
+                                onClick = {
+                                    selectedIds = if (enriched.conversation.id in selectedIds) {
+                                        selectedIds - enriched.conversation.id
+                                    } else {
+                                        selectedIds + enriched.conversation.id
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -139,37 +288,79 @@ fun SharePickerScreen(
 }
 
 @Composable
+private fun ShareSendBar(
+    count: Int,
+    onSend: () -> Unit,
+) {
+    Column {
+        HorizontalDivider()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = "$count conversation${if (count > 1) "s" else ""} selected",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FilledTonalButton(onClick = onSend) {
+                Text("Send")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    )
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
 private fun ConversationPickerItem(
-    conversation: ConversationUiModel,
+    enriched: EnrichedConversationUiModel,
+    isSelected: Boolean,
     onClick: () -> Unit,
 ) {
+    val conversation = enriched.conversation
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .then(
+                if (isSelected) Modifier.background(
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                    RoundedCornerShape(8.dp)
+                ) else Modifier
+            )
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Avatar initials circle
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = conversation.avatarInitials.take(2),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-        }
+        ConversationAvatar(
+            avatarModel = conversation.avatarModel,
+            options = AvatarOptions(size = 48.dp),
+        )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = conversation.getDisplayName(),
+                text = enriched.getDisplayName(),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -180,6 +371,22 @@ private fun ConversationPickerItem(
                     text = "${conversation.participants.size} members",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (isSelected) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }

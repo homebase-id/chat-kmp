@@ -22,7 +22,7 @@ class ShareContentProcessor(
             val raw = cacheStorage.readSharedContent() ?: return null
             json.decodeFromString<SharedContentDescriptor>(raw)
         } catch (e: Exception) {
-            Logger.e("ShareContentProcessor") { "Failed to read shared content: ${e.message}" }
+            Logger.e(tag = "ShareContentProcessor") { "Failed to read shared content: ${e.message}" }
             null
         }
     }
@@ -49,7 +49,7 @@ class ShareContentProcessor(
             val encoded = json.encodeToString(SharedContentDescriptor.serializer(), descriptor)
             cacheStorage.writeSharedContent(encoded)
         } catch (e: Exception) {
-            Logger.e("ShareContentProcessor") { "Failed to write shared content: ${e.message}" }
+            Logger.e(tag = "ShareContentProcessor") { "Failed to write shared content: ${e.message}" }
         }
     }
 }

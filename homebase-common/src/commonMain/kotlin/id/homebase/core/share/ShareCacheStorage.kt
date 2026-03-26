@@ -19,9 +19,15 @@ expect class ShareCacheStorage {
     /** Read shared content descriptor JSON. Returns null if none pending. */
     fun readSharedContent(): String?
 
+    /** Delete the conversation cache (e.g. on logout). */
+    fun clearConversationCache()
+
     /** Delete shared content after it has been processed. */
     fun clearSharedContent()
 
     /** Get the base path for shared files (iOS: App Group container, Android: cache dir). */
     fun getSharedFilesDirectory(): String
+
+    /** Write a group avatar image to the shared avatars directory for the iOS share extension. */
+    fun writeGroupAvatar(conversationId: String, imageBytes: ByteArray)
 }

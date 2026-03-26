@@ -12,6 +12,10 @@ actual class ShareCacheStorage {
 
     actual fun readConversationCache(): String? = null
 
+    actual fun clearConversationCache() {
+        // No-op on web
+    }
+
     actual fun writeSharedContent(json: String) {
         // No-op on web
     }
@@ -23,4 +27,8 @@ actual class ShareCacheStorage {
     }
 
     actual fun getSharedFilesDirectory(): String = ""
+
+    actual fun writeGroupAvatar(conversationId: String, imageBytes: ByteArray) {
+        // No-op on web
+    }
 }

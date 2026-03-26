@@ -6,12 +6,14 @@ import Security
 struct SharedKeychainHelper {
 
     static let service = "id.homebase.share.auth"
+    static let accessGroup = "group.id.homebase.chat"
 
     static func getString(key: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
+            kSecAttrAccessGroup as String: accessGroup,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -33,7 +35,8 @@ struct SharedKeychainHelper {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key
+            kSecAttrAccount as String: key,
+            kSecAttrAccessGroup as String: accessGroup
         ]
 
         let attributes: [String: Any] = [
@@ -55,7 +58,8 @@ struct SharedKeychainHelper {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key
+            kSecAttrAccount as String: key,
+            kSecAttrAccessGroup as String: accessGroup
         ]
         SecItemDelete(query as CFDictionary)
     }

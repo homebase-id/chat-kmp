@@ -1,7 +1,6 @@
 package id.homebase.core.share
 
 import co.touchlab.kermit.Logger
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
@@ -23,7 +22,7 @@ class ShareConversationCacheWriter(
             val encoded = json.encodeToString(data)
             cacheStorage.writeConversationCache(encoded)
         } catch (e: Exception) {
-            Logger.e("ShareCacheWriter") { "Failed to update share cache: ${e.message}" }
+            Logger.e(tag = "ShareCacheWriter") { "Failed to update share cache: ${e.message}" }
         }
     }
 }
