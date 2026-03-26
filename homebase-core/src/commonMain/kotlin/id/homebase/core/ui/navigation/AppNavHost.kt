@@ -160,9 +160,7 @@ fun AppNavHost(
                     Uuid.parseOrNull(event.conversationId)?.let {
                         navController.selectConversationOnChatList(it)
                     }
-                    navController.navigate(Route.ChatList) {
-                        popUpTo(Route.ChatList) { inclusive = false }
-                    }
+                    navController.popBackStack(Route.ChatList, inclusive = false)
                 }
                 is NotificationNavigationEvent.OpenUrl ->
                     uriHandler.openUrl(event.url)
