@@ -43,10 +43,10 @@ class DriveOutboxUploader(
     private suspend fun uploadNewFile(outboxRecord: Outbox, eventBus: EventBus) {
         val request = OdinSystemSerializer.deserialize<UploadFileRequest>(outboxRecord.json.decodeToString())
         driveUploadProvider.uploadFile(request, onProgress = { sent, total ->
-            println("Upload: Sent $sent | Total: $total")
+//            println("Upload: Sent $sent | Total: $total")
             val percent = percentOf(sent, total)
             eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
-            println("Upload: $percent%")
+//            println("Upload: $percent%")
         })
     }
 
@@ -55,7 +55,7 @@ class DriveOutboxUploader(
         driveUploadProvider.updateFileByUniqueId(request, onProgress = { sent, total ->
             val percent = percentOf(sent, total)
             eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
-            println("Upload: $percent%")
+//            println("Upload: $percent%")
         })
     }
 
