@@ -132,13 +132,15 @@ class DriveSync(
 
                     if (queryBatchResponse.cursorState != null)
                         cursor = QueryBatchCursor.fromJson(queryBatchResponse.cursorState)
-
+                    // Snapshot cursor into a local val so the fire-and-forget DB coroutine below
+                    // always uses this batch's cursor, not whatever `cursor` is when it eventually runs.
                     Logger.i("Received ${queryBatchResponse.searchResults.size} records from QueryBatch() on Drive $driveId")
 
                     val searchResults = queryBatchResponse.searchResults
                     if (searchResults.isNotEmpty()) {
                         recordsRead = searchResults.size
                         totalCount += recordsRead
+                        val batchCursorToSave = cursor
 
                         // Run DB operation in background without waiting - fire and forget
                         val job = scope.async {
@@ -147,7 +149,7 @@ class DriveSync(
                                     identityId = identityId,
                                     driveId = driveId,
                                     fileHeaders = searchResults,
-                                    cursor = cursor
+                                    cursor = batchCursorToSave
                                 )
                             }
                             // Logger.i("DB insert time $dbMs for ${searchResults.size} rows")
