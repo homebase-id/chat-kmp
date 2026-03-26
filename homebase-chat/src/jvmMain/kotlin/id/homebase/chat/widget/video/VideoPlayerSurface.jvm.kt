@@ -45,6 +45,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
 import kotlin.time.measureTimedValue
 import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
@@ -75,8 +76,10 @@ private sealed interface VpsState {
 actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
+    onProgress: (Float) -> Unit,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val videoPreloader = koinInject<VideoPreloader>()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
     var httpServer by remember(data) { mutableStateOf<HttpServer?>(null) }
@@ -89,14 +92,16 @@ actual fun VideoPlayerSurface(
     }
 
     LaunchedEffect(data) {
+        onProgress(0f)
         withContext(Dispatchers.IO) {
             try {
                 val dir = File(System.getProperty("java.io.tmpdir"), "hbvid_${UUID.randomUUID()}")
                     .also { it.mkdirs() }
                 tempDir = dir
 
-                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider)) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
+                        onProgress(0.5f)
                         File(dir, "index.m3u8").writeText(content.strippedPlaylist)
 
                         val totalSize = content.metadata.fileSize
@@ -149,14 +154,24 @@ actual fun VideoPlayerSurface(
                         start()
                     }
                         httpServer = server
+                        onProgress(0.8f)
                         state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                     }
                     is VideoContent.Mp4 -> {
-                        val (mp4File, writeElapsed) = measureTimedValue {
-                            File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                        onProgress(0.5f)
+                        val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
+                        val mp4Path = if (preloadedPath != null) {
+                            Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
+                            preloadedPath
+                        } else {
+                            val (mp4File, writeElapsed) = measureTimedValue {
+                                File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                            }
+                            Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
+                            mp4File.absolutePath
                         }
-                        Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
-                        state = VpsState.Playing(mp4File.absolutePath)
+                        onProgress(0.8f)
+                        state = VpsState.Playing(mp4Path)
                     }
                 }
             } catch (e: Exception) {
@@ -169,7 +184,11 @@ actual fun VideoPlayerSurface(
         when (val s = state) {
             VpsState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             is VpsState.Error -> Text(text = s.message, modifier = Modifier.align(Alignment.Center))
-            is VpsState.Playing -> VlcjPlayer(videoPath = s.videoPath, modifier = Modifier.fillMaxSize())
+            is VpsState.Playing -> VlcjPlayer(
+                videoPath = s.videoPath,
+                modifier = Modifier.fillMaxSize(),
+                onFirstFrameRendered = { onProgress(1f) },
+            )
         }
     }
 }

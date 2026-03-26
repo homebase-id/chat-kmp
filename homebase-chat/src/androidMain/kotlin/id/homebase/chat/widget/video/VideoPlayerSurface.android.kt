@@ -35,6 +35,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlin.time.TimeSource
@@ -58,9 +59,11 @@ private sealed interface VpsState {
 actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
+    onProgress: (Float) -> Unit,
 ) {
     val context = LocalContext.current
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val videoPreloader = koinInject<VideoPreloader>()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
     var exoPlayer by remember(data) { mutableStateOf<ExoPlayer?>(null) }
@@ -74,6 +77,7 @@ actual fun VideoPlayerSurface(
 
     LaunchedEffect(data) {
         val clickMark = TimeSource.Monotonic.markNow()
+        onProgress(0f)
 
         // Build ExoPlayer on main thread but deferred to after the first frame,
         // avoiding a synchronous block during composition/animation.
@@ -85,8 +89,9 @@ actual fun VideoPlayerSurface(
 
         withContext(Dispatchers.IO) {
             try {
-                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider)) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
+                        onProgress(0.5f)
                         val dataSourceFactory = DataSource.Factory {
                             HomebaseVideoDataSource(
                                 strippedPlaylist = content.strippedPlaylist,
@@ -101,11 +106,13 @@ actual fun VideoPlayerSurface(
                             .createMediaSource(MediaItem.fromUri("homebase://video/index.m3u8"))
                         withContext(Dispatchers.Main) {
                             player.setMediaSource(mediaSource)
+                            onProgress(0.8f)
                             val prepareStart = TimeSource.Monotonic.markNow()
                             player.addListener(object : Player.Listener {
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     if (playbackState == Player.STATE_READY) {
                                         Logger.d(tag = "VideoIO") { "HLS prepare→STATE_READY: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
+                                        onProgress(1f)
                                         player.removeListener(this)
                                     }
                                 }
@@ -115,19 +122,31 @@ actual fun VideoPlayerSurface(
                         }
                     }
                     is VideoContent.Mp4 -> {
-                        val dir = File(context.cacheDir, "hbvid_${UUID.randomUUID()}").also { it.mkdirs() }
-                        tempDir = dir
-                        val (file, writeElapsed) = measureTimedValue {
-                            File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                        onProgress(0.5f)
+                        val file = run {
+                            val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
+                            if (preloadedPath != null) {
+                                Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
+                                File(preloadedPath)
+                            } else {
+                                val dir = File(context.cacheDir, "hbvid_${UUID.randomUUID()}").also { it.mkdirs() }
+                                tempDir = dir
+                                val (f, writeElapsed) = measureTimedValue {
+                                    File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                                }
+                                Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
+                                f
+                            }
                         }
-                        Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
                         withContext(Dispatchers.Main) {
                             player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                            onProgress(0.8f)
                             val prepareStart = TimeSource.Monotonic.markNow()
                             player.addListener(object : Player.Listener {
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     if (playbackState == Player.STATE_READY) {
                                         Logger.d(tag = "VideoIO") { "mp4 prepare→STATE_READY: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
+                                        onProgress(1f)
                                         player.removeListener(this)
                                     }
                                 }

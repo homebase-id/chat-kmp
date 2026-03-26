@@ -11,6 +11,7 @@ import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.onDownload
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -26,8 +27,6 @@ import io.ktor.utils.io.ByteReadChannel
 import io.ktor.client.statement.bodyAsChannel
 import okio.Path.Companion.toPath
 import okio.FileSystem
-import io.ktor.client.request.get
-import io.ktor.client.request.bearerAuth
 import io.ktor.utils.io.readAvailable
 
 private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024): Flow<ByteArray> = flow {
@@ -111,7 +110,8 @@ public class DriveFileHttpProvider(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
-        options: PayloadOperationOptions = PayloadOperationOptions()
+        options: PayloadOperationOptions = PayloadOperationOptions(),
+        onDownloadProgress: ((Float) -> Unit)? = null,
     ): ByteApiResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -151,6 +151,17 @@ public class DriveFileHttpProvider(
 
                 rangeResult.rangeHeader?.let {
                     header(HttpHeaders.Range, it)
+                }
+
+                onDownloadProgress?.let { callback ->
+                    onDownload { bytesReceived, contentLength ->
+                        val total = contentLength ?: 0L
+                        if (total > 0L) {
+                            callback(bytesReceived.toFloat() / total.toFloat())
+                        }
+                        // if Content-Length is absent we still get called — progress stays
+                        // at the synthetic milestones emitted by the caller
+                    }
                 }
             }
         }
