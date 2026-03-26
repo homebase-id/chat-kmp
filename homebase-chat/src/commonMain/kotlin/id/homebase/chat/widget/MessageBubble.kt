@@ -50,6 +50,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
@@ -550,10 +551,9 @@ fun InlineReplyPreview(
 
     Row(
         modifier = Modifier
-            //.padding(vertical = 4.dp, horizontal = 8.dp)
             .height(IntrinsicSize.Min)
-            .padding(4.dp)
-            .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomEnd = 8.dp, bottomStart = 8.dp))
+            .padding(horizontal = 4.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 15.dp, bottomEnd = 4.dp, bottomStart = 4.dp))
             .background(backgroundColor)
             .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically
@@ -602,28 +602,7 @@ fun SentMessageBubblePreview() {
         Surface {
             Column {
                 ReceivedMessageBubble(
-                    message = MessageUiModel(
-                        id = Uuid.generateV4(),
-                        globalTransitId = null,
-                        fileId = Uuid.generateV4(),
-                        conversationId = Uuid.generateV4(),
-                        content = "Hello World!",
-                        created = Clock.System.now(),
-                        modified = null,
-                        originalAuthor = null,
-                        displayName = "John Doe",
-                        keyHeader = KeyHeader(
-                            iv = ByteArray(16),
-                            aesKey = SecureByteArray(ByteArray(16))
-                        ),
-                        messageAppData = MessageAppData(),
-                        reactionPreview = null,
-                        previewThumbnail = null,
-                        payloads = null,
-                        hasMore = false,
-                        versionTag = Uuid.generateV4(),
-                        isPendingSend = false,
-                    ),
+                    message = testMessageUiModel("g"),
                     decryptedFiles = persistentMapOf(),
                     onDelete = {},
                     onMediaClick = {},
@@ -633,34 +612,7 @@ fun SentMessageBubblePreview() {
                     downloadingFiles = emptySet(),
                 )
                 SentMessageBubble(
-                    message = MessageUiModel(
-                        id = Uuid.generateV4(),
-                        globalTransitId = null,
-                        fileId = Uuid.generateV4(),
-                        conversationId = Uuid.generateV4(),
-                        content = "gg",
-                        created = Clock.System.now(),
-                        modified = null,
-                        originalAuthor = null,
-                        displayName = "John Doe",
-                        keyHeader = KeyHeader(
-                            iv = ByteArray(16),
-                            aesKey = SecureByteArray(ByteArray(16))
-                        ),
-                        messageAppData = MessageAppData(
-                            replyPreview = ReplyPreview(
-                                replyUniqueId = Uuid.generateV4(),
-                                authorOdinId = "frodo.baggins.demo.rocks",
-                                message = "Hello World!"
-                            )
-                        ),
-                        reactionPreview = null,
-                        previewThumbnail = null,
-                        payloads = null,
-                        hasMore = false,
-                        versionTag = Uuid.generateV4(),
-                        isPendingSend = false,
-                    ),
+                    message = testMessageUiModel("g"),
                     decryptedFiles = persistentMapOf(),
                     onEdit = {},
                     onShare = {},
@@ -682,28 +634,7 @@ fun SentMessageBubblePreviewDark() {
         Surface {
             Column {
                 ReceivedMessageBubble(
-                    message = MessageUiModel(
-                        id = Uuid.generateV4(),
-                        globalTransitId = null,
-                        fileId = Uuid.generateV4(),
-                        conversationId = Uuid.generateV4(),
-                        content = "Hello World!",
-                        created = Clock.System.now(),
-                        modified = null,
-                        originalAuthor = null,
-                        displayName = "John Doe",
-                        keyHeader = KeyHeader(
-                            iv = ByteArray(16),
-                            aesKey = SecureByteArray(ByteArray(16))
-                        ),
-                        messageAppData = MessageAppData(),
-                        reactionPreview = null,
-                        previewThumbnail = null,
-                        payloads = null,
-                        hasMore = false,
-                        versionTag = Uuid.generateV4(),
-                        isPendingSend = false,
-                    ),
+                    message = testMessageUiModel("Message 😀"),
                     decryptedFiles = persistentMapOf(),
                     onDelete = {},
                     onMediaClick = {},
@@ -713,34 +644,7 @@ fun SentMessageBubblePreviewDark() {
                     downloadingFiles = emptySet(),
                 )
                 SentMessageBubble(
-                    message = MessageUiModel(
-                        id = Uuid.generateV4(),
-                        globalTransitId = null,
-                        fileId = Uuid.generateV4(),
-                        conversationId = Uuid.generateV4(),
-                        content = "gg",
-                        created = Clock.System.now(),
-                        modified = null,
-                        originalAuthor = null,
-                        displayName = "John Doe",
-                        keyHeader = KeyHeader(
-                            iv = ByteArray(16),
-                            aesKey = SecureByteArray(ByteArray(16))
-                        ),
-                        messageAppData = MessageAppData(
-                            replyPreview = ReplyPreview(
-                                replyUniqueId = Uuid.generateV4(),
-                                authorOdinId = "frodo.baggins.demo.rocks",
-                                message = "Hello World!"
-                            )
-                        ),
-                        reactionPreview = null,
-                        previewThumbnail = null,
-                        payloads = null,
-                        hasMore = false,
-                        versionTag = Uuid.generateV4(),
-                        isPendingSend = false,
-                    ),
+                    message = testMessageUiModel("Message 😀"),
                     decryptedFiles = persistentMapOf(),
                     onEdit = {},
                     onShare = {},
@@ -754,4 +658,42 @@ fun SentMessageBubblePreviewDark() {
         }
     }
 }
+
+private fun testMessageUiModel(message: String): MessageUiModel {
+    return MessageUiModel(
+        id = Uuid.generateV4(),
+        globalTransitId = null,
+        fileId = Uuid.generateV4(),
+        conversationId = Uuid.generateV4(),
+        content = message,
+        created = Clock.System.now(),
+        modified = null,
+        originalAuthor = null,
+        displayName = "John Doe",
+        keyHeader = KeyHeader(
+            iv = ByteArray(16),
+            aesKey = SecureByteArray(ByteArray(16))
+        ),
+        messageAppData = MessageAppData(
+            replyPreview = ReplyPreview(
+                replyUniqueId = Uuid.generateV4(),
+                authorOdinId = "frodo.baggins.demo.rocks",
+                message = "Hello World!",
+                previewThumbnail = EmbeddedThumb(
+                    pixelWidth = 100,
+                    pixelHeight = 100,
+                    contentType = "image/png",
+                    content = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4//8/AAMCAQAYnY20AAAAAE5ErkJggg==",
+                )
+            )
+        ),
+        reactionPreview = null,
+        previewThumbnail = null,
+        payloads = null,
+        hasMore = false,
+        versionTag = Uuid.generateV4(),
+        isPendingSend = false,
+    )
+}
+
 
