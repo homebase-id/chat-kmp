@@ -37,7 +37,7 @@ actual fun platformModule(): Module = module {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
                     add(HomebaseImageKeyer())
-                    add(HomebaseImageFetcher.Factory(get()))
+                    add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
                 }
                 .build()

@@ -68,7 +68,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.ConversationListUiAction
-import id.homebase.chat.data.ConversationState
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
@@ -78,6 +77,7 @@ import id.homebase.chat.conversationlist.RecipientType
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.createconversation.GroupOrConversationItem
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
@@ -432,6 +432,8 @@ fun ConversationContent(
                         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                         state = listState
                     )
+
+
                 } else {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }

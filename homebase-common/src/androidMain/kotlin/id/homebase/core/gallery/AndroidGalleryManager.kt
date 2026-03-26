@@ -9,35 +9,20 @@ import kotlinx.coroutines.withContext
 
 class AndroidGalleryManager(val context: Context): PlatformGalleryManager {
     override suspend fun fetchGalleryImages(limit: Int): List<GalleryImage> = withContext(Dispatchers.IO) {
-        val images = queryMediaStore(
-            collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            idColumn = MediaStore.Images.Media._ID,
-            dateColumn = MediaStore.Images.Media.DATE_ADDED,
-            mimeColumn = MediaStore.Images.Media.MIME_TYPE,
-            bucketColumn = MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
-            displayNameColumn = MediaStore.Images.Media.DISPLAY_NAME,
-        )
-        val videos = queryMediaStore(
-            collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            idColumn = MediaStore.Video.Media._ID,
-            dateColumn = MediaStore.Video.Media.DATE_ADDED,
-            mimeColumn = MediaStore.Video.Media.MIME_TYPE,
-            bucketColumn = MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
-            displayNameColumn = MediaStore.Video.Media.DISPLAY_NAME,
-        )
+        val images = queryMediaStore(collectionUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        val videos = queryMediaStore(collectionUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
         (images + videos)
             .sortedByDescending { it.dateAdded }
             .take(limit)
     }
 
-    private fun queryMediaStore(
-        collectionUri: android.net.Uri,
-        idColumn: String,
-        dateColumn: String,
-        mimeColumn: String,
-        bucketColumn: String,
-        displayNameColumn: String,
-    ): List<GalleryImage> {
+    private fun queryMediaStore(collectionUri: android.net.Uri): List<GalleryImage> {
+        val idColumn = MediaStore.Video.Media._ID
+        val dateColumn = MediaStore.Video.Media.DATE_ADDED
+        val mimeColumn = MediaStore.Video.Media.MIME_TYPE
+        val bucketColumn = MediaStore.Video.Media.BUCKET_DISPLAY_NAME
+        val displayNameColumn = MediaStore.Video.Media.DISPLAY_NAME
+
         val results = mutableListOf<GalleryImage>()
         val projection = arrayOf(idColumn, dateColumn, mimeColumn, bucketColumn, displayNameColumn)
         context.contentResolver.query(

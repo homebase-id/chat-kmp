@@ -2,7 +2,6 @@ package id.homebase.core.image
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
 /**
@@ -28,27 +27,27 @@ data class HomebaseImageData(
     /** Last modification timestamp for cache validation */
     val lastModified: Long? = null,
     /** Local pending file (for images being uploaded/sent) */
-    val pendingFile: PlatformFile? = null,
+    val pendingFileUri: String? = null,
     /** KeyHeader for decryption of the payload */
     val keyHeader: KeyHeader,
 ) {
     companion object {
         /** Create data for a pending (not yet uploaded) image */
         fun pending(
-            file: PlatformFile, previewThumbnail: EmbeddedThumb? = null
+            fileUri: String, previewThumbnail: EmbeddedThumb? = null
         ): HomebaseImageData = HomebaseImageData(
             driveId = Uuid.NIL,
             fileId = Uuid.NIL,
             payloadKey = "",
             previewThumbnail = previewThumbnail,
-            pendingFile = file,
+            pendingFileUri = fileUri,
             keyHeader = KeyHeader.newRandom16(),
         )
     }
 
     /** Whether this is a pending/local file not yet uploaded */
     val isPending: Boolean
-        get() = pendingFile != null
+        get() = pendingFileUri != null
 
     /** Content type hint from preview thumbnail */
     val contentTypeHint: String?

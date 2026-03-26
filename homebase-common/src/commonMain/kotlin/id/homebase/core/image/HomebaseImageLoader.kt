@@ -4,9 +4,10 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.withRetry
+import id.homebase.api.file.FileOperationsProvider
+import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.extension
 import io.github.vinceglb.filekit.mimeType
-import io.github.vinceglb.filekit.readBytes
 
 /** Image data container */
 // TODO: Rename to memoryImage?
@@ -31,7 +32,10 @@ data class CachedImage(val bytes: ByteArray, val contentType: String, val size: 
  *
  * Note: Caching is now delegated to Coil3. This class serves as a data fetcher.
  */
-class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
+class HomebaseImageLoader(
+    private val driveFileProvider: DriveFileProvider,
+    private val fileOperationsProvider: FileOperationsProvider,
+) {
     companion object {
         private const val TAG = "HomebaseImageLoader"
 
@@ -75,7 +79,7 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
     ): CachedImage? {
         // Check pending file first - no retry needed for local files
         if (data.isPending) {
-            return loadPendingFile(data)
+            return fileOperationsProvider.loadPendingFile(data)
         }
 
         // Skip thumbnail fetch for SVG/GIF (load full payload instead)
@@ -112,7 +116,7 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
     ): CachedImage? {
         // Check pending file first - no retry needed for local files
         if (data.isPending) {
-            return loadPendingFile(data)
+            return fileOperationsProvider.loadPendingFile(data)
         }
 
         // Fetch from server with retry
@@ -131,18 +135,18 @@ class HomebaseImageLoader(private val driveFileProvider: DriveFileProvider) {
             )
         }
     }
+}
 
-    /** Load pending/local file from filesystem */
-    private suspend fun loadPendingFile(data: HomebaseImageData): CachedImage? {
-        val file = data.pendingFile ?: return null
-
-        return try {
-            val bytes = file.readBytes()
-            val contentType = file.mimeType()?.toString() ?: file.extension
-            CachedImage(bytes = bytes, contentType = contentType, size = null)
-        } catch (e: Exception) {
-            Logger.e(tag = TAG) { "Failed to load pending file: ${e.message}" }
-            null
-        }
+/** Load pending/local file from filesystem */
+suspend fun FileOperationsProvider.loadPendingFile(data: HomebaseImageData): CachedImage? {
+    val fileUri = data.pendingFileUri ?: return null
+    val file = PlatformFile(fileUri)
+    return try {
+        val bytes = this.readFileBytes(fileUri)
+        val contentType = file.mimeType()?.toString() ?: file.extension
+        CachedImage(bytes = bytes, contentType = contentType, size = null)
+    } catch (e: Exception) {
+        Logger.e(tag = "HomebaseImageLoader") { "Failed to load pending file: ${e.message}" }
+        null
     }
 }

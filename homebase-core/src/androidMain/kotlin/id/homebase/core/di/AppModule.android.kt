@@ -37,7 +37,7 @@ actual fun platformModule(): Module = module {
         ImageLoader.Builder(androidContext())
                 .components {
                     add(HomebaseImageKeyer())
-                    add(HomebaseImageFetcher.Factory(get()))
+                    add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
                     add(VideoFrameDecoder.Factory())
                 }

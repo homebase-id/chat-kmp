@@ -153,10 +153,11 @@ fun AttachmentGallery(
                                 Icon(
                                     imageVector = if (galleryImage.isVideo()) Icons.Default.Videocam else Icons.Default.Image,
                                     contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier
-                                        .size(32.dp)
-                                        .padding(end = 4.dp, bottom = 4.dp)
-                                        .align(Alignment.BottomEnd)
+                                        .size(24.dp)
+                                        .padding(top = 4.dp, start = 4.dp)
+                                        .align(Alignment.TopStart)
                                 )
                             }
                         }
