@@ -21,6 +21,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.cinterop.BetaInteropApi
@@ -70,8 +71,10 @@ private sealed interface VpsState {
 actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
+    onProgress: (Float) -> Unit,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val videoPreloader = koinInject<VideoPreloader>()
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<NSURL?>(null) }
@@ -84,10 +87,12 @@ actual fun VideoPlayerSurface(
     }
 
     LaunchedEffect(data) {
+        onProgress(0f)
         withContext(Dispatchers.Main) {
             try {
-                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider)) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
+                        onProgress(0.5f)
                         val delegate = HomebaseResourceLoaderDelegate(
                             strippedPlaylist = content.strippedPlaylist,
                             totalFileSize = content.metadata.fileSize,
@@ -103,22 +108,34 @@ actual fun VideoPlayerSurface(
                         val loaderQueue = dispatch_queue_create("id.homebase.video.loader", null)
                         asset.resourceLoader.setDelegate(delegate, queue = loaderQueue)
                         val player = AVPlayer(playerItem = AVPlayerItem(asset = asset))
+                        onProgress(0.8f)
                         state = VpsState.Playing(player = player, delegate = delegate)
+                        onProgress(1f)
                     }
                     is VideoContent.Mp4 -> {
-                        val dir = NSURL.fileURLWithPath(NSTemporaryDirectory())
-                            .URLByAppendingPathComponent("hbvid_${NSUUID().UUIDString()}")!!
-                        NSFileManager.defaultManager.createDirectoryAtURL(dir, true, null, null)
-                        tempDir = dir
-                        val mp4Url = dir.URLByAppendingPathComponent("video.mp4")!!
-                        val (_, writeElapsed) = measureTimedValue {
-                            content.bytes.toNSData().writeToURL(mp4Url, atomically = true)
+                        onProgress(0.5f)
+                        val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
+                        val mp4Url = if (preloadedPath != null) {
+                            Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
+                            NSURL.fileURLWithPath(preloadedPath)
+                        } else {
+                            val dir = NSURL.fileURLWithPath(NSTemporaryDirectory())
+                                .URLByAppendingPathComponent("hbvid_${NSUUID().UUIDString()}")!!
+                            NSFileManager.defaultManager.createDirectoryAtURL(dir, true, null, null)
+                            tempDir = dir
+                            val url = dir.URLByAppendingPathComponent("video.mp4")!!
+                            val (_, writeElapsed) = measureTimedValue {
+                                content.bytes.toNSData().writeToURL(url, atomically = true)
+                            }
+                            Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
+                            url
                         }
-                        Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
+                        onProgress(0.8f)
                         state = VpsState.Playing(
                             player = AVPlayer(uRL = mp4Url),
                             delegate = HomebaseResourceLoaderDelegate.empty(),
                         )
+                        onProgress(1f)
                     }
                 }
             } catch (e: Exception) {

@@ -13,6 +13,7 @@ sealed interface VideoContent {
 suspend fun resolveVideoContent(
     data: VideoPlayerData,
     driveFileProvider: DriveFileProvider,
+    onDownloadProgress: ((Float) -> Unit)? = null,
 ): VideoContent {
     val stubMetadata = data.descriptorContent?.let {
         OdinSystemSerializer.deserialize<VideoMetadata>(it)
@@ -48,6 +49,7 @@ suspend fun resolveVideoContent(
                 fileId = data.fileId,
                 key = data.payloadKey,
                 keyHeader = data.keyHeader,
+                onDownloadProgress = onDownloadProgress,
             )?.bytes ?: error("Failed to download video")
         }
         Logger.d(tag = "VideoIO") { "resolveVideoContent total payload: ${bytes.size} bytes in $payloadElapsed" }
