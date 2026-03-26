@@ -25,9 +25,11 @@ class VideoPayloadProcessor(
 
         // Resolve content URIs (Android) to real filesystem paths before FFmpeg work
         val resolvedPath = fileOperationsProvider.resolveToFilePath(payload.filePath)
-        val payload = if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath) else payload
+        val payload =
+            if (resolvedPath != payload.filePath) payload.copy(filePath = resolvedPath) else payload
 
         /* ---------- PHASE 1: THUMBNAILS ---------- */
+
 
         onProgress?.invoke(
             VideoPayloadProgressPhase(
@@ -152,7 +154,7 @@ class VideoPayloadProcessor(
                 duration = durationMs.toFloat(),
                 codec = codec,
                 hlsPlaylist = playlistContent,
-                key = payload.key
+                key = payload.key // point directly to the payload
             )
 
         val metadataJson = OdinSystemSerializer.serialize(metadata)
@@ -169,7 +171,11 @@ class VideoPayloadProcessor(
                 descriptorContent =
                     if (shouldEmbed) metadataJson
                     else OdinSystemSerializer.serialize(
-                        metadata.copy(isDescriptorContentComplete = false)
+                        metadata.copy(
+                            isDescriptorContentComplete = false,
+                            hlsPlaylist = null,  // too large — full playlist goes in separate payload
+                            key = descriptorContentPayloadKey  // tells player where to fetch full metadata
+                        )
                     ),
                 isPreEncrypted = true,
                 previewThumbnail = tinyThumb,
@@ -186,12 +192,13 @@ class VideoPayloadProcessor(
                         key = descriptorContentPayloadKey,
                         filePath =
                             fileOperationsProvider.writeBytesToTempFile(
-                                metadataJson.toByteArray(),
+                                keyHeader.encryptDataAes(metadataJson.toByteArray()),
                                 "payload",
                                 ".metadata"
                             ),
                         contentType = "application/json",
-                        isPreEncrypted = false
+                        isPreEncrypted = true,
+                        iv = keyHeader.iv
                     )
                 )
             }
