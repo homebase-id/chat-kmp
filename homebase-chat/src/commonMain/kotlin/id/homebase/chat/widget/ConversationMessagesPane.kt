@@ -54,7 +54,7 @@ fun ConversationMessagesPane(
 ) {
     var currentGalleryPage by remember { mutableStateOf(0) }
 
-    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+    val galleryLauncher = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo) { file ->
         file?.let {
             onUiAction(
                 ConversationListUiAction.AttachPlatformFile(
