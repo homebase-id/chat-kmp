@@ -12,11 +12,12 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,15 +42,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.ui.assets.HomebaseIcons
@@ -65,12 +73,15 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
+import id.homebase.resources.media
 import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /**
@@ -520,16 +531,8 @@ fun InlineReplyPreview(
     sentByYou: Boolean,
     onClick: () -> Unit
 ) {
-    val accentColor = if (sentByYou) {
-        HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
-    val contentColor = if (sentByYou) {
-        HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
-    } else {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-    }
+    val backgroundColor = MaterialTheme.colorScheme.primaryContainer
+    val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
     // Decode preview thumbnail if available
     val thumbnailBitmap = remember(replyPreview.previewThumbnail) {
@@ -543,27 +546,35 @@ fun InlineReplyPreview(
         }
     }
 
+    val message = if (replyPreview.previewThumbnail != null && replyPreview.message.isEmpty()) stringResource(MR.string.media) else replyPreview.message
+
     Row(
         modifier = Modifier
-            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp)
+            //.padding(vertical = 4.dp, horizontal = 8.dp)
+            .height(IntrinsicSize.Min)
+            .padding(4.dp)
+            .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomEnd = 8.dp, bottomStart = 8.dp))
+            .background(backgroundColor)
             .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Vertical accent bar
         Box(
-            modifier = Modifier.width(3.dp).heightIn(min = 24.dp)
-                .background(color = accentColor, shape = RoundedCornerShape(2.dp))
+            modifier = Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(color = Color.White, shape = RoundedCornerShape(2.dp))
         )
-        Spacer(modifier = Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f, fill = false)) {
+        Column(modifier = Modifier.weight(1f, fill = false).padding(horizontal = 8.dp, vertical = 10.dp)) {
             Text(
                 text = replyPreview.authorOdinId,
-                style = MaterialTheme.typography.labelSmall,
-                color = accentColor,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = contentColor,
                 maxLines = 1
             )
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = replyPreview.message,
+                text = message,
                 style = MaterialTheme.typography.bodySmall,
                 color = contentColor,
                 maxLines = 2
@@ -575,9 +586,172 @@ fun InlineReplyPreview(
             Image(
                 bitmap = bitmap,
                 contentDescription = null,
-                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)),
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(4.dp)),
                 contentScale = ContentScale.Crop
             )
         }
     }
 }
+
+@Preview(widthDp = 480, heightDp = 240, )
+@Composable
+fun SentMessageBubblePreview() {
+    HomebaseTheme {
+        Surface {
+            Column {
+                ReceivedMessageBubble(
+                    message = MessageUiModel(
+                        id = Uuid.generateV4(),
+                        globalTransitId = null,
+                        fileId = Uuid.generateV4(),
+                        conversationId = Uuid.generateV4(),
+                        content = "Hello World!",
+                        created = Clock.System.now(),
+                        modified = null,
+                        originalAuthor = null,
+                        displayName = "John Doe",
+                        keyHeader = KeyHeader(
+                            iv = ByteArray(16),
+                            aesKey = SecureByteArray(ByteArray(16))
+                        ),
+                        messageAppData = MessageAppData(),
+                        reactionPreview = null,
+                        previewThumbnail = null,
+                        payloads = null,
+                        hasMore = false,
+                        versionTag = Uuid.generateV4(),
+                        isPendingSend = false,
+                    ),
+                    decryptedFiles = persistentMapOf(),
+                    onDelete = {},
+                    onMediaClick = {},
+                    onClickMessageId = {},
+                    onShowReactions = {},
+                    onMarkAsRead = {},
+                    downloadingFiles = emptySet(),
+                )
+                SentMessageBubble(
+                    message = MessageUiModel(
+                        id = Uuid.generateV4(),
+                        globalTransitId = null,
+                        fileId = Uuid.generateV4(),
+                        conversationId = Uuid.generateV4(),
+                        content = "gg",
+                        created = Clock.System.now(),
+                        modified = null,
+                        originalAuthor = null,
+                        displayName = "John Doe",
+                        keyHeader = KeyHeader(
+                            iv = ByteArray(16),
+                            aesKey = SecureByteArray(ByteArray(16))
+                        ),
+                        messageAppData = MessageAppData(
+                            replyPreview = ReplyPreview(
+                                replyUniqueId = Uuid.generateV4(),
+                                authorOdinId = "frodo.baggins.demo.rocks",
+                                message = "Hello World!"
+                            )
+                        ),
+                        reactionPreview = null,
+                        previewThumbnail = null,
+                        payloads = null,
+                        hasMore = false,
+                        versionTag = Uuid.generateV4(),
+                        isPendingSend = false,
+                    ),
+                    decryptedFiles = persistentMapOf(),
+                    onEdit = {},
+                    onShare = {},
+                    onDelete = {},
+                    onMediaClick = {},
+                    onClickMessageId = {},
+                    onShowReactions = {},
+                    downloadingFiles = emptySet(),
+                )
+            }
+        }
+    }
+}
+
+@Preview(widthDp = 480, heightDp = 240, )
+@Composable
+fun SentMessageBubblePreviewDark() {
+    HomebaseTheme(darkTheme = true) {
+        Surface {
+            Column {
+                ReceivedMessageBubble(
+                    message = MessageUiModel(
+                        id = Uuid.generateV4(),
+                        globalTransitId = null,
+                        fileId = Uuid.generateV4(),
+                        conversationId = Uuid.generateV4(),
+                        content = "Hello World!",
+                        created = Clock.System.now(),
+                        modified = null,
+                        originalAuthor = null,
+                        displayName = "John Doe",
+                        keyHeader = KeyHeader(
+                            iv = ByteArray(16),
+                            aesKey = SecureByteArray(ByteArray(16))
+                        ),
+                        messageAppData = MessageAppData(),
+                        reactionPreview = null,
+                        previewThumbnail = null,
+                        payloads = null,
+                        hasMore = false,
+                        versionTag = Uuid.generateV4(),
+                        isPendingSend = false,
+                    ),
+                    decryptedFiles = persistentMapOf(),
+                    onDelete = {},
+                    onMediaClick = {},
+                    onClickMessageId = {},
+                    onShowReactions = {},
+                    onMarkAsRead = {},
+                    downloadingFiles = emptySet(),
+                )
+                SentMessageBubble(
+                    message = MessageUiModel(
+                        id = Uuid.generateV4(),
+                        globalTransitId = null,
+                        fileId = Uuid.generateV4(),
+                        conversationId = Uuid.generateV4(),
+                        content = "gg",
+                        created = Clock.System.now(),
+                        modified = null,
+                        originalAuthor = null,
+                        displayName = "John Doe",
+                        keyHeader = KeyHeader(
+                            iv = ByteArray(16),
+                            aesKey = SecureByteArray(ByteArray(16))
+                        ),
+                        messageAppData = MessageAppData(
+                            replyPreview = ReplyPreview(
+                                replyUniqueId = Uuid.generateV4(),
+                                authorOdinId = "frodo.baggins.demo.rocks",
+                                message = "Hello World!"
+                            )
+                        ),
+                        reactionPreview = null,
+                        previewThumbnail = null,
+                        payloads = null,
+                        hasMore = false,
+                        versionTag = Uuid.generateV4(),
+                        isPendingSend = false,
+                    ),
+                    decryptedFiles = persistentMapOf(),
+                    onEdit = {},
+                    onShare = {},
+                    onDelete = {},
+                    onMediaClick = {},
+                    onClickMessageId = {},
+                    onShowReactions = {},
+                    downloadingFiles = emptySet(),
+                )
+            }
+        }
+    }
+}
+

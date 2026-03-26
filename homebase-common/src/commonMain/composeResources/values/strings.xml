@@ -56,6 +56,7 @@
     <string name="leave">Leave</string>
     <string name="export_log">Export log</string>
     <string name="send">Send</string>
+    <string name="media">Media</string>
 
     <!-- Language options -->
     <string name="language">Language</string>

@@ -361,9 +361,9 @@ fun MessageBubbleRaw(
                     // Find MediaMessage index (after author and reply preview)
                     var mediaIndex = 0
                     if (authorName != null) mediaIndex++
+                    val replyIndex = if (message.messageAppData.replyPreview != null) mediaIndex else -1
                     if (message.messageAppData.replyPreview != null) mediaIndex++
 
-                    //val authorIndex = if (authorName != null) 0 else -1
                     val textIndex = if (hasMedia) mediaIndex + 1 else mediaIndex
                     val showMoreIndex = textIndex + 1
                     val infoIndex = showMoreIndex + 1
@@ -371,6 +371,7 @@ fun MessageBubbleRaw(
                     val placeables: MutableList<Placeable> = mutableListOf()
                     var mediaWidth = 0
                     var authorWidth = 0
+                    var replyWidth = 0
 
                     // Measure up to text content
                     for (i in 0 until textIndex) {
@@ -381,6 +382,9 @@ fun MessageBubbleRaw(
                         }
                         if (authorName != null && i == 0) {
                             authorWidth = placeable.width
+                        }
+                        if (message.messageAppData.replyPreview != null && i == replyIndex) {
+                            replyWidth = placeable.width
                         }
                     }
 
@@ -420,6 +424,7 @@ fun MessageBubbleRaw(
                         if (fitsOnLastLine) {
                             finalWidth = maxOf(
                                 mediaWidth,
+                                replyWidth,
                                 textPlaceable.width,
                                 (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
                                 authorWidth
@@ -444,7 +449,7 @@ fun MessageBubbleRaw(
                                         8.dp.roundToPx()
                         }
                     } else {
-                        finalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
+                        finalWidth = maxOf(mediaWidth, replyWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
                         infoY = placeables.sumOf { it.height } + textPlaceable.height
                         infoX = finalWidth - infoPlaceable.width
                         finalHeight =
