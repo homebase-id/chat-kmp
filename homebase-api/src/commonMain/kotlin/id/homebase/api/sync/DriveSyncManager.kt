@@ -8,6 +8,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,10 +17,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 
 class DriveSyncManager(
@@ -31,6 +32,9 @@ class DriveSyncManager(
 ) {
     // Immutable map reference — always replaced, never mutated in-place, preventing CME.
     // Writes are serialized via driveSyncsMutex (suspend callers) or atomic reference swap (non-suspend callers).
+    // @Volatile ensures that reads in non-suspend callers (pause/stop/clearStorage/syncDrive) always
+    // see the latest reference written by start() or stop(), preventing stale-read CMEs.
+    @Volatile
     private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
     private val driveSyncsMutex = Mutex()
 

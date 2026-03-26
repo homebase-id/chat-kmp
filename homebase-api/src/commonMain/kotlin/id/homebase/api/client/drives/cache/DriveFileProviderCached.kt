@@ -12,8 +12,6 @@ import id.homebase.api.client.drives.files.PayloadOperationOptions
 import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.http.Headers
-import kotlin.collections.mutableMapOf
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -21,6 +19,7 @@ import kotlinx.coroutines.sync.withPermit
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.SYSTEM
+import kotlin.uuid.Uuid
 
 class DriveFileProviderCached(
         httpClient: HttpClient,
@@ -43,7 +42,11 @@ class DriveFileProviderCached(
 
     // In-memory cache for 404 responses
     // Later we should cache 401,403,404,410, but not yet
+    // Protected by notFoundCacheMutex: mutableSetOf() is a LinkedHashSet (backed by LinkedHashMap)
+    // and is NOT thread-safe — concurrent adds can trigger a resize that uses LinkedKeyIterator,
+    // causing ConcurrentModificationException on Dispatchers.Default.
     private val notFoundCache = mutableSetOf<String>()
+    private val notFoundCacheMutex = Mutex()
 
     private val payloadDiskKache by lazy {
         kotlinx.coroutines.runBlocking {
@@ -77,7 +80,7 @@ class DriveFileProviderCached(
                 buildPayloadCacheKey(driveId, fileId, key, options.chunkStart, options.chunkLength)
 
         // 1️⃣ Check in-memory 404 cache first
-        if (cacheKey in notFoundCache) {
+        if (notFoundCacheMutex.withLock { cacheKey in notFoundCache }) {
             return ByteApiResponse.EMPTY_404
         }
 
@@ -93,7 +96,7 @@ class DriveFileProviderCached(
 
         return mutex.withLock {
             // Re-try caches JIC there's a thread race
-            if (cacheKey in notFoundCache) {
+            if (notFoundCacheMutex.withLock { cacheKey in notFoundCache }) {
                 return@withLock ByteApiResponse.EMPTY_404
             }
             payloadDiskKache.get(cacheKey)?.let { filePath ->
@@ -107,7 +110,7 @@ class DriveFileProviderCached(
 
                     if (result.status == 404) {
                         // 404 case - cache that file doesn't exist in memory only
-                        notFoundCache.add(cacheKey)
+                        notFoundCacheMutex.withLock { notFoundCache.add(cacheKey) }
                         ByteApiResponse.EMPTY_404
                     } else {
                         // 3️⃣ Store to disk
@@ -189,7 +192,7 @@ class DriveFileProviderCached(
         val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
 
         // 1️⃣ Check in-memory 404 cache first
-        if (cacheKey in notFoundCache) {
+        if (notFoundCacheMutex.withLock { cacheKey in notFoundCache }) {
             return ByteApiResponse.EMPTY_404
         }
 
@@ -205,7 +208,7 @@ class DriveFileProviderCached(
 
         return mutex.withLock {
             // Re-try caches JIC there's a thread race
-            if (cacheKey in notFoundCache) {
+            if (notFoundCacheMutex.withLock { cacheKey in notFoundCache }) {
                 return@withLock ByteApiResponse.EMPTY_404
             }
             thumbDiskKache.get(cacheKey)?.let { filePath ->
@@ -227,7 +230,7 @@ class DriveFileProviderCached(
 
                     if (result.status == 404) {
                         // 404 case - cache that file doesn't exist in memory only
-                        notFoundCache.add(cacheKey)
+                        notFoundCacheMutex.withLock { notFoundCache.add(cacheKey) }
                         ByteApiResponse.EMPTY_404
                     } else {
                         // 3️⃣ Store to disk; only allow one writer per GPT indicating
@@ -357,6 +360,6 @@ class DriveFileProviderCached(
             fileSystem.delete(thumbDir, mustExist = false)
         }
 
-        notFoundCache.clear()
+        notFoundCacheMutex.withLock { notFoundCache.clear() }
     }
 }
