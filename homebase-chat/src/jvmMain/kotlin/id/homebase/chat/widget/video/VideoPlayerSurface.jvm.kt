@@ -76,6 +76,7 @@ private sealed interface VpsState {
 actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
+    onProgress: (Float) -> Unit,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
@@ -91,14 +92,16 @@ actual fun VideoPlayerSurface(
     }
 
     LaunchedEffect(data) {
+        onProgress(0f)
         withContext(Dispatchers.IO) {
             try {
                 val dir = File(System.getProperty("java.io.tmpdir"), "hbvid_${UUID.randomUUID()}")
                     .also { it.mkdirs() }
                 tempDir = dir
 
-                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider)) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
+                        onProgress(0.5f)
                         File(dir, "index.m3u8").writeText(content.strippedPlaylist)
 
                         val totalSize = content.metadata.fileSize
@@ -151,9 +154,11 @@ actual fun VideoPlayerSurface(
                         start()
                     }
                         httpServer = server
+                        onProgress(0.8f)
                         state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                     }
                     is VideoContent.Mp4 -> {
+                        onProgress(0.5f)
                         val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
                         val mp4Path = if (preloadedPath != null) {
                             Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
@@ -165,6 +170,7 @@ actual fun VideoPlayerSurface(
                             Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
                             mp4File.absolutePath
                         }
+                        onProgress(0.8f)
                         state = VpsState.Playing(mp4Path)
                     }
                 }
@@ -178,7 +184,11 @@ actual fun VideoPlayerSurface(
         when (val s = state) {
             VpsState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             is VpsState.Error -> Text(text = s.message, modifier = Modifier.align(Alignment.Center))
-            is VpsState.Playing -> VlcjPlayer(videoPath = s.videoPath, modifier = Modifier.fillMaxSize())
+            is VpsState.Playing -> VlcjPlayer(
+                videoPath = s.videoPath,
+                modifier = Modifier.fillMaxSize(),
+                onFirstFrameRendered = { onProgress(1f) },
+            )
         }
     }
 }

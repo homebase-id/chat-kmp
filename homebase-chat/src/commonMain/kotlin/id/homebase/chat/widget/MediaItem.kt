@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,10 +14,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -211,7 +217,8 @@ fun MediaItem(
                         descriptorContent = payload.descriptorContent,
                     )
                 }
-                VideoPreloadEffect(videoPlayerData)
+                var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
+                VideoPreloadEffect(videoPlayerData) { preloadProgress = it }
                 val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
                     HomebaseImageData(
                         driveId = driveId,
@@ -244,6 +251,17 @@ fun MediaItem(
                             .align(Alignment.Center),
                         tint = Color.White.copy(alpha = 0.85f)
                     )
+                    if (preloadProgress in 0.01f..0.99f) {
+                        LinearProgressIndicator(
+                            progress = { preloadProgress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .align(Alignment.BottomCenter),
+                            color = Color.White,
+                            trackColor = Color.White.copy(alpha = 0.3f),
+                        )
+                    }
                 }
             } else {
                 MediaPlaceholder(emoji = "📹", label = "Video", modifier = baseModifier)
@@ -289,11 +307,11 @@ fun MediaItem(
 }
 
 @Composable
-private fun VideoPreloadEffect(data: VideoPlayerData) {
+private fun VideoPreloadEffect(data: VideoPlayerData, onProgress: (Float) -> Unit) {
     val preloader = koinInject<VideoPreloader>()
     LaunchedEffect(data.fileId, data.payloadKey) {
         withContext(Dispatchers.Default) {
-            preloader.preload(data)
+            preloader.preload(data, onProgress = onProgress)
         }
     }
 }

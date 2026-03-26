@@ -29,7 +29,7 @@ class VideoPreloader(
      * Safe to call multiple times for the same fileId/payloadKey — duplicate calls while a preload
      * is in-progress are no-ops. Only Mp4 videos are preloaded; HLS streams on demand.
      */
-    suspend fun preload(data: VideoPlayerData) {
+    suspend fun preload(data: VideoPlayerData, onProgress: ((Float) -> Unit)? = null) {
         val key = cacheKey(data.fileId, data.payloadKey)
         val mutex = mapLock.withLock { mutexMap.getOrPut(key) { Mutex() } }
         if (!mutex.tryLock()) return  // already in-progress or being awaited
@@ -37,7 +37,7 @@ class VideoPreloader(
             val path = stablePath(data.fileId, data.payloadKey)
             if (fileSystem.exists(path)) return  // already preloaded
 
-            val content = resolveVideoContent(data, driveFileProvider)
+            val content = resolveVideoContent(data, driveFileProvider, onDownloadProgress = onProgress)
             if (content is VideoContent.Mp4) {
                 fileSystem.createDirectories(path.parent!!)
                 fileSystem.write(path) { write(content.bytes) }

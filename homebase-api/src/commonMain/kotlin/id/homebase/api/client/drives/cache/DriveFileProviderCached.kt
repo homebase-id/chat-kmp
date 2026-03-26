@@ -72,7 +72,8 @@ class DriveFileProviderCached(
             driveId: Uuid,
             fileId: Uuid,
             key: String,
-            options: PayloadOperationOptions = PayloadOperationOptions()
+            options: PayloadOperationOptions = PayloadOperationOptions(),
+            onDownloadProgress: ((Float) -> Unit)? = null,
     ): ByteApiResponse {
         val cacheKey =
                 buildPayloadCacheKey(driveId, fileId, key, options.chunkStart, options.chunkLength)
@@ -109,7 +110,7 @@ class DriveFileProviderCached(
             return payloadSemaphore.withPermit {
                 try {
                     val (networkResult, elapsed) = measureTimedValue {
-                        delegate.getPayloadBytesRawNetwork(driveId, fileId, key, options)
+                        delegate.getPayloadBytesRawNetwork(driveId, fileId, key, options, onDownloadProgress)
                     }
                     Logger.d(tag = "VideoIO") { "payload network-fetch: ${networkResult.bytes.size} bytes in $elapsed" }
                     val result = networkResult
@@ -142,7 +143,8 @@ class DriveFileProviderCached(
             key: String,
             keyHeader: KeyHeader,
             chunkStart: Long? = null,
-            chunkLength: Long? = null
+            chunkLength: Long? = null,
+            onDownloadProgress: ((Float) -> Unit)? = null,
     ): BytesResponse? {
         val raw =
                 getPayloadBytesRaw(
@@ -153,7 +155,8 @@ class DriveFileProviderCached(
                                 PayloadOperationOptions(
                                         chunkStart = chunkStart,
                                         chunkLength = chunkLength
-                                )
+                                ),
+                        onDownloadProgress = onDownloadProgress,
                 )
 
         if (raw.status == 404) return null

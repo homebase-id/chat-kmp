@@ -8,4 +8,5 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 expect fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier = Modifier,
+    onProgress: (Float) -> Unit = {},
 )
