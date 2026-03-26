@@ -28,8 +28,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
+import coil3.compose.LocalPlatformContext
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
+import coil3.request.ImageRequest
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.Warning
@@ -75,6 +77,19 @@ fun HomebaseImage(
 ) {
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
+
+    // When loading full payload, use the cached thumbnail as a placeholder
+    val platformContext = LocalPlatformContext.current
+    val model: Any = remember(imageData, platformContext) {
+        if (imageData.loadFullPayload && !imageData.isPending) {
+            ImageRequest.Builder(platformContext)
+                .data(imageData)
+                .placeholderMemoryCacheKey(HomebaseImageKeyer.thumbnailCacheKey(imageData))
+                .build()
+        } else {
+            imageData
+        }
+    }
 
     // Decode preview thumbnail for immediate display
     val previewBitmap =
@@ -124,7 +139,7 @@ fun HomebaseImage(
     }
 
     SubcomposeAsyncImage(
-        model = imageData,
+        model = model,
         imageLoader = imageLoader,
         contentDescription = contentDescription,
         modifier = customModified,
@@ -142,7 +157,29 @@ fun HomebaseImage(
         )
 
         when (state) {
-            is AsyncImagePainter.State.Loading, is AsyncImagePainter.State.Empty -> {
+            is AsyncImagePainter.State.Loading -> {
+                val loadingPainter = (state as AsyncImagePainter.State.Loading).painter
+                if (loadingPainter != null) {
+                    // Cached thumbnail available via placeholderMemoryCacheKey
+                    Image(
+                        painter = loadingPainter,
+                        contentDescription = contentDescription,
+                        contentScale = contentScale,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else if (previewBitmap != null) {
+                    Image(
+                        bitmap = previewBitmap,
+                        contentDescription = contentDescription,
+                        contentScale = contentScale,
+                        modifier = Modifier.fillMaxSize().blur(blurRadius.dp)
+                    )
+                } else {
+                    placeholder?.invoke()
+                }
+            }
+
+            is AsyncImagePainter.State.Empty -> {
                 if (previewBitmap != null) {
                     Image(
                         bitmap = previewBitmap,

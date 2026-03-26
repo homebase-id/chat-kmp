@@ -40,7 +40,7 @@ class NotificationService(
     private var isListening = false
     private val richDisplayer = RichNotificationDisplayer()
 
-    private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(replay = 1)
+    private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 1)
     val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
 
     private val _inAppNotificationEvents =
@@ -106,6 +106,27 @@ class NotificationService(
         })
 
         NotifierManager.setLogger { message -> Logger.d(tag = "KMPNotifier") { message } }
+    }
+
+    /**
+     * Called from platform FCM service when a new token is received.
+     * Forwards to the same listener path as KMPNotifier's built-in service.
+     */
+    fun onNewFcmToken(token: String) {
+        Logger.i(tag = "NotificationService") { "New push token (from FCM service): $token" }
+        registerToken(token)
+    }
+
+    /**
+     * Called from platform FCM service when a message is received.
+     * Since DriveFcmService overrides KMPNotifier's MyFirebaseMessagingService,
+     * we handle the payload directly here.
+     */
+    fun onFcmMessageReceived(title: String?, body: String?, data: Map<String, String>) {
+        Logger.i(tag = "NotificationService") {
+            "FCM message received — title=$title body=$body data=$data"
+        }
+        handleIncomingPayload(data)
     }
 
     private fun registerToken(token: String) {
@@ -295,10 +316,10 @@ class NotificationService(
         else -> "messages"
     }
 
-    /** Extracts conversation ID for chat/community notifications. */
+    /** Extracts conversation ID for chat notifications. */
     private fun resolveConversationId(notification: PushNotification): String? {
         val appId = notification.options.appId
-        return if (appId == AppConfig.APP_ID || appId == COMMUNITY_APP_ID) {
+        return if (appId == Uuid.parse(AppConfig.APP_ID).toString()) {
             notification.options.typeId
         } else null
     }

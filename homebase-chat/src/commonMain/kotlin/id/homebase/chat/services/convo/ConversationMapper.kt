@@ -131,10 +131,6 @@ class ConversationMapper(
                 }
             }
 
-            logger.d {
-                "SUCCESS map | id=${ui.id} participants=${ui.participants.size}"
-            }
-
             ui
 
         } catch (t: Throwable) {

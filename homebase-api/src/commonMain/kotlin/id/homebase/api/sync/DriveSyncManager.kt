@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 class DriveSyncManager(
@@ -27,7 +29,10 @@ class DriveSyncManager(
     private val scope: CoroutineScope,
     private val databaseManager: DatabaseManager,
 ) {
-    private val driveSyncs = mutableMapOf<Uuid, DriveSync>()
+    // Immutable map reference — always replaced, never mutated in-place, preventing CME.
+    // Writes are serialized via driveSyncsMutex (suspend callers) or atomic reference swap (non-suspend callers).
+    private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
+    private val driveSyncsMutex = Mutex()
 
     private val _driveStatuses = MutableStateFlow<Map<Uuid, DriveStatus>>(emptyMap())
     val driveStatuses: StateFlow<Map<Uuid, DriveStatus>> = _driveStatuses.asStateFlow()
@@ -74,7 +79,7 @@ class DriveSyncManager(
                             }
                             scope.launch {
                                 delay(1000L)
-                                driveSyncs[event.driveId]?.sync()
+                                driveSyncsMutex.withLock { driveSyncs[event.driveId] }?.sync()
                             }
                         }
                     }
@@ -96,7 +101,8 @@ class DriveSyncManager(
         val identityId = credentials.getIdentityId()
 
         drives.forEach { (driveId, label) ->
-            if (driveSyncs.containsKey(driveId)) {
+            val alreadyExists = driveSyncsMutex.withLock { driveSyncs.containsKey(driveId) }
+            if (alreadyExists) {
                 Logger.w { "DriveSync for drive=$driveId already exists, skipping" }
                 return@forEach
             }
@@ -111,7 +117,7 @@ class DriveSyncManager(
                     scope = scope
                 )
             }.onSuccess { sync ->
-                driveSyncs[driveId] = sync
+                driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
                 _driveStatuses.update { current ->
                     current + (driveId to DriveStatus(driveId, label, DriveState.Initialized))
                 }
@@ -125,7 +131,7 @@ class DriveSyncManager(
     }
 
     suspend fun syncAll() {
-        val snapshot = driveSyncs.values.toList()
+        val snapshot = driveSyncsMutex.withLock { driveSyncs.values.toList() }
         val jobs = snapshot.mapNotNull { it.sync() }
         jobs.joinAll()
     }
@@ -135,31 +141,29 @@ class DriveSyncManager(
             .filter { (_, status) -> status.state is DriveState.Failed }
             .keys
 
-        val jobs = failedIds.mapNotNull { driveSyncs[it]?.sync() }
+        val jobs = driveSyncsMutex.withLock { failedIds.mapNotNull { driveSyncs[it] } }
+            .mapNotNull { it.sync() }
         jobs.joinAll()
     }
 
     fun syncDrive(driveId: Uuid) {
         val d = driveSyncs[driveId] ?: throw Exception("syncDrive() invalid driveId: $driveId")
-
         d.sync()
     }
 
     fun pause() {
-        val snapshot = driveSyncs.values.toList()
-        snapshot.forEach { it.cancel() }
+        driveSyncs.values.forEach { it.cancel() }
     }
 
     fun stop() {
-        val snapshot = driveSyncs.values.toList()
-        snapshot.forEach { it.cancel() }
-        driveSyncs.clear()
+        val old = driveSyncs
+        driveSyncs = emptyMap()
+        old.values.forEach { it.cancel() }
         _driveStatuses.update { emptyMap() }
     }
 
     fun clearStorage(): Job {
         val snapshot = driveSyncs.values.toList()
-
         return scope.launch {
             snapshot
                 .map { sync ->

@@ -8,10 +8,22 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import com.mmk.kmpnotifier.notification.NotifierManager
+import id.homebase.core.notifications.NotificationService
+import org.koin.android.ext.android.inject
 
 class DriveFcmService : FirebaseMessagingService() {
 
+    private val notificationService: NotificationService by inject()
+
+    override fun onNewToken(token: String) {
+        super.onNewToken(token)
+        // Forward token to KMPNotifier listeners (including NotificationService)
+        notificationService.onNewFcmToken(token)
+    }
+
     override fun onMessageReceived(message: RemoteMessage) {
+        // Schedule background sync
         WorkManager.getInstance(applicationContext)
             .enqueueUniqueWork(
                 WORK_TAG,
@@ -25,6 +37,13 @@ class DriveFcmService : FirebaseMessagingService() {
                     )
                     .build()
             )
+
+        // Forward to NotificationService for notification display
+        notificationService.onFcmMessageReceived(
+            title = message.notification?.title,
+            body = message.notification?.body,
+            data = message.data,
+        )
     }
 
     companion object {

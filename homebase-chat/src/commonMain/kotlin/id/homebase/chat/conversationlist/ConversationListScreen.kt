@@ -26,7 +26,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -325,14 +327,18 @@ fun ConversationListUi(
         }
     }
 
-    // Restore detail pane when returning to this screen ONLY if we have a selected conversation
+    // Navigate to detail pane only when selectedConversationId changes to a NEW value.
+    // Without tracking, list refreshes can re-emit the same ID and push the user
+    // back into the detail pane after they navigated away.
+    var lastNavigatedConversationId by remember { mutableStateOf<Uuid?>(null) }
     LaunchedEffect(uiState.selectedConversationId) {
         val selectedId = uiState.selectedConversationId
-        // Only restore if we have a selected conversation AND we're in compact mode
-        if (selectedId != null && scaffoldDirective.maxHorizontalPartitions == 1) {
-            // Re-navigate to ensure the detail is properly loaded
+        if (selectedId != null && selectedId != lastNavigatedConversationId && scaffoldDirective.maxHorizontalPartitions == 1) {
             Logger.i(tag = "ConversationListUi") { "Restore detail pane for $selectedId" }
+            lastNavigatedConversationId = selectedId
             scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, selectedId)
+        } else if (selectedId == null) {
+            lastNavigatedConversationId = null
         }
     }
 
