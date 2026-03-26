@@ -192,12 +192,13 @@ class VideoPayloadProcessor(
                         key = descriptorContentPayloadKey,
                         filePath =
                             fileOperationsProvider.writeBytesToTempFile(
-                                metadataJson.toByteArray(),
+                                keyHeader.encryptDataAes(metadataJson.toByteArray()),
                                 "payload",
                                 ".metadata"
                             ),
                         contentType = "application/json",
-                        isPreEncrypted = false
+                        isPreEncrypted = true,
+                        iv = keyHeader.iv
                     )
                 )
             }
