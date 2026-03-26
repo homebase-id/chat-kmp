@@ -87,7 +87,9 @@ fun ReactionMenu(
     onSelect: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
 ) {
-    val reactions = userDefaultReactions.take(6) + listOf("❤️", "👍", "👎", "😂", "😮", "😢").take(6 - minOf(6, userDefaultReactions.size))
+    val userReactions = userDefaultReactions.take(6)
+    val defaultReactions = listOf("❤️", "👍", "👎", "😂", "😮", "😢").filter { !userReactions.contains(it) }
+    val reactions = userReactions + defaultReactions.take(6 - minOf(6, userDefaultReactions.size))
     val scrollState = rememberScrollState()
 
     Surface(

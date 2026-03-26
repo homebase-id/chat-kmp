@@ -121,7 +121,7 @@ fun MessageItem(
 
         SwipeableMessageWrapper(
             onSwipeRight = onReply,
-            onSwipeLeft = null,
+            onSwipeLeft = onMessageInfo,
         ) {
             ReceivedMessageBubble(
                 message = message,
