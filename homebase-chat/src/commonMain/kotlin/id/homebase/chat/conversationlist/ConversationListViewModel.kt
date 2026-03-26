@@ -57,6 +57,7 @@ import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.ScrollPosition
@@ -117,6 +118,7 @@ class ConversationListViewModel(
     private val eventBus: EventBus,
     private val contactService: ContactService,
     private val driveFileHttpProvider: DriveFileHttpProvider,
+    private val shareContentProcessor: ShareContentProcessor,
 ) : ViewModel() {
 
     private val enricher = ConversationEnricher()
@@ -182,6 +184,13 @@ class ConversationListViewModel(
         // Load initial message if conversation is set
         viewModelScope.launch {
             chatListRoute.conversationId?.let { loadMessagesForConversation(Uuid.parse(it), null) }
+        }
+
+        // Check for pending shared content (from iOS share extension or other handoff)
+        viewModelScope.launch {
+            chatListRoute.conversationId?.let { conversationId ->
+                processPendingSharedContent(Uuid.parse(conversationId))
+            }
         }
 
         // Listen for search query changes
@@ -1880,6 +1889,65 @@ class ConversationListViewModel(
                     )
                 )
             }
+        }
+    }
+
+    /**
+     * Checks for pending shared content (from iOS share extension handoff)
+     * and sends it to the given conversation automatically.
+     */
+    private suspend fun processPendingSharedContent(conversationId: Uuid) {
+        val descriptor = shareContentProcessor.readPendingContent() ?: return
+        // Only process if the target conversation matches
+        if (descriptor.targetConversationId != conversationId.toString()) return
+
+        Logger.i("ConversationListViewModel") {
+            "Processing shared content: type=${descriptor.contentType}, files=${descriptor.fileNames.size}"
+        }
+
+        try {
+            val text = descriptor.text ?: descriptor.url ?: ""
+
+            if (descriptor.fileNames.isEmpty()) {
+                // Text/URL only
+                addMessage(conversationId, text)
+            } else {
+                // Build AttachmentInput list from shared files
+                val attachments = descriptor.fileNames.zip(descriptor.mimeTypes).map { (name, mime) ->
+                    val filePath = shareContentProcessor.resolveFilePath(name)
+                    AttachmentInput(
+                        filePath = filePath,
+                        contentType = mime,
+                        displayName = name,
+                    )
+                }
+
+                val newMessageId = Uuid.random()
+                pendingMessageId = newMessageId
+
+                val bundle = MessageAttachmentBuilder.build(
+                    attachments = attachments,
+                    fileOperationsProvider = fileOperationsProvider,
+                    payloadKeyFactory = { index, _ ->
+                        "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+                    }
+                )
+
+                chatMessageSenderService.sendNewMessage(
+                    messageUniqueId = newMessageId,
+                    conversationId = conversationId,
+                    messageText = text,
+                    previousMessageUniqueId = null,
+                    payloadBundle = bundle,
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e("ConversationListViewModel") { "Failed to send shared content: ${e.message}" }
+            sendEvent(ShowErrorMessage("Failed to send shared content: ${e.message}"))
+        } finally {
+            shareContentProcessor.cleanup()
         }
     }
 }

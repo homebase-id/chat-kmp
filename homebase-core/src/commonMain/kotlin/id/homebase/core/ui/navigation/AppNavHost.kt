@@ -171,8 +171,7 @@ fun AppNavHost(
             when (event) {
                 is NotificationNavigationEvent.OpenConversation -> {
                     navController.navigate(Route.ChatList(event.conversationId)) {
-                        popUpTo(Route.ChatList()) { inclusive = true }
-                        launchSingleTop = true
+                        popUpTo<Route.ChatList> { inclusive = true }
                     }
                 }
                 is NotificationNavigationEvent.OpenUrl ->

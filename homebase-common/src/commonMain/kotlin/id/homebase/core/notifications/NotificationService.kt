@@ -40,7 +40,7 @@ class NotificationService(
     private var isListening = false
     private val richDisplayer = RichNotificationDisplayer()
 
-    private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 1)
+    private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 5)
     val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
 
     private val _inAppNotificationEvents =
@@ -378,6 +378,11 @@ class NotificationService(
                 "Failed to handle notification click: ${e.message}"
             }
         }
+    }
+
+    /** Navigate to a specific conversation (used for deep links and share shortcuts). */
+    fun navigateToConversation(conversationId: String) {
+        _navigationEvents.tryEmit(NotificationNavigationEvent.OpenConversation(conversationId))
     }
 
     /** Displays a rich notification using platform-specific APIs. */

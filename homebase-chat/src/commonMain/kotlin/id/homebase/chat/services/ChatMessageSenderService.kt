@@ -43,7 +43,8 @@ class ChatMessageSenderService(
     private val chatMessageStream: ChatMessageStream,
     private val optimisticWriter: OptimisticWriter,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val driveFileProvider: DriveFileProvider
+    private val driveFileProvider: DriveFileProvider,
+    private val shareSuggestionDonor: ShareSuggestionDonor = ShareSuggestionDonor(),
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -258,6 +259,21 @@ class ChatMessageSenderService(
                 fileSystemType = FileSystemType.Standard,
                 payloadDescriptors = payloadDescriptors,
             )
+
+            // Donate share suggestion so this conversation appears in OS share sheet
+            try {
+                val conversation = conversationStream.getConversationById(conversationId)
+                if (conversation != null) {
+                    shareSuggestionDonor.donateAfterSend(
+                        conversationId = conversationId,
+                        conversationName = conversation.getDisplayName(),
+                        isGroup = conversation.isGroupConversation,
+                        participantNames = recipients.map { it.domainName },
+                    )
+                }
+            } catch (_: Exception) {
+                // Non-critical — don't fail the send
+            }
 
             return SendMessageResult(uniqueId = messageUniqueId)
         } catch (t: Throwable) {

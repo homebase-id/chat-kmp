@@ -78,6 +78,17 @@ class MainActivity : AppCompatActivity() {
     private fun handleIntent(intent: Intent) {
         val data = intent.data
         if (data != null && data.scheme == "homebase-fchat") {
+            // Deep link: homebase-fchat://conversation/{conversationId}
+            if (data.host == "conversation" && data.pathSegments.isNotEmpty()) {
+                val conversationId = data.pathSegments.first()
+                Logger.i(tag = "MainActivity") { "Deep link: navigating to conversation $conversationId" }
+                notificationService.navigateToConversation(conversationId)
+                // Clear the deep link so it's not re-processed on config changes
+                intent.data = null
+                return
+            }
+
+            // Auth callback
             val callbackURL = data.toString()
             lifecycleScope.launch { youAuthFlowManager.handleCallback(callbackURL) }
         }
