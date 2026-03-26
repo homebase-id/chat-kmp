@@ -19,6 +19,7 @@ import id.homebase.api.generateUuidBytes
 import id.homebase.api.generateUuidString
 import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.share.ShareAuthBridge
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -157,6 +158,7 @@ class YouAuthFlowManager(
                         // needed since OdinClient is configured
                         sharedSecret = Base64.encode(credentials.sharedSecret.unsafeBytes)
                     )
+                ShareAuthBridge.setAuthenticated(true, identity.domainName)
                 Logger.i(tag = TAG) { "Session restored for $identity" }
                 return
             }
@@ -310,6 +312,7 @@ class YouAuthFlowManager(
                     sharedSecret = result.sharedSecret
                 )
 
+            ShareAuthBridge.setAuthenticated(true, result.identity.domainName)
             Logger.i(tag = TAG) { "Authentication completed successfully for ${result.identity}" }
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error completing auth" }
@@ -333,6 +336,7 @@ class YouAuthFlowManager(
         }
 
         CredentialStorage.clearCredentials()
+        ShareAuthBridge.clearAuth()
         _authState.value = YouAuthState.Unauthenticated
         Logger.i(tag = TAG) { "User logged out" }
 

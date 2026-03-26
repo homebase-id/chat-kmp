@@ -13,6 +13,7 @@ import org.koin.dsl.module
 actual fun platformModule(): Module = module {
     single { createSettings() }
     single<FileOperationsProvider> { WebFileOperationsProvider() }
+    single { id.homebase.core.share.ShareCacheStorage() }
     single {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
