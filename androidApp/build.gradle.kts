@@ -94,6 +94,7 @@ dependencies {
     implementation(project(":homebase-chat"))
 
     implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.media3.exoplayer)
@@ -101,6 +102,7 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.jetbrains.compose.material3)
+    implementation(libs.jetbrains.compose.material.icons.extended)
 
     implementation(libs.koin.core)
     implementation(libs.koin.android)
@@ -111,6 +113,7 @@ dependencies {
     implementation(libs.filekit.dialogs.compose)
     implementation(libs.kermit)
     implementation(libs.androidx.work.runtime)
+    implementation(libs.androidx.sharetarget)
     implementation(libs.firebase.messaging)
 
     debugImplementation(libs.androidx.ui.tooling)

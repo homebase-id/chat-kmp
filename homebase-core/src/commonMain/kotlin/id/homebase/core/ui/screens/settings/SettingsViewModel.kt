@@ -6,6 +6,7 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.util.PlatformInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +18,7 @@ class SettingsViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
     private val ownerSessionRepository: OwnerSessionRepository,
     private val notificationService: NotificationService,
+    private val shareCacheStorage: ShareCacheStorage,
     platformInfo: PlatformInfo,
 ) : ViewModel() {
 
@@ -71,6 +73,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             LoggerConfig.purgeLogs()
             notificationService.deleteToken()
+            shareCacheStorage.clearConversationCache()
             youAuthFlowManager.logout()
             sendEvent(SettingsUiEvent.LoggedOut)
         }

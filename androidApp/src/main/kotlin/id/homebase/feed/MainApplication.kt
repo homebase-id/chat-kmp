@@ -18,6 +18,10 @@ import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
+import id.homebase.feed.share.ShareShortcutPublisher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
 import org.koin.android.ext.koin.androidContext
@@ -90,6 +94,16 @@ class MainApplication : Application(), KoinComponent {
         // before the UI composes are not lost
         val notificationService: NotificationService = get()
         notificationService.startListening()
+
+        // Publish share shortcuts when conversations change
+        initShareShortcuts()
+    }
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private fun initShareShortcuts() {
+        val publisher = ShareShortcutPublisher(this, get(), get())
+        publisher.start(appScope)
     }
 
     private fun createNotificationChannels() {

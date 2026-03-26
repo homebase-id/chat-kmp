@@ -18,6 +18,7 @@ import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
@@ -30,6 +31,8 @@ import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.share.ShareConversationCacheWriter
+import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
@@ -52,12 +55,16 @@ val appModule = module {
     factoryOf(::PayloadBundleEncryptionService)
     factoryOf(::OptimisticWriter)
 
+    singleOf(::ShareConversationCacheWriter)
+    singleOf(::ShareContentProcessor)
+
     singleOf(::ConnectionService)
     singleOf(::DriveContactService)
     singleOf(::ContactService)
     singleOf(::ConversationStream)
     singleOf(::ConversationService)
     singleOf(::ChatMessageStream)
+    singleOf(::ShareSuggestionDonor)
     singleOf(::ChatMessageSenderService)
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
