@@ -90,9 +90,8 @@ fun ReactionMenu(
             .wrapContentWidth()
             .padding(top = 4.dp),
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
         shadowElevation = 4.dp,
-        tonalElevation = 2.dp
+        tonalElevation = 4.dp
     ) {
         Row(
             modifier = Modifier
@@ -107,7 +106,7 @@ fun ReactionMenu(
                 ) {
                     Text(
                         text = emoji,
-                        fontSize = 20.sp
+                        fontSize = 24.sp
                     )
                 }
             }

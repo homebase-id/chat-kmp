@@ -400,7 +400,6 @@ fun MessageBubbleRaw(
                     ) else null
                     val replyWidth = replyPlaceable?.width ?: 0
 
-
                     // Measure show more text
                     val showMorePlaceable = measurables[showMoreIndex].measure(constraints)
 

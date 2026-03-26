@@ -1,8 +1,13 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -29,7 +34,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import id.homebase.core.ui.assets.HomebaseIcons
@@ -153,7 +161,7 @@ fun ReceivedMessagePopup(
     onCopy: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Popup(
+    PopupWithScrim(
         onDismissRequest = dismissMenu
     ) {
         Column {
@@ -169,9 +177,8 @@ fun ReceivedMessagePopup(
                     modifier = Modifier
                         .wrapContentWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shadowElevation = 4.dp,
-                    tonalElevation = 2.dp
+                    tonalElevation = 4.dp
                 ) {
                     Column(
                         modifier = Modifier.width(IntrinsicSize.Max)
@@ -227,71 +234,73 @@ fun SentMessagePopup(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Popup(
+    PopupWithScrim(
         onDismissRequest = dismissMenu
     ) {
+        // Popup content
         Column {
-            if (mode == MessagePopupMode.Reaction || mode == MessagePopupMode.All) {
-                ReactionMenu(
-                    onSelect = onSelectEmoji,
-                    onShowAllEmojis = onShowAllEmojis,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            if (mode == MessagePopupMode.Menu || mode == MessagePopupMode.All) {
-                Surface(
-                    modifier = Modifier
-                        .wrapContentWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shadowElevation = 4.dp,
-                    tonalElevation = 2.dp
-                ) {
-                    Column(
-                        modifier = Modifier.width(IntrinsicSize.Max)
+            Column {
+                if (mode == MessagePopupMode.Reaction || mode == MessagePopupMode.All) {
+                    ReactionMenu(
+                        onSelect = onSelectEmoji,
+                        onShowAllEmojis = onShowAllEmojis,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                if (mode == MessagePopupMode.Menu || mode == MessagePopupMode.All) {
+                    Surface(
+                        modifier = Modifier
+                            .wrapContentWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        shadowElevation = 4.dp,
+                        tonalElevation = 4.dp
                     ) {
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onMessageInfo,
-                            text = stringResource(MR.string.chat_message_info),
-                            imageVector = Icons.Default.Info,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onReply,
-                            text = stringResource(MR.string.chat_message_reply),
-                            imageVector = Icons.AutoMirrored.Filled.Reply,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onForward,
-                            text = stringResource(MR.string.chat_message_forward),
-                            imageVector = HomebaseIcons.MessageForward,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onCopy,
-                            text = stringResource(MR.string.chat_message_copy),
-                            imageVector = Icons.Default.ContentCopy,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onEdit,
-                            text = stringResource(MR.string.chat_message_edit),
-                            imageVector = Icons.Filled.Edit,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onDelete,
-                            text = stringResource(MR.string.delete),
-                            imageVector = Icons.Filled.Delete,
-                        )
-                        if (isMobile()) {
+                        Column(
+                            modifier = Modifier.width(IntrinsicSize.Max)
+                        ) {
                             ListItemActionNormalIcon(
-                                onClick = onShare,
-                                text = stringResource(MR.string.share),
-                                imageVector = Icons.Default.Share,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = onMessageInfo,
+                                text = stringResource(MR.string.chat_message_info),
+                                imageVector = Icons.Default.Info,
                             )
+                            ListItemActionNormalIcon(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = onReply,
+                                text = stringResource(MR.string.chat_message_reply),
+                                imageVector = Icons.AutoMirrored.Filled.Reply,
+                            )
+                            ListItemActionNormalIcon(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = onForward,
+                                text = stringResource(MR.string.chat_message_forward),
+                                imageVector = HomebaseIcons.MessageForward,
+                            )
+                            ListItemActionNormalIcon(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = onCopy,
+                                text = stringResource(MR.string.chat_message_copy),
+                                imageVector = Icons.Default.ContentCopy,
+                            )
+                            ListItemActionNormalIcon(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = onEdit,
+                                text = stringResource(MR.string.chat_message_edit),
+                                imageVector = Icons.Filled.Edit,
+                            )
+                            ListItemActionNormalIcon(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = onDelete,
+                                text = stringResource(MR.string.delete),
+                                imageVector = Icons.Filled.Delete,
+                            )
+                            if (isMobile()) {
+                                ListItemActionNormalIcon(
+                                    onClick = onShare,
+                                    text = stringResource(MR.string.share),
+                                    imageVector = Icons.Default.Share,
+                                )
+                            }
                         }
                     }
                 }
@@ -430,6 +439,34 @@ fun ConversationItemMenuPopup(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun PopupWithScrim(
+    onDismissRequest: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Popup(
+        onDismissRequest = onDismissRequest
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            // Scrim/Dimmed background
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable(
+                        onClick = onDismissRequest,
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    )
+            )
+            content()
         }
     }
 }

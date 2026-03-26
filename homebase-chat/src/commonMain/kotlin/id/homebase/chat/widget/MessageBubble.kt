@@ -568,14 +568,14 @@ fun InlineReplyPreview(
         Column(modifier = Modifier.weight(1f, fill = false).padding(horizontal = 8.dp, vertical = 10.dp)) {
             Text(
                 text = replyPreview.authorOdinId,
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = contentColor,
                 maxLines = 1
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = message,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = contentColor,
                 maxLines = 2
             )

@@ -150,5 +150,4 @@ object ExtendedColors {
     // Requests banner
     val RequestBanner = Color(0xFFFFD9A3)
     val OnRequestBanner = Color(0xFF3D2C1A)
-
 }
