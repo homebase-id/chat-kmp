@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedButton
@@ -138,16 +139,26 @@ fun AttachmentGallery(
 
                         items(galleryItems.size) { index ->
                             val galleryImage = galleryItems[index]
-                            AsyncImage(
-                                imageLoader = imageLoader,
-                                model = galleryImage.file.toString(),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(160.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { onImageSelected(galleryImage) },
-                                contentScale = ContentScale.Crop
-                            )
+                            Box {
+                                AsyncImage(
+                                    imageLoader = imageLoader,
+                                    model = galleryImage.file.toString(),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(160.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { onImageSelected(galleryImage) },
+                                    contentScale = ContentScale.Crop
+                                )
+                                Icon(
+                                    imageVector = if (galleryImage.isVideo()) Icons.Default.Videocam else Icons.Default.Image,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .padding(end = 4.dp, bottom = 4.dp)
+                                        .align(Alignment.BottomEnd)
+                                )
+                            }
                         }
                     }
                 }

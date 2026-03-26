@@ -139,6 +139,8 @@ fun MessageInfoUi(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
                 // Details section
                 SectionHeader(
                     text = stringResource(MR.string.details),
@@ -201,6 +203,7 @@ fun MessageInfoUi(
                             ChatDeliveryStatus.Failed -> stringResource(MR.string.failed)
                             else -> return@forEach
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
                         SectionHeader(
                             text = label,
                             modifier = Modifier.padding(horizontal = 16.dp),
@@ -223,6 +226,7 @@ fun MessageInfoUi(
                         contentAlignment = Alignment.Center,
                     ) { CircularProgressIndicator() }
                 } else if (uiState.reactions.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
                     SectionHeader(
                         text = stringResource(MR.string.reactions),
                         modifier = Modifier.padding(horizontal = 16.dp),

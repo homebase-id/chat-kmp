@@ -2,6 +2,7 @@ package id.homebase.core.di
 
 import coil3.ImageLoader
 import coil3.memory.MemoryCache
+import coil3.video.VideoFrameDecoder
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.audio.AndroidAudioPlayer
@@ -38,6 +39,7 @@ actual fun platformModule(): Module = module {
                     add(HomebaseImageKeyer())
                     add(HomebaseImageFetcher.Factory(get()))
                     add(PublicImageFetcher.Factory(get()))
+                    add(VideoFrameDecoder.Factory())
                 }
             .memoryCache {
                 MemoryCache.Builder()

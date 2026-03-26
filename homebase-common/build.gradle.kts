@@ -99,6 +99,7 @@ kotlin {
             implementation(libs.androidx.browser)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.accompanist.permissions)
+            api(libs.coil3.video)
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
