@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -36,6 +37,7 @@ import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import kotlin.time.TimeSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -71,9 +73,14 @@ actual fun VideoPlayerSurface(
     }
 
     LaunchedEffect(data) {
+        val clickMark = TimeSource.Monotonic.markNow()
+
         // Build ExoPlayer on main thread but deferred to after the first frame,
         // avoiding a synchronous block during composition/animation.
-        val player = ExoPlayer.Builder(context).build().apply { playWhenReady = true }
+        val (player, playerInitElapsed) = measureTimedValue {
+            ExoPlayer.Builder(context).build().apply { playWhenReady = true }
+        }
+        Logger.d(tag = "VideoIO") { "ExoPlayer init: $playerInitElapsed" }
         exoPlayer = player
 
         withContext(Dispatchers.IO) {
@@ -94,6 +101,15 @@ actual fun VideoPlayerSurface(
                             .createMediaSource(MediaItem.fromUri("homebase://video/index.m3u8"))
                         withContext(Dispatchers.Main) {
                             player.setMediaSource(mediaSource)
+                            val prepareStart = TimeSource.Monotonic.markNow()
+                            player.addListener(object : Player.Listener {
+                                override fun onPlaybackStateChanged(playbackState: Int) {
+                                    if (playbackState == Player.STATE_READY) {
+                                        Logger.d(tag = "VideoIO") { "HLS prepare→STATE_READY: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
+                                        player.removeListener(this)
+                                    }
+                                }
+                            })
                             player.prepare()
                             state = VpsState.Ready
                         }
@@ -107,6 +123,15 @@ actual fun VideoPlayerSurface(
                         Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
                         withContext(Dispatchers.Main) {
                             player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                            val prepareStart = TimeSource.Monotonic.markNow()
+                            player.addListener(object : Player.Listener {
+                                override fun onPlaybackStateChanged(playbackState: Int) {
+                                    if (playbackState == Player.STATE_READY) {
+                                        Logger.d(tag = "VideoIO") { "mp4 prepare→STATE_READY: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
+                                        player.removeListener(this)
+                                    }
+                                }
+                            })
                             player.prepare()
                             state = VpsState.Ready
                         }
