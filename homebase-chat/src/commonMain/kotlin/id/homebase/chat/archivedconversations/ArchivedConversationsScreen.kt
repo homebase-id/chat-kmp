@@ -39,12 +39,13 @@ import id.homebase.resources.chat_archived_chats
 import id.homebase.resources.chat_archived_chats_empty
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @Composable
 fun ArchivedConversationsScreen(
     viewModel: ArchivedConversationsViewModel,
     onNavigateBack: () -> Unit,
-    onShowConversation: (conversationId: String) -> Unit,
+    onShowConversation: (conversationId: Uuid) -> Unit,
     onNavigateToConversationSettings: (conversationId: String) -> Unit,
     onNavigateToGroupSettings: (conversationId: String) -> Unit,
 ) {

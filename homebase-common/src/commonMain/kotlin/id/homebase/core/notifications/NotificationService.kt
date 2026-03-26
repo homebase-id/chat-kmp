@@ -13,6 +13,7 @@ import id.homebase.core.config.COMMUNITY_APP_ID
 import id.homebase.core.config.FEED_APP_ID
 import id.homebase.core.config.MAIL_APP_ID
 import id.homebase.core.config.OWNER_APP_ID
+import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.Platform
 import kotlinx.coroutines.CoroutineScope
@@ -47,12 +48,6 @@ class NotificationService(
         MutableSharedFlow<RichNotificationData>(extraBufferCapacity = 1)
     val inAppNotificationEvents: SharedFlow<RichNotificationData> =
         _inAppNotificationEvents.asSharedFlow()
-
-    /** Set by the UI layer to suppress notifications for the currently viewed conversation. */
-    var activeConversationId: String? = null
-
-    /** Set by the UI layer when the conversation list screen is visible. */
-    var isOnChatListScreen: Boolean = false
 
     /** Set by the UI layer to indicate whether the app is in the foreground. */
     var isAppInForeground: Boolean = false
@@ -188,6 +183,8 @@ class NotificationService(
                 // Suppress chat notifications when user is on the conversation list
                 // or viewing the same conversation — they can already see the updates
                 val conversationId = resolveConversationId(notification)
+                val activeConversationId = ActiveConversation.conversation.value?.toString()
+                val isOnChatListScreen = ActiveConversation.isDisplayingChatList.value
                 if (isAppInForeground && conversationId != null &&
                     (isOnChatListScreen || conversationId == activeConversationId)
                 ) {
