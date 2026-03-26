@@ -40,8 +40,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.delay
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
+import kotlin.time.measureTimedValue
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -150,8 +152,11 @@ actual fun VideoPlayerSurface(
                         state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                     }
                     is VideoContent.Mp4 -> {
-                        File(dir, "video.mp4").writeBytes(content.bytes)
-                        state = VpsState.Playing(File(dir, "video.mp4").absolutePath)
+                        val (mp4File, writeElapsed) = measureTimedValue {
+                            File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                        }
+                        Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
+                        state = VpsState.Playing(mp4File.absolutePath)
                     }
                 }
             } catch (e: Exception) {

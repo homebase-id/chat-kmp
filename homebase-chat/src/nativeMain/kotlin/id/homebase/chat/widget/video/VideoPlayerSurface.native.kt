@@ -31,6 +31,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import co.touchlab.kermit.Logger
+import kotlin.time.measureTimedValue
 import org.koin.compose.koinInject
 import platform.AVFoundation.AVAssetResourceLoader
 import platform.AVFoundation.AVAssetResourceLoadingRequest
@@ -109,7 +111,10 @@ actual fun VideoPlayerSurface(
                         NSFileManager.defaultManager.createDirectoryAtURL(dir, true, null, null)
                         tempDir = dir
                         val mp4Url = dir.URLByAppendingPathComponent("video.mp4")!!
-                        content.bytes.toNSData().writeToURL(mp4Url, atomically = true)
+                        val (_, writeElapsed) = measureTimedValue {
+                            content.bytes.toNSData().writeToURL(mp4Url, atomically = true)
+                        }
+                        Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
                         state = VpsState.Playing(
                             player = AVPlayer(uRL = mp4Url),
                             delegate = HomebaseResourceLoaderDelegate.empty(),

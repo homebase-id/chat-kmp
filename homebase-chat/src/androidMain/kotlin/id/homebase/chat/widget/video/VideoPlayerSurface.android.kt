@@ -2,6 +2,8 @@ package id.homebase.chat.widget.video
 
 import android.net.Uri
 import android.util.Log
+import co.touchlab.kermit.Logger
+import kotlin.time.measureTimedValue
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -99,7 +101,10 @@ actual fun VideoPlayerSurface(
                     is VideoContent.Mp4 -> {
                         val dir = File(context.cacheDir, "hbvid_${UUID.randomUUID()}").also { it.mkdirs() }
                         tempDir = dir
-                        val file = File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                        val (file, writeElapsed) = measureTimedValue {
+                            File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                        }
+                        Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
                         withContext(Dispatchers.Main) {
                             player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
                             player.prepare()
