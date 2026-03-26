@@ -67,7 +67,7 @@ class MainApplication : Application(), KoinComponent {
         setupCrashHandler()
 
         // Provide application context for rich notifications
-        RichNotificationDisplayer.initialize(this)
+        RichNotificationDisplayer.initialize(this, smallIconResId = R.mipmap.ic_launcher_monochrome)
 
         // Create notification channels (Android O+)
         createNotificationChannels()

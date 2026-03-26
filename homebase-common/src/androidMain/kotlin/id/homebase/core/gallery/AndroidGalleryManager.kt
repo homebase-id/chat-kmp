@@ -62,9 +62,9 @@ class AndroidGalleryManager(val context: Context): PlatformGalleryManager {
                         file = PlatformFile(uri),
                         thumbnailUri = uri,
                         dateAdded = cursor.getLong(dateIdx),
-                        mimeType = cursor.getString(mimeIdx),
-                        galleryName = cursor.getString(bucketIdx),
-                        fileName = cursor.getString(displayNameIdx),
+                        mimeType = cursor.getString(mimeIdx) ?: "",
+                        galleryName = cursor.getString(bucketIdx) ?: "",
+                        fileName = cursor.getString(displayNameIdx) ?: "",
                     )
                 )
             }

@@ -25,13 +25,14 @@ actual class RichNotificationDisplayer actual constructor() {
 
     actual fun show(data: RichNotificationData) {
         val context = appContext ?: return
+        val icon = if (smallIconResId != 0) smallIconResId else context.applicationInfo.icon
 
         val person = buildPerson(data.senderName, data.senderId, data.senderImageBytes)
 
         val contentIntent = buildContentIntent(context, data)
 
         val builder = NotificationCompat.Builder(context, data.channelId)
-            .setSmallIcon(context.applicationInfo.icon)
+            .setSmallIcon(icon)
             .setContentTitle(data.title)
             .setContentText(data.body)
             .setContentIntent(contentIntent)
@@ -78,7 +79,7 @@ actual class RichNotificationDisplayer actual constructor() {
 
         // Lock screen privacy: show generic content
         val publicBuilder = NotificationCompat.Builder(context, data.channelId)
-            .setSmallIcon(context.applicationInfo.icon)
+            .setSmallIcon(icon)
             .setContentTitle("Homebase")
             .setContentText("New notification")
             .setAutoCancel(true)
@@ -139,8 +140,9 @@ actual class RichNotificationDisplayer actual constructor() {
         nm: NotificationManager,
         data: RichNotificationData,
     ) {
+        val icon = if (smallIconResId != 0) smallIconResId else context.applicationInfo.icon
         val summary = NotificationCompat.Builder(context, data.channelId)
-            .setSmallIcon(context.applicationInfo.icon)
+            .setSmallIcon(icon)
             .setStyle(NotificationCompat.InboxStyle().setSummaryText("Homebase"))
             .setGroup(data.conversationId)
             .setGroupSummary(true)
@@ -221,9 +223,13 @@ actual class RichNotificationDisplayer actual constructor() {
         /** Application context, set during app initialization. */
         internal var appContext: Context? = null
 
+        /** Small icon resource ID for notifications (monochrome silhouette). */
+        internal var smallIconResId: Int = 0
+
         /** Call from Application.onCreate() to provide Context for notification display. */
-        fun initialize(context: Context) {
+        fun initialize(context: Context, smallIconResId: Int = 0) {
             appContext = context.applicationContext
+            this.smallIconResId = smallIconResId
         }
     }
 }

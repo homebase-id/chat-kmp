@@ -13,6 +13,7 @@ import id.homebase.core.audio.IOSWaveFormGenerator
 import id.homebase.core.gallery.IOSGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
+import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PHAssetFetcher
 import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.settings.createSettings
@@ -33,6 +34,7 @@ actual fun platformModule(): Module = module {
     single {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
+                    add(HomebaseImageKeyer())
                     add(PHAssetFetcher.Factory())
                     add(HomebaseImageFetcher.Factory(get()))
                     add(PublicImageFetcher.Factory(get()))
