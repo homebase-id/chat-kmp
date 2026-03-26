@@ -113,7 +113,7 @@ class AppViewModel(
         if (pending != null) {
             _navigationEvents.tryEmit(NotificationNavigationEvent.OpenConversation(conversationId))
         } else {
-            Logger.w("AppViewModel") { "No pending shared content found for conversation: $conversationId" }
+            Logger.w(tag = "AppViewModel") { "No pending shared content found for conversation: $conversationId" }
         }
     }
 

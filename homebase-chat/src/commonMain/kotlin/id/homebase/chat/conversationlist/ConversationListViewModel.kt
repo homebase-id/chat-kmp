@@ -55,9 +55,9 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.avatars.ConnectionStatus
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.chatTargetDrive
-import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.buildConnectToIdentityUrl
@@ -176,13 +176,6 @@ class ConversationListViewModel(
             messageInputTextState.setMarkdown("")
         }
 
-        // Check for pending shared content (from iOS share extension or other handoff)
-        viewModelScope.launch {
-            chatListRoute.conversationId?.let { conversationId ->
-                processPendingSharedContent(Uuid.parse(conversationId))
-            }
-        }
-
         // Listen for search query changes
         viewModelScope.launch {
             snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300)
@@ -288,6 +281,11 @@ class ConversationListViewModel(
     }
 
     fun selectConversation(conversationId: Uuid, messageId: Uuid? = null) {
+        // Check for pending shared content (from iOS share extension or other handoff)
+        viewModelScope.launch {
+            processPendingSharedContent(conversationId)
+        }
+
         ActiveConversation.selectConversation(conversationId)
         loadMessagesForConversation(conversationId, messageId)
     }
@@ -1900,7 +1898,7 @@ class ConversationListViewModel(
         // Only process if the target conversation matches
         if (descriptor.targetConversationId != conversationId.toString()) return
 
-        Logger.i("ConversationListViewModel") {
+        Logger.i(tag = "ConversationListViewModel") {
             "Processing shared content: type=${descriptor.contentType}, files=${descriptor.fileNames.size}"
         }
 
@@ -1943,7 +1941,7 @@ class ConversationListViewModel(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.e("ConversationListViewModel") { "Failed to send shared content: ${e.message}" }
+            Logger.e(tag = "ConversationListViewModel") { "Failed to send shared content: ${e.message}" }
             sendEvent(ShowErrorMessage("Failed to send shared content: ${e.message}"))
         } finally {
             shareContentProcessor.cleanup()

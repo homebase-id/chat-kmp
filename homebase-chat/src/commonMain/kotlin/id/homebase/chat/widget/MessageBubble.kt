@@ -76,6 +76,7 @@ import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.media
 import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -182,6 +183,8 @@ fun SentMessageBubble(
                 if (popupMode != MessagePopupMode.None) {
                     SentMessagePopup(
                         mode = popupMode,
+                        message = message,
+                        userDefaultReactions = persistentListOf(),
                         dismissMenu = { popupMode = MessagePopupMode.None },
                         onSelectEmoji = { reaction ->
                             popupMode = MessagePopupMode.None
@@ -423,6 +426,8 @@ fun ReceivedMessageBubble(
                 if (popupMode != MessagePopupMode.None) {
                     ReceivedMessagePopup(
                         mode = popupMode,
+                        message = message,
+                        userDefaultReactions = persistentListOf(),
                         dismissMenu = { popupMode = MessagePopupMode.None },
                         onSelectEmoji = { reaction ->
                             popupMode = MessagePopupMode.None
