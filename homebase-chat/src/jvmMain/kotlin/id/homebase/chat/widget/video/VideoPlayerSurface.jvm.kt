@@ -38,7 +38,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
 import kotlinx.coroutines.delay
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider
@@ -220,8 +223,12 @@ internal fun VlcjPlayer(
     var position by remember(videoPath) { mutableFloatStateOf(0f) }
     var duration by remember(videoPath) { mutableFloatStateOf(0f) }
     var isSeeking by remember { mutableStateOf(false) }
-
     var firstFrameFired by remember(videoPath) { mutableStateOf(false) }
+
+    // Updated on VLC's internal event thread; read on the Compose thread.
+    val atomicPositionMs = remember { AtomicLong(0L) }
+    val atomicDurationMs = remember { AtomicLong(0L) }
+    val atomicFinished = remember { AtomicBoolean(false) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -240,23 +247,21 @@ internal fun VlcjPlayer(
     LaunchedEffect(videoPath) {
         while (true) {
             if (!isSeeking) {
-                val len = mediaPlayer.status().length().toFloat()
-                val pos = mediaPlayer.status().time().toFloat()
-                val nowPlaying = mediaPlayer.status().isPlaying
-                if (len > 0f) {
-                    duration = len
-                    position = pos
-                }
-                if (isPlaying && !nowPlaying && len > 0f && pos >= len - 600) {
-                    // reached end — reset to beginning
-                    mediaPlayer.controls().setTime(0)
-                    position = 0f
-                    isPlaying = false
-                } else {
-                    isPlaying = nowPlaying
+                val d = atomicDurationMs.get().toFloat()
+                val p = atomicPositionMs.get().toFloat()
+                if (d > 0f) {
+                    duration = d
+                    position = p
                 }
             }
-            delay(500)
+            if (atomicFinished.getAndSet(false)) {
+                mediaPlayer.controls().setTime(0)
+                position = 0f
+                isPlaying = false
+            } else {
+                isPlaying = mediaPlayer.status().isPlaying
+            }
+            delay(100)
         }
     }
 
@@ -292,10 +297,24 @@ internal fun VlcjPlayer(
             },
             true,
         )
+        val eventListener = object : MediaPlayerEventAdapter() {
+            override fun timeChanged(mp: uk.co.caprica.vlcj.player.base.MediaPlayer, newTime: Long) {
+                atomicPositionMs.set(newTime)
+            }
+            override fun lengthChanged(mp: uk.co.caprica.vlcj.player.base.MediaPlayer, newLength: Long) {
+                atomicDurationMs.set(newLength)
+            }
+            override fun finished(mp: uk.co.caprica.vlcj.player.base.MediaPlayer) {
+                atomicFinished.set(true)
+            }
+        }
+
         mediaPlayer.videoSurface().set(surface)
+        mediaPlayer.events().addMediaPlayerEventListener(eventListener)
         mediaPlayer.media().play(videoPath)
 
         onDispose {
+            mediaPlayer.events().removeMediaPlayerEventListener(eventListener)
             mediaPlayer.controls().stop()
             mediaPlayer.release()
             factory.release()
