@@ -137,6 +137,13 @@ class DriveSync(
                     Logger.i("Received ${queryBatchResponse.searchResults.size} records from QueryBatch() on Drive $driveId")
 
                     val searchResults = queryBatchResponse.searchResults
+                    if (searchResults.any { it.fileMetadata.appData.fileType == 7878 }) {
+                        val chatGroupIds = searchResults
+                            .filter { it.fileMetadata.appData.fileType == 7878 }
+                            .mapNotNull { it.fileMetadata.appData.groupId }
+                            .distinct()
+                        Logger.d("DriveSync: batch contains ${chatGroupIds.size} chat conversation(s): $chatGroupIds")
+                    }
                     if (searchResults.isNotEmpty()) {
                         recordsRead = searchResults.size
                         totalCount += recordsRead
@@ -213,6 +220,7 @@ class DriveSync(
 
         try {
             dbDeferreds.awaitAll()  // Suspends until all complete; rethrows the first exception if any
+            Logger.d("DriveSync: all DB writes complete for drive $driveId ($totalCount total records)")
             eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Success))
             Logger.d("Drive $driveId synchronized with $totalCount records read.")
         } catch (e: Exception) {

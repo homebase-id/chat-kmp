@@ -58,9 +58,11 @@ class ChatMessageActionService(
 
             // even if there are no unread record not sent by me
             // lets see if there
-            dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
-            conversationStream.updateUnreadCounts()
+            // This looks like a bug, so line commented out:
+            // dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
+            Logger.d { "markAsReadLatestFileCreated: no unread records for $conversationId (newReadTime=${newReadTime.milliseconds} not written)" }
 
+            conversationStream.updateUnreadCounts()
             return
         }
 
@@ -83,7 +85,7 @@ class ChatMessageActionService(
                     endTime = UnixTimeUtc(endTime.toEpochMilliseconds()).addMilliseconds(1) //add a millisecond to include the most recent file
                 )
 
-                Logger.d { "Upserting chatReadCount->lastReadTime: ${conversationId}" }
+                Logger.d { "Upserting chatReadCount->lastReadTime=${newReadTime.milliseconds} for $conversationId" }
 
                 dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
             }

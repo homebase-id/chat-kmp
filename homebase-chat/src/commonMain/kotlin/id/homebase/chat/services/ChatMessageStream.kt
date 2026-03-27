@@ -87,6 +87,8 @@ class ChatMessageStream(
                     is BackendEvent.DriveEvent.BatchReceived -> {
                         if (!isSyncing) {
                             processIncrementalBatch(event.batchData)
+                        } else {
+                            Logger.d("ChatMessageStream: BatchReceived suppressed (isSyncing=true), ${event.batchData.size} files buffered by sync")
                         }
                     }
                 }
@@ -103,6 +105,7 @@ class ChatMessageStream(
             .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ChatMessagesData.Initializing)
 
     suspend fun loadConversation(conversationId: Uuid) {
+        Logger.d("ChatMessageStream: loadConversation($conversationId)")
         loadedConversations += conversationId
         val result = fetchMessages(conversationId, limit = INITIAL_MESSAGE_LOAD)
         Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages, hasMore=${result.hasMoreRows}")
@@ -138,6 +141,7 @@ class ChatMessageStream(
     }
 
     private suspend fun refreshLoadedConversations() {
+        Logger.d("ChatMessageStream: refreshLoadedConversations called, ${loadedConversations.size} active conversations")
         loadedConversations.forEach { conversationId ->
             val result = fetchMessages(conversationId, limit = INITIAL_MESSAGE_LOAD)
             conversationCursors[conversationId] = result.cursor
