@@ -102,7 +102,7 @@ actual class ShareCacheStorage {
 
     companion object {
         private const val TAG = "ShareCacheStorage"
-        private const val APP_GROUP_ID = "group.id.homebase.chat"
+        private const val APP_GROUP_ID = "group.id.homebase.feed"
         private const val CONVERSATION_CACHE_FILE = "share_conversation_cache.json"
         private const val SHARED_CONTENT_FILE = "shared_content.json"
         private const val SHARED_FILES_SUBDIR = "shared_files"
