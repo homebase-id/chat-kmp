@@ -5,7 +5,7 @@ import Foundation
 /// meaning the user is signed in.
 struct ShareAuthChecker {
 
-    private static let appGroupId = "group.id.homebase.chat"
+    private static let appGroupId = "group.id.homebase.feed"
     private static let cacheFile = "share_conversation_cache.json"
 
     static func isAuthenticated() -> Bool {
