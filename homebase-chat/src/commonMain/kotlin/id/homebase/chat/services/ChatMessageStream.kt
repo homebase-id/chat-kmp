@@ -65,6 +65,11 @@ class ChatMessageStream(
     init {
         scope.launch {
             eventBus.events.collect { event ->
+                if (event is BackendEvent.OutboxEvent.OptimisticRollback && event.driveId == chatDrive) {
+                    conversationState.removeMessage(event.uniqueId)
+                    return@collect
+                }
+
                 if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
 
                 when (event) {
@@ -105,7 +110,7 @@ class ChatMessageStream(
         conversationState.set(conversationId, result.records)
     }
 
-    // ---------- EVENT HANDLING ----------
+// ---------- EVENT HANDLING ----------
 
     private suspend fun processIncrementalBatch(files: List<HomebaseFile>) {
         val messages =
