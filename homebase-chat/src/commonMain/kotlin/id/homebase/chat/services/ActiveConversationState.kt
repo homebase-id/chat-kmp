@@ -21,6 +21,12 @@ class ActiveConversationState {
             }
     }
 
+    fun removeMessage(messageId: Uuid) {
+        _messages.value = _messages.value.mapValues { (_, messages) ->
+            messages.filter { it.id != messageId }
+        }
+    }
+
     fun upsert(conversationId: Uuid, incoming: List<MessageUiModel>) {
         if (incoming.isEmpty()) return
 

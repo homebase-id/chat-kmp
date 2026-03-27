@@ -279,6 +279,11 @@ class ChatMessageSenderService(
             return SendMessageResult(uniqueId = messageUniqueId)
         } catch (t: Throwable) {
             Logger.e("ChatMessageSenderService", t)
+            try {
+                optimisticWriter.removeOptimisticFile(chatDrive, messageUniqueId)
+            } catch (_: Exception) {
+                // best-effort rollback
+            }
         }
 
         error("Failed to send chat message")

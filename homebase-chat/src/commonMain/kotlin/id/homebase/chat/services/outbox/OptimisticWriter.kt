@@ -203,6 +203,48 @@ class OptimisticWriter(
         }
     }
 
+    /** Removes an optimistic file from the local DB. Call when the send fails so the
+     *  pending message is not left stranded in the conversation list. */
+    suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid) {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(credentials.getIdentityId())
+
+        val result = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = driveId,
+            noOfItems = 1,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = listOf(uniqueId)
+        )
+
+        val file = result.records.singleOrNull() ?: return
+
+        // Only remove files that are still pending — if the outbox already sent the message
+        // the isPendingSendTag will have been removed, and we must not delete it.
+        val isPending = file.fileMetadata.localAppData?.tags
+            ?.contains(ChatProtocol.isPendingSendTag) == true
+        if (!isPending) return
+
+        try {
+            fileProcessor.deleteEntryDriveMainIndex(
+                identityId = credentials.getIdentityId(),
+                driveId = driveId,
+                fileId = file.fileId
+            )
+            eventBus.emit(
+                BackendEvent.OutboxEvent.OptimisticRollback(
+                    driveId = driveId,
+                    uniqueId = uniqueId,
+                )
+            )
+        } catch (e: Exception) {
+            Logger.e("Optimistic remove failed: ${e.message}")
+        }
+    }
+
     /**
      * Blindly writes all given tags to the file's localAppData, replacing any existing tags.
      * Callers are responsible for merging with or removing from the existing tag list as needed.
