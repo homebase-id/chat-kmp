@@ -37,7 +37,7 @@ import platform.Security.kSecValueData
 actual object ShareAuthBridge {
 
     private const val SERVICE = "id.homebase.share.auth"
-    private const val ACCESS_GROUP = "group.id.homebase.chat"
+    private const val ACCESS_GROUP = "group.id.homebase.feed"
     private const val KEY_AUTH_ACTIVE = "share_auth_active"
     private const val KEY_USER_DOMAIN = "share_user_domain"
 
