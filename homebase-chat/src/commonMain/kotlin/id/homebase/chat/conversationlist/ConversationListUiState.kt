@@ -47,6 +47,8 @@ data class MessageListUiState(
     val userDefaultReactions: ImmutableList<String> = persistentListOf(),
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
     val isLoadingMessages: Boolean = true,
+    val hasMoreMessages: Boolean = false,
+    val isLoadingMoreMessages: Boolean = false,
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,

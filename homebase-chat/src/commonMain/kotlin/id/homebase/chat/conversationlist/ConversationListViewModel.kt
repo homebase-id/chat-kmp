@@ -387,6 +387,24 @@ class ConversationListViewModel(
                 }
             }
 
+            is ConversationListUiAction.LoadMoreMessages -> {
+                val conversationId = action.conversationId
+                if (_messagesUiState.value.isLoadingMoreMessages) return
+                _messagesUiState.update { it.copy(isLoadingMoreMessages = true) }
+                viewModelScope.launch {
+                    try {
+                        chatMessageStream.loadMoreMessages(conversationId)
+                    } finally {
+                        _messagesUiState.update {
+                            it.copy(
+                                isLoadingMoreMessages = false,
+                                hasMoreMessages = chatMessageStream.hasMoreMessages(conversationId)
+                            )
+                        }
+                    }
+                }
+            }
+
             is ConversationListUiAction.EditMessage -> {
                 viewModelScope.launch {
                     try {
@@ -1608,6 +1626,7 @@ class ConversationListViewModel(
                             _messagesUiState.update {
                                 it.copy(
                                     isLoadingMessages = false,
+                                    hasMoreMessages = chatMessageStream.hasMoreMessages(conversationId),
                                     messages = messagesModels.toPersistentList(),
                                     scrollPosition = if (indexOfMessageForScroll == null) {
                                         if (setInitialScroll) getScrollPosition(conversationId) else null

@@ -115,4 +115,6 @@ sealed interface ConversationListUiAction {
         val conversationId: Uuid,
         val imageBytes: ByteArray,
     ) : ConversationListUiAction
+
+    data class LoadMoreMessages(val conversationId: Uuid) : ConversationListUiAction
 }

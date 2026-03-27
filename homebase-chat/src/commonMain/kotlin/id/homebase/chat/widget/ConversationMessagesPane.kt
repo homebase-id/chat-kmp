@@ -125,6 +125,35 @@ fun ConversationMessagesPane(
         }
     }
 
+    // Trigger load-more when user scrolls near the top (older messages)
+    LaunchedEffect(listState, uiState.hasMoreMessages, uiState.isLoadingMoreMessages) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .collect { index ->
+                if (index <= 5 && uiState.hasMoreMessages && !uiState.isLoadingMoreMessages) {
+                    onUiAction(ConversationListUiAction.LoadMoreMessages(conversation.conversation.id))
+                }
+            }
+    }
+
+    // Compensate scroll position after older messages are prepended
+    var prevIsLoadingMore by remember { mutableStateOf(false) }
+    var itemCountAtLoadStart by remember { mutableStateOf(0) }
+    LaunchedEffect(uiState.isLoadingMoreMessages) {
+        if (uiState.isLoadingMoreMessages) {
+            itemCountAtLoadStart = listState.layoutInfo.totalItemsCount
+        } else if (prevIsLoadingMore) {
+            val added = listState.layoutInfo.totalItemsCount - itemCountAtLoadStart
+            if (added > 0) {
+                listState.scrollToItem(
+                    listState.firstVisibleItemIndex + added,
+                    listState.firstVisibleItemScrollOffset
+                )
+            }
+        }
+        prevIsLoadingMore = uiState.isLoadingMoreMessages
+    }
+
     val seen = remember(conversation.conversation.id) { mutableSetOf<Uuid>() }
     val messageIdByKey = remember(uiState.messages) {
         uiState.messages.associateNotNull { item ->

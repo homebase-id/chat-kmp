@@ -61,6 +61,13 @@ class ChatMessageStream(
     private val chatDrive = chatTargetDrive.alias
     private var isSyncing = false
     private val loadedConversations = mutableSetOf<Uuid>()
+    private val conversationCursors = mutableMapOf<Uuid, QueryBatchCursor>()
+    private val conversationHasMore = mutableMapOf<Uuid, Boolean>()
+
+    companion object {
+        const val INITIAL_MESSAGE_LOAD = 50
+        const val SUBSEQUENT_MESSAGE_LOAD = 500
+    }
 
     init {
         scope.launch {
@@ -97,8 +104,24 @@ class ChatMessageStream(
 
     suspend fun loadConversation(conversationId: Uuid) {
         loadedConversations += conversationId
-        val result = fetchMessages(conversationId)
+        val result = fetchMessages(conversationId, limit = INITIAL_MESSAGE_LOAD)
+        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages, hasMore=${result.hasMoreRows}")
+        conversationCursors[conversationId] = result.cursor
+        conversationHasMore[conversationId] = result.hasMoreRows
         conversationState.set(conversationId, result.records)
+    }
+
+    fun hasMoreMessages(conversationId: Uuid): Boolean = conversationHasMore[conversationId] == true
+
+    suspend fun loadMoreMessages(conversationId: Uuid) {
+        if (!hasMoreMessages(conversationId)) return
+        val cursor = conversationCursors[conversationId]
+        Logger.d("ChatMessageStream: loadMoreMessages($conversationId)")
+        val result = fetchMessages(conversationId, limit = SUBSEQUENT_MESSAGE_LOAD, cursor = cursor)
+        Logger.d("ChatMessageStream: loadMoreMessages($conversationId) → ${result.records.size} messages, hasMore=${result.hasMoreRows}")
+        conversationCursors[conversationId] = result.cursor
+        conversationHasMore[conversationId] = result.hasMoreRows
+        conversationState.upsert(conversationId, result.records)
     }
 
     // ---------- EVENT HANDLING ----------
@@ -116,7 +139,9 @@ class ChatMessageStream(
 
     private suspend fun refreshLoadedConversations() {
         loadedConversations.forEach { conversationId ->
-            val result = fetchMessages(conversationId)
+            val result = fetchMessages(conversationId, limit = INITIAL_MESSAGE_LOAD)
+            conversationCursors[conversationId] = result.cursor
+            conversationHasMore[conversationId] = result.hasMoreRows
             conversationState.set(conversationId, result.records)
         }
     }
