@@ -34,7 +34,7 @@ class OutboxSync(
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
     private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    @Volatile private var isOnline = false
+    @kotlin.concurrent.Volatile private var isOnline = false
 
     fun setOnline(online: Boolean) {
         isOnline = online

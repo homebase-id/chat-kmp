@@ -33,7 +33,7 @@ class DriveSyncManager(
     // Writes are serialized via driveSyncsMutex (suspend callers) or atomic reference swap (non-suspend callers).
     private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
     private val driveSyncsMutex = Mutex()
-    @Volatile private var isRunning = false
+    @kotlin.concurrent.Volatile private var isRunning = false
 
     private val _driveStatuses = MutableStateFlow<Map<Uuid, DriveStatus>>(emptyMap())
     val driveStatuses: StateFlow<Map<Uuid, DriveStatus>> = _driveStatuses.asStateFlow()
