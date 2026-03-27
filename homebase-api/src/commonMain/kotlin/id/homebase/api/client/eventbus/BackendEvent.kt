@@ -113,6 +113,13 @@ sealed interface BackendEvent {
             val uniqueId: Uuid
         ) : OutboxEvent  // Only raised by Drive.sync()
 
+        /** Fired when an optimistic write is rolled back because the message never reached
+         *  the outbox (e.g. tryEnqueue failed). Distinct from a deleted file. */
+        data class OptimisticRollback(
+            val driveId: Uuid,
+            val uniqueId: Uuid,
+        ) : OutboxEvent
+
     }
     // Add sealed interface UploadUpdate for Outbox / upload status
     // Add sealed interface VideoUpdate (or WorkUpdate) compression & segmentation & encryption

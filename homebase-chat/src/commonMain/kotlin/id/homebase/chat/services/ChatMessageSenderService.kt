@@ -53,6 +53,7 @@ class ChatMessageSenderService(
         conversationId: Uuid,
         messageText: String,
         payloadDescriptors: List<PayloadDescriptor>?,
+        replyPreview: ReplyPreview? = null,
     ) {
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationStream.getRecipients(conversationId)
@@ -60,7 +61,7 @@ class ChatMessageSenderService(
 
         val messageData = MessageAppData(
             replyId = null,
-            replyPreview = null,
+            replyPreview = replyPreview,
             message = JsonPrimitive(messageText),
             deliveryStatus = ChatDeliveryStatus.Sent.value,
         ).copy(version = ChatProtocol.MessageVersionNumberOne)
@@ -223,17 +224,7 @@ class ChatMessageSenderService(
         )
         try {
 
-            val enqueued = outboxSync.tryEnqueue(
-                request,
-                priority = 1,
-                dependencyUniqueId = previousMessageUniqueId,
-            )
-
-            if (!enqueued) {
-                error("Failed to send chat message")
-            }
-
-            // optimistic write after we know it will be sent
+            // optimistic write first — message appears in UI before any network work
             @OptIn(ExperimentalEncodingApi::class)
             val payloadDescriptors = encryptedBundle.payloads.map { payload ->
                 PayloadDescriptor(
@@ -260,6 +251,16 @@ class ChatMessageSenderService(
                 payloadDescriptors = payloadDescriptors,
             )
 
+            val enqueued = outboxSync.tryEnqueue(
+                request,
+                priority = 1,
+                dependencyUniqueId = previousMessageUniqueId,
+            )
+
+            if (!enqueued) {
+                error("Failed to send chat message")
+            }
+
             // Donate share suggestion so this conversation appears in OS share sheet
             try {
                 val conversation = conversationStream.getConversationById(conversationId)
@@ -278,6 +279,11 @@ class ChatMessageSenderService(
             return SendMessageResult(uniqueId = messageUniqueId)
         } catch (t: Throwable) {
             Logger.e("ChatMessageSenderService", t)
+            try {
+                optimisticWriter.removeOptimisticFile(chatDrive, messageUniqueId)
+            } catch (_: Exception) {
+                // best-effort rollback
+            }
         }
 
         error("Failed to send chat message")
