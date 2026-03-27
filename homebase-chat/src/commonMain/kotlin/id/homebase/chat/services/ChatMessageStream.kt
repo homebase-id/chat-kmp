@@ -64,11 +64,6 @@ class ChatMessageStream(
     private val conversationCursors = mutableMapOf<Uuid, QueryBatchCursor>()
     private val conversationHasMore = mutableMapOf<Uuid, Boolean>()
 
-    companion object {
-        const val INITIAL_MESSAGE_LOAD = 50
-        const val SUBSEQUENT_MESSAGE_LOAD = 500
-    }
-
     init {
         scope.launch {
             eventBus.events.collect { event ->
@@ -357,6 +352,8 @@ class ChatMessageStream(
     }
 
     companion object {
+        const val INITIAL_MESSAGE_LOAD = 50
+        const val SUBSEQUENT_MESSAGE_LOAD = 500
 
         private fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
