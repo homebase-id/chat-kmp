@@ -13,18 +13,9 @@ import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.AppNavHost
 import id.homebase.core.ui.theme.HomebaseTheme
-import org.koin.compose.KoinContext
 import org.koin.compose.koinInject
 
 /** Main application entry point. Sets up Koin DI, theme, and navigation. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun KoinApp(
-    onNavHostReady: suspend (NavController) -> Unit = {},
-) {
-    KoinContext { App(onNavHostReady = onNavHostReady) }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App(

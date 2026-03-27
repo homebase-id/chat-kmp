@@ -10,8 +10,11 @@ import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
-import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.notifications.RichNotificationData
+import id.homebase.core.share.ShareContentProcessor
+import id.homebase.core.share.registerShareHandler
+import id.homebase.core.share.unregisterShareHandler
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,11 +30,13 @@ class AppViewModel(
     private val connectionRequestService: ConnectionRequestService,
     private val credentialsManager: CredentialsManager,
     private val notificationService: NotificationService,
+    private val shareContentProcessor: ShareContentProcessor,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
-    private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 1)
+    private val _navigationEvents =
+        MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 5)
     val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
 
     private var credentialsJob: Job? = null
@@ -39,6 +44,12 @@ class AppViewModel(
 
     init {
         collectNotificationEvents()
+        registerShareHandler { conversationId -> handleShareIntent(conversationId) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        unregisterShareHandler()
     }
 
     fun refreshData() {
@@ -67,12 +78,6 @@ class AppViewModel(
         notificationService.isAppInForeground = false
     }
 
-    /** Update which conversation/screen the user is currently viewing. */
-    fun setActiveConversation(conversationId: String?, isOnChatList: Boolean) {
-        notificationService.activeConversationId = conversationId
-        notificationService.isOnChatListScreen = isOnChatList
-    }
-
     /** Collects notification events from NotificationService and forwards to UI. */
     private fun collectNotificationEvents() {
         viewModelScope.launch {
@@ -95,6 +100,21 @@ class AppViewModel(
     fun onInAppBannerTapped(payloadData: Map<String, String>) {
         dismissInAppBanner()
         notificationService.handleNotificationClicked(payloadData)
+    }
+
+    /**
+     * Called when the app receives a share intent (iOS: via homebase-share:// URL scheme).
+     * Navigates to the target conversation. The conversation screen picks up
+     * pending shared content from [ShareContentProcessor].
+     */
+    fun handleShareIntent(conversationId: String) {
+        Logger.i(tag = "AppViewModel") { "Handling share intent for conversation: $conversationId" }
+        val pending = shareContentProcessor.readPendingContent()
+        if (pending != null) {
+            _navigationEvents.tryEmit(NotificationNavigationEvent.OpenConversation(conversationId))
+        } else {
+            Logger.w(tag = "AppViewModel") { "No pending shared content found for conversation: $conversationId" }
+        }
     }
 
     private fun listenForConnectionRequests() {

@@ -19,8 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.VideoMetadata
+import id.homebase.api.video.VideoContent
+import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPreloader
+import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -30,6 +32,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import co.touchlab.kermit.Logger
+import kotlin.time.measureTimedValue
 import org.koin.compose.koinInject
 import platform.AVFoundation.AVAssetResourceLoader
 import platform.AVFoundation.AVAssetResourceLoadingRequest
@@ -67,8 +71,10 @@ private sealed interface VpsState {
 actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
+    onProgress: (Float) -> Unit,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val videoPreloader = koinInject<VideoPreloader>()
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<NSURL?>(null) }
@@ -81,63 +87,55 @@ actual fun VideoPlayerSurface(
     }
 
     LaunchedEffect(data) {
+        onProgress(0f)
         withContext(Dispatchers.Main) {
             try {
-                val metadata = data.payload.descriptorContent?.let {
-                    OdinSystemSerializer.deserialize<VideoMetadata>(it)
-                } ?: run {
-                    state = VpsState.Error("Missing video metadata")
-                    return@withContext
-                }
-
-                val hlsPlaylist = metadata.hlsPlaylist
-                if (metadata.isSegmented && hlsPlaylist != null) {
-                    val strippedPlaylist = hlsPlaylist.lines()
-                        .filter { !it.startsWith("#EXT-X-KEY") }
-                        .joinToString("\n")
-
-                    val delegate = HomebaseResourceLoaderDelegate(
-                        strippedPlaylist = strippedPlaylist,
-                        totalFileSize = metadata.fileSize,
-                        driveFileProvider = driveFileProvider,
-                        driveId = data.driveId,
-                        fileId = data.fileId,
-                        payloadKey = data.payloadKey,
-                        keyHeader = data.keyHeader,
-                        scope = scope,
-                    )
-
-                    withContext(Dispatchers.Main) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
+                    is VideoContent.Hls -> {
+                        onProgress(0.5f)
+                        val delegate = HomebaseResourceLoaderDelegate(
+                            strippedPlaylist = content.strippedPlaylist,
+                            totalFileSize = content.metadata.fileSize,
+                            driveFileProvider = driveFileProvider,
+                            driveId = data.driveId,
+                            fileId = data.fileId,
+                            payloadKey = data.payloadKey,
+                            keyHeader = data.keyHeader,
+                            scope = scope,
+                        )
                         val assetUrl = NSURL.URLWithString("homebase://video/index.m3u8")!!
                         val asset = AVURLAsset(uRL = assetUrl, options = null)
                         val loaderQueue = dispatch_queue_create("id.homebase.video.loader", null)
                         asset.resourceLoader.setDelegate(delegate, queue = loaderQueue)
                         val player = AVPlayer(playerItem = AVPlayerItem(asset = asset))
+                        onProgress(0.8f)
                         state = VpsState.Playing(player = player, delegate = delegate)
+                        onProgress(1f)
                     }
-                } else {
-                    // MP4: small file, full download is acceptable
-                    val bytesResponse = driveFileProvider.getPayloadBytesDecrypted(
-                        driveId = data.driveId,
-                        fileId = data.fileId,
-                        key = data.payloadKey,
-                        keyHeader = data.keyHeader,
-                    ) ?: run {
-                        state = VpsState.Error("Failed to download video")
-                        return@withContext
-                    }
-                    val dir = NSURL.fileURLWithPath(NSTemporaryDirectory())
-                        .URLByAppendingPathComponent("hbvid_${NSUUID().UUIDString()}")!!
-                    NSFileManager.defaultManager.createDirectoryAtURL(dir, true, null, null)
-                    tempDir = dir
-                    val mp4Url = dir.URLByAppendingPathComponent("video.mp4")!!
-                    bytesResponse.bytes.toNSData().writeToURL(mp4Url, atomically = true)
-
-                    withContext(Dispatchers.Main) {
+                    is VideoContent.Mp4 -> {
+                        onProgress(0.5f)
+                        val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
+                        val mp4Url = if (preloadedPath != null) {
+                            Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
+                            NSURL.fileURLWithPath(preloadedPath)
+                        } else {
+                            val dir = NSURL.fileURLWithPath(NSTemporaryDirectory())
+                                .URLByAppendingPathComponent("hbvid_${NSUUID().UUIDString()}")!!
+                            NSFileManager.defaultManager.createDirectoryAtURL(dir, true, null, null)
+                            tempDir = dir
+                            val url = dir.URLByAppendingPathComponent("video.mp4")!!
+                            val (_, writeElapsed) = measureTimedValue {
+                                content.bytes.toNSData().writeToURL(url, atomically = true)
+                            }
+                            Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
+                            url
+                        }
+                        onProgress(0.8f)
                         state = VpsState.Playing(
                             player = AVPlayer(uRL = mp4Url),
                             delegate = HomebaseResourceLoaderDelegate.empty(),
                         )
+                        onProgress(1f)
                     }
                 }
             } catch (e: Exception) {

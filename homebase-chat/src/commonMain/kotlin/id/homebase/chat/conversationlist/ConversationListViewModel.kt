@@ -2,10 +2,8 @@ package id.homebase.chat.conversationlist
 
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.snapshotFlow
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.KeyHeader
@@ -18,6 +16,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageUtils
+import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.api.video.FFmpegUtils
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DeleteMessage
@@ -33,7 +32,6 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
-import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
@@ -50,15 +48,16 @@ import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.core.clipboard.platformFileFromPath
-import id.homebase.core.avatars.ConnectionStatus
 import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.avatars.ConnectionStatus
+import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
-import id.homebase.core.ui.navigation.Route
+import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.buildConnectToIdentityUrl
@@ -102,7 +101,6 @@ import kotlin.uuid.Uuid
 
 @OptIn(FlowPreview::class)
 class ConversationListViewModel(
-    savedStateHandle: SavedStateHandle,
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val chatMessageSenderService: ChatMessageSenderService,
@@ -117,17 +115,18 @@ class ConversationListViewModel(
     private val eventBus: EventBus,
     private val contactService: ContactService,
     private val driveFileHttpProvider: DriveFileHttpProvider,
+    private val shareContentProcessor: ShareContentProcessor,
 ) : ViewModel() {
 
     private val enricher = ConversationEnricher()
     val ownerSession = ownerSessionRepository.user
 
-    val chatListRoute = savedStateHandle.toRoute<Route.ChatList>()
-
     private val _uiState = MutableStateFlow(ConversationListUiState())
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
-    private val _messagesUiState = MutableStateFlow(MessageListUiState())
+    private val _messagesUiState = MutableStateFlow(MessageListUiState(
+        userDefaultReactions = userPreferences.preferredUserReactions.toPersistentList()
+    ))
     val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
 
     val conversationSearchTextState = TextFieldState()
@@ -177,11 +176,6 @@ class ConversationListViewModel(
         viewModelScope.launch {
             // TODO - restore any draft message stored for conversation here
             messageInputTextState.setMarkdown("")
-        }
-
-        // Load initial message if conversation is set
-        viewModelScope.launch {
-            chatListRoute.conversationId?.let { loadMessagesForConversation(Uuid.parse(it), null) }
         }
 
         // Listen for search query changes
@@ -288,6 +282,16 @@ class ConversationListViewModel(
         }
     }
 
+    fun selectConversation(conversationId: Uuid, messageId: Uuid? = null) {
+        // Check for pending shared content (from iOS share extension or other handoff)
+        viewModelScope.launch {
+            processPendingSharedContent(conversationId)
+        }
+
+        ActiveConversation.selectConversation(conversationId)
+        loadMessagesForConversation(conversationId, messageId)
+    }
+
     fun eventConsumed() {
         _uiState.update { it.copy(uiEvent = null) }
     }
@@ -299,6 +303,7 @@ class ConversationListViewModel(
     fun onAction(action: ConversationListUiAction) {
         when (action) {
             is ConversationListUiAction.ConversationClicked -> {
+                ActiveConversation.selectConversation(action.conversationId)
                 loadMessagesForConversation(action.conversationId, action.messageId)
             }
 
@@ -321,8 +326,10 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ClearSelection -> {
-                // Clear the selected conversation when user navigates back to list
+                ActiveConversation.selectConversation(null)
+                currentConversationJob?.cancel()
                 _uiState.update { it.copy(selectedConversationId = null) }
+                _messagesUiState.update { it.copy(messages = persistentListOf(), isLoadingMessages = false) }
             }
 
             is ConversationListUiAction.FilterByUnreadClicked -> {
@@ -747,6 +754,14 @@ class ConversationListViewModel(
             is ConversationListUiAction.ToggleReaction -> {
                 viewModelScope.launch {
                     try {
+                        val newTopReactions = _messagesUiState.value.userDefaultReactions.toMutableList()
+                        newTopReactions.remove(action.reaction)
+                        newTopReactions.add(0, action.reaction)
+                        _messagesUiState.update {
+                            it.copy(userDefaultReactions = newTopReactions.toPersistentList())
+                        }
+                        userPreferences.preferredUserReactions = newTopReactions
+
                         chatMessageActionService.toggleReaction(
                             action.conversationId,
                             action.messageId,
@@ -1529,6 +1544,7 @@ class ConversationListViewModel(
     private fun loadMessagesForConversation(conversationId: Uuid, messageIdForScroll: Uuid?) {
         _messagesUiState.update { it.copy(scrollPosition = null, isLoadingMessages = true) }
 
+
         // When loading message for newly selected conversation, cancel any previous job to
         // avoid observing multiple messageStreams
         currentConversationJob?.cancel()
@@ -1880,6 +1896,65 @@ class ConversationListViewModel(
                     )
                 )
             }
+        }
+    }
+
+    /**
+     * Checks for pending shared content (from iOS share extension handoff)
+     * and sends it to the given conversation automatically.
+     */
+    private suspend fun processPendingSharedContent(conversationId: Uuid) {
+        val descriptor = shareContentProcessor.readPendingContent() ?: return
+        // Only process if the target conversation matches
+        if (descriptor.targetConversationId != conversationId.toString()) return
+
+        Logger.i(tag = "ConversationListViewModel") {
+            "Processing shared content: type=${descriptor.contentType}, files=${descriptor.fileNames.size}"
+        }
+
+        try {
+            val text = descriptor.text ?: descriptor.url ?: ""
+
+            if (descriptor.fileNames.isEmpty()) {
+                // Text/URL only
+                addMessage(conversationId, text)
+            } else {
+                // Build AttachmentInput list from shared files
+                val attachments = descriptor.fileNames.zip(descriptor.mimeTypes).map { (name, mime) ->
+                    val filePath = shareContentProcessor.resolveFilePath(name)
+                    AttachmentInput(
+                        filePath = filePath,
+                        contentType = mime,
+                        displayName = name,
+                    )
+                }
+
+                val newMessageId = Uuid.random()
+                pendingMessageId = newMessageId
+
+                val bundle = MessageAttachmentBuilder.build(
+                    attachments = attachments,
+                    fileOperationsProvider = fileOperationsProvider,
+                    payloadKeyFactory = { index, _ ->
+                        "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+                    }
+                )
+
+                chatMessageSenderService.sendNewMessage(
+                    messageUniqueId = newMessageId,
+                    conversationId = conversationId,
+                    messageText = text,
+                    previousMessageUniqueId = null,
+                    payloadBundle = bundle,
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(tag = "ConversationListViewModel") { "Failed to send shared content: ${e.message}" }
+            sendEvent(ShowErrorMessage("Failed to send shared content: ${e.message}"))
+        } finally {
+            shareContentProcessor.cleanup()
         }
     }
 }

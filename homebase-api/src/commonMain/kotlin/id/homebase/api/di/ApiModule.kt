@@ -24,6 +24,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.video.VideoPayloadProcessor
+import id.homebase.api.video.VideoPreloader
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -42,6 +43,7 @@ val apiModule = module {
     // this creates the HttpClient
     single { HttpClientProvider.create() }
     singleOf(::VideoPayloadProcessor)
+    singleOf(::VideoPreloader)
     singleOf(::CredentialsManager)
     singleOf(::OwnerSessionRepository)
     singleOf(::DriveSyncManager)

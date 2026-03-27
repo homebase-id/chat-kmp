@@ -40,9 +40,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.delay
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.VideoMetadata
+import id.homebase.api.video.VideoContent
+import kotlin.time.measureTimedValue
+import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPreloader
+import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -72,8 +76,10 @@ private sealed interface VpsState {
 actual fun VideoPlayerSurface(
     data: FullScreenOverlay.VideoPlayerData,
     modifier: Modifier,
+    onProgress: (Float) -> Unit,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val videoPreloader = koinInject<VideoPreloader>()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
     var httpServer by remember(data) { mutableStateOf<HttpServer?>(null) }
@@ -86,30 +92,20 @@ actual fun VideoPlayerSurface(
     }
 
     LaunchedEffect(data) {
+        onProgress(0f)
         withContext(Dispatchers.IO) {
             try {
-                val metadata = data.payload.descriptorContent?.let {
-                    OdinSystemSerializer.deserialize<VideoMetadata>(it)
-                } ?: run {
-                    state = VpsState.Error("Missing video metadata")
-                    return@withContext
-                }
-
                 val dir = File(System.getProperty("java.io.tmpdir"), "hbvid_${UUID.randomUUID()}")
                     .also { it.mkdirs() }
                 tempDir = dir
 
-                val hlsPlaylist = metadata.hlsPlaylist
-                if (metadata.isSegmented && hlsPlaylist != null) {
-                    // Write only the playlist — segments are fetched on demand by the proxy.
-                    // Strip #EXT-X-KEY: data from getPayloadBytesDecrypted is already decrypted.
-                    val strippedPlaylist = hlsPlaylist.lines()
-                        .filter { !it.startsWith("#EXT-X-KEY") }
-                        .joinToString("\n")
-                    File(dir, "index.m3u8").writeText(strippedPlaylist)
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
+                    is VideoContent.Hls -> {
+                        onProgress(0.5f)
+                        File(dir, "index.m3u8").writeText(content.strippedPlaylist)
 
-                    val totalSize = metadata.fileSize
-                    val server = HttpServer.create(InetSocketAddress(0), 0).apply {
+                        val totalSize = content.metadata.fileSize
+                        val server = HttpServer.create(InetSocketAddress(0), 0).apply {
                         createContext("/") { exchange ->
                             val name = exchange.requestURI.path.trimStart('/')
                             if (name.endsWith(".m3u8")) {
@@ -157,20 +153,26 @@ actual fun VideoPlayerSurface(
                         executor = Executors.newFixedThreadPool(4)
                         start()
                     }
-                    httpServer = server
-                    state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
-                } else {
-                    val bytesResponse = driveFileProvider.getPayloadBytesDecrypted(
-                        driveId = data.driveId,
-                        fileId = data.fileId,
-                        key = data.payloadKey,
-                        keyHeader = data.keyHeader,
-                    ) ?: run {
-                        state = VpsState.Error("Failed to download video")
-                        return@withContext
+                        httpServer = server
+                        onProgress(0.8f)
+                        state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                     }
-                    File(dir, "video.mp4").writeBytes(bytesResponse.bytes)
-                    state = VpsState.Playing(File(dir, "video.mp4").absolutePath)
+                    is VideoContent.Mp4 -> {
+                        onProgress(0.5f)
+                        val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
+                        val mp4Path = if (preloadedPath != null) {
+                            Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
+                            preloadedPath
+                        } else {
+                            val (mp4File, writeElapsed) = measureTimedValue {
+                                File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
+                            }
+                            Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
+                            mp4File.absolutePath
+                        }
+                        onProgress(0.8f)
+                        state = VpsState.Playing(mp4Path)
+                    }
                 }
             } catch (e: Exception) {
                 state = VpsState.Error(e.message ?: "Playback error")
@@ -182,7 +184,11 @@ actual fun VideoPlayerSurface(
         when (val s = state) {
             VpsState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             is VpsState.Error -> Text(text = s.message, modifier = Modifier.align(Alignment.Center))
-            is VpsState.Playing -> VlcjPlayer(videoPath = s.videoPath, modifier = Modifier.fillMaxSize())
+            is VpsState.Playing -> VlcjPlayer(
+                videoPath = s.videoPath,
+                modifier = Modifier.fillMaxSize(),
+                onFirstFrameRendered = { onProgress(1f) },
+            )
         }
     }
 }

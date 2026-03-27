@@ -44,7 +44,7 @@ fun MainViewController(): UIViewController {
         // DatabaseManager.wipe { DatabaseDriverFactory().createDriver(dbKey) }
         DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
     }
-    val controller = ComposeUIViewController { KoinApp() }
+    val controller = ComposeUIViewController { App() }
     MainViewControllerRef.instance = controller
     return controller
 }

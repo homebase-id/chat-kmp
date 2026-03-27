@@ -44,6 +44,7 @@ data class ConversationListUiState(
 data class MessageListUiState(
     val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
     val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
+    val userDefaultReactions: ImmutableList<String> = persistentListOf(),
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
     val isLoadingMessages: Boolean = true,
     val scrollPosition: ScrollPosition? = null,

@@ -2,6 +2,7 @@ package id.homebase.core.di
 
 import coil3.ImageLoader
 import coil3.memory.MemoryCache
+import coil3.video.VideoFrameDecoder
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.audio.AndroidAudioPlayer
@@ -13,8 +14,10 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.gallery.AndroidGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
+import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.settings.createSettings
+import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.util.AndroidPlatformInfo
 import id.homebase.core.util.PlatformInfo
 import org.koin.android.ext.koin.androidContext
@@ -23,6 +26,7 @@ import org.koin.dsl.module
 
 actual fun platformModule(): Module = module {
     single<FileOperationsProvider> { AndroidFileOperationsProvider(androidContext()) }
+    single { ShareCacheStorage(androidContext()) }
     single { createSettings(androidContext()) }
     single<PlatformGalleryManager> { AndroidGalleryManager(androidContext()) }
     single<PlatformInfo> { AndroidPlatformInfo(androidContext()) }
@@ -32,8 +36,10 @@ actual fun platformModule(): Module = module {
     single {
         ImageLoader.Builder(androidContext())
                 .components {
-                    add(HomebaseImageFetcher.Factory(get()))
+                    add(HomebaseImageKeyer())
+                    add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
+                    add(VideoFrameDecoder.Factory())
                 }
             .memoryCache {
                 MemoryCache.Builder()

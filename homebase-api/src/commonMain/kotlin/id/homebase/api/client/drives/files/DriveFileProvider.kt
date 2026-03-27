@@ -112,10 +112,11 @@ public class DriveFileProvider(
         key: String,
         keyHeader: KeyHeader,
         chunkStart: Long? = null,
-        chunkLength: Long? = null
+        chunkLength: Long? = null,
+        onDownloadProgress: ((Float) -> Unit)? = null,
     ): BytesResponse? {
         return driveCache.getPayloadBytesDecrypted(
-            driveId, fileId, key, keyHeader, chunkStart, chunkLength
+            driveId, fileId, key, keyHeader, chunkStart, chunkLength, onDownloadProgress
         )
     }
 

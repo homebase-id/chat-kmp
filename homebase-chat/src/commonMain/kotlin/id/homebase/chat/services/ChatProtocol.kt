@@ -43,7 +43,7 @@ object ChatProtocol {
     const val PAYLOAD_KEY_LINKS = "chat_links"
 
     const val DefaultPayloadKey = "dflt_key"
-    const val MaxPayloadDescriptorBytes = 1024
+    const val MaxDescriptorContentLength = 1024
     const val MaxHeaderContentBytes = 7000
 
     /**

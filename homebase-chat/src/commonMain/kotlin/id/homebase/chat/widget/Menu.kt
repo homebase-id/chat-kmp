@@ -1,10 +1,16 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,9 +35,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
+import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageForward
 import id.homebase.core.ui.theme.Dimens
@@ -60,6 +70,7 @@ import id.homebase.resources.delete
 import id.homebase.resources.save
 import id.homebase.resources.settings
 import id.homebase.resources.share
+import kotlinx.collections.immutable.ImmutableList
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -144,6 +155,8 @@ fun ConversationMenu(
 @Composable
 fun ReceivedMessagePopup(
     mode: MessagePopupMode,
+    message: MessageUiModel,
+    userDefaultReactions: ImmutableList<String>,
     dismissMenu: () -> Unit,
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
@@ -153,25 +166,37 @@ fun ReceivedMessagePopup(
     onCopy: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Popup(
+    PopupWithScrim(
         onDismissRequest = dismissMenu
     ) {
-        Column {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.Start
+        ) {
             if (mode == MessagePopupMode.Reaction || mode == MessagePopupMode.All) {
                 ReactionMenu(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    userDefaultReactions = userDefaultReactions,
                     onSelect = onSelectEmoji,
                     onShowAllEmojis = onShowAllEmojis,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            if (mode == MessagePopupMode.All) {
+                ReceivedMessageBubbleDisplayOnly(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    message = message,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
             if (mode == MessagePopupMode.Menu || mode == MessagePopupMode.All) {
                 Surface(
                     modifier = Modifier
+                        .padding(horizontal = 16.dp)
                         .wrapContentWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shadowElevation = 4.dp,
-                    tonalElevation = 2.dp
+                    tonalElevation = 4.dp
                 ) {
                     Column(
                         modifier = Modifier.width(IntrinsicSize.Max)
@@ -216,6 +241,8 @@ fun ReceivedMessagePopup(
 @Composable
 fun SentMessagePopup(
     mode: MessagePopupMode,
+    message: MessageUiModel,
+    userDefaultReactions: ImmutableList<String>,
     dismissMenu: () -> Unit,
     onSelectEmoji: (String) -> Unit,
     onShowAllEmojis: () -> Unit,
@@ -227,25 +254,38 @@ fun SentMessagePopup(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Popup(
+    PopupWithScrim(
         onDismissRequest = dismissMenu
     ) {
-        Column {
+        // Popup content
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.End
+        ) {
             if (mode == MessagePopupMode.Reaction || mode == MessagePopupMode.All) {
                 ReactionMenu(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    userDefaultReactions = userDefaultReactions,
                     onSelect = onSelectEmoji,
                     onShowAllEmojis = onShowAllEmojis,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            if (mode == MessagePopupMode.All) {
+                SentMessageBubbleDisplayOnly(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    message = message,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
             if (mode == MessagePopupMode.Menu || mode == MessagePopupMode.All) {
                 Surface(
                     modifier = Modifier
+                        .padding(horizontal = 16.dp)
                         .wrapContentWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shadowElevation = 4.dp,
-                    tonalElevation = 2.dp
+                    tonalElevation = 4.dp
                 ) {
                     Column(
                         modifier = Modifier.width(IntrinsicSize.Max)
@@ -430,6 +470,34 @@ fun ConversationItemMenuPopup(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun PopupWithScrim(
+    onDismissRequest: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Popup(
+        onDismissRequest = onDismissRequest
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            // Scrim/Dimmed background
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .clickable(
+                        onClick = onDismissRequest,
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    )
+            )
+            content()
         }
     }
 }

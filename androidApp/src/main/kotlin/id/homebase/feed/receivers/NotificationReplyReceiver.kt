@@ -47,11 +47,12 @@ class NotificationReplyReceiver : BroadcastReceiver(), KoinComponent {
             try {
                 val convoUuid = Uuid.parse(conversationId)
                 val messageUuid = Uuid.random()
-                chatMessageSenderService.writePlaceholderMessage(
+                chatMessageSenderService.sendNewMessage(
                     messageUniqueId = messageUuid,
                     conversationId = convoUuid,
                     messageText = replyText,
-                    payloadDescriptors = null,
+                    previousMessageUniqueId = null,
+                    payloadBundle = null,
                 )
 
                 // Dismiss the notification after successful reply

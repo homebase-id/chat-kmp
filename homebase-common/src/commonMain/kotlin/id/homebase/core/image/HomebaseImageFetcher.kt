@@ -7,9 +7,7 @@ import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
-import io.github.vinceglb.filekit.extension
-import io.github.vinceglb.filekit.mimeType
-import io.github.vinceglb.filekit.readBytes
+import id.homebase.api.file.FileOperationsProvider
 import okio.Buffer
 
 /**
@@ -23,13 +21,14 @@ import okio.Buffer
 class HomebaseImageFetcher(
     private val data: HomebaseImageData,
     private val options: Options,
-    private val homebaseImageLoader: HomebaseImageLoader
+    private val homebaseImageLoader: HomebaseImageLoader,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult? {
         // Handle pending files
         if (data.isPending) {
-            val result = loadPendingFileInternal(data)
+            val result = fileOperationsProvider.loadPendingFile(data)
             return result?.toFetchResult()
         }
 
@@ -60,26 +59,14 @@ class HomebaseImageFetcher(
         )
     }
 
-    /** Load pending/local file from filesystem */
-    private suspend fun loadPendingFileInternal(data: HomebaseImageData): CachedImage? {
-        val file = data.pendingFile ?: return null
-        return try {
-            val bytes = file.readBytes()
-            val contentType = file.mimeType()?.toString() ?: file.extension
-            CachedImage(bytes, contentType, null)
-        } catch (e: Exception) {
-            null
-        }
-    }
-
     /** Factory for creating HomebaseImageFetcher instances */
-    class Factory(private val homebaseImageLoader: HomebaseImageLoader) :
+    class Factory(private val homebaseImageLoader: HomebaseImageLoader, private val fileOperationsProvider: FileOperationsProvider) :
         Fetcher.Factory<HomebaseImageData> {
 
         override fun create(
             data: HomebaseImageData,
             options: Options,
             imageLoader: ImageLoader
-        ): Fetcher = HomebaseImageFetcher(data, options, this.homebaseImageLoader)
+        ): Fetcher = HomebaseImageFetcher(data, options, homebaseImageLoader, fileOperationsProvider)
     }
 }
