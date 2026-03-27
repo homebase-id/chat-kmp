@@ -14,6 +14,9 @@ import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ReactionEntry
+import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -243,6 +246,179 @@ class OptimisticWriter(
         } catch (e: Exception) {
             Logger.e("Optimistic remove failed: ${e.message}")
         }
+    }
+
+    /** Marks a file as deleted in the local DB and emits BatchReceived so the UI
+     *  immediately shows it as "Deleted File" without waiting for the outbox.
+     *  Returns the original file so the caller can rollback if the outbox enqueue fails. */
+    suspend fun writeDelete(driveId: Uuid, uniqueId: Uuid): HomebaseFile? {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(credentials.getIdentityId())
+
+        val result = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = driveId,
+            noOfItems = 1,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = listOf(uniqueId)
+        )
+
+        val existingFile = result.records.singleOrNull() ?: return null
+
+        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+
+        val deletedFile = existingFile.copy(
+            fileState = FileState.Deleted,
+            fileMetadata = existingFile.fileMetadata.copy(
+                updated = lastModified,
+                payloads = emptyList(),
+                appData = existingFile.fileMetadata.appData.copy(
+                    content = "",
+                    previewThumbnail = null,
+                )
+            )
+        )
+
+        try {
+            val batch = listOf(deletedFile)
+            fileProcessor.baseUpsertEntryZapZap(
+                identityId = credentials.getIdentityId(),
+                driveId = driveId,
+                fileHeaders = batch,
+                cursor = null
+            )
+
+            eventBus.emit(
+                BackendEvent.DriveEvent.BatchReceived(
+                    driveId = driveId,
+                    totalCount = batch.size,
+                    batchCount = batch.size,
+                    latestModified = lastModified,
+                    batchData = batch,
+                    source = BackendEvent.SyncSource.WebSocket
+                )
+            )
+        } catch (e: Exception) {
+            Logger.e("Optimistic delete failed: ${e.message}")
+            return null
+        }
+
+        return existingFile
+    }
+
+    /** Restores a file that was optimistically deleted. Call when the outbox enqueue fails. */
+    suspend fun rollbackWrite(driveId: Uuid, original: HomebaseFile) {
+        val credentials = credentialsManager.requireActiveCredentials()
+        try {
+            val batch = listOf(original)
+            fileProcessor.baseUpsertEntryZapZap(
+                identityId = credentials.getIdentityId(),
+                driveId = driveId,
+                fileHeaders = batch,
+                cursor = null
+            )
+
+            eventBus.emit(
+                BackendEvent.DriveEvent.BatchReceived(
+                    driveId = driveId,
+                    totalCount = batch.size,
+                    batchCount = batch.size,
+                    latestModified = original.fileMetadata.updated,
+                    batchData = batch,
+                    source = BackendEvent.SyncSource.WebSocket
+                )
+            )
+        } catch (e: Exception) {
+            Logger.e("Optimistic delete rollback failed: ${e.message}")
+        }
+    }
+
+    /** Optimistically updates the reactionPreview on a message and emits BatchReceived.
+     *  Returns the original file for rollback, and the optimistic result type. */
+    suspend fun writeReactionToggle(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        reactionJson: String,
+    ): Pair<ToggleReactionResultType, HomebaseFile?> {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(credentials.getIdentityId())
+
+        val result = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = driveId,
+            noOfItems = 1,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = listOf(uniqueId)
+        )
+
+        val existingFile = result.records.singleOrNull()
+            ?: return Pair(ToggleReactionResultType.None, null)
+
+        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val currentReactions =
+            existingFile.fileMetadata.reactionPreview?.reactions.orEmpty().toMutableMap()
+        val existing = currentReactions[reactionJson]
+        val isAdding = existing == null || existing.count == 0
+
+        val updatedReactions = if (isAdding) {
+            currentReactions[reactionJson] = ReactionEntry(
+                key = reactionJson,
+                count = (existing?.count ?: 0) + 1,
+                reactionContent = reactionJson
+            )
+            currentReactions
+        } else {
+            val newCount = existing!!.count - 1
+            if (newCount <= 0) currentReactions.remove(reactionJson)
+            else currentReactions[reactionJson] = existing.copy(count = newCount)
+            currentReactions
+        }
+
+        val updatedFile = existingFile.copy(
+            fileMetadata = existingFile.fileMetadata.copy(
+                updated = lastModified,
+                reactionPreview = (existingFile.fileMetadata.reactionPreview
+                    ?: ReactionSummary()).copy(
+                    reactions = updatedReactions
+                )
+            )
+        )
+
+        try {
+            val batch = listOf(updatedFile)
+            fileProcessor.baseUpsertEntryZapZap(
+                identityId = credentials.getIdentityId(),
+                driveId = driveId,
+                fileHeaders = batch,
+                cursor = null
+            )
+
+            eventBus.emit(
+                BackendEvent.DriveEvent.BatchReceived(
+                    driveId = driveId,
+                    totalCount = batch.size,
+                    batchCount = batch.size,
+                    latestModified = lastModified,
+                    batchData = batch,
+                    source = BackendEvent.SyncSource.DriveSync
+                )
+            )
+        } catch (e: Exception) {
+            Logger.e("Optimistic reaction toggle failed: ${e.message}")
+            return Pair(ToggleReactionResultType.None, null)
+        }
+
+        val resultType = if (isAdding)
+            ToggleReactionResultType.Added
+        else
+            ToggleReactionResultType.Deleted
+        return Pair(resultType, existingFile)
     }
 
     /**
