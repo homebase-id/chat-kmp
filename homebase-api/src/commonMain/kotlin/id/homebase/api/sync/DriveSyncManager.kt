@@ -33,6 +33,7 @@ class DriveSyncManager(
     // Writes are serialized via driveSyncsMutex (suspend callers) or atomic reference swap (non-suspend callers).
     private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
     private val driveSyncsMutex = Mutex()
+    @Volatile private var isRunning = false
 
     private val _driveStatuses = MutableStateFlow<Map<Uuid, DriveStatus>>(emptyMap())
     val driveStatuses: StateFlow<Map<Uuid, DriveStatus>> = _driveStatuses.asStateFlow()
@@ -128,9 +129,11 @@ class DriveSyncManager(
                 )
             }
         }
+        isRunning = true
     }
 
     suspend fun syncAll() {
+        if (!isRunning) { Logger.w { "syncAll() skipped — not running" }; return }
         val snapshot = driveSyncsMutex.withLock { driveSyncs.values.toList() }
         val jobs = snapshot.mapNotNull { it.sync() }
         jobs.joinAll()
@@ -147,15 +150,18 @@ class DriveSyncManager(
     }
 
     fun syncDrive(driveId: Uuid) {
+        if (!isRunning) { Logger.w { "syncDrive() skipped — not running" }; return }
         val d = driveSyncs[driveId] ?: throw Exception("syncDrive() invalid driveId: $driveId")
         d.sync()
     }
 
     fun pause() {
+        isRunning = false
         driveSyncs.values.forEach { it.cancel() }
     }
 
     fun stop() {
+        isRunning = false
         val old = driveSyncs
         driveSyncs = emptyMap()
         old.values.forEach { it.cancel() }
