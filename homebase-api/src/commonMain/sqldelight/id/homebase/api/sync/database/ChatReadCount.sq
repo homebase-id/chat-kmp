@@ -73,7 +73,7 @@ upsertLastReadTime:
 INSERT INTO ChatReadCount(groupId, lastReadTime)
 VALUES (?,?)
 ON CONFLICT(groupId) DO UPDATE
-SET lastReadTime = excluded.lastReadTime;
+SET lastReadTime = MAX(excluded.lastReadTime, lastReadTime);
 
 -- Delete a conversation
 deleteByGroupId:
