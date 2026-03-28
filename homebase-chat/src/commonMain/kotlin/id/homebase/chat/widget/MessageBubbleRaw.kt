@@ -351,7 +351,7 @@ fun MessageBubbleRaw(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = contentColor.copy(alpha = 0.7f)
                             )
-                            if (sentByYou) {
+                            if (sentByYou && !message.isDeleted) {
                                 Spacer(modifier = Modifier.width(4.dp))
                                 DeliveryStatus(isPendingSend = isPendingSend, deliveryStatus = message.messageAppData.deliveryStatus)
                             }

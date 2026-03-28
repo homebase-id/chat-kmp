@@ -4,10 +4,9 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -38,10 +39,6 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloader
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
-import org.koin.compose.koinInject
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
@@ -52,6 +49,9 @@ import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
@@ -220,9 +220,14 @@ fun MediaItem(
                     )
                 }
                 val isHls = remember(payload.descriptorContent) {
-                    payload.descriptorContent?.let {
-                        OdinSystemSerializer.deserialize<VideoMetadata>(it).isSegmented
-                    } ?: false
+                    try {
+                        payload.descriptorContent?.let {
+                            OdinSystemSerializer.deserialize<VideoMetadata>(it).isSegmented
+                        } ?: false
+                    } catch (e: Exception) {
+                        Logger.e { "Error parsing video metadata: ${e.message}" }
+                        false
+                    }
                 }
                 var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
                 var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
