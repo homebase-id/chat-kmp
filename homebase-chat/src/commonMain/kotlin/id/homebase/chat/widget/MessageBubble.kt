@@ -629,50 +629,59 @@ fun InlineReplyPreview(
     Row(
         modifier = Modifier
             .height(IntrinsicSize.Min)
-            .padding(horizontal = 4.dp, vertical = 3.dp)
+            .padding(horizontal = 6.dp, vertical = 5.dp)
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 15.dp, bottomEnd = 4.dp, bottomStart = 4.dp))
             .background(backgroundColor)
             .clickable { onClick() },
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         // Vertical accent bar
-        Box(
-            modifier = Modifier
-                .width(3.dp)
-                .fillMaxHeight()
-                .background(color = Color.White, shape = RoundedCornerShape(2.dp))
-        )
-        Column(modifier = Modifier.weight(1f, fill = false).padding(horizontal = 8.dp, vertical = 10.dp)) {
-            Text(
-                text = replyPreview.authorOdinId,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = contentColor,
-                maxLines = 1
+        Row {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(color = Color.White, shape = RoundedCornerShape(2.dp))
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = contentColor,
-                maxLines = 2
-            )
+            Column(
+                modifier = Modifier.weight(1f, fill = false)
+                    .padding(horizontal = 8.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = replyPreview.authorOdinId,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = contentColor,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = contentColor,
+                    maxLines = 2
+                )
+            }
         }
         // Thumbnail image if available
         thumbnailBitmap?.let { bitmap ->
-            Spacer(modifier = Modifier.width(8.dp))
-            Image(
-                bitmap = bitmap,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(4.dp)),
-                contentScale = ContentScale.Crop
-            )
+             Row {
+                Spacer(modifier = Modifier.width(8.dp))
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
         }
     }
 }
 
-@Preview(widthDp = 480, heightDp = 240, )
+@Preview(widthDp = 480, heightDp = 440, )
 @Composable
 fun SentMessageBubblePreview() {
     HomebaseTheme {
@@ -689,6 +698,18 @@ fun SentMessageBubblePreview() {
                         message = testMessageUiModel("Message 😀"),
                     )
                 }
+                Spacer(modifier = Modifier.height(16.dp))
+                ReceivedMessageBubbleDisplayOnly(
+                    message = testMessageUiModel("A much longer message that spans multiple lines of text in the bubble"),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    SentMessageBubbleDisplayOnly(
+                        message = testMessageUiModel("A much longer message that spans multiple lines of text in the bubble"),
+                    )
+                }
             }
         }
     }
@@ -703,7 +724,6 @@ fun SentMessageBubblePreviewDark() {
                 ReceivedMessageBubbleDisplayOnly(
                     message = testMessageUiModel("Message 😀"),
                 )
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
