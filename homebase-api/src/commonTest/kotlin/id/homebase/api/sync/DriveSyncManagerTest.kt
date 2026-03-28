@@ -45,16 +45,17 @@ class DriveSyncManagerTest {
             val httpClient = HttpClient(mockEngine)
             val driveQueryProvider = DriveQueryProvider(httpClient, credentialsManager)
 
+            val driveId = Uuid.random()
             val manager = DriveSyncManager(
                 driveQueryProvider = driveQueryProvider,
                 credentialsManager = credentialsManager,
                 eventBus = EventBus(),
                 scope = this,
-                databaseManager = db
+                databaseManager = db,
+                drives = mapOf(driveId to "Test Drive"),
             )
 
-            val driveId = Uuid.random()
-            manager.start(mapOf(driveId to "Test Drive"))
+            manager.start()
 
             assertEquals(DriveState.Initialized, manager.driveStatuses.value[driveId]?.state)
         }
@@ -82,16 +83,17 @@ class DriveSyncManagerTest {
             val driveQueryProvider = DriveQueryProvider(httpClient, credentialsManager)
             val eventBus = EventBus()
 
+            val driveId = Uuid.random()
             val manager = DriveSyncManager(
                 driveQueryProvider = driveQueryProvider,
                 credentialsManager = credentialsManager,
                 eventBus = eventBus,
                 scope = this,
-                databaseManager = db
+                databaseManager = db,
+                drives = mapOf(driveId to "Test Drive"),
             )
 
-            val driveId = Uuid.random()
-            manager.start(mapOf(driveId to "Test Drive"))
+            manager.start()
 
             // Emit a Failed event directly (simulating what DriveSync emits after a real failure)
             eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 0, BackendEvent.DriveResult.Failure("simulated network error")))
@@ -117,7 +119,8 @@ class DriveSyncManagerTest {
         db: DatabaseManager,
         credentialsManager: CredentialsManager,
         eventBus: EventBus,
-        scope: kotlinx.coroutines.CoroutineScope
+        scope: kotlinx.coroutines.CoroutineScope,
+        drives: Map<Uuid, String> = emptyMap(),
     ): DriveSyncManager {
         val mockEngine = MockEngine { awaitCancellation() }
         val httpClient = HttpClient(mockEngine)
@@ -127,7 +130,8 @@ class DriveSyncManagerTest {
             credentialsManager = credentialsManager,
             eventBus = eventBus,
             scope = scope,
-            databaseManager = db
+            databaseManager = db,
+            drives = drives,
         )
     }
 
@@ -158,9 +162,9 @@ class DriveSyncManagerTest {
         val db = DatabaseManager { createInMemoryDatabase() }
         runTest {
             val eventBus = EventBus()
-            val manager = buildManager(db, buildCredentials(), eventBus, this)
             val driveId = Uuid.random()
-            manager.start(mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            manager.start()
             runCurrent()
 
             eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
@@ -176,9 +180,9 @@ class DriveSyncManagerTest {
         val db = DatabaseManager { createInMemoryDatabase() }
         runTest {
             val eventBus = EventBus()
-            val manager = buildManager(db, buildCredentials(), eventBus, this)
             val driveId = Uuid.random()
-            manager.start(mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            manager.start()
             runCurrent()
 
             eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
@@ -196,9 +200,9 @@ class DriveSyncManagerTest {
         val db = DatabaseManager { createInMemoryDatabase() }
         runTest {
             val eventBus = EventBus()
-            val manager = buildManager(db, buildCredentials(), eventBus, this)
             val driveId = Uuid.random()
-            manager.start(mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            manager.start()
             runCurrent()
 
             eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
@@ -216,9 +220,9 @@ class DriveSyncManagerTest {
         val db = DatabaseManager { createInMemoryDatabase() }
         runTest {
             val eventBus = EventBus()
-            val manager = buildManager(db, buildCredentials(), eventBus, this)
             val driveId = Uuid.random()
-            manager.start(mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            manager.start()
             runCurrent()
 
             val emittedEvents = mutableListOf<BackendEvent>()
@@ -238,9 +242,9 @@ class DriveSyncManagerTest {
         val db = DatabaseManager { createInMemoryDatabase() }
         runTest {
             val eventBus = EventBus()
-            val manager = buildManager(db, buildCredentials(), eventBus, this)
             val driveId = Uuid.random()
-            manager.start(mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            manager.start()
             runCurrent()
 
             eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
@@ -263,9 +267,9 @@ class DriveSyncManagerTest {
         val db = DatabaseManager { createInMemoryDatabase() }
         runTest {
             val eventBus = EventBus()
-            val manager = buildManager(db, buildCredentials(), eventBus, this)
             val driveId = Uuid.random()
-            manager.start(mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            manager.start()
             runCurrent()
 
             eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
@@ -288,10 +292,10 @@ class DriveSyncManagerTest {
         val db = DatabaseManager { createInMemoryDatabase() }
         runTest {
             val eventBus = EventBus()
-            val manager = buildManager(db, buildCredentials(), eventBus, this)
             val driveId1 = Uuid.random()
             val driveId2 = Uuid.random()
-            manager.start(mapOf(driveId1 to "Drive 1", driveId2 to "Drive 2"))
+            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId1 to "Drive 1", driveId2 to "Drive 2"))
+            manager.start()
             runCurrent()
 
             assertEquals(0, manager.numberOfDrivesSyncing())

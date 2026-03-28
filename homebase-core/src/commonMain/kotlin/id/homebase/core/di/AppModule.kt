@@ -1,6 +1,7 @@
 package id.homebase.core.di
 
 import id.homebase.api.di.apiModule
+import id.homebase.api.sync.DriveSyncManager
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersViewModel
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
@@ -27,6 +28,7 @@ import id.homebase.chat.services.convo.contact.DriveContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.config.syncLabeledDrives
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
@@ -48,6 +50,11 @@ import org.koin.dsl.module
 
 val appModule = module {
     single { UserPreferences(get()) }
+
+    single {
+        DriveSyncManager(get(), get(), get(), get(), get(),
+            syncLabeledDrives.associate { it.drive.alias to it.label })
+    }
 
     singleOf(::AuthConnectionCoordinator)
     singleOf(::BackgroundSyncOrchestrator)
