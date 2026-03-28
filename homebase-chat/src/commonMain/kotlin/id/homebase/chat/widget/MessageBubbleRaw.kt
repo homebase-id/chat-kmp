@@ -172,7 +172,7 @@ fun MessageBubbleRaw(
         else MaterialTheme.colorScheme.onSurface
 
     val deletedText = stringResource(MR.string.chat_message_deleted)
-    val textState = remember {
+    val textState = remember(message.isDeleted, message.content) {
         RichTextState()
             .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
             .applyMarkDownContent(if (message.isDeleted) deletedText else message.content)

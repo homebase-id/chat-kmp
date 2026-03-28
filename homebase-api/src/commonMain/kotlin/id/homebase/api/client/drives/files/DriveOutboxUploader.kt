@@ -8,6 +8,8 @@ import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
+import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -16,7 +18,9 @@ import id.homebase.api.sync.database.OutboxUploader
 
 class DriveOutboxUploader(
     private val driveUploadProvider: DriveUploadProvider,
-    private val fileProvider: DriveFileProvider
+    private val fileProvider: DriveFileProvider,
+    private val operationsProvider: DriveFileOperationsProvider,
+    private val reactionProvider: DriveFileGroupReactionProvider,
 ) : OutboxUploader {
 
     override suspend fun upload(
@@ -30,6 +34,8 @@ class DriveOutboxUploader(
                 DeleteFile -> deleteFile(outboxRecord)
                 UpdateLocalMetadataTags -> updateLocalMetadataTags(outboxRecord)
                 UpdateLocalMetadataContent -> updateLocalMetadataContent(outboxRecord)
+                SendReadReceiptByTime -> sendReadReceiptByTime(outboxRecord)
+                ToggleReaction -> toggleReaction(outboxRecord)
             }
         } catch (e: ClientException) {
             if (e.status == 400) {
@@ -61,7 +67,13 @@ class DriveOutboxUploader(
 
     private suspend fun deleteFile(outboxRecord: Outbox) {
         val request = OdinSystemSerializer.deserialize<DeleteLocalFilesByFileIdRequest>(outboxRecord.json.decodeToString())
-        fileProvider.deleteFiles(request.driveId, request.fileIds)
+        if (request.hardDelete) {
+            request.fileIds.forEach { fileId ->
+                fileProvider.hardDeleteFile(request.driveId, fileId, request.recipients)
+            }
+        } else {
+            fileProvider.deleteFiles(request.driveId, request.fileIds, request.recipients)
+        }
     }
 
     private suspend fun updateLocalMetadataTags(outboxRecord: Outbox) {
@@ -83,6 +95,27 @@ class DriveOutboxUploader(
         )
     }
 
+    private suspend fun sendReadReceiptByTime(outboxRecord: Outbox) {
+        val request = OdinSystemSerializer.deserialize<SendReadReceiptByTimeOutboxRequest>(outboxRecord.json.decodeToString())
+        operationsProvider.sendReadReceiptBatch(
+            driveId = request.driveId,
+            fileType = request.fileType,
+            dataType = request.dataType,
+            groupId = request.groupId,
+            endTime = request.endTime,
+        )
+    }
+
+    private suspend fun toggleReaction(outboxRecord: Outbox) {
+        val request = OdinSystemSerializer.deserialize<ToggleReactionOutboxRequest>(outboxRecord.json.decodeToString())
+        reactionProvider.toggleReaction(
+            driveId = request.driveId,
+            fileId = request.fileId,
+            reaction = request.reaction,
+            recipients = request.recipients,
+        )
+    }
+
     private fun percentOf(sent: Long, total: Long?) =
         if (total != null && total > 0) (sent.toFloat() / total.toFloat()) * 100f else 0f
 
@@ -92,5 +125,7 @@ class DriveOutboxUploader(
         const val DeleteFile = 3L
         const val UpdateLocalMetadataTags = 4L
         const val UpdateLocalMetadataContent = 5L
+        const val SendReadReceiptByTime = 6L
+        const val ToggleReaction = 8L
     }
 }

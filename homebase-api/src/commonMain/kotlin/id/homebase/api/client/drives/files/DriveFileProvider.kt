@@ -52,6 +52,8 @@ data class BytesResponse(val bytes: ByteArray, val contentType: String) {
 data class DeleteLocalFilesByFileIdRequest(
     val driveId: Uuid,
     val fileIds: List<Uuid>,
+    val recipients: List<OdinId>? = null,
+    val hardDelete: Boolean = false,
 )
 
 @OptIn(ExperimentalEncodingApi::class)
