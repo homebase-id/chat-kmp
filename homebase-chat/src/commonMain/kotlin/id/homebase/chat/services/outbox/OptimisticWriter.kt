@@ -298,7 +298,7 @@ class OptimisticWriter(
                     batchCount = batch.size,
                     latestModified = lastModified,
                     batchData = batch,
-                    source = BackendEvent.SyncSource.WebSocket
+                    source = BackendEvent.SyncSource.DriveSync
                 )
             )
         } catch (e: Exception) {
@@ -363,20 +363,25 @@ class OptimisticWriter(
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
         val currentReactions =
             existingFile.fileMetadata.reactionPreview?.reactions.orEmpty().toMutableMap()
-        val existing = currentReactions[reactionJson]
+
+        // The map key is server-assigned and may differ from reactionJson, so find by value.
+        val existingKey = currentReactions.entries
+            .firstOrNull { it.value.reactionContent == reactionJson }
+            ?.key
+        val existing = existingKey?.let { currentReactions[it] }
         val isAdding = existing == null || existing.count == 0
 
         val updatedReactions = if (isAdding) {
             currentReactions[reactionJson] = ReactionEntry(
                 key = reactionJson,
-                count = (existing?.count ?: 0) + 1,
+                count = 1,
                 reactionContent = reactionJson
             )
             currentReactions
         } else {
-            val newCount = existing!!.count - 1
-            if (newCount <= 0) currentReactions.remove(reactionJson)
-            else currentReactions[reactionJson] = existing.copy(count = newCount)
+            val newCount = existing.count - 1
+            if (newCount <= 0) currentReactions.remove(existingKey)
+            else currentReactions[existingKey] = existing.copy(count = newCount)
             currentReactions
         }
 

@@ -189,11 +189,11 @@ class ChatMessageActionService(
         val fileId = requireFileId(messageId)
 
         val hardDelete = conversation.isWithSelf
-        val recipients = if (!hardDelete && deleteForEveryone) {
+        val recipients: List<OdinId>? = if (!hardDelete && deleteForEveryone) {
             val domain = credentialsManager.requireActiveCredentials().domain
             conversation.participants.filter { it != domain }
         } else {
-            emptyList()
+            null
         }
 
         val original = optimisticWriter.writeDelete(chatDrive, messageId)
