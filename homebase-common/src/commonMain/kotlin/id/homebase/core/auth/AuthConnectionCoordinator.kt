@@ -103,7 +103,7 @@ class AuthConnectionCoordinator(
     private suspend fun connect() {
         if (wsClient != null) return
 
-        driveSyncManager.start(drives = syncLabeledDrives.associate { it.drive.alias to it.label })
+        driveSyncManager.start()
 
         wsClient =
             OdinWebSocketClient(
@@ -142,7 +142,7 @@ class AuthConnectionCoordinator(
             ).also { it.start() }
     }
 
-    private fun disconnect() {
+    private suspend fun disconnect() {
         outboxSync.setOnline(false)
         _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
         wsClient?.close()

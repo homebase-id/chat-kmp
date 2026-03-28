@@ -20,7 +20,7 @@ class BackgroundSyncOrchestrator(
         // Background sync is only meaningful when WS is offline (e.g. iOS background fetch).
         if (authConnectionCoordinator.isOnline.value) return SyncOutcome.Success
         return runCatching {
-            driveSyncManager.start(syncLabeledDrives.associate { it.drive.alias to it.label })
+            driveSyncManager.start()
             driveSyncManager.syncAll()
         }.fold(
             onSuccess = { SyncOutcome.Success },
