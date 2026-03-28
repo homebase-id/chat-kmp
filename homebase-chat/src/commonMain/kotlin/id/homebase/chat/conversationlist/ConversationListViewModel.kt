@@ -790,13 +790,16 @@ class ConversationListViewModel(
             is ConversationListUiAction.ToggleReaction -> {
                 viewModelScope.launch {
                     try {
+                        if (action.reaction.isEmpty()) return@launch
                         val newTopReactions = _messagesUiState.value.userDefaultReactions.toMutableList()
                         newTopReactions.remove(action.reaction)
                         newTopReactions.add(0, action.reaction)
                         _messagesUiState.update {
                             it.copy(userDefaultReactions = newTopReactions.toPersistentList())
                         }
-                        userPreferences.preferredUserReactions = newTopReactions
+                        if (newTopReactions.isNotEmpty()) {
+                            userPreferences.preferredUserReactions = newTopReactions.take(6)
+                        }
 
                         chatMessageActionService.toggleReaction(
                             action.conversationId,

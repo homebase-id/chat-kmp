@@ -21,9 +21,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UploadFile
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedButton
@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -139,7 +140,9 @@ fun AttachmentGallery(
 
                         items(galleryItems.size) { index ->
                             val galleryImage = galleryItems[index]
-                            Box {
+                            Box(
+                                contentAlignment = Alignment.Center
+                            ) {
                                 AsyncImage(
                                     imageLoader = imageLoader,
                                     model = galleryImage.file.toString(),
@@ -150,15 +153,13 @@ fun AttachmentGallery(
                                         .clickable { onImageSelected(galleryImage) },
                                     contentScale = ContentScale.Crop
                                 )
-                                Icon(
-                                    imageVector = if (galleryImage.isVideo()) Icons.Default.Videocam else Icons.Default.Image,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .padding(top = 4.dp, start = 4.dp)
-                                        .align(Alignment.TopStart)
-                                )
+                                if (galleryImage.isVideo()) {
+                                    Icon(
+                                        Icons.Default.PlayCircle,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(alpha = 0.85f)
+                                    )
+                                }
                             }
                         }
                     }

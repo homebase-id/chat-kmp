@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -35,10 +36,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import id.homebase.chat.data.MessageUiModel
@@ -166,75 +174,163 @@ fun ReceivedMessagePopup(
     onCopy: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    PopupWithScrim(
-        onDismissRequest = dismissMenu
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.Start
-        ) {
-            if (mode == MessagePopupMode.Reaction || mode == MessagePopupMode.All) {
+    val actionMenu = remember {
+        movableContentOf<Unit> {
+            Surface(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .wrapContentWidth(),
+                shape = RoundedCornerShape(12.dp),
+                shadowElevation = 4.dp,
+                tonalElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier.width(IntrinsicSize.Max)
+                ) {
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onMessageInfo,
+                        text = stringResource(MR.string.chat_message_info),
+                        imageVector = Icons.Default.Info,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onReply,
+                        text = stringResource(MR.string.chat_message_reply),
+                        imageVector = Icons.AutoMirrored.Filled.Reply,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onForward,
+                        text = stringResource(MR.string.chat_message_forward),
+                        imageVector = HomebaseIcons.MessageForward,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onCopy,
+                        text = stringResource(MR.string.chat_message_copy),
+                        imageVector = Icons.Default.ContentCopy,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onDelete,
+                        text = stringResource(MR.string.delete),
+                        imageVector = Icons.Filled.Delete,
+                    )
+                }
+            }
+        }
+    }
+
+    when (mode) {
+        MessagePopupMode.Reaction -> {
+            Popup(
+                onDismissRequest = dismissMenu
+            ) {
                 ReactionMenu(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     userDefaultReactions = userDefaultReactions,
                     onSelect = onSelectEmoji,
                     onShowAllEmojis = onShowAllEmojis,
                 )
-                Spacer(modifier = Modifier.height(8.dp))
             }
-            if (mode == MessagePopupMode.All) {
-                ReceivedMessageBubbleDisplayOnly(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    message = message,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+        }
+        MessagePopupMode.Menu -> {
+            Popup(
+                onDismissRequest = dismissMenu
+            ) {
+                actionMenu(Unit)
             }
-            if (mode == MessagePopupMode.Menu || mode == MessagePopupMode.All) {
-                Surface(
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .wrapContentWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    shadowElevation = 4.dp,
-                    tonalElevation = 4.dp
+        }
+        MessagePopupMode.All -> {
+            PopupWithScrim(
+                onDismissRequest = dismissMenu
+            ) {
+                val localDensity = LocalDensity.current
+                var messageBubbleHeight by remember { mutableStateOf(0.dp) }
+                var actionMenuY by remember { mutableStateOf(0f) }
+
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
+                    // Layer 1: Message bubble - positioned absolutely, doesn't affect layout
                     Column(
-                        modifier = Modifier.width(IntrinsicSize.Max)
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(horizontal = 16.dp)
+                            .offset(
+                                y = with(localDensity) {
+                                    // Allow negative offset - content will be clipped at screen top
+                                    actionMenuY.toDp() - messageBubbleHeight
+                                }
+                            )
+                            .onGloballyPositioned { coordinates ->
+                                messageBubbleHeight = with(localDensity) {
+                                    coordinates.size.height.toDp()
+                                }
+                            }
                     ) {
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onMessageInfo,
-                            text = stringResource(MR.string.chat_message_info),
-                            imageVector = Icons.Default.Info,
+                        Spacer(modifier = Modifier.height(8.dp))
+                        ReceivedMessageBubbleDisplayOnly(message = message)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    // Layer 2: ReactionMenu + ActionMenu - always centered, independent of bubble height
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.Center),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        ReactionMenu(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            userDefaultReactions = userDefaultReactions,
+                            onSelect = onSelectEmoji,
+                            onShowAllEmojis = onShowAllEmojis,
                         )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onReply,
-                            text = stringResource(MR.string.chat_message_reply),
-                            imageVector = Icons.AutoMirrored.Filled.Reply,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onForward,
-                            text = stringResource(MR.string.chat_message_forward),
-                            imageVector = HomebaseIcons.MessageForward,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onCopy,
-                            text = stringResource(MR.string.chat_message_copy),
-                            imageVector = Icons.Default.ContentCopy,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onDelete,
-                            text = stringResource(MR.string.delete),
-                            imageVector = Icons.Filled.Delete,
-                        )
+
+                        Spacer(modifier = Modifier.height(minOf(messageBubbleHeight, 140.dp)))
+
+                        Box(
+                            modifier = Modifier.onGloballyPositioned { coordinates ->
+                                // Get the Y position of the top of the actionMenu in the Box coordinate space
+                                actionMenuY = coordinates.positionInRoot().y
+                            }
+                        ) {
+                            actionMenu(Unit)
+                        }
                     }
                 }
             }
+//            PopupWithScrim(
+//                onDismissRequest = dismissMenu
+//            ) {
+//                Column(
+//                    modifier = Modifier.fillMaxWidth(),
+//                    horizontalAlignment = Alignment.Start
+//                ) {
+//                    ReactionMenu(
+//                        modifier = Modifier.padding(horizontal = 16.dp),
+//                        userDefaultReactions = userDefaultReactions,
+//                        onSelect = onSelectEmoji,
+//                        onShowAllEmojis = onShowAllEmojis,
+//                    )
+//                    Spacer(modifier = Modifier.height(8.dp))
+//
+//                    ReceivedMessageBubbleDisplayOnly(
+//                        modifier = Modifier.padding(horizontal = 16.dp),
+//                        message = message,
+//                    )
+//                    Spacer(modifier = Modifier.height(8.dp))
+//
+//                    actionMenu(Unit)
+//
+//                }
+//            }
         }
+
+        else -> {}
     }
 }
 
@@ -254,89 +350,153 @@ fun SentMessagePopup(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    PopupWithScrim(
-        onDismissRequest = dismissMenu
-    ) {
-        // Popup content
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.End
-        ) {
-            if (mode == MessagePopupMode.Reaction || mode == MessagePopupMode.All) {
+    val actionMenu = remember {
+        movableContentOf<Unit> {
+            Surface(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .wrapContentWidth(),
+                shape = RoundedCornerShape(12.dp),
+                shadowElevation = 4.dp,
+                tonalElevation = 4.dp
+            ) {
+                Column(
+                    modifier = Modifier.width(IntrinsicSize.Max)
+                ) {
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onMessageInfo,
+                        text = stringResource(MR.string.chat_message_info),
+                        imageVector = Icons.Default.Info,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onReply,
+                        text = stringResource(MR.string.chat_message_reply),
+                        imageVector = Icons.AutoMirrored.Filled.Reply,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onForward,
+                        text = stringResource(MR.string.chat_message_forward),
+                        imageVector = HomebaseIcons.MessageForward,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onCopy,
+                        text = stringResource(MR.string.chat_message_copy),
+                        imageVector = Icons.Default.ContentCopy,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onEdit,
+                        text = stringResource(MR.string.chat_message_edit),
+                        imageVector = Icons.Filled.Edit,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onDelete,
+                        text = stringResource(MR.string.delete),
+                        imageVector = Icons.Filled.Delete,
+                    )
+                    if (isMobile()) {
+                        ListItemActionNormalIcon(
+                            onClick = onShare,
+                            text = stringResource(MR.string.share),
+                            imageVector = Icons.Default.Share,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    when (mode) {
+        MessagePopupMode.Reaction -> {
+            Popup(
+                onDismissRequest = dismissMenu
+            ) {
                 ReactionMenu(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     userDefaultReactions = userDefaultReactions,
                     onSelect = onSelectEmoji,
                     onShowAllEmojis = onShowAllEmojis,
                 )
-                Spacer(modifier = Modifier.height(8.dp))
             }
-            if (mode == MessagePopupMode.All) {
-                SentMessageBubbleDisplayOnly(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    message = message,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        MessagePopupMode.Menu -> {
+            Popup(
+                onDismissRequest = dismissMenu
+            ) {
+                actionMenu(Unit)
             }
-            if (mode == MessagePopupMode.Menu || mode == MessagePopupMode.All) {
-                Surface(
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .wrapContentWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    shadowElevation = 4.dp,
-                    tonalElevation = 4.dp
+        }
+
+        MessagePopupMode.All -> {
+            PopupWithScrim(
+                onDismissRequest = dismissMenu
+            ) {
+                val localDensity = LocalDensity.current
+                var messageBubbleHeight by remember { mutableStateOf(0.dp) }
+                var actionMenuY by remember { mutableStateOf(0f) }
+
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
+                    // Layer 1: Message bubble - positioned absolutely, doesn't affect layout
                     Column(
-                        modifier = Modifier.width(IntrinsicSize.Max)
-                    ) {
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onMessageInfo,
-                            text = stringResource(MR.string.chat_message_info),
-                            imageVector = Icons.Default.Info,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onReply,
-                            text = stringResource(MR.string.chat_message_reply),
-                            imageVector = Icons.AutoMirrored.Filled.Reply,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onForward,
-                            text = stringResource(MR.string.chat_message_forward),
-                            imageVector = HomebaseIcons.MessageForward,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onCopy,
-                            text = stringResource(MR.string.chat_message_copy),
-                            imageVector = Icons.Default.ContentCopy,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onEdit,
-                            text = stringResource(MR.string.chat_message_edit),
-                            imageVector = Icons.Filled.Edit,
-                        )
-                        ListItemActionNormalIcon(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = onDelete,
-                            text = stringResource(MR.string.delete),
-                            imageVector = Icons.Filled.Delete,
-                        )
-                        if (isMobile()) {
-                            ListItemActionNormalIcon(
-                                onClick = onShare,
-                                text = stringResource(MR.string.share),
-                                imageVector = Icons.Default.Share,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(horizontal = 16.dp)
+                            .offset(
+                                y = with(localDensity) {
+                                    // Allow negative offset - content will be clipped at screen top
+                                    actionMenuY.toDp() - messageBubbleHeight
+                                }
                             )
+                            .onGloballyPositioned { coordinates ->
+                                messageBubbleHeight = with(localDensity) {
+                                    coordinates.size.height.toDp()
+                                }
+                            }
+                    ) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SentMessageBubbleDisplayOnly(message = message)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    // Layer 2: ReactionMenu + ActionMenu - always centered, independent of bubble height
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.Center),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        ReactionMenu(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            userDefaultReactions = userDefaultReactions,
+                            onSelect = onSelectEmoji,
+                            onShowAllEmojis = onShowAllEmojis,
+                        )
+
+                        Spacer(modifier = Modifier.height(minOf(messageBubbleHeight, 140.dp)))
+
+                        Box(
+                            modifier = Modifier.onGloballyPositioned { coordinates ->
+                                // Get the Y position of the top of the actionMenu in the Box coordinate space
+                                actionMenuY = coordinates.positionInRoot().y
+                            }
+                        ) {
+                            actionMenu(Unit)
                         }
                     }
                 }
             }
         }
+
+        else -> {}
     }
 }
 

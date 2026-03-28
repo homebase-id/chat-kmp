@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -7,6 +8,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -100,8 +103,8 @@ import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.core.audio.rememberRecordAudioPermissionState
-import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.clipboard.getImageFromClipboard
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
@@ -443,6 +446,7 @@ fun MessageTextFieldCompact(
     val hapticFeedback = LocalHapticFeedback.current
     val density = LocalDensity.current
     val cancelThresholdPx = with(density) { 200.dp.toPx() }
+    var isKeyboardFocused by remember { mutableStateOf(false) }
 
     val recordAudioPermissionState = rememberRecordAudioPermissionState(
         onPermissionGranted = {
@@ -494,10 +498,17 @@ fun MessageTextFieldCompact(
         modifier = modifier
     ) {
         if (!isRecordingActive) {
-            RichTextEditorButtons(
-                modifier = Modifier.fillMaxWidth(),
-                state = state,
-            )
+            Spacer(modifier = Modifier.height(8.dp))
+            AnimatedVisibility(
+                visible = isKeyboardFocused,
+                enter = slideInVertically { it },
+                exit = slideOutVertically { it },
+            ) {
+                RichTextEditorButtons(
+                    modifier = Modifier.fillMaxWidth(),
+                    state = state,
+                )
+            }
             if (linkPreviewData != null) {
                 LinkPreviewCard(
                     linkPreview = linkPreviewData,
@@ -547,6 +558,7 @@ fun MessageTextFieldCompact(
                             modifier = Modifier
                                 .weight(1f)
                                 .onFocusChanged { focusState ->
+                                    isKeyboardFocused = focusState.isFocused
                                     if (focusState.isFocused) {
                                         onFocused()
                                     }

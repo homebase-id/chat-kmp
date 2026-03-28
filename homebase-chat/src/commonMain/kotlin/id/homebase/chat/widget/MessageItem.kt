@@ -10,6 +10,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.util.isMobile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
 import kotlin.uuid.Uuid
@@ -90,6 +91,7 @@ fun MessageItem(
         }
 
         SwipeableMessageWrapper(
+            enabled = isMobile() && !message.isDeleted,
             onSwipeRight = onReply,
             onSwipeLeft = onMessageInfo,
         ) {
@@ -120,8 +122,9 @@ fun MessageItem(
             remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(message.conversationId, listOf(message.id))) } }
 
         SwipeableMessageWrapper(
+            enabled = isMobile() && !message.isDeleted,
             onSwipeRight = onReply,
-            onSwipeLeft = null,
+            onSwipeLeft = onMessageInfo,
         ) {
             ReceivedMessageBubble(
                 message = message,
