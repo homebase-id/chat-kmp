@@ -13,12 +13,16 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.core.config.syncLabeledDrives
+import id.homebase.core.avatars.AppConnectionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -36,6 +40,18 @@ class AuthConnectionCoordinator(
 
     private val _connectionState = MutableStateFlow(AuthConnectionState())
     val connectionState: StateFlow<AuthConnectionState> = _connectionState.asStateFlow()
+
+    /**
+     * True when the WebSocket is connected AND the server handshake has completed
+     * successfully. This is the canonical online check — use this instead of reading
+     * [connectionState] directly when you only need a boolean online/offline signal.
+     *
+     * Note: "online" here means the app can communicate with the Homebase server.
+     * It does NOT track per-contact social-graph connection state.
+     */
+    val isOnline: StateFlow<Boolean> = connectionState
+        .map { it.isConnected }
+        .stateIn(scope, SharingStarted.Eagerly, false)
 
     init {
         scope.launch {
@@ -99,6 +115,7 @@ class AuthConnectionCoordinator(
                 drives = syncLabeledDrives.map { it.drive },
                 onConnected = {
                     _connectionState.update { it.copy(isConnected = true) }
+                    outboxSync.setOnline(true)
                     scope.launch {
                         try {
                             driveSyncManager.syncAll()
@@ -114,16 +131,19 @@ class AuthConnectionCoordinator(
                     }
                 },
                 onDisconnected = {
+                    outboxSync.setOnline(false)
                     _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
                     driveSyncManager.pause()
                 },
                 onConnectError = {
+                    outboxSync.setOnline(false)
                     _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
                 }
             ).also { it.start() }
     }
 
     private suspend fun disconnect() {
+        outboxSync.setOnline(false)
         _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
         wsClient?.close()
         wsClient = null
@@ -134,5 +154,15 @@ class AuthConnectionCoordinator(
 @Immutable
 data class AuthConnectionState(
     val isConnecting: Boolean = true,
+    /** True only after the WebSocket TCP connection is established AND the server
+     *  handshake (deviceHandshakeSuccess) has been received. False at all other times.
+     *  Use [AuthConnectionCoordinator.isOnline] for a named reactive check. */
     val isConnected: Boolean = false,
 )
+
+/** Maps this state to the 3-state UI enum used by avatar indicators and UI state. */
+fun AuthConnectionState.toConnectionStatus(): AppConnectionStatus = when {
+    isConnected  -> AppConnectionStatus.Connected
+    isConnecting -> AppConnectionStatus.Connecting
+    else         -> AppConnectionStatus.Disconnected
+}

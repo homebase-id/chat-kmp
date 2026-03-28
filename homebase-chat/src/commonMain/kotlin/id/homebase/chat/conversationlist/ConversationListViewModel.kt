@@ -52,7 +52,7 @@ import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
-import id.homebase.core.avatars.ConnectionStatus
+import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.navigation.ActiveConversation
@@ -253,12 +253,7 @@ class ConversationListViewModel(
         viewModelScope.launch {
             authConnectionCoordinator.connectionState
                 .collectLatest { state ->
-                    val status = when {
-                        state.isConnected -> ConnectionStatus.Connected
-                        state.isConnecting -> ConnectionStatus.Connecting
-                        else -> ConnectionStatus.Disconnected
-                    }
-                    _uiState.update { it.copy(connectionStatus = status) }
+                    _uiState.update { it.copy(connectionStatus = state.toConnectionStatus()) }
                 }
         }
 

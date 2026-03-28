@@ -21,9 +21,9 @@ class WebSocketPingSupervisor(
 ) {
 
     companion object {
-        private const val PONG_TIMEOUT_MS = 3_000L
-        private const val RETRY_DELAY_MS = 500L
-        private const val OFFLINE_PING_INTERVAL_MS = 5_000L
+        private const val PONG_TIMEOUT_MS = 10_000L
+        private const val RETRY_DELAY_MS = 2_000L
+        private const val OFFLINE_PING_INTERVAL_MS = 10_000L
     }
 
     @Volatile
