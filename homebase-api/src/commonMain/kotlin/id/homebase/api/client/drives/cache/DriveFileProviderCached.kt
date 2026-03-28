@@ -15,6 +15,7 @@ import io.ktor.client.HttpClient
 import io.ktor.http.Headers
 import kotlin.collections.mutableMapOf
 import kotlin.uuid.Uuid
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -42,9 +43,12 @@ class DriveFileProviderCached(
     private val keyLocks = mutableMapOf<String, Mutex>()
     private val lock = Mutex()
 
-    // In-memory cache for 404 responses
+    // Immutable set — always replaced, never mutated in-place.
+    // @Volatile ensures lock-free reads always see the latest reference.
+    // Writes are serialized via notFoundCacheMutex (rare: only on 404 responses).
     // Later we should cache 401,403,404,410, but not yet
-    private val notFoundCache = mutableSetOf<String>()
+    @Volatile private var notFoundCache: Set<String> = emptySet()
+    private val notFoundCacheMutex = Mutex()
 
     private val payloadDiskKache by lazy {
         kotlinx.coroutines.runBlocking {
@@ -117,7 +121,7 @@ class DriveFileProviderCached(
 
                     if (result.status == 404) {
                         // 404 case - cache that file doesn't exist in memory only
-                        notFoundCache.add(cacheKey)
+                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
                         ByteApiResponse.EMPTY_404
                     } else {
                         // 3️⃣ Store to disk
@@ -245,7 +249,7 @@ class DriveFileProviderCached(
 
                     if (result.status == 404) {
                         // 404 case - cache that file doesn't exist in memory only
-                        notFoundCache.add(cacheKey)
+                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
                         ByteApiResponse.EMPTY_404
                     } else {
                         // 3️⃣ Store to disk; only allow one writer per GPT indicating
@@ -380,6 +384,6 @@ class DriveFileProviderCached(
             fileSystem.deleteRecursively(preloadDir)
         } catch (_: Exception) {}
 
-        notFoundCache.clear()
+        notFoundCache = emptySet()
     }
 }

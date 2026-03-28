@@ -62,11 +62,8 @@ class ChatMessageActionService(
             }
 
         if (unreadRecords.isEmpty()) {
-
-            // even if there are no unread record not sent by me
-            // lets see if there
-            // This looks like a bug, so line commented out:
-            // dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
+            // Todd says: This line deals with the fact that messages from the sender shouldn't count towards unread messages
+            dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
             Logger.d { "markAsReadLatestFileCreated: no unread records for $conversationId (newReadTime=${newReadTime.milliseconds} not written)" }
 
             conversationStream.updateUnreadCounts()
