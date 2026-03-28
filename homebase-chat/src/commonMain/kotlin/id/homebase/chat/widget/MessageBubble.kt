@@ -142,7 +142,7 @@ fun SentMessageBubble(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row {
-                if (onMessageInfo != null && isDesktop()) {
+                if (onMessageInfo != null && isDesktop() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -155,7 +155,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktop()) {
+                if (onReply != null && isDesktop() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply.invoke() },
@@ -168,7 +168,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onAddReaction != null && isDesktop()) {
+                if (onAddReaction != null && isDesktop() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -181,7 +181,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (popupMode != MessagePopupMode.None) {
+                if (popupMode != MessagePopupMode.None && !message.isDeleted) {
                     SentMessagePopup(
                         mode = popupMode,
                         message = message,
@@ -420,7 +420,7 @@ fun ReceivedMessageBubble(
                 }
             }
             Row {
-                if (onAddReaction != null && isDesktop()) {
+                if (onAddReaction != null && isDesktop() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -433,7 +433,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktop()) {
+                if (onReply != null && isDesktop() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply() },
@@ -446,7 +446,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onMessageInfo != null && isDesktop()) {
+                if (onMessageInfo != null && isDesktop() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -460,7 +460,7 @@ fun ReceivedMessageBubble(
                     }
                 }
 
-                if (popupMode != MessagePopupMode.None) {
+                if (popupMode != MessagePopupMode.None && !message.isDeleted) {
                     ReceivedMessagePopup(
                         mode = popupMode,
                         message = message,
