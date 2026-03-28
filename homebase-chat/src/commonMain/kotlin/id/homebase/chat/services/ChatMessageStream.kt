@@ -67,6 +67,11 @@ class ChatMessageStream(
     init {
         scope.launch {
             eventBus.events.collect { event ->
+                if (event is BackendEvent.OutboxEvent.OptimisticRollback && event.driveId == chatDrive) {
+                    conversationState.removeMessage(event.uniqueId)
+                    return@collect
+                }
+
                 if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
 
                 when (event) {

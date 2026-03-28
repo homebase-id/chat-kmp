@@ -1703,6 +1703,15 @@ class ConversationListViewModel(
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
+
+                // Write placeholder first — message appears instantly before encryption/network
+                chatMessageSenderService.writePlaceholderMessage(
+                    messageUniqueId = newMessageId,
+                    conversationId = conversationId,
+                    messageText = content,
+                    payloadDescriptors = null,
+                )
+
                 chatMessageSenderService.sendNewMessage(
                     messageUniqueId = newMessageId,
                     conversationId = conversationId,
@@ -1736,6 +1745,16 @@ class ConversationListViewModel(
                 )
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
+
+                // Write placeholder first — reply appears instantly with quote context
+                chatMessageSenderService.writePlaceholderMessage(
+                    messageUniqueId = newMessageId,
+                    conversationId = conversationId,
+                    messageText = content,
+                    payloadDescriptors = null,
+                    replyPreview = replyPreview,
+                )
+
                 chatMessageSenderService.replyToMessage(
                     messageUniqueId = newMessageId,
                     conversationId = conversationId,

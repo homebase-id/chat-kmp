@@ -52,6 +52,8 @@ data class BytesResponse(val bytes: ByteArray, val contentType: String) {
 data class DeleteLocalFilesByFileIdRequest(
     val driveId: Uuid,
     val fileIds: List<Uuid>,
+    val recipients: List<OdinId>? = null,
+    val hardDelete: Boolean = false,
 )
 
 @OptIn(ExperimentalEncodingApi::class)
@@ -104,6 +106,17 @@ public class DriveFileProvider(
 
         var file = deserialize<ServerFile>(response.body)
         return file.asHomebaseFile(creds.secret)
+    }
+
+    /** Downloads the payload to the encrypted disk cache without decrypting it.
+     *  Subsequent calls to [getPayloadBytesDecrypted] for the same key will be served from cache. */
+    suspend fun prefetchPayload(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        onDownloadProgress: ((Float) -> Unit)? = null,
+    ) {
+        driveCache.getPayloadBytesRaw(driveId, fileId, key, onDownloadProgress = onDownloadProgress)
     }
 
     suspend fun getPayloadBytesDecrypted(

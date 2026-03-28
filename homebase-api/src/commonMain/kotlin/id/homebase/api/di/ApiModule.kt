@@ -46,10 +46,9 @@ val apiModule = module {
     singleOf(::VideoPreloader)
     singleOf(::CredentialsManager)
     singleOf(::OwnerSessionRepository)
-    singleOf(::DriveSyncManager)
     singleOf(::DriveFileHttpProvider)
     singleOf(::DriveFileProviderCached)
-    single<OutboxUploader> { DriveOutboxUploader(get(), get()) }
+    single<OutboxUploader> { DriveOutboxUploader(get(), get(), get(), get()) }
     singleOf(::OutboxSync)
 
     singleOf(::YouAuthFlowManager)

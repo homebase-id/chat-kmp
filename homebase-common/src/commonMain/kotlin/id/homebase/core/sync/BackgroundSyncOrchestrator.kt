@@ -2,7 +2,6 @@ package id.homebase.core.sync
 
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.sync.DriveSyncManager
-import id.homebase.core.config.syncLabeledDrives
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -15,7 +14,7 @@ class BackgroundSyncOrchestrator(
     suspend fun syncIfAuthenticated(): SyncOutcome {
         if (!credentialsManager.hasActiveCredentials()) return SyncOutcome.NoCredentials
         return runCatching {
-            driveSyncManager.start(syncLabeledDrives.associate { it.drive.alias to it.label })
+            driveSyncManager.start()
             driveSyncManager.syncAll()
         }.fold(
             onSuccess = { SyncOutcome.Success },

@@ -3,6 +3,7 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okio.FileSystem
@@ -20,30 +21,35 @@ class VideoPreloader(
 
     private val preloadDir get() = "${fileOperationsProvider.getCacheDirectory()}/hbvid_preload"
     private fun cacheKey(fileId: Uuid, payloadKey: String) = "$fileId/$payloadKey"
-    private fun stablePath(fileId: Uuid, payloadKey: String) = "$preloadDir/$fileId/$payloadKey/video.mp4".toPath()
 
     /**
-     * Pre-fetches, decrypts, and writes the video to a stable on-disk path so [awaitPreloadedFile]
-     * can hand the path directly to the player, skipping all IO on tap.
+     * Downloads the encrypted video payload into the cache so that [awaitPreloadedFile] can
+     * unblock the tap handler immediately when play is pressed.
      *
-     * Safe to call multiple times for the same fileId/payloadKey — duplicate calls while a preload
-     * is in-progress are no-ops. Only Mp4 videos are preloaded; HLS streams on demand.
+     * Decryption is deferred to playback — the player calls [DriveFileProvider.getPayloadBytesDecrypted]
+     * which hits the warm cache and decrypts in memory only.
+     *
+     * Safe to call multiple times — duplicate in-progress calls are no-ops.
+     * HLS streams are skipped; their segments are fetched on demand by the player.
      */
     suspend fun preload(data: VideoPlayerData, onProgress: ((Float) -> Unit)? = null) {
         val key = cacheKey(data.fileId, data.payloadKey)
         val mutex = mapLock.withLock { mutexMap.getOrPut(key) { Mutex() } }
-        if (!mutex.tryLock()) return  // already in-progress or being awaited
+        if (!mutex.tryLock()) return
         try {
-            val path = stablePath(data.fileId, data.payloadKey)
-            if (fileSystem.exists(path)) return  // already preloaded
+            val stubMetadata = data.descriptorContent?.let {
+                OdinSystemSerializer.deserialize<VideoMetadata>(it)
+            } ?: return
 
-            val content = resolveVideoContent(data, driveFileProvider, onDownloadProgress = onProgress)
-            if (content is VideoContent.Mp4) {
-                fileSystem.createDirectories(path.parent!!)
-                fileSystem.write(path) { write(content.bytes) }
-                Logger.d(tag = "VideoIO") { "preload complete: ${data.fileId}/${data.payloadKey} (${content.bytes.size} bytes)" }
-            }
-            // HLS streams chunks on demand — nothing to preload
+            if (stubMetadata.isSegmented) return  // HLS: segments are streamed on demand
+
+            driveFileProvider.prefetchPayload(
+                driveId = data.driveId,
+                fileId = data.fileId,
+                key = data.payloadKey,
+                onDownloadProgress = onProgress,
+            )
+            Logger.d(tag = "VideoIO") { "preload complete (encrypted cache): ${data.fileId}/${data.payloadKey}" }
         } catch (e: Exception) {
             Logger.w(tag = "VideoIO") { "preload failed for ${data.fileId}/${data.payloadKey}: ${e.message}" }
         } finally {
@@ -52,23 +58,19 @@ class VideoPreloader(
     }
 
     /**
-     * Returns the pre-written file path for this fileId + payloadKey, or null if the preload has
-     * not completed.
+     * Waits for any in-progress preload to finish before returning, so the tap handler can
+     * call [DriveFileProvider.getPayloadBytesDecrypted] knowing the encrypted bytes are cached.
      *
-     * If a preload is currently in-flight this call suspends until it finishes, then returns the
-     * path (or null if it failed / was HLS). This gives the tap handler the best chance of
-     * skipping redundant IO without starting a parallel fetch.
+     * Always returns null — decryption now happens at playback time, not during preload.
      */
     suspend fun awaitPreloadedFile(fileId: Uuid, payloadKey: String): String? {
         val key = cacheKey(fileId, payloadKey)
         val mutex = mapLock.withLock { mutexMap.getOrPut(key) { Mutex() } }
-        return mutex.withLock {
-            val path = stablePath(fileId, payloadKey)
-            if (fileSystem.exists(path)) path.toString() else null
-        }
+        mutex.withLock {}  // wait for any in-progress download to finish
+        return null
     }
 
-    /** Deletes all pre-written files. Call alongside DriveFileProviderCached.clearCaches. */
+    /** Deletes any legacy pre-decrypted files written by older builds. */
     fun clearCache() {
         try {
             fileSystem.deleteRecursively(preloadDir.toPath())
