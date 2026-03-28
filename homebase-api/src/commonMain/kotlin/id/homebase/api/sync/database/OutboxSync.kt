@@ -3,6 +3,8 @@ package id.homebase.api.sync.database
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.files.SendReadReceiptByTimeOutboxRequest
+import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
@@ -255,6 +257,50 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateLocalMetadataContent,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
+    }
+
+    public suspend fun tryEnqueue(
+        request: ToggleReactionOutboxRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val enqueued = tryEnqueue(
+            driveId = request.driveId,
+            uniqueId = Uuid.random(),
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.ToggleReaction,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
+    }
+
+    public suspend fun tryEnqueue(
+        request: SendReadReceiptByTimeOutboxRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val enqueued = tryEnqueue(
+            driveId = request.driveId,
+            uniqueId = Uuid.random(),
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.SendReadReceiptByTime,
             json = OdinSystemSerializer.serialize(request)
         )
 
