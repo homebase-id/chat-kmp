@@ -31,9 +31,9 @@ class DriveSyncManager(
     private val drives: Map<Uuid, String>,
 ) {
     // Immutable map reference — always replaced, never mutated in-place, preventing CME.
-    // All writes are serialized via driveSyncsMutex. @Volatile ensures readers outside the
-    // mutex always see the latest reference (important on Kotlin/Native).
-    @Volatile private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
+    // All writes are serialized via driveSyncsMutex, which provides the happens-before
+    // guarantee needed for non-mutex readers (syncDrive, pause, clearStorage).
+    private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
     private val driveSyncsMutex = Mutex()
 
     private val _driveStatuses = MutableStateFlow<Map<Uuid, DriveStatus>>(emptyMap())
