@@ -1,4 +1,4 @@
-package id.homebase.chat.widget
+package id.homebase.chat.screen
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.data.ContactUiModel
 import kotlinx.collections.immutable.ImmutableList
+import id.homebase.chat.widget.ContactItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

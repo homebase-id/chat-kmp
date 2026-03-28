@@ -1,4 +1,4 @@
-package id.homebase.chat.widget
+package id.homebase.chat.screen
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SharedTransitionLayout

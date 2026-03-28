@@ -1,4 +1,4 @@
-package id.homebase.chat.widget
+package id.homebase.chat.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -64,6 +64,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
+import id.homebase.chat.widget.MessageTextFieldForAttachment
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

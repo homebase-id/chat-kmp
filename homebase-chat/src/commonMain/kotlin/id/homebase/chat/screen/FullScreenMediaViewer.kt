@@ -1,4 +1,4 @@
-package id.homebase.chat.widget
+package id.homebase.chat.screen
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -67,6 +67,7 @@ import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
+import id.homebase.chat.widget.FullScreenMediaMenu
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

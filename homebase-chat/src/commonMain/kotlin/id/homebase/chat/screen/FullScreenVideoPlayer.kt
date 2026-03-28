@@ -1,4 +1,4 @@
-package id.homebase.chat.widget
+package id.homebase.chat.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

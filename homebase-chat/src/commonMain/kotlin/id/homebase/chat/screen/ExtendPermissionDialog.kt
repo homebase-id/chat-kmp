@@ -1,4 +1,4 @@
-package id.homebase.chat.widget
+package id.homebase.chat.screen
 
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text

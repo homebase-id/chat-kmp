@@ -38,9 +38,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.chat.widget.ConversationListPane
-import id.homebase.chat.widget.ConversationMessagesPane
-import id.homebase.chat.widget.ExtendPermissionDialog
+import id.homebase.chat.screen.ConversationListPane
+import id.homebase.chat.screen.ConversationMessagesPane
+import id.homebase.chat.screen.ExtendPermissionDialog
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
