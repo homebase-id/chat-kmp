@@ -10,7 +10,9 @@ import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.PayloadOperationOptions
+import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.flow.channelFlow
 import io.ktor.client.HttpClient
 import io.ktor.http.Headers
 import kotlin.collections.mutableMapOf
@@ -194,6 +196,41 @@ class DriveFileProviderCached(
         Logger.d(tag = "VideoIO") { "payload decrypt: ${raw.bytes.size} → ${decryptedBytes.size} bytes in $decryptElapsed" }
 
         return BytesResponse(bytes = decryptedBytes, contentType = raw.contentType)
+    }
+
+    suspend fun streamPayloadDecryptedToPath(
+            driveId: Uuid,
+            fileId: Uuid,
+            key: String,
+            keyHeader: KeyHeader,
+            outputPath: String,
+            fileOps: FileOperationsProvider
+    ): Boolean {
+        val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
+        val cachedFilePath = payloadDiskKache.get(cacheKey)
+                ?: return delegate.streamPayloadDecryptedToPath(driveId, fileId, key, keyHeader, outputPath, fileOps)
+
+        val encryptedFlow = channelFlow<ByteArray> {
+            val channel = this
+            fileSystem.read(cachedFilePath.toPath()) {
+                readInt() // skip status
+                val ctLen = readInt()
+                readUtf8(ctLen.toLong()) // skip contentType
+                readByte() // skip payloadEncrypted flag
+                val chunkSize = 65_536L
+                while (true) {
+                    if (!request(chunkSize)) {
+                        if (!exhausted()) channel.send(readByteArray())
+                        break
+                    }
+                    channel.send(readByteArray(chunkSize))
+                }
+            }
+        }
+
+        val decryptedFlow = AesCbc.streamDecryptWithCbc(encryptedFlow, keyHeader.aesKey, keyHeader.iv)
+        fileOps.writeStream(outputPath, decryptedFlow)
+        return true
     }
 
     // ==============================================================

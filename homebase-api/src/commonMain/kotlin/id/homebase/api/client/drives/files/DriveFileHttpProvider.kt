@@ -429,7 +429,7 @@ public class DriveFileHttpProvider(
     ): ByteArray {
 
         val payloadEncrypted =
-            headers["payloadencrypted"]?.equals("True", ignoreCase = false) == true
+            headers["payloadencrypted"]?.equals("true", ignoreCase = true) == true
 
         if (payloadEncrypted) {
 

@@ -79,7 +79,9 @@ class JvmFileOperationsProvider : FileOperationsProvider {
         path: String,
         data: Flow<ByteArray>
     ) = withContext(Dispatchers.IO) {
-            File(path).outputStream().buffered().use { out ->
+        val file = File(path)
+        file.parentFile?.mkdirs()
+        file.outputStream().buffered().use { out ->
             data.collect { out.write(it) }
         }
     }

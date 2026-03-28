@@ -511,8 +511,8 @@ enum class MessagePopupMode {
 fun FullScreenMediaMenu(
     showMenu: Boolean,
     dismissMenu: () -> Unit,
-    onDelete: () -> Unit,
     onSave: () -> Unit,
+    onDelete: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
@@ -525,10 +525,12 @@ fun FullScreenMediaMenu(
             leadingIcon = {
                 Icon(imageVector = Icons.Filled.Download, contentDescription = null)
             })
-        DropdownMenuItem(
-            onClick = onDelete,
-            text = { Text(text = stringResource(MR.string.delete)) },
-            leadingIcon = { Icon(imageVector = Icons.Filled.Delete, contentDescription = null) })
+        if (onDelete != null) {
+            DropdownMenuItem(
+                onClick = onDelete,
+                text = { Text(text = stringResource(MR.string.delete)) },
+                leadingIcon = { Icon(imageVector = Icons.Filled.Delete, contentDescription = null) })
+        }
     }
 }
 
