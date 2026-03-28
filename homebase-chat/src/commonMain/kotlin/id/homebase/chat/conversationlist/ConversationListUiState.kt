@@ -9,7 +9,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
-import id.homebase.core.avatars.ConnectionStatus
+import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.widget.EmojiReaction
@@ -33,7 +33,7 @@ data class ConversationListUiState(
     val isSearchActive: Boolean = false,
     val ownerSession: OwnerSession? = null,
     val downloadingFiles: Set<String> = emptySet(),
-    val connectionStatus: ConnectionStatus = ConnectionStatus.Connecting,
+    val connectionStatus: AppConnectionStatus = AppConnectionStatus.Connecting,
     val driveIsSyncing: Boolean = false,
     val hasDriveError: Boolean = false,
     val uiDialog: ConversationListUiDialog? = null,
