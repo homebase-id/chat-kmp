@@ -36,6 +36,12 @@ class OutboxSync(
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
     private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @kotlin.concurrent.Volatile private var isOnline = false
+
+    fun setOnline(online: Boolean) {
+        isOnline = online
+    }
+
     private val MAX_SENDING_THREADS = 3
     private val WAIT_INCREMENT_SECONDS = 30L
     private val semaphore = Semaphore(MAX_SENDING_THREADS)
@@ -51,6 +57,10 @@ class OutboxSync(
     // Then the call immediately knows if a worker thread has been spawned.
     //
     suspend fun send(): Boolean {
+        if (!isOnline) {
+            Logger.d("OutboxSync: send() skipped — offline")
+            return false
+        }
         if (!semaphore.tryAcquire()) {
             return false
         }

@@ -26,7 +26,7 @@ fun OwnerAvatar(
     odinId: OdinId,
     profileImageData: HomebaseImageData?,
     initials: String?,
-    connectionStatus: ConnectionStatus? = null,
+    connectionStatus: AppConnectionStatus? = null,
     driveIsSyncing: Boolean? = null,
     hasDriveError: Boolean = false,
     options: AvatarOptions,
@@ -65,12 +65,12 @@ fun OwnerAvatar(
         }
         if (connectionStatus != null) {
             val color = when {
-                connectionStatus == ConnectionStatus.Connected && hasDriveError -> Color(0xFFFFC107)
-                connectionStatus == ConnectionStatus.Connected    -> ExtendedColors.Success
-                connectionStatus == ConnectionStatus.Connecting   -> Color(0xFFFFA500)
+                connectionStatus == AppConnectionStatus.Connected && hasDriveError -> Color(0xFFFFC107)
+                connectionStatus == AppConnectionStatus.Connected    -> ExtendedColors.Success
+                connectionStatus == AppConnectionStatus.Connecting   -> Color(0xFFFFA500)
                 else                                              -> Color.Red
             }
-            if (driveIsSyncing == true) {
+            if (driveIsSyncing == true && connectionStatus == AppConnectionStatus.Connected) {
                 CircularProgressIndicator(
                     modifier = modifier
                         .align(Alignment.BottomEnd)
