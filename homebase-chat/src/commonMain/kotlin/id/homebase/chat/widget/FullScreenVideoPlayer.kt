@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -36,6 +37,7 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.resources.MR
+import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
@@ -45,10 +47,12 @@ import kotlin.io.encoding.Base64
 fun FullScreenVideoPlayer(
     data: FullScreenOverlay.VideoPlayerData,
     onDismiss: () -> Unit,
+    onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isPlaying by remember(data) { mutableStateOf(true) }
     var progress by remember(data) { mutableFloatStateOf(0f) }
+    var showMenu by remember { mutableStateOf(false) }
 
     val payloadIv = remember(data.payload.iv) {
         data.payload.iv?.let { Base64.decode(it) }
@@ -132,6 +136,25 @@ fun FullScreenVideoPlayer(
                         imageVector = Icons.Default.ChevronLeft,
                         contentDescription = stringResource(MR.string.menu_back),
                         tint = Color.White
+                    )
+                }
+            },
+            actions = {
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(MR.string.chat_options),
+                            tint = Color.White
+                        )
+                    }
+                    FullScreenMediaMenu(
+                        showMenu = showMenu,
+                        dismissMenu = { showMenu = false },
+                        onSave = {
+                            showMenu = false
+                            onSave()
+                        },
                     )
                 }
             },

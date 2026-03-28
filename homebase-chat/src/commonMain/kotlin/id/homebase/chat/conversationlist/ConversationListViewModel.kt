@@ -27,7 +27,7 @@ import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToConve
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToGroupSettings
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToMessageInfo
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToNewConversation
-import id.homebase.chat.conversationlist.ConversationListUiEvent.OpenFile
+import id.homebase.chat.conversationlist.ConversationListUiEvent.SaveFileToDevice
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareFile
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShareText
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
@@ -538,7 +538,6 @@ class ConversationListViewModel(
 
                 viewModelScope.launch {
                     try {
-
                         val payload =
                             message.payloads?.find { it.key == action.payloadKey } ?: return@launch
                         val payloadIv = Base64.decode(
@@ -546,30 +545,29 @@ class ConversationListViewModel(
                                 "encrypted payload requires key header"
                             )
                         )
-                        val fileBytes = chatMessageActionService.getPayloadBytes(
-                            message.fileId,
-                            action.payloadKey,
-                            KeyHeader(payloadIv, message.keyHeader.aesKey)
-                        )
 
                         val fileName = payload.filename() ?: payload.key
+                        var extension = payload.contentType?.substringAfter("/") ?: "bin"
+                        extension = when (extension) {
+                            "jpeg" -> "jpg"
+                            else -> extension
+                        }
+                        val filePath =
+                            "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
 
-                        if (fileBytes != null) {
-                            var extension = payload.contentType?.substringAfter("/") ?: "bin"
-                            extension = when (extension) {
-                                "jpeg" -> "jpg"
-                                else -> extension
-                            }
-                            val tempFile = fileOperationsProvider.writeBytesToTempFile(
-                                fileBytes, fileName, ".$extension"
-                            )
-                            sendEvent(OpenFile(tempFile))
+                        val success = driveFileHttpProvider.streamPayloadDecryptedToPath(
+                            driveId = chatTargetDrive.alias,
+                            fileId = message.fileId,
+                            key = action.payloadKey,
+                            keyHeader = KeyHeader(payloadIv, message.keyHeader.aesKey),
+                            outputPath = filePath,
+                            fileOps = fileOperationsProvider,
+                        )
+
+                        if (success) {
+                            sendEvent(SaveFileToDevice(filePath, "$fileName.$extension"))
                         } else {
-                            sendEvent(
-                                ShowErrorMessage(
-                                    "Could not download file"
-                                )
-                            )
+                            sendEvent(ShowErrorMessage("Could not download file"))
                         }
                     } catch (e: Exception) {
                         sendEvent(
@@ -578,10 +576,46 @@ class ConversationListViewModel(
                             )
                         )
                     } finally {
-                        // 4. Remove from downloadingFiles set
                         _uiState.update {
                             it.copy(downloadingFiles = it.downloadingFiles - fileKey)
                         }
+                    }
+                }
+            }
+
+            is ConversationListUiAction.DownloadVideoMedia -> {
+                val fileKey = "${action.fileId}_${action.payloadKey}"
+                _uiState.update { it.copy(downloadingFiles = it.downloadingFiles + fileKey) }
+
+                viewModelScope.launch {
+                    try {
+                        val fileName = action.payload.filename() ?: action.payloadKey
+                        var extension = action.payload.contentType?.substringAfter("/") ?: "bin"
+                        extension = when (extension) {
+                            "jpeg" -> "jpg"
+                            else -> extension
+                        }
+                        val filePath =
+                            "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
+
+                        val success = driveFileHttpProvider.streamPayloadDecryptedToPath(
+                            driveId = chatTargetDrive.alias,
+                            fileId = action.fileId,
+                            key = action.payloadKey,
+                            keyHeader = action.keyHeader,
+                            outputPath = filePath,
+                            fileOps = fileOperationsProvider,
+                        )
+
+                        if (success) {
+                            sendEvent(SaveFileToDevice(filePath, "$fileName.$extension"))
+                        } else {
+                            sendEvent(ShowErrorMessage("Could not download file"))
+                        }
+                    } catch (e: Exception) {
+                        sendEvent(ShowErrorMessage("Error downloading file: ${e.message}"))
+                    } finally {
+                        _uiState.update { it.copy(downloadingFiles = it.downloadingFiles - fileKey) }
                     }
                 }
             }
@@ -669,7 +703,14 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.SaveFile -> {
-                sendEvent(ShowErrorMessage("Not implemented yet"))
+                val (filePath, fileName) = when (val f = action.file) {
+                    is AttachmentPendingFile.FileImage -> f.file.toString() to f.file.name
+                    is AttachmentPendingFile.FileVideo -> f.file.toString() to f.file.name
+                    is AttachmentPendingFile.File -> f.file.toString() to f.file.name
+                    is AttachmentPendingFile.Gallery -> f.image.file.toString() to f.image.fileName
+                    is AttachmentPendingFile.Audio -> f.audioFile.toString() to f.audioFile.name
+                }
+                sendEvent(SaveFileToDevice(filePath, fileName))
             }
 
             is ConversationListUiAction.DeleteMessageForEveryone -> {

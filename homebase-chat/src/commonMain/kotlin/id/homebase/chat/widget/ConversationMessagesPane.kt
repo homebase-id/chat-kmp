@@ -22,6 +22,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiAction.CloseFullScreenOverlay
 import id.homebase.chat.conversationlist.ConversationListUiAction.DeleteMessage
 import id.homebase.chat.conversationlist.ConversationListUiAction.DownloadMedia
+import id.homebase.chat.conversationlist.ConversationListUiAction.DownloadVideoMedia
 import id.homebase.chat.conversationlist.ConversationListUiAction.SaveFile
 import id.homebase.chat.conversationlist.ConversationListUiAction.SaveScrollPosition
 import id.homebase.chat.conversationlist.ConversationListUiAction.SendFile
@@ -269,6 +270,7 @@ fun ConversationMessagesPane(
                         FullScreenVideoPlayer(
                             data = data,
                             onDismiss = { onUiAction(CloseFullScreenOverlay) },
+                            onSave = { onUiAction(DownloadVideoMedia(data.fileId, data.payloadKey, data.keyHeader, data.payload)) },
                         )
                     }
 

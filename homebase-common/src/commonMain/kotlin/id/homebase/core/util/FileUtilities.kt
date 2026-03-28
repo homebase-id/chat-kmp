@@ -14,4 +14,9 @@ interface FileSystemHandler {
     fun shareFile(file: Path, onError: (Throwable) -> Unit = {})
     fun shareText(text: String, onError: (Throwable) -> Unit = {})
     fun openAppStore(onError: (Throwable) -> Unit = {})
+
+    /** Save a file to the user's device. On desktop this prompts for a location;
+     *  on Android/iOS it opens the OS share/save sheet. */
+    fun saveFile(file: Path, suggestedName: String, onError: (Throwable) -> Unit = {}) =
+        shareFile(file, onError)
 }
