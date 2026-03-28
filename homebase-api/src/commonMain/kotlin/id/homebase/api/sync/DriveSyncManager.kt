@@ -28,10 +28,12 @@ class DriveSyncManager(
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
     private val databaseManager: DatabaseManager,
+    private val drives: Map<Uuid, String>,
 ) {
     // Immutable map reference — always replaced, never mutated in-place, preventing CME.
-    // Writes are serialized via driveSyncsMutex (suspend callers) or atomic reference swap (non-suspend callers).
-    private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
+    // All writes are serialized via driveSyncsMutex. @Volatile ensures readers outside the
+    // mutex always see the latest reference (important on Kotlin/Native).
+    @Volatile private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
     private val driveSyncsMutex = Mutex()
 
     private val _driveStatuses = MutableStateFlow<Map<Uuid, DriveStatus>>(emptyMap())
@@ -96,7 +98,7 @@ class DriveSyncManager(
         }
     }
 
-    suspend fun start(drives: Map<Uuid, String>) {
+    suspend fun start() {
         val credentials = credentialsManager.requireActiveCredentials()
         val identityId = credentials.getIdentityId()
 
@@ -155,9 +157,12 @@ class DriveSyncManager(
         driveSyncs.values.forEach { it.cancel() }
     }
 
-    fun stop() {
-        val old = driveSyncs
-        driveSyncs = emptyMap()
+    suspend fun stop() {
+        val old = driveSyncsMutex.withLock {
+            val snapshot = driveSyncs
+            driveSyncs = emptyMap()
+            snapshot
+        }
         old.values.forEach { it.cancel() }
         _driveStatuses.update { emptyMap() }
     }
