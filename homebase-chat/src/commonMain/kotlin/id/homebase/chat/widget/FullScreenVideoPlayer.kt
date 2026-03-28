@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -48,6 +49,7 @@ fun FullScreenVideoPlayer(
     data: FullScreenOverlay.VideoPlayerData,
     onDismiss: () -> Unit,
     onSave: () -> Unit,
+    isDownloading: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var isPlaying by remember(data) { mutableStateOf(true) }
@@ -124,6 +126,13 @@ fun FullScreenVideoPlayer(
                     .align(Alignment.Center)
                     .clickable { isPlaying = true },
                 tint = Color.White.copy(alpha = 0.85f)
+            )
+        }
+
+        if (isDownloading) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center),
+                color = Color.White,
             )
         }
 

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,6 +74,7 @@ import kotlin.uuid.Uuid
 fun FullScreenMediaViewer(
     modifier: Modifier = Modifier,
     data: FullScreenOverlay.ViewMessageData,
+    isDownloading: Boolean = false,
     onShare: (messageId: Uuid, payloadKey: String) -> Unit,
     onSave: (messageId: Uuid, payloadKey: String) -> Unit,
     onDelete: (messageId: Uuid) -> Unit,
@@ -189,6 +191,10 @@ fun FullScreenMediaViewer(
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedTransitionScope = sharedTransitionScope,
             )
+        }
+
+        if (isDownloading) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
 
         AnimatedVisibility(

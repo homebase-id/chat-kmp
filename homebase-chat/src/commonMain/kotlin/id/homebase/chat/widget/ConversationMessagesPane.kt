@@ -255,6 +255,7 @@ fun ConversationMessagesPane(
                     is FullScreenOverlay.ViewMessageData -> {
                         FullScreenMediaViewer(
                             data = data,
+                            isDownloading = "${data.messageId}_${data.selectedPayloadKey}" in uiState.downloadingFiles,
                             onShare = { id, key -> onUiAction(ShareMedia(id, key)) },
                             onSave = { message, key ->
                                 onUiAction(DownloadMedia(message, key))
@@ -269,6 +270,7 @@ fun ConversationMessagesPane(
                     is FullScreenOverlay.VideoPlayerData -> {
                         FullScreenVideoPlayer(
                             data = data,
+                            isDownloading = "${data.fileId}_${data.payloadKey}" in uiState.downloadingFiles,
                             onDismiss = { onUiAction(CloseFullScreenOverlay) },
                             onSave = { onUiAction(DownloadVideoMedia(data.fileId, data.payloadKey, data.keyHeader, data.payload)) },
                         )
