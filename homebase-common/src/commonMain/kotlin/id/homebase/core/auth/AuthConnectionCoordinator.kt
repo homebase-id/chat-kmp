@@ -33,7 +33,8 @@ class AuthConnectionCoordinator(
     private val driveSyncManager: DriveSyncManager,
     private val outboxSync: OutboxSync,
     private val eventBus: EventBus,
-    private val databaseManager: DatabaseManager
+    private val databaseManager: DatabaseManager,
+    private val onPostAuthenticated: () -> Unit = {},
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
     private var wsClient: OdinWebSocketClient? = null
@@ -81,6 +82,7 @@ class AuthConnectionCoordinator(
     suspend fun onAuthStateChanged(state: YouAuthState) {
         when (state) {
             is YouAuthState.Authenticated -> {
+                onPostAuthenticated()
                 connect()
                 loadProfile()
             }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import co.touchlab.kermit.Logger
 import org.koin.core.component.getScopeId
@@ -29,8 +30,11 @@ class ConnectionService(
     val connections: StateFlow<ConnectionState> =
         _connections.asStateFlow()
 
+    private var startJob: Job? = null
+
     fun start() {
-        scope.launch {
+        if (startJob?.isActive == true) return
+        startJob = scope.launch {
             refresh()
         }
     }

@@ -17,6 +17,7 @@ import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.config.contactTargetDrive
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,8 +52,11 @@ class DriveContactService(
         }
     }
 
+    private var startJob: Job? = null
+
     fun start() {
-        scope.launch {
+        if (startJob?.isActive == true) return
+        startJob = scope.launch {
             refresh()
         }
     }

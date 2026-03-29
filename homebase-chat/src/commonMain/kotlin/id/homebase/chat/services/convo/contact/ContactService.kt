@@ -22,7 +22,12 @@ class ContactService(
     private val contactByOdinId =
         MutableStateFlow<Map<OdinId, ContactUiModel>>(emptyMap())
 
+    private var started = false
+
     fun start() {
+        if (started) return
+        started = true
+
         driveContacts.start()
         connections.start()
 
