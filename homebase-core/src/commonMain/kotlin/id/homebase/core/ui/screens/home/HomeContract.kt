@@ -12,6 +12,7 @@ data class HomeUiState(
 /** All possible user actions on Home screen. */
 sealed interface HomeUiAction {
     data object ExportLogClicked : HomeUiAction
+    data object ClearLogClicked : HomeUiAction
     data object ExamplesClicked : HomeUiAction
 }
 

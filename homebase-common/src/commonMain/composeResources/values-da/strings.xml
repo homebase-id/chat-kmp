@@ -42,6 +42,7 @@
     <string name="someone">Nogen</string>
     <string name="leave">Forlad</string>
     <string name="export_log">Eksportér log</string>
+    <string name="clear_log">Ryd log</string>
     <string name="send">Send</string>
     <string name="media">Medie</string>
 

@@ -124,8 +124,9 @@ class ChatMessageStream(
     }
 
     private suspend fun refreshLoadedConversations() {
-        Logger.d("ChatMessageStream: refreshLoadedConversations called, ${loadedConversations.size} active conversations")
-        loadedConversations.forEach { conversationId ->
+        val snapshot = loadedConversations.toSet()
+        Logger.d("ChatMessageStream: refreshLoadedConversations called, ${snapshot.size} active conversations")
+        snapshot.forEach { conversationId ->
             val result = fetchMessages(conversationId)
             Logger.d("ChatMessageStream: fetchMessages($conversationId) → ${result.records.size} messages")
             conversationState.set(conversationId, result.records)
