@@ -4,6 +4,8 @@ import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.common.OdinId
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,23 +37,18 @@ class ConnectionService(
 
     suspend fun refresh() {
         try {
-            Logger.d { "Fetching connected connections..." }
-            val connected = provider.getConnected(1000, null)
-
-            Logger.d { "Loaded connections ${connected.results.size}..." }
-
-            Logger.d { "Fetching blocked connections..." }
-            val blocked = provider.getBlocked(1000, null)
-
-            val merged =
-                (connected.results + blocked.results)
-                    .associateBy { it.odinId }
-
-            _connections.value = ConnectionState(
-                isLoaded = true,
-                map = merged
-            )
-
+            coroutineScope {
+                Logger.d { "Fetching connected and blocked connections in parallel..." }
+                val connectedDeferred = async { provider.getConnected(1000, null) }
+                val blockedDeferred = async { provider.getBlocked(1000, null) }
+                val connected = connectedDeferred.await()
+                val blocked = blockedDeferred.await()
+                Logger.d { "Loaded connections ${connected.results.size} connected, ${blocked.results.size} blocked" }
+                _connections.value = ConnectionState(
+                    isLoaded = true,
+                    map = (connected.results + blocked.results).associateBy { it.odinId }
+                )
+            }
         } catch (e: Exception) {
             Logger.e(e) {
                 "ConnectionService.refresh failed: ${e.message}"
