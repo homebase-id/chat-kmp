@@ -5,6 +5,7 @@ import com.mayakapps.kache.FileKache
 import kotlin.time.measureTimedValue
 import id.homebase.api.client.ByteApiResponse
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
@@ -135,6 +136,10 @@ class DriveFileProviderCached(
                         Logger.d(tag = "VideoIO") { "payload cache-write: ${result.bytes.size} bytes in $cacheWriteElapsed" }
                         result
                     }
+                } catch (e: NotFoundException) {
+                    // 404 thrown by network layer — cache it so future calls skip the network
+                    notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
+                    throw e
                 } catch (e: Exception) {
                     // For other errors (500, network issues, etc.), don't cache and rethrow
                     throw e
@@ -165,7 +170,7 @@ class DriveFileProviderCached(
                         onDownloadProgress = onDownloadProgress,
                 )
 
-        if (raw.status == 404) return null
+        if (raw.status == 404) throw NotFoundException()
 
         val rangeResult = DriveFileHelpers.getRangeHeader(chunkStart, chunkLength)
 
@@ -298,6 +303,10 @@ class DriveFileProviderCached(
                         }
                         result
                     }
+                } catch (e: NotFoundException) {
+                    // 404 thrown by network layer — cache it so future calls skip the network
+                    notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
+                    throw e
                 } catch (e: Exception) {
                     // For other errors (500, network issues, etc.), don't cache and rethrow
                     throw e
@@ -325,7 +334,7 @@ class DriveFileProviderCached(
                         lastModified = lastModified
                 )
 
-        if (raw.status == 404) return null
+        if (raw.status == 404) throw NotFoundException()
 
         val decryptedBytes = delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
 
