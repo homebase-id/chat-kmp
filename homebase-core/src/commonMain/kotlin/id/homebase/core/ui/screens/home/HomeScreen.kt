@@ -28,6 +28,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
+import id.homebase.resources.clear_log
 import id.homebase.resources.export_log
 import org.jetbrains.compose.resources.stringResource
 
@@ -96,6 +97,7 @@ fun HomeUi(
             Text("Version ${uiState.appVersion}", style = MaterialTheme.typography.labelMedium)
             Spacer(modifier = Modifier.height(32.dp))
             NavigationButton(stringResource(MR.string.export_log)) { onAction(HomeUiAction.ExportLogClicked) }
+            NavigationButton(stringResource(MR.string.clear_log)) { onAction(HomeUiAction.ClearLogClicked) }
 
         }
     }

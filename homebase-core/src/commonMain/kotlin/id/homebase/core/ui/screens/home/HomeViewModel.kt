@@ -27,6 +27,9 @@ class HomeViewModel(
             is HomeUiAction.ExportLogClicked -> {
                 exportLogFile()
             }
+            is HomeUiAction.ClearLogClicked -> {
+                clearLogFile()
+            }
             is HomeUiAction.ExamplesClicked -> {
                 sendEvent(HomeUiEvent.NavigateToExample)
             }
@@ -70,6 +73,17 @@ class HomeViewModel(
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "Failed to export log file" }
 
+            }
+        }
+    }
+
+    private fun clearLogFile() {
+        viewModelScope.launch {
+            try {
+                LoggerConfig.purgeLogs()
+                Logger.i(tag = TAG) { "Log cleared by user" }
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "Failed to clear log file" }
             }
         }
     }
