@@ -100,6 +100,15 @@ class AuthConnectionCoordinator(
         }
     }
 
+    /**
+     * Initialises and starts the WebSocket client for this session.
+     * Returns immediately — the connection is established asynchronously.
+     * React to successful connection via the [onConnected] callback below,
+     * which fires only after the server handshake (deviceHandshakeSuccess) completes.
+     *
+     * Guarded by [wsClient] null-check so it is safe to call repeatedly; only
+     * the first call per session does anything.
+     */
     private suspend fun connect() {
         if (wsClient != null) return
 
@@ -111,9 +120,18 @@ class AuthConnectionCoordinator(
                 eventBus = eventBus,
                 databaseManager = databaseManager,
                 drives = syncLabeledDrives.map { it.drive },
+                // Fires asynchronously once the server handshake has completed.
+                // We mark the connection state and then run post-connect setup in a
+                // background coroutine:
+                //   1. driveSyncManager.start/syncAll() — catch up on inbound drive changes.
+                //   2. outboxSync.clearCheckout()       — clear any stale checked-out items
+                //                                         from before the disconnect.
+                //   3. outboxSync.setOnline(true)       — only enable outbox sending AFTER
+                //                                         sync and cleanup are done, ensuring
+                //                                         a clean send window.
+                //   4. outboxSync.send()                — flush the outbox queue.
                 onConnected = {
                     _connectionState.update { it.copy(isConnected = true) }
-                    outboxSync.setOnline(true)
                     scope.launch {
                         try {
                             // start() must be called on every (re)connect — not just the first —
@@ -128,6 +146,7 @@ class AuthConnectionCoordinator(
                                 _connectionState.update { it.copy(isConnecting = false) }
                             }
                             outboxSync.clearCheckout()
+                            outboxSync.setOnline(true)
                             outboxSync.send()
                         }
                     }
