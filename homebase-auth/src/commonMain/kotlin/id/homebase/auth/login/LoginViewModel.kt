@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 class LoginViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
@@ -43,6 +44,11 @@ class LoginViewModel(
 
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState
+
+    // Tracks the active auth-state observer so AppResumed doesn't stack multiple collectors.
+    private var authStateJob: Job? = null
+    // One-shot guard — prevents handleAuthenticatedUser() firing more than once per login.
+    private var didHandleAuthenticated = false
 
     init {
         loadUsernameFromStorage()
@@ -200,8 +206,10 @@ class LoginViewModel(
     }
 
     private fun observeAuthState() {
-
-        viewModelScope.launch {
+        // Cancel any in-flight observer (e.g. from a previous AppResumed) before starting a new one.
+        authStateJob?.cancel()
+        didHandleAuthenticated = false
+        authStateJob = viewModelScope.launch {
             combine(
                 authConnectionCoordinator.connectionState,
                 youAuthFlowManager.authState
@@ -255,6 +263,8 @@ class LoginViewModel(
     }
 
     private fun handleAuthenticatedUser() {
+        if (didHandleAuthenticated) return
+        didHandleAuthenticated = true
         viewModelScope.launch { notificationService.reRegister() }
         usernameStorage.saveUsername(_uiState.value.homebaseId)
         _uiState.update {

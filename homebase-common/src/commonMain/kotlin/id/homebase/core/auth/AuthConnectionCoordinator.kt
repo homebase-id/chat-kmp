@@ -103,8 +103,6 @@ class AuthConnectionCoordinator(
     private suspend fun connect() {
         if (wsClient != null) return
 
-        driveSyncManager.start()
-
         wsClient =
             OdinWebSocketClient(
                 credentialsManager = credentialsManager,
@@ -118,6 +116,10 @@ class AuthConnectionCoordinator(
                     outboxSync.setOnline(true)
                     scope.launch {
                         try {
+                            // start() must be called on every (re)connect — not just the first —
+                            // because pause() sets isRunning=false on disconnect, and syncAll()
+                            // would silently skip if isRunning is still false.
+                            driveSyncManager.start()
                             driveSyncManager.syncAll()
                         } catch (e: Exception) {
                             Logger.e(e) { "syncAll() failed on connect" }
