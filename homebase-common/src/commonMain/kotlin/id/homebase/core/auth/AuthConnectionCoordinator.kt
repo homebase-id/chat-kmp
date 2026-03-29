@@ -112,6 +112,7 @@ class AuthConnectionCoordinator(
     private suspend fun connect() {
         if (wsClient != null) return
 
+        _connectionState.update { it.copy(isConnecting = true) }
         wsClient =
             OdinWebSocketClient(
                 credentialsManager = credentialsManager,
@@ -165,7 +166,10 @@ class AuthConnectionCoordinator(
 
     private suspend fun disconnect() {
         outboxSync.setOnline(false)
-        _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
+        // Keep isConnecting = true so the next login cycle correctly starts in
+        // StartupState.Loading.  While logged out the auth state is Unauthenticated,
+        // so isConnecting has no visible effect on the UI.
+        _connectionState.update { it.copy(isConnected = false, isConnecting = true) }
         wsClient?.close()
         wsClient = null
         driveSyncManager.stop()
