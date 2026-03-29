@@ -7,6 +7,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import co.touchlab.kermit.Logger
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.sync.SyncOutcome
 import org.koin.core.component.KoinComponent
@@ -16,11 +17,21 @@ class DriveSyncWorker(appContext: Context, params: WorkerParameters) :
     CoroutineWorker(appContext, params), KoinComponent {
 
     override suspend fun doWork(): Result {
+        Logger.i(tag = "DriveSyncWorker") { "doWork: starting (attempt=$runAttemptCount)" }
         val orchestrator: BackgroundSyncOrchestrator = get()
-        return when (orchestrator.syncIfAuthenticated()) {
-            is SyncOutcome.Success -> Result.success()
-            is SyncOutcome.NoCredentials -> Result.success()
-            is SyncOutcome.Failed -> Result.failure()
+        return when (val outcome = orchestrator.syncIfAuthenticated()) {
+            is SyncOutcome.Success -> {
+                Logger.i(tag = "DriveSyncWorker") { "doWork: success" }
+                Result.success()
+            }
+            is SyncOutcome.NoCredentials -> {
+                Logger.i(tag = "DriveSyncWorker") { "doWork: no credentials" }
+                Result.success()
+            }
+            is SyncOutcome.Failed -> {
+                Logger.e(tag = "DriveSyncWorker") { "doWork: failed — ${outcome.cause.message}" }
+                Result.failure()
+            }
         }
     }
 

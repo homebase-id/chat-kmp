@@ -1,6 +1,7 @@
 package id.homebase.core.image
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.withRetry
@@ -44,7 +45,11 @@ class HomebaseImageLoader(
 
         // Default retry configuration for image loading
         val DEFAULT_RETRY_CONFIG = RetryConfig(
-            maxRetries = 3, initialDelayMs = 500L, maxDelayMs = 5000L, backoffMultiplier = 2.0
+            maxRetries = 3,
+            initialDelayMs = 500L,
+            maxDelayMs = 5000L,
+            backoffMultiplier = 2.0,
+            retryOn = { e -> e !is NotFoundException }
         )
     }
 

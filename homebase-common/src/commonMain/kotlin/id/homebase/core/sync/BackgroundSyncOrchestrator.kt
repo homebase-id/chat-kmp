@@ -1,5 +1,6 @@
 package id.homebase.core.sync
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -15,16 +16,30 @@ class BackgroundSyncOrchestrator(
     private val authConnectionCoordinator: AuthConnectionCoordinator,
 ) {
     suspend fun syncIfAuthenticated(): SyncOutcome {
-        if (!credentialsManager.hasActiveCredentials()) return SyncOutcome.NoCredentials
+        Logger.d(tag = "BackgroundSync") { "syncIfAuthenticated: checking..." }
+        if (!credentialsManager.hasActiveCredentials()) {
+            Logger.i(tag = "BackgroundSync") { "syncIfAuthenticated: no credentials, skipping" }
+            return SyncOutcome.NoCredentials
+        }
         // If the WebSocket is live, the connection loop is already handling sync — no duplicate work needed.
         // Background sync is only meaningful when WS is offline (e.g. iOS background fetch).
-        if (authConnectionCoordinator.isOnline.value) return SyncOutcome.Success
+        if (authConnectionCoordinator.isOnline.value) {
+            Logger.d(tag = "BackgroundSync") { "syncIfAuthenticated: WS online — skipping (WS handles sync)" }
+            return SyncOutcome.Success
+        }
+        Logger.i(tag = "BackgroundSync") { "syncIfAuthenticated: WS offline — running background sync" }
         return runCatching {
             driveSyncManager.start()
             driveSyncManager.syncAll()
         }.fold(
-            onSuccess = { SyncOutcome.Success },
-            onFailure = { SyncOutcome.Failed(it) },
+            onSuccess = {
+                Logger.i(tag = "BackgroundSync") { "syncIfAuthenticated: completed" }
+                SyncOutcome.Success
+            },
+            onFailure = {
+                Logger.e(tag = "BackgroundSync") { "syncIfAuthenticated: failed — ${it.message}" }
+                SyncOutcome.Failed(it)
+            },
         )
     }
 
