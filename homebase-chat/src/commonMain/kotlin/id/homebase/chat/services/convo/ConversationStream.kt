@@ -84,13 +84,13 @@ class ConversationStream(
                     is BackendEvent.DriveEvent.Stopped -> when (event.result) {
                         is BackendEvent.DriveResult.Success -> {
                             isSyncing = false
-                            start()
+                            if (event.totalCount > 0) start()
                         }
 
                         is BackendEvent.DriveResult.Failure -> {
                             isSyncing = false
                             Logger.e { "Failed during drive sync" }
-                            start()
+                            if (event.totalCount > 0) start()
                         }
                     }
 
