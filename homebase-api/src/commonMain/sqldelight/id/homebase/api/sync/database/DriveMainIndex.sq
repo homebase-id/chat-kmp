@@ -1,6 +1,6 @@
 import kotlin.uuid.Uuid;
 
-CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 1
+CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 2
    rowId INTEGER PRIMARY KEY AUTOINCREMENT,
    identityId BLOB AS Uuid NOT NULL,
    driveId BLOB AS Uuid NOT NULL,
@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 1
 CREATE INDEX IF NOT EXISTS Idx0DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,created,rowId);
 CREATE INDEX IF NOT EXISTS Idx1DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,modified,rowId);
 CREATE INDEX IF NOT EXISTS Idx2DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,userDate,rowId);
+-- Other DriveMainIndex INDEX is created in ChatReadCount.sq
 
 -- Upsert a record
 upsertDriveMainIndex:

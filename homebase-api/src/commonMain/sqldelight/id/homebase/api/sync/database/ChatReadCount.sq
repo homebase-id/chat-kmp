@@ -12,6 +12,11 @@ CREATE INDEX IF NOT EXISTS idx_messages_groupId_filetype_created
 -- To make the conversation + last-message performant
 CREATE INDEX IF NOT EXISTS idx_chatmessage_convid_created ON DriveMainIndex(groupId,fileType,created DESC);
 
+-- Speeds up message scans in selectAllConversationPlusLastMessage and selectAllUnreadCount
+-- (fileType first lets SQLite seek directly to message rows without a full table scan)
+CREATE INDEX IF NOT EXISTS idx_messages_filetype_datatype_groupid_created
+  ON DriveMainIndex(fileType, dataType, groupId, created DESC);
+
 -- Get full list of conversations (8888) from the DriveMainIndex table
 -- here to not contaminate it. Can also be easily fetched with QB()
 selectAllCoversations:
