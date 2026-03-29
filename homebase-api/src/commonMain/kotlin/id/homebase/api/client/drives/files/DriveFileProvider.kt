@@ -13,6 +13,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.request.options
 import io.ktor.http.Headers
@@ -132,6 +133,15 @@ public class DriveFileProvider(
             driveId, fileId, key, keyHeader, chunkStart, chunkLength, onDownloadProgress
         )
     }
+
+    suspend fun streamPayloadDecryptedToPath(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        outputPath: String,
+        fileOps: FileOperationsProvider
+    ): Boolean = driveCache.streamPayloadDecryptedToPath(driveId, fileId, key, keyHeader, outputPath, fileOps)
 
     suspend fun getThumbBytesDecrypted(
         driveId: Uuid,

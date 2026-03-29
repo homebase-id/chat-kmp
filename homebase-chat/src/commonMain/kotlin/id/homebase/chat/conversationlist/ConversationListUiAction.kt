@@ -1,5 +1,7 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ConversationUiModel
@@ -52,6 +54,12 @@ sealed interface ConversationListUiAction {
 
     data class ShareMessage(val message: MessageUiModel) : ConversationListUiAction
     data class DownloadMedia(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
+    data class DownloadVideoMedia(
+        val fileId: Uuid,
+        val payloadKey: String,
+        val keyHeader: KeyHeader,
+        val payload: PayloadDescriptor,
+    ) : ConversationListUiAction
 
     data class SaveFile(val file: AttachmentPendingFile) : ConversationListUiAction
 

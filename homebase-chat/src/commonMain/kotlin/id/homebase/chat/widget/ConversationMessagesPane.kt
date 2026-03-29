@@ -22,6 +22,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiAction.CloseFullScreenOverlay
 import id.homebase.chat.conversationlist.ConversationListUiAction.DeleteMessage
 import id.homebase.chat.conversationlist.ConversationListUiAction.DownloadMedia
+import id.homebase.chat.conversationlist.ConversationListUiAction.DownloadVideoMedia
 import id.homebase.chat.conversationlist.ConversationListUiAction.SaveFile
 import id.homebase.chat.conversationlist.ConversationListUiAction.SaveScrollPosition
 import id.homebase.chat.conversationlist.ConversationListUiAction.SendFile
@@ -283,6 +284,7 @@ fun ConversationMessagesPane(
                     is FullScreenOverlay.ViewMessageData -> {
                         FullScreenMediaViewer(
                             data = data,
+                            isDownloading = "${data.messageId}_${data.selectedPayloadKey}" in uiState.downloadingFiles,
                             onShare = { id, key -> onUiAction(ShareMedia(id, key)) },
                             onSave = { message, key ->
                                 onUiAction(DownloadMedia(message, key))
@@ -297,7 +299,9 @@ fun ConversationMessagesPane(
                     is FullScreenOverlay.VideoPlayerData -> {
                         FullScreenVideoPlayer(
                             data = data,
+                            isDownloading = "${data.fileId}_${data.payloadKey}" in uiState.downloadingFiles,
                             onDismiss = { onUiAction(CloseFullScreenOverlay) },
+                            onSave = { onUiAction(DownloadVideoMedia(data.fileId, data.payloadKey, data.keyHeader, data.payload)) },
                         )
                     }
 

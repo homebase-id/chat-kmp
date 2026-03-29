@@ -46,6 +46,8 @@ data class PayloadDescriptor(
 
             }
 
+            contentType?.startsWith("video/") == true -> DescriptorContent.Empty
+
             else -> DescriptorContent.File(name = descriptorContent)
         }
     }

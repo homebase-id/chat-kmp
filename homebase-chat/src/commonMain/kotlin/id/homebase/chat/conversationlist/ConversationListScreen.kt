@@ -149,6 +149,11 @@ fun ConversationListScreen(
                 fileSystemHandler.openFile(Path(event.filePath), showChooser = true)
             }
 
+            is ConversationListUiEvent.SaveFileToDevice -> {
+                viewModel.eventConsumed()
+                fileSystemHandler.saveFile(Path(event.filePath), event.suggestedName)
+            }
+
             is ConversationListUiEvent.OpenUrl -> {
                 viewModel.eventConsumed()
                 fileSystemHandler.openUrl(event.url)
