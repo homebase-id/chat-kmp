@@ -46,7 +46,7 @@ actual object ShareAuthBridge {
             putKeychain(KEY_AUTH_ACTIVE, if (isAuthenticated) "true" else "false")
             putKeychain(KEY_USER_DOMAIN, userDomain)
         } catch (e: Exception) {
-            Logger.e("ShareAuthBridge") { "Failed to set auth status: ${e.message}" }
+            Logger.e(tag = "ShareAuthBridge") { "Failed to set auth status: ${e.message}" }
         }
     }
 
@@ -55,7 +55,7 @@ actual object ShareAuthBridge {
             deleteKeychain(KEY_AUTH_ACTIVE)
             deleteKeychain(KEY_USER_DOMAIN)
         } catch (e: Exception) {
-            Logger.e("ShareAuthBridge") { "Failed to clear auth status: ${e.message}" }
+            Logger.e(tag = "ShareAuthBridge") { "Failed to clear auth status: ${e.message}" }
         }
     }
 
