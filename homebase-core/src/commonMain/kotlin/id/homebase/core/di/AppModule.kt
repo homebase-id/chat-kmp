@@ -56,7 +56,23 @@ val appModule = module {
             syncLabeledDrives.associate { it.drive.alias to it.label })
     }
 
-    singleOf(::AuthConnectionCoordinator)
+    single {
+        AuthConnectionCoordinator(
+            credentialsManager = get(),
+            ownerSessionRepository = get(),
+            youAuthFlowManager = get(),
+            driveSyncManager = get(),
+            outboxSync = get(),
+            eventBus = get(),
+            databaseManager = get(),
+            onPostAuthenticated = {
+                // Preload conversations and contacts from local DB while navigation
+                // and Compose composition are still in progress, saving ~800ms.
+                get<ConversationStream>().start()
+                get<ContactService>().start()
+            }
+        )
+    }
     singleOf(::BackgroundSyncOrchestrator)
 
     factoryOf(::PayloadBundleEncryptionService)
