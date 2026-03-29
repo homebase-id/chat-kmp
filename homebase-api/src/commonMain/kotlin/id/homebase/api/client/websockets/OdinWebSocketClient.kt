@@ -49,6 +49,7 @@ class OdinWebSocketClient(
 
     private var reconnectDelayMs = 1_000L
     private val MAX_RECONNECT_DELAY_MS = 5_000L
+    private var closed = false
 
     private val client = HttpClient {
         // TODO: enable per-message deflate compression via WebSocketDeflateExtension once
@@ -87,6 +88,8 @@ class OdinWebSocketClient(
     )
 
     private suspend fun handleDisconnected() {
+        if (closed) return
+
         eventBus.emit(BackendEvent.ConnectionOffline)
         onDisconnected()
 
@@ -106,11 +109,13 @@ class OdinWebSocketClient(
                 eventBus.emit(BackendEvent.Connecting)
 
                 try {
-                    connectOnce()
+                    val connected = connectOnce()
 
-                    // If connectOnce returns normally, we consider that a success
-                    // Reset backoff so next failure retries fast again
-                    reconnectDelayMs = 1_000L
+                    // Only reset backoff if we actually established a connection.
+                    // Early returns (e.g. no credentials) should not reset backoff.
+                    if (connected) {
+                        reconnectDelayMs = 1_000L
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -136,11 +141,11 @@ class OdinWebSocketClient(
         return delayMs + (-jitter..jitter).random()
     }
 
-    private suspend fun connectOnce() {
+    private suspend fun connectOnce(): Boolean {
         val creds = credentialsManager.getActiveCredentials()
             ?: run {
                 Logger.w { "No active credentials, cannot connect WebSocket" }
-                return
+                return false
             }
 
         val identity = creds.domain
@@ -199,6 +204,7 @@ class OdinWebSocketClient(
                 Logger.i { "WebSocket connection ended" }
             }
         }
+        return true
     }
 
     private suspend fun handleTextFrame(frame: Frame.Text) {
@@ -486,6 +492,7 @@ class OdinWebSocketClient(
      * Disconnect from the WebSocket
      */
     fun disconnect() {
+        closed = true
         pingSupervisor.stop()
         session = null
         connectionJob?.cancel()

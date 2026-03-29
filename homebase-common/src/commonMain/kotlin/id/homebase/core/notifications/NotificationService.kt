@@ -454,4 +454,10 @@ class NotificationService(
             Result.failure(e)
         }
     }
+
+    /** Fire-and-forget re-registration that runs in the service's own long-lived scope,
+     *  surviving ViewModel destruction (e.g. navigation away from login screen). */
+    fun reRegisterAsync() {
+        scope.launch { reRegister() }
+    }
 }

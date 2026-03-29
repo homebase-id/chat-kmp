@@ -265,7 +265,7 @@ class LoginViewModel(
     private fun handleAuthenticatedUser() {
         if (didHandleAuthenticated) return
         didHandleAuthenticated = true
-        viewModelScope.launch { notificationService.reRegister() }
+        notificationService.reRegisterAsync()
         usernameStorage.saveUsername(_uiState.value.homebaseId)
         _uiState.update {
             it.copy(

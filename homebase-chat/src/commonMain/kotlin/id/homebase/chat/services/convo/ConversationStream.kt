@@ -26,6 +26,7 @@ import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareableConversation
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +51,8 @@ class ConversationStream(
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
     private val _shareableConversations = MutableStateFlow<List<ShareableConversation>>(emptyList())
     private var isSyncing = false // Track if chat drive sync is in progress
+    private var loadJob: Job? = null
+    private var shareCacheJob: Job? = null
 
     private val mapper: ConversationMapper = ConversationMapper(
         credentialsManager = credentialsManager
@@ -271,7 +274,8 @@ class ConversationStream(
     }
 
     fun start() {
-        scope.launch {
+        if (loadJob?.isActive == true) return
+        loadJob = scope.launch {
             loadConversations()
         }
         scope.launch {
@@ -281,18 +285,21 @@ class ConversationStream(
 
         // Reactively update share cache when conversations or contacts change,
         // so the iOS share extension always has resolved display names.
-        scope.launch {
-            @OptIn(kotlinx.coroutines.FlowPreview::class)
-            combine(
-                _conversations,
-                contactService.contacts,
-            ) { convos, contacts -> Pair(convos, contacts) }
-                .debounce(500) // Avoid rapid writes during initial load
-                .collect { (convos, contacts) ->
-                    if (convos.dataReady) {
-                        updateShareCache(convos.items, contacts)
+        // Only launch once — subsequent start() calls reuse the existing collector.
+        if (shareCacheJob == null) {
+            shareCacheJob = scope.launch {
+                @OptIn(kotlinx.coroutines.FlowPreview::class)
+                combine(
+                    _conversations,
+                    contactService.contacts,
+                ) { convos, contacts -> Pair(convos, contacts) }
+                    .debounce(500) // Avoid rapid writes during initial load
+                    .collect { (convos, contacts) ->
+                        if (convos.dataReady) {
+                            updateShareCache(convos.items, contacts)
+                        }
                     }
-                }
+            }
         }
     }
 
