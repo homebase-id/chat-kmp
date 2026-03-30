@@ -145,7 +145,7 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
                         .size(48.dp)
                         .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop,
-                    contentDescription = "Reply thumbnail",
+                    contentDescription = null,
                 )
             }
 

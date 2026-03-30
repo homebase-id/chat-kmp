@@ -185,6 +185,8 @@ class ChatMessageActionService(
         val conversation = conversationService.getConversation(msg.conversationId) ?: return
         val fileId = requireFileId(messageId)
 
+        // Soft-delete only for now — propagates to other clients via sync.
+        // Hard-delete will be added as a second phase (user invokes delete again on soft-deleted msg).
         val hardDelete = false
         val recipients: List<OdinId>? = if (!hardDelete && deleteForEveryone) {
             val domain = credentialsManager.requireActiveCredentials().domain
