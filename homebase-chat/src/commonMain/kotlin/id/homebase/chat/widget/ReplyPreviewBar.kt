@@ -69,7 +69,11 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
     val chatDriveId = chatTargetDrive.alias
     val thumbnailData = remember(message.fileId, firstPayload?.key, firstPayload?.lastModified) {
         if (!isVisualMedia || firstPayload == null) return@remember null
-        val payloadIv = firstPayload.iv?.let { Base64.decode(it) } ?: return@remember null
+        val payloadIv = try {
+            firstPayload.iv?.let { Base64.decode(it) }
+        } catch (_: Exception) {
+            null
+        } ?: return@remember null
         HomebaseImageData(
             driveId = chatDriveId,
             fileId = message.fileId,
@@ -141,7 +145,7 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
                         .size(48.dp)
                         .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop,
-                    contentDescription = "Reply thumbnail",
+                    contentDescription = null,
                 )
             }
 
