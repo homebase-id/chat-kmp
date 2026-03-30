@@ -55,6 +55,9 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.ImageSize
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
@@ -124,6 +127,7 @@ fun SentMessageBubble(
     downloadingFiles: Set<String>,
     onShowMore: (() -> Unit)? = null,
     uploadStatus: UploadStatus? = null,
+    replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -254,6 +258,7 @@ fun SentMessageBubble(
                     onShowMoreClick = onShowMore,
                     isPendingSend = message.isPendingSend,
                     uploadStatus = uploadStatus,
+                    replyMessages = replyMessages,
                 )
                 message.reactionPreview?.let { reactionSummary ->
                     ReactionList(
@@ -340,6 +345,7 @@ fun ReceivedMessageBubble(
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     downloadingFiles: Set<String>,
     onShowMore: (() -> Unit)? = null,
+    replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -407,7 +413,8 @@ fun ReceivedMessageBubble(
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         downloadingFiles = downloadingFiles,
-                        onShowMoreClick = onShowMore
+                        onShowMoreClick = onShowMore,
+                        replyMessages = replyMessages,
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(
@@ -607,13 +614,40 @@ fun String.hasContent(): Boolean {
 fun InlineReplyPreview(
     replyPreview: ReplyPreview,
     sentByYou: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    replyMessage: MessageUiModel? = null,
+    driveId: Uuid? = null,
 ) {
     val backgroundColor = MaterialTheme.colorScheme.primaryContainer
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
-    // Decode preview thumbnail if available
-    val thumbnailBitmap = remember(replyPreview.previewThumbnail) {
+    // Build HomebaseImageData from the original message's first image payload
+    val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
+        if (replyMessage == null || driveId == null) return@remember null
+        val firstImagePayload = replyMessage.payloads?.firstOrNull {
+            it.contentType?.startsWith("image/") == true
+        } ?: return@remember null
+        val payloadIv = try {
+            firstImagePayload.iv?.let { Base64.decode(it) }
+        } catch (_: Exception) {
+            null
+        } ?: return@remember null
+        HomebaseImageData(
+            driveId = driveId,
+            fileId = replyMessage.fileId,
+            payloadKey = firstImagePayload.key,
+            previewThumbnail = firstImagePayload.previewThumbnail?.toEmbeddedThumb()
+                ?: replyMessage.previewThumbnail
+                ?: replyPreview.previewThumbnail,
+            requestedSize = ImageSize.THUMB_SMALL,
+            isEncrypted = true,
+            keyHeader = KeyHeader(iv = payloadIv, aesKey = replyMessage.keyHeader.aesKey),
+        )
+    }
+
+    // Fallback: decode embedded base64 thumbnail if we can't build HomebaseImageData
+    val thumbnailBitmap = remember(replyPreview.previewThumbnail, imageData) {
+        if (imageData != null) return@remember null
         replyPreview.previewThumbnail?.content?.let { base64Content ->
             try {
                 val bytes = Base64.decode(base64Content)
@@ -624,7 +658,8 @@ fun InlineReplyPreview(
         }
     }
 
-    val message = if (replyPreview.previewThumbnail != null && replyPreview.message.isEmpty()) stringResource(MR.string.media) else replyPreview.message
+    val hasImage = imageData != null || replyPreview.previewThumbnail != null
+    val message = if (hasImage && replyPreview.message.isEmpty()) stringResource(MR.string.media) else replyPreview.message
 
     Row(
         modifier = Modifier
@@ -663,19 +698,34 @@ fun InlineReplyPreview(
                 )
             }
         }
-        // Thumbnail image if available
-        thumbnailBitmap?.let { bitmap ->
-             Row {
+        // Thumbnail image — prefer HomebaseImage, fall back to embedded bitmap
+        if (imageData != null) {
+            Row {
                 Spacer(modifier = Modifier.width(8.dp))
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = null,
+                HomebaseImage(
+                    imageData = imageData,
                     modifier = Modifier
                         .size(48.dp)
                         .clip(RoundedCornerShape(4.dp)),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    contentDescription = null,
                 )
                 Spacer(modifier = Modifier.width(4.dp))
+            }
+        } else {
+            thumbnailBitmap?.let { bitmap ->
+                Row {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
             }
         }
     }

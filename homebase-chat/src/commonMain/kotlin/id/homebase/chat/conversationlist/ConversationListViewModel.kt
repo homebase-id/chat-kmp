@@ -447,11 +447,13 @@ class ConversationListViewModel(
                 val message = messages.firstOrNull { it.id == action.messageId } ?: return
                 val isCurrentUserMessage =
                     message.originalAuthor?.domainName == _uiState.value.ownerSession?.odinId?.domainName
+                val isWithSelf =
+                    message.conversationId == ChatProtocol.ConversationWithYourselfId
                 _uiState.update {
                     it.copy(
                         uiDialog = DeleteMessage(
                             messageId = action.messageId,
-                            allowDeleteForEveryone = isCurrentUserMessage
+                            allowDeleteForEveryone = isCurrentUserMessage && !isWithSelf
                         )
                     )
                 }

@@ -113,6 +113,7 @@ import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -191,6 +192,22 @@ fun ConversationContent(
         kotlinx.coroutines.delay(50) // Small delay to ensure composition is complete
         focusManager.clearFocus()
         keyboardController?.hide()
+    }
+
+    // Build a lookup map of reply target ID -> MessageUiModel for reply image thumbnails.
+    // Only includes messages that are actually referenced by a reply, to avoid O(n) map of all messages.
+    val replyMessages = remember(uiState.messages) {
+        val allMessages = uiState.messages.filterIsInstance<MessageListContentModel.Message>()
+        val replyTargetIds = allMessages.mapNotNullTo(mutableSetOf()) {
+            it.message.messageAppData.replyPreview?.replyUniqueId
+        }
+        if (replyTargetIds.isEmpty()) {
+            persistentMapOf()
+        } else {
+            allMessages.filter { it.message.id in replyTargetIds }
+                .associate { it.message.id to it.message }
+                .toPersistentMap()
+        }
     }
 
     @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
@@ -437,6 +454,7 @@ fun ConversationContent(
                                         onUiAction = onUiAction,
                                         downloadingFiles = uiState.downloadingFiles,
                                         uploadStatus = uiState.uploadProgress[messageItem.message.id],
+                                        replyMessages = replyMessages,
                                     )
                                 }
                             }
