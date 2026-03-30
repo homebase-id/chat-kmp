@@ -60,6 +60,7 @@ class ChatMessageStream(
     private val conversationState = ActiveConversationState()
     private val chatDrive = chatTargetDrive.alias
     private var isSyncing = false
+    private var syncedMessageCount = 0
     private val loadedConversations = mutableSetOf<Uuid>()
 
     init {
@@ -75,18 +76,36 @@ class ChatMessageStream(
                 when (event) {
                     is BackendEvent.DriveEvent.Started -> {
                         isSyncing = true
+                        syncedMessageCount = 0
                     }
 
                     is BackendEvent.DriveEvent.Stopped -> {
                         isSyncing = false
-                        refreshLoadedConversations()
+                        if (event.totalCount > 0) {
+                            Logger.d("ChatMessageStream: Stopped with totalCount=${event.totalCount}, syncedMessageCount=$syncedMessageCount")
+                            refreshLoadedConversations()
+                        } else {
+                            Logger.d("ChatMessageStream: Stopped with totalCount=0, skipping refresh")
+                        }
                     }
 
                     is BackendEvent.DriveEvent.BatchReceived -> {
                         if (!isSyncing) {
                             processIncrementalBatch(event.batchData)
                         } else {
-                            Logger.d("ChatMessageStream: BatchReceived suppressed (isSyncing=true), ${event.batchData.size} files buffered by sync")
+                            val messageFiles = event.batchData.count {
+                                it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType
+                            }
+                            val conversationFiles = event.batchData.count {
+                                it.fileMetadata.appData.fileType == ChatProtocol.ConversationFileType
+                            }
+                            val otherFiles = event.batchData.size - messageFiles - conversationFiles
+                            syncedMessageCount += messageFiles
+                            Logger.d(
+                                "ChatMessageStream: BatchReceived suppressed (isSyncing=true), " +
+                                "${event.batchData.size} files (messages=$messageFiles, " +
+                                "conversations=$conversationFiles, other=$otherFiles)"
+                            )
                         }
                     }
                 }
