@@ -27,15 +27,23 @@ WHERE fileType = 8888;
 -- Like above, but add last message from each conversation
 -- This is needed at boot-time to efficiently load the full list of conversations
 -- and their corresponding last message.
+-- Only fetches the 1 latest message per conversation via index seek.
 selectAllConversationPlusLastMessage:
-WITH LatestMessages AS (
-  SELECT *, ROW_NUMBER() OVER (PARTITION BY groupId ORDER BY created DESC) AS rn
-  FROM DriveMainIndex AS m
-  WHERE fileType = 7878 AND dataType = 0 -- Message
-)
-SELECT d.jsonHeader AS convJsonHeader,m.jsonHeader AS msgJsonHeader,m.created AS msgCreated
+SELECT
+  d.jsonHeader AS convJsonHeader,
+  m.jsonHeader AS msgJsonHeader,
+  m.created    AS msgCreated
 FROM DriveMainIndex AS d
-LEFT JOIN LatestMessages m ON m.groupId = d.uniqueId AND m.rn = 1
+LEFT JOIN DriveMainIndex AS m
+  ON m.rowId = (
+    SELECT m2.rowId
+    FROM DriveMainIndex AS m2
+    WHERE m2.groupId = d.uniqueId
+      AND m2.fileType = 7878
+      AND m2.dataType = 0
+    ORDER BY m2.created DESC
+    LIMIT 1
+  )
 WHERE d.fileType = 8888 -- Conversation
 ORDER BY msgCreated DESC;
 
