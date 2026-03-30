@@ -448,7 +448,7 @@ class ConversationListViewModel(
                 val isCurrentUserMessage =
                     message.originalAuthor?.domainName == _uiState.value.ownerSession?.odinId?.domainName
                 val isWithSelf =
-                    _uiState.value.selectedConversationId == ChatProtocol.ConversationWithYourselfId
+                    message.conversationId == ChatProtocol.ConversationWithYourselfId
                 _uiState.update {
                     it.copy(
                         uiDialog = DeleteMessage(
