@@ -158,7 +158,7 @@ fun AppNavHost(
             when (event) {
                 is NotificationNavigationEvent.OpenConversation -> {
                     Uuid.parseOrNull(event.conversationId)?.let {
-                        navController.selectConversationOnChatList(it)
+                        navController.selectConversationOnChatList(it, scrollToBottom = true)
                     }
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 }
@@ -307,11 +307,13 @@ fun AppNavHost(
                         if (isAuthenticated) {
                             val conversationListViewModel: ConversationListViewModel = koinViewModel()
                             val pendingConversationId by backStackEntry.savedStateHandle.getStateFlow<String?>("pendingConversationId", null).collectAsState()
+                            val pendingScrollToBottom by backStackEntry.savedStateHandle.getStateFlow("pendingScrollToBottom", false).collectAsState()
                             LaunchedEffect(pendingConversationId) {
                                 pendingConversationId?.let { idStr ->
                                     Uuid.parseOrNull(idStr)?.let {
-                                        conversationListViewModel.selectConversation(it)
+                                        conversationListViewModel.selectConversation(it, scrollToBottom = pendingScrollToBottom)
                                         backStackEntry.savedStateHandle["pendingConversationId"] = null
+                                        backStackEntry.savedStateHandle["pendingScrollToBottom"] = false
                                     }
                                 }
                             }
@@ -545,8 +547,9 @@ fun AppNavHost(
     }
 }
 
-private fun NavHostController.selectConversationOnChatList(conversationId: Uuid) {
+private fun NavHostController.selectConversationOnChatList(conversationId: Uuid, scrollToBottom: Boolean = false) {
     getBackStackEntry<Route.ChatList>().savedStateHandle["pendingConversationId"] = conversationId.toString()
+    getBackStackEntry<Route.ChatList>().savedStateHandle["pendingScrollToBottom"] = scrollToBottom
 }
 
 sealed class TopLevelRoute(

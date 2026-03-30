@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.encoding.Base64
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 class ChatMessageStream(
@@ -60,6 +61,7 @@ class ChatMessageStream(
     private val conversationState = ActiveConversationState()
     private val chatDrive = chatTargetDrive.alias
     private val loadedConversations = mutableSetOf<Uuid>()
+    private val conversationLoadTimestamps = mutableMapOf<Uuid, kotlin.time.TimeMark>()
 
     // Messages for open conversations are loaded on demand via loadConversation().
     // All subsequent updates arrive incrementally through BatchReceived events —
@@ -103,6 +105,7 @@ class ChatMessageStream(
     suspend fun loadConversation(conversationId: Uuid) {
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
         loadedConversations += conversationId
+        conversationLoadTimestamps[conversationId] = kotlin.time.TimeSource.Monotonic.markNow()
         val result = fetchMessages(conversationId)
         Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages")
         conversationState.set(conversationId, result.records)
@@ -120,6 +123,21 @@ class ChatMessageStream(
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
         grouped.forEach { (conversationId, msgs) ->
             conversationState.upsert(conversationId, msgs)
+        }
+    }
+
+    private suspend fun refreshLoadedConversations() {
+        val snapshot = loadedConversations.toSet()
+        Logger.d("ChatMessageStream: refreshLoadedConversations called, ${snapshot.size} active conversations")
+        snapshot.forEach { conversationId ->
+            val loadedAt = conversationLoadTimestamps[conversationId]
+            if (loadedAt != null && loadedAt.elapsedNow() < REFRESH_COOLDOWN) {
+                Logger.d("ChatMessageStream: skipping refresh for $conversationId (loaded ${loadedAt.elapsedNow()} ago)")
+                return@forEach
+            }
+            val result = fetchMessages(conversationId)
+            Logger.d("ChatMessageStream: fetchMessages($conversationId) → ${result.records.size} messages")
+            conversationState.set(conversationId, result.records)
         }
     }
 
@@ -330,6 +348,7 @@ class ChatMessageStream(
     }
 
     companion object {
+        private val REFRESH_COOLDOWN = 5.seconds
 
         private fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
