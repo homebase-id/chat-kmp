@@ -185,7 +185,7 @@ class ChatMessageActionService(
         val conversation = conversationService.getConversation(msg.conversationId) ?: return
         val fileId = requireFileId(messageId)
 
-        val hardDelete = false
+        val hardDelete = conversation.isWithSelf
         val recipients: List<OdinId>? = if (!hardDelete && deleteForEveryone) {
             val domain = credentialsManager.requireActiveCredentials().domain
             conversation.participants.filter { it != domain }

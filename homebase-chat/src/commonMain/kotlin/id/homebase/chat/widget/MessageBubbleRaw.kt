@@ -65,7 +65,6 @@ import id.homebase.resources.chat_message_edited
 import id.homebase.resources.show_more
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -109,7 +108,6 @@ fun MessageBubbleRaw(
     onShowMoreClick: (() -> Unit)? = null,
     isPendingSend: Boolean = false,
     uploadStatus: UploadStatus? = null,
-    replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
 ) {
 
     val filteredPayloads = message.payloads?.filter {
@@ -276,9 +274,7 @@ fun MessageBubbleRaw(
                             InlineReplyPreview(
                                 replyPreview = reply,
                                 sentByYou = sentByYou,
-                                onClick = { onClickMessageId(reply.replyUniqueId) },
-                                replyMessage = replyMessages[reply.replyUniqueId],
-                                driveId = chatTargetDrive.alias,
+                                onClick = { onClickMessageId(reply.replyUniqueId) }
                             )
                         }
                         if (hasMedia) {

@@ -13,6 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +41,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
@@ -44,6 +51,13 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived
+import id.homebase.resources.chat_message_audio
+import id.homebase.resources.chat_message_deleted
+import id.homebase.resources.chat_message_file
+import id.homebase.resources.chat_message_image
+import id.homebase.resources.chat_message_link
+import id.homebase.resources.chat_message_multiple_media
+import id.homebase.resources.chat_message_video
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
 import org.jetbrains.compose.resources.stringResource
@@ -118,14 +132,50 @@ fun ConversationItem(
                 horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val contentLabel = messageContentLabel(
-                    textContent = enrichedData.conversation.lastMessage,
-                    isDeleted = enrichedData.conversation.lastMessageIsDeleted,
-                    firstPayload = enrichedData.conversation.lastMessageFirstPayload,
-                    hasMultiplePayloads = enrichedData.conversation.lastMessageHasMultiplePayloads,
-                )
-                val previewText = contentLabel?.text ?: enrichedData.conversation.lastMessage
-                val iconRes = contentLabel?.icon
+                val previewText: String
+                val iconRes: ImageVector?
+
+                if (enrichedData.conversation.lastMessageIsDeleted) {
+                    previewText = stringResource(MR.string.chat_message_deleted)
+                    iconRes = Icons.Default.Block
+                } else if (enrichedData.conversation.lastMessage.isNotBlank()) {
+                    previewText = enrichedData.conversation.lastMessage
+                    iconRes = null
+                } else if (enrichedData.conversation.lastMessageHasMultiplePayloads) {
+                    previewText = stringResource(MR.string.chat_message_multiple_media)
+                    iconRes = Icons.Default.PhotoLibrary
+                } else if (enrichedData.conversation.lastMessageFirstPayload != null) {
+                    when {
+                        enrichedData.conversation.lastMessageFirstPayload.contentType?.startsWith("image") == true -> {
+                            previewText = stringResource(MR.string.chat_message_image)
+                            iconRes = Icons.Default.Image
+                        }
+
+                        enrichedData.conversation.lastMessageFirstPayload.contentType?.startsWith("video") == true || enrichedData.conversation.lastMessageFirstPayload.contentType == "application/vnd.apple.mpegurl" -> {
+                            previewText = stringResource(MR.string.chat_message_video)
+                            iconRes = Icons.Default.PlayArrow
+                        }
+
+                        enrichedData.conversation.lastMessageFirstPayload.contentType?.startsWith("audio") == true -> {
+                            previewText = stringResource(MR.string.chat_message_audio)
+                            iconRes = Icons.Default.PlayArrow
+                        }
+
+                        enrichedData.conversation.lastMessageFirstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> {
+                            previewText = stringResource(MR.string.chat_message_link)
+                            iconRes = Icons.Default.Description
+                        }
+
+                        // Assume link identification or default fallback
+                        else -> {
+                            previewText = stringResource(MR.string.chat_message_file)
+                            iconRes = Icons.Default.Description
+                        }
+                    }
+                } else {
+                    previewText = ""
+                    iconRes = null
+                }
 
                 ConversationMessagePreview(
                     text = previewText,
