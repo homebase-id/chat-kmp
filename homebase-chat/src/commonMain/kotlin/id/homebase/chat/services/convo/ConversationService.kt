@@ -29,6 +29,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.QueryBatch
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
@@ -576,7 +577,7 @@ class ConversationService(
     suspend fun deleteConversation(conversationId: Uuid) {
         val conversation = requireConversation(conversationId)
 
-        if (conversation.isGroupConversation) {
+        if (conversation.isGroupConversation && conversation.conversationState != ConversationState.Left) {
             throw IllegalStateException("You must leave the group before deleting it")
         }
 
