@@ -194,11 +194,20 @@ fun ConversationContent(
         keyboardController?.hide()
     }
 
-    // Build a lookup map of message ID -> MessageUiModel for reply image thumbnails
+    // Build a lookup map of reply target ID -> MessageUiModel for reply image thumbnails.
+    // Only includes messages that are actually referenced by a reply, to avoid O(n) map of all messages.
     val replyMessages = remember(uiState.messages) {
-        uiState.messages.filterIsInstance<MessageListContentModel.Message>()
-            .associate { it.message.id to it.message }
-            .toPersistentMap()
+        val allMessages = uiState.messages.filterIsInstance<MessageListContentModel.Message>()
+        val replyTargetIds = allMessages.mapNotNullTo(mutableSetOf()) {
+            it.message.messageAppData.replyPreview?.replyUniqueId
+        }
+        if (replyTargetIds.isEmpty()) {
+            persistentMapOf()
+        } else {
+            allMessages.filter { it.message.id in replyTargetIds }
+                .associate { it.message.id to it.message }
+                .toPersistentMap()
+        }
     }
 
     @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
