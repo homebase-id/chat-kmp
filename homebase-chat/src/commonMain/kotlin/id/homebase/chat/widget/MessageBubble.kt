@@ -623,7 +623,7 @@ fun InlineReplyPreview(
 
     // Build HomebaseImageData from the original message's first image payload
     val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
-        if (replyPreview.previewThumbnail == null || replyMessage == null || driveId == null) return@remember null
+        if (replyMessage == null || driveId == null) return@remember null
         val firstImagePayload = replyMessage.payloads?.firstOrNull {
             it.contentType?.startsWith("image/") == true
         } ?: return@remember null
@@ -633,6 +633,7 @@ fun InlineReplyPreview(
             fileId = replyMessage.fileId,
             payloadKey = firstImagePayload.key,
             previewThumbnail = firstImagePayload.previewThumbnail?.toEmbeddedThumb()
+                ?: replyMessage.previewThumbnail
                 ?: replyPreview.previewThumbnail,
             requestedSize = ImageSize.THUMB_SMALL,
             isEncrypted = true,
@@ -653,7 +654,8 @@ fun InlineReplyPreview(
         }
     }
 
-    val message = if (replyPreview.previewThumbnail != null && replyPreview.message.isEmpty()) stringResource(MR.string.media) else replyPreview.message
+    val hasImage = imageData != null || replyPreview.previewThumbnail != null
+    val message = if (hasImage && replyPreview.message.isEmpty()) stringResource(MR.string.media) else replyPreview.message
 
     Row(
         modifier = Modifier
