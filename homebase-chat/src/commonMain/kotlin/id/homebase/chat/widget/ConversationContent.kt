@@ -112,6 +112,7 @@ import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.launch
@@ -154,7 +155,8 @@ fun ConversationContent(
         snapshotFlow {
             val totalItems = listState.layoutInfo.totalItemsCount
             if (totalItems == 0) return@snapshotFlow false
-            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@snapshotFlow false
+            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?: return@snapshotFlow false
             lastVisibleIndex < totalItems - 1
         }.collect { showScrollToBottom = it }
     }
@@ -336,7 +338,11 @@ fun ConversationContent(
                         onArchive = {
                             showConversationMenu = false
                             if (conversation.conversation.conversationState == ConversationState.Archived) {
-                                onUiAction(ConversationListUiAction.UnarchiveConversation(conversation.conversation.id))
+                                onUiAction(
+                                    ConversationListUiAction.UnarchiveConversation(
+                                        conversation.conversation.id
+                                    )
+                                )
                             } else {
                                 onUiAction(ConversationListUiAction.ArchiveConversation(conversation.conversation.id))
                             }
@@ -763,7 +769,12 @@ fun ConversationContentSheets(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 BlueBackgroundIconButton(
                                     onClick = {
-                                        onUiAction(ConversationListUiAction.ForwardMessageSend(sheet.message, sheet.selectedRecipients))
+                                        onUiAction(
+                                            ConversationListUiAction.ForwardMessageSend(
+                                                sheet.message,
+                                                sheet.selectedRecipients
+                                            )
+                                        )
                                     },
                                     imageVector = Icons.AutoMirrored.Filled.Send,
                                     contentDescription = stringResource(MR.string.chat_send_message_button),
