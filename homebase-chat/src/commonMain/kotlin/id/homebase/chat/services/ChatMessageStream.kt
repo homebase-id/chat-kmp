@@ -41,11 +41,14 @@ import id.homebase.resources.system_group_conversation_member_left
 import id.homebase.resources.system_group_conversation_started
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
@@ -61,6 +64,8 @@ class ChatMessageStream(
 
     private val paginatedState = PaginatedConversationState()
     private val chatDrive = chatTargetDrive.alias
+    private val loadOlderMutex = Mutex()
+    private val loadNewerMutex = Mutex()
     private var isSyncing = false
     private var syncedMessageCount = 0
     private val loadedConversations = mutableSetOf<Uuid>()
@@ -130,16 +135,18 @@ class ChatMessageStream(
     suspend fun loadConversation(conversationId: Uuid) {
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
         loadedConversations += conversationId
-        val result = fetchMessages(conversationId, limit = PAGE_SIZE)
-        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages")
-        paginatedState.setInitialWindow(
-            conversationId = conversationId,
-            messages = result.records,
-            olderCursor = if (result.hasMoreRows) result.cursor else null,
-            hasOlderMessages = result.hasMoreRows,
-            newerCursor = null,
-            hasNewerMessages = false,
-        )
+        withContext(Dispatchers.Default) {
+            val result = fetchMessages(conversationId, limit = PAGE_SIZE)
+            Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages")
+            paginatedState.setInitialWindow(
+                conversationId = conversationId,
+                messages = result.records,
+                olderCursor = if (result.hasMoreRows) result.cursor else null,
+                hasOlderMessages = result.hasMoreRows,
+                newerCursor = null,
+                hasNewerMessages = false,
+            )
+        }
     }
 
     suspend fun loadConversationAroundMessage(conversationId: Uuid, messageUniqueId: Uuid) {
@@ -153,96 +160,112 @@ class ChatMessageStream(
             return
         }
 
-        val halfPage = PAGE_SIZE / 2
-        val targetTime = UnixTimeUtc(targetMessage.created)
+        withContext(Dispatchers.Default) {
+            val halfPage = PAGE_SIZE / 2
+            val targetTime = UnixTimeUtc(targetMessage.created)
 
-        // Fetch older messages (at and before the target)
-        val olderCursor = QueryBatchCursor(
-            paging = TimeRowCursor(targetTime, Long.MAX_VALUE)
-        )
-        val olderResult = fetchMessages(
-            conversationId, limit = halfPage, cursor = olderCursor,
-            sortOrder = QueryBatchSortOrder.NewestFirst
-        )
+            // Fetch older messages (at and before the target)
+            val olderCursor = QueryBatchCursor(
+                paging = TimeRowCursor(targetTime, Long.MAX_VALUE)
+            )
+            val olderResult = fetchMessages(
+                conversationId, limit = halfPage, cursor = olderCursor,
+                sortOrder = QueryBatchSortOrder.NewestFirst
+            )
 
-        // Fetch newer messages (after the target)
-        val newerCursor = QueryBatchCursor(
-            paging = TimeRowCursor(targetTime, 0L)
-        )
-        val newerResult = fetchMessages(
-            conversationId, limit = halfPage, cursor = newerCursor,
-            sortOrder = QueryBatchSortOrder.OldestFirst
-        )
+            // Fetch newer messages (after the target)
+            val newerCursor = QueryBatchCursor(
+                paging = TimeRowCursor(targetTime, 0L)
+            )
+            val newerResult = fetchMessages(
+                conversationId, limit = halfPage, cursor = newerCursor,
+                sortOrder = QueryBatchSortOrder.OldestFirst
+            )
 
-        // Combine, dedup, sort
-        val combined = (olderResult.records + newerResult.records)
-            .distinctBy { it.id }
-            .sortedBy { it.created }
+            // Combine, dedup, sort
+            val combined = (olderResult.records + newerResult.records)
+                .distinctBy { it.id }
+                .sortedBy { it.created }
 
-        Logger.d("ChatMessageStream: loadConversationAroundMessage → ${combined.size} messages (older=${olderResult.records.size}, newer=${newerResult.records.size})")
+            Logger.d("ChatMessageStream: loadConversationAroundMessage → ${combined.size} messages (older=${olderResult.records.size}, newer=${newerResult.records.size})")
 
-        paginatedState.setInitialWindow(
-            conversationId = conversationId,
-            messages = combined,
-            olderCursor = if (olderResult.hasMoreRows) olderResult.cursor else null,
-            hasOlderMessages = olderResult.hasMoreRows,
-            newerCursor = if (newerResult.hasMoreRows) newerResult.cursor else null,
-            hasNewerMessages = newerResult.hasMoreRows,
-        )
+            paginatedState.setInitialWindow(
+                conversationId = conversationId,
+                messages = combined,
+                olderCursor = if (olderResult.hasMoreRows) olderResult.cursor else null,
+                hasOlderMessages = olderResult.hasMoreRows,
+                newerCursor = if (newerResult.hasMoreRows) newerResult.cursor else null,
+                hasNewerMessages = newerResult.hasMoreRows,
+            )
+        }
     }
 
     suspend fun loadOlderMessages(conversationId: Uuid) {
-        val window = paginatedState.getWindow(conversationId) ?: return
-        if (window.isLoadingOlder || !window.hasOlderMessages) return
-
-        paginatedState.setLoadingOlder(conversationId, true)
+        if (!loadOlderMutex.tryLock()) return
         try {
-            val result = fetchMessages(
-                conversationId, limit = PAGE_SIZE, cursor = window.olderCursor,
-                sortOrder = QueryBatchSortOrder.NewestFirst
-            )
-            Logger.d("ChatMessageStream: loadOlderMessages($conversationId) → ${result.records.size} messages")
-            paginatedState.prependOlderMessages(
-                conversationId = conversationId,
-                olderMessages = result.records,
-                olderCursor = if (result.hasMoreRows) result.cursor else null,
-                hasMore = result.hasMoreRows,
-            )
-        } catch (e: Exception) {
-            Logger.e(e) { "ChatMessageStream: loadOlderMessages failed" }
-            paginatedState.setLoadingOlder(conversationId, false)
+            val window = paginatedState.getWindow(conversationId) ?: return
+            if (window.isLoadingOlder || !window.hasOlderMessages) return
+
+            paginatedState.setLoadingOlder(conversationId, true)
+            try {
+                withContext(Dispatchers.Default) {
+                    val result = fetchMessages(
+                        conversationId, limit = PAGE_SIZE, cursor = window.olderCursor,
+                        sortOrder = QueryBatchSortOrder.NewestFirst
+                    )
+                    Logger.d("ChatMessageStream: loadOlderMessages($conversationId) → ${result.records.size} messages")
+                    paginatedState.prependOlderMessages(
+                        conversationId = conversationId,
+                        olderMessages = result.records,
+                        olderCursor = if (result.hasMoreRows) result.cursor else null,
+                        hasMore = result.hasMoreRows,
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.e(e) { "ChatMessageStream: loadOlderMessages failed" }
+                paginatedState.setLoadingOlder(conversationId, false)
+            }
+        } finally {
+            loadOlderMutex.unlock()
         }
     }
 
     suspend fun loadNewerMessages(conversationId: Uuid) {
-        val window = paginatedState.getWindow(conversationId) ?: return
-        if (window.isLoadingNewer || !window.hasNewerMessages) return
-
-        paginatedState.setLoadingNewer(conversationId, true)
+        if (!loadNewerMutex.tryLock()) return
         try {
-            val newestMessage = window.messages.lastOrNull()
-            val cursor = if (window.newerCursor != null) {
-                window.newerCursor
-            } else if (newestMessage != null) {
-                QueryBatchCursor(paging = TimeRowCursor(UnixTimeUtc(newestMessage.created), 0L))
-            } else {
-                null
-            }
+            val window = paginatedState.getWindow(conversationId) ?: return
+            if (window.isLoadingNewer || !window.hasNewerMessages) return
 
-            val result = fetchMessages(
-                conversationId, limit = PAGE_SIZE, cursor = cursor,
-                sortOrder = QueryBatchSortOrder.OldestFirst
-            )
-            Logger.d("ChatMessageStream: loadNewerMessages($conversationId) → ${result.records.size} messages")
-            paginatedState.appendNewerMessages(
-                conversationId = conversationId,
-                newerMessages = result.records,
-                newerCursor = if (result.hasMoreRows) result.cursor else null,
-                hasMore = result.hasMoreRows,
-            )
-        } catch (e: Exception) {
-            Logger.e(e) { "ChatMessageStream: loadNewerMessages failed" }
-            paginatedState.setLoadingNewer(conversationId, false)
+            paginatedState.setLoadingNewer(conversationId, true)
+            try {
+                withContext(Dispatchers.Default) {
+                    val newestMessage = window.messages.lastOrNull()
+                    val cursor = if (window.newerCursor != null) {
+                        window.newerCursor
+                    } else if (newestMessage != null) {
+                        QueryBatchCursor(paging = TimeRowCursor(UnixTimeUtc(newestMessage.created), 0L))
+                    } else {
+                        null
+                    }
+
+                    val result = fetchMessages(
+                        conversationId, limit = PAGE_SIZE, cursor = cursor,
+                        sortOrder = QueryBatchSortOrder.OldestFirst
+                    )
+                    Logger.d("ChatMessageStream: loadNewerMessages($conversationId) → ${result.records.size} messages")
+                    paginatedState.appendNewerMessages(
+                        conversationId = conversationId,
+                        newerMessages = result.records,
+                        newerCursor = if (result.hasMoreRows) result.cursor else null,
+                        hasMore = result.hasMoreRows,
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.e(e) { "ChatMessageStream: loadNewerMessages failed" }
+                paginatedState.setLoadingNewer(conversationId, false)
+            }
+        } finally {
+            loadNewerMutex.unlock()
         }
     }
 
