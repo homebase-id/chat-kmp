@@ -8,6 +8,8 @@ import id.homebase.api.client.connections.IntroductionGroup
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -418,7 +420,9 @@ class ConversationService(
         participants: List<OdinId>,
         admins: Set<OdinId>? = null,
         payloadBundle: PayloadBundle? = null,
-        dependencyUniqueId: Uuid? = null
+        dependencyUniqueId: Uuid? = null,
+        archivalStatus: ArchivalStatus? = null,
+        distribute: Boolean = true
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
@@ -494,7 +498,8 @@ class ConversationService(
                         uniqueId = conversationId,
                         fileType = ChatProtocol.ConversationFileType,
                         content = OdinSystemSerializer.serialize(content),
-                        previewThumbnail = previewThumb
+                        previewThumbnail = previewThumb,
+                        archivalStatus = archivalStatus
                     )
             )
 
@@ -502,7 +507,7 @@ class ConversationService(
             FileUpdateInstructionSet(
                 transferIv = ByteArrayUtil.getRndByteArray(16),
                 locale = UpdateLocale.Local,
-                recipients = participants.filterNot { it == domain },
+                recipients = if (distribute) participants.filterNot { it == domain } else emptyList(),
                 manifest = manifest
             )
 
@@ -574,11 +579,35 @@ class ConversationService(
     }
 
     suspend fun deleteConversation(conversationId: Uuid) {
-        error("not implemented")
+        val conversation = requireConversation(conversationId)
+
+        if (conversation.isGroupConversation) {
+            throw IllegalStateException("You must leave the group before deleting it")
+        }
+
+        outboxSync.tryEnqueue(
+            DeleteFilesByGroupIdOutboxRequest(
+                driveId = chatDrive,
+                groupIds = listOf(conversationId)
+            )
+        )
+
+        updateConversationInternal(
+            conversationId = conversationId,
+            title = conversation.name,
+            participants = conversation.participants,
+            archivalStatus = ArchivalStatus.Removed,
+            distribute = false
+        )
     }
 
     suspend fun clearConversation(conversationId: Uuid) {
-        error("not implemented")
+        outboxSync.tryEnqueue(
+            DeleteFilesByGroupIdOutboxRequest(
+                driveId = chatDrive,
+                groupIds = listOf(conversationId)
+            )
+        )
     }
 
     private suspend fun updateConversationTags(

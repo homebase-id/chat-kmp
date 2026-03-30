@@ -1,6 +1,7 @@
 package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByTimeOutboxRequest
@@ -160,6 +161,28 @@ class OutboxSync(
                 eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
             }
         }
+    }
+
+    public suspend fun tryEnqueue(
+        request: DeleteFilesByGroupIdOutboxRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val enqueued = tryEnqueue(
+            driveId = request.driveId,
+            uniqueId = Uuid.random(),
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.DeleteFilesByGroupId,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
     }
 
     public suspend fun tryEnqueue(
