@@ -622,7 +622,7 @@ fun InlineReplyPreview(
     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
 
     // Build HomebaseImageData from the original message's first image payload
-    val imageData: HomebaseImageData? = remember(replyMessage, driveId) {
+    val imageData: HomebaseImageData? = remember(replyPreview, replyMessage, driveId) {
         if (replyPreview.previewThumbnail == null || replyMessage == null || driveId == null) return@remember null
         val firstImagePayload = replyMessage.payloads?.firstOrNull {
             it.contentType?.startsWith("image/") == true
