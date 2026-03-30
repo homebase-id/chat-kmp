@@ -58,7 +58,7 @@ class ChatReadCountWrapper(
 
         val list = delegate.selectAllConversationPlusLastMessage().executeAsList()
 
-        logger.d { "Fetched rows=${list.size}" }
+        logger.d { "Fetched rows=${list.size} in ${Clock.System.now().toEpochMilliseconds() - start}ms" }
 
         val result = list.mapIndexed { index, it ->
 
