@@ -1,6 +1,5 @@
 package id.homebase.chat.widget
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -133,38 +132,25 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
                 }
             }
 
-            // Thumbnail (if visual media) with overlaid close button
+            // Thumbnail if visual media
             if (thumbnailData != null) {
                 Spacer(modifier = Modifier.width(8.dp))
-                Box(contentAlignment = Alignment.TopEnd) {
-                    HomebaseImage(
-                        imageData = thumbnailData,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop,
-                        contentDescription = "Reply thumbnail",
-                    )
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(24.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(MR.string.cancel_reply),
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
-            } else {
-                // No thumbnail — close button on the far right
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(MR.string.cancel_reply),
-                    )
-                }
+                HomebaseImage(
+                    imageData = thumbnailData,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop,
+                    contentDescription = "Reply thumbnail",
+                )
+            }
+
+            // Close button — always on the far right
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.cancel_reply),
+                )
             }
         }
     }
