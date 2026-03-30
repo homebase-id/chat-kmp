@@ -13,6 +13,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.core.util.isMobile
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
+import kotlinx.collections.immutable.persistentMapOf
 import kotlin.uuid.Uuid
 
 @Composable
@@ -27,6 +28,7 @@ fun MessageItem(
     onUiAction: (ConversationListUiAction) -> Unit,
     downloadingFiles: Set<String>,
     uploadStatus: UploadStatus? = null,
+    replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
 ) {
     // TODO: currentOdinId is "" - is that supposed to be the case??
     val odinId: OdinId? = try {
@@ -115,6 +117,7 @@ fun MessageItem(
                 downloadingFiles = downloadingFiles,
                 onShowMore = onShowMore,
                 uploadStatus = uploadStatus,
+                replyMessages = replyMessages,
             )
         }
     } else {
@@ -144,7 +147,8 @@ fun MessageItem(
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedTransitionScope = sharedTransitionScope,
                 downloadingFiles = downloadingFiles,
-                onShowMore = onShowMore
+                onShowMore = onShowMore,
+                replyMessages = replyMessages,
             )
         }
     }
