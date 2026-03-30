@@ -28,6 +28,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.chat.ChatMessageSizer
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
@@ -179,6 +180,11 @@ class ChatMessageSenderService(
         payloadBundle: PayloadBundle?,
         isStatusMessage: Boolean = false
     ): SendMessageResult {
+
+        val conversation = conversationStream.getConversationById(conversationId)
+        if (conversation?.conversationState == ConversationState.Left) {
+            error("Cannot send messages to a group you have left")
+        }
 
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationStream.getRecipients(conversationId)

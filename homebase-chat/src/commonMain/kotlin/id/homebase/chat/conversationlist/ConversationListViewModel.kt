@@ -1519,7 +1519,8 @@ class ConversationListViewModel(
                         .map { conv -> ConversationListContentModel.Conversation(conv) }
                         .toPersistentList()
                     val archivedCount =
-                        conversationsPool.count { it.conversation.conversationState == ConversationState.Archived }
+                        conversationsPool.count { it.conversation.conversationState == ConversationState.Archived ||
+                            it.conversation.conversationState == ConversationState.Left  }
 
                     if (normalItems.isNotEmpty()) {
                         if (pinnedItems.isNotEmpty()) {

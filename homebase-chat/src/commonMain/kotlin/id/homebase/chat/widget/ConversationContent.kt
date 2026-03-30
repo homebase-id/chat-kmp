@@ -97,6 +97,7 @@ import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_not_connected_disclaimer
+import id.homebase.resources.chat_group_you_left
 import id.homebase.resources.chat_message_forward_to
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
@@ -110,6 +111,7 @@ import id.homebase.resources.recents
 import id.homebase.resources.search
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
+import id.homebase.resources.chat_group_you_left
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.persistentMapOf
@@ -507,6 +509,20 @@ fun ConversationContent(
             }
 
             Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
+                if (conversation.conversation.conversationState == ConversationState.Left) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_group_you_left),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
                 Column(modifier = Modifier.animateContentSize()) {
                     uiState.replyToMessage?.let { msg ->
                         ReplyPreviewBar(
@@ -642,6 +658,7 @@ fun ConversationContent(
                         })
                     }
                 }
+                } // else (not Left)
             }
         }
     }

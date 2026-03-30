@@ -101,7 +101,14 @@ class ConversationMapper(
 
             val localTags = metadata.localAppData?.tags ?: emptyList()
             val isArchivedByTag = localTags.contains(ChatProtocol.ConversationArchivedTag)
+            val isLeftByTag = localTags.contains(ChatProtocol.ConversationLeftTag)
             val isPinnedByTag = localTags.contains(ChatProtocol.ConversationPinnedTag)
+
+            val conversationState = when {
+                isLeftByTag -> ConversationState.Left
+                isArchivedByTag -> ConversationState.Archived
+                else -> ConversationState.Active
+            }
 
             var ui =
                 ConversationUiModel(
@@ -119,7 +126,7 @@ class ConversationMapper(
                         ?: UnixTimeUtc(0).toInstant(),
                     avatarModel = avatarModel,
                     admins = admins,
-                    conversationState = if (isArchivedByTag) ConversationState.Archived else ConversationState.Active
+                    conversationState = conversationState
                 )
 
             if (lastMsg != null) {

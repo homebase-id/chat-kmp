@@ -32,6 +32,9 @@ object ChatProtocol {
     /** Local metadata tag: conversation has been archived by the user */
     val ConversationArchivedTag = Uuid.parse("a569e5cd-6fd8-41e0-8ccc-b6b31dac6b73")
 
+    /** Local metadata tag: user has left this group conversation */
+    val ConversationLeftTag = Uuid.parse("f3a7c2e1-9b4d-4e8f-a1c5-7d2e3f4b5c6d")
+
     /** Local metadata tag: conversation has been pinned by the user */
     val ConversationPinnedTag = Uuid.parse("3f7e4c1d-5a2b-4f89-b3e7-9c1d2e3f4a5b")
 

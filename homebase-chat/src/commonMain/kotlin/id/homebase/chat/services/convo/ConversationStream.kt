@@ -12,6 +12,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessage
 import id.homebase.chat.data.MessageUiModel
@@ -241,6 +242,14 @@ class ConversationStream(
     }
 
     private fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
+        // Left is sticky — only cleared by an explicit rejoin action, not by outbox responses
+        // which may not preserve localAppData tags
+        val resolvedState = if (existing.conversationState == ConversationState.Left && incoming.conversationState != ConversationState.Left) {
+            ConversationState.Left
+        } else {
+            incoming.conversationState
+        }
+
         // isPinned and conversationState are always applied regardless of timestamp ordering
         val updatedConvo = if (incoming.timestamp >= existing.timestamp) {
             existing.copy(
@@ -257,12 +266,12 @@ class ConversationStream(
                 lastMessageHasMultiplePayloads = incoming.lastMessageHasMultiplePayloads,
                 lastMessageIsFromActiveUser = incoming.lastMessageIsFromActiveUser,
                 isPinned = incoming.isPinned,
-                conversationState = incoming.conversationState
+                conversationState = resolvedState
             )
         } else {
             existing.copy(
                 isPinned = incoming.isPinned,
-                conversationState = incoming.conversationState
+                conversationState = resolvedState
             )
         }
         // We should optimize later to not map the full list
@@ -271,7 +280,16 @@ class ConversationStream(
     }
 
     private suspend fun loadConversations() {
-        val result = fetchConversations()
+        val leftIds = _conversations.value.items
+            .filter { it.conversationState == ConversationState.Left }
+            .map { it.id }
+            .toSet()
+
+        val result = fetchConversations().map { convo ->
+            if (convo.id in leftIds && convo.conversationState != ConversationState.Left)
+                convo.copy(conversationState = ConversationState.Left)
+            else convo
+        }
         _conversations.value = ConversationsData(items = result)
     }
 
@@ -364,6 +382,16 @@ class ConversationStream(
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {
         return _conversations.value.items.firstOrNull { it.id == conversationId }
+    }
+
+    fun onConversationLeft(conversationId: Uuid) {
+        _conversations.value = _conversations.value.copy(
+            items = _conversations.value.items.map { convo ->
+                if (convo.id == conversationId)
+                    convo.copy(conversationState = ConversationState.Left)
+                else convo
+            }
+        )
     }
 
     suspend fun getRecipients(conversationId: Uuid): List<OdinId> {

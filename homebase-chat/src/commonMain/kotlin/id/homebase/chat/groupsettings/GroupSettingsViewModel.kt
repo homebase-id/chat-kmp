@@ -86,6 +86,7 @@ class GroupSettingsViewModel(
                                 conversationService.leaveGroup(
                                     conversationId = conversation.id
                                 )
+                                conversationStream.onConversationLeft(conversation.id)
                                 _uiState.update { it.copy(uiEvent = Back) }
                             }
                         }

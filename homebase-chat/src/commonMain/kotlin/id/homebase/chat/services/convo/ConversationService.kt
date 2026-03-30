@@ -10,7 +10,6 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
-import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -403,15 +402,11 @@ class ConversationService(
             dependencyUniqueId = messageId
         )
 
-        // 3. Delete local conversation file — chained after membership update
-        val fileId = requireConversationFileId(conversationId)
-        outboxSync.tryEnqueue(
-            DeleteLocalFilesByFileIdRequest(
-                driveId = chatDrive,
-                fileIds = listOf(fileId)
-            ),
-            dependencyUniqueId = conversationId
-        )
+        // 3. Mark as left locally — preserves history and blocks sending
+        updateConversationTags(conversationId) {
+//            it + ChatProtocol.ConversationArchivedTag + ChatProtocol.ConversationLeftTag
+            it + ChatProtocol.ConversationLeftTag
+        }
     }
 
     suspend fun updateConversationInternal(
