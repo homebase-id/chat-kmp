@@ -627,7 +627,11 @@ fun InlineReplyPreview(
         val firstImagePayload = replyMessage.payloads?.firstOrNull {
             it.contentType?.startsWith("image/") == true
         } ?: return@remember null
-        val payloadIv = firstImagePayload.iv?.let { Base64.decode(it) } ?: return@remember null
+        val payloadIv = try {
+            firstImagePayload.iv?.let { Base64.decode(it) }
+        } catch (_: Exception) {
+            null
+        } ?: return@remember null
         HomebaseImageData(
             driveId = driveId,
             fileId = replyMessage.fileId,
