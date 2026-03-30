@@ -215,7 +215,7 @@ class ConversationService(
         updateConversationInternal(
             conversationId = conversationId,
             title = conversation.name,
-            recipients = recipients,
+            participants = recipients,
             admins = admins
         )
 
@@ -274,7 +274,7 @@ class ConversationService(
         updateConversationInternal(
             conversationId = conversationId,
             title = conversation.name,
-            recipients = normalized
+            participants = normalized
         )
 
         trySendIntroductions(added, "$domain has added you to a group chat")
@@ -325,7 +325,7 @@ class ConversationService(
         updateConversationInternal(
             conversationId = conversationId,
             title = title,
-            recipients = conversation.participants,
+            participants = conversation.participants,
             payloadBundle = payloadBundle
         )
 
@@ -370,18 +370,18 @@ class ConversationService(
         val conversation = requireConversation(conversationId)
         val domain = credentialsManager.requireActiveDomain()
 
-        val current = conversation.participants
-            .filterNot { it == domain }
-            .toMutableSet()
+        if (!conversation.isGroupConversation) {
+            throw IllegalStateException("Can only leave group conversations")
+        }
 
-        val normalized = current.distinct()
+        if (conversation.admins.contains(domain) && (conversation.admins - domain).isEmpty()) {
+            throw IllegalStateException("You are the only admin. Assign another admin before leaving.")
+        }
 
-        updateConversationInternal(
-            conversationId = conversationId,
-            title = conversation.name,
-            recipients = normalized
-        )
+        val remaining = conversation.participants.filterNot { it == domain }
+        val updatedAdmins = conversation.admins - domain
 
+        // 1. Notify the group first
         val messageId = Uuid.random()
         chatMessageSenderService.sendStatusMessage(
             messageUniqueId = messageId,
@@ -392,23 +392,33 @@ class ConversationService(
             )
         )
 
-        // now delete the conversation file locally
+        // 2. Remove self from participants — chained after status message
+        updateConversationInternal(
+            conversationId = conversationId,
+            title = conversation.name,
+            participants = remaining,
+            admins = updatedAdmins,
+            dependencyUniqueId = messageId
+        )
+
+        // 3. Delete local conversation file — chained after membership update
         val fileId = requireConversationFileId(conversationId)
         outboxSync.tryEnqueue(
             DeleteLocalFilesByFileIdRequest(
                 driveId = chatDrive,
                 fileIds = listOf(fileId)
             ),
-            dependencyUniqueId = messageId
+            dependencyUniqueId = conversationId
         )
     }
 
     suspend fun updateConversationInternal(
         conversationId: Uuid,
         title: String?,
-        recipients: List<OdinId>,
+        participants: List<OdinId>,
         admins: Set<OdinId>? = null,
-        payloadBundle: PayloadBundle? = null
+        payloadBundle: PayloadBundle? = null,
+        dependencyUniqueId: Uuid? = null
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
@@ -418,8 +428,6 @@ class ConversationService(
 
         val conversation = requireConversation(conversationId)
 
-        // Always include self but remember to never distribute to self
-        val normalizedRecipients = (recipients + domain).distinct()
         val keyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16),
             aesKey = conversationFile.keyHeader.aesKey
@@ -428,7 +436,7 @@ class ConversationService(
         val content =
             ConversationAppDataJson(
                 title = title ?: "",
-                recipients = normalizedRecipients,
+                recipients = participants,
                 admins = admins?.toList() ?: conversation.admins.toList(),
                 version = 1 // logical version; server enforces via versionTag
             )
@@ -494,7 +502,7 @@ class ConversationService(
             FileUpdateInstructionSet(
                 transferIv = ByteArrayUtil.getRndByteArray(16),
                 locale = UpdateLocale.Local,
-                recipients = recipients.filterNot { it == domain },
+                recipients = participants.filterNot { it == domain },
                 manifest = manifest
             )
 
@@ -509,7 +517,7 @@ class ConversationService(
                 thumbnails = thumbs
             )
 
-        val enqueued = outboxSync.tryEnqueue(request)
+        val enqueued = outboxSync.tryEnqueue(request, dependencyUniqueId = dependencyUniqueId)
         if (!enqueued) {
             error("Failed to update conversation")
         }
