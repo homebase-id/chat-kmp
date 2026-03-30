@@ -370,6 +370,7 @@ class ConversationListViewModel(
                         scrollPosition = ScrollPosition(
                             firstVisibleItemIndex = action.firstVisibleItemIndex,
                             firstVisibleItemScrollOffset = action.firstVisibleItemScrollOffset,
+                            anchorMessageId = action.anchorMessageId,
                         )
                     )
                 }
@@ -382,6 +383,11 @@ class ConversationListViewModel(
                     userPreferences.setConversationScrollOffset(
                         action.conversationId.toString(), action.firstVisibleItemScrollOffset
                     )
+                    action.anchorMessageId?.let { messageId ->
+                        userPreferences.setConversationScrollMessageId(
+                            action.conversationId.toString(), messageId.toString()
+                        )
+                    }
                 }
             }
 
@@ -702,6 +708,11 @@ class ConversationListViewModel(
                                         )
                                 )
                             }
+                        } else {
+                            // Message not in current window - reload around it
+                            val conversationId = _uiState.value.selectedConversationId ?: return@launch
+                            _messagesUiState.update { it.copy(isLoadingMessages = true) }
+                            chatMessageStream.loadConversationAroundMessage(conversationId, action.messageId)
                         }
                     } catch (e: Exception) {
                         sendEvent(ShowErrorMessage("Failed to scroll to message: ${e.message}"))
@@ -1478,6 +1489,24 @@ class ConversationListViewModel(
                     _messagesUiState.update { it.copy(recordingData = null) }
                 }
             }
+
+            is ConversationListUiAction.LoadOlderMessages -> {
+                viewModelScope.launch {
+                    chatMessageStream.loadOlderMessages(action.conversationId)
+                }
+            }
+
+            is ConversationListUiAction.LoadNewerMessages -> {
+                viewModelScope.launch {
+                    chatMessageStream.loadNewerMessages(action.conversationId)
+                }
+            }
+
+            is ConversationListUiAction.ScrollToLatest -> {
+                viewModelScope.launch {
+                    chatMessageStream.loadConversation(action.conversationId)
+                }
+            }
         }
     }
 
@@ -1599,7 +1628,17 @@ class ConversationListViewModel(
                 var messageIdForScrollNullable = messageIdForScroll
                 var setInitialScroll = true
 
-                chatMessageStream.loadConversation(conversationId)
+                // Determine how to load: around a specific message, or latest
+                val savedMessageId = getSavedScrollMessageId(conversationId)
+                if (messageIdForScroll != null) {
+                    chatMessageStream.loadConversationAroundMessage(conversationId, messageIdForScroll)
+                } else if (savedMessageId != null) {
+                    chatMessageStream.loadConversationAroundMessage(conversationId, savedMessageId)
+                    messageIdForScrollNullable = savedMessageId
+                } else {
+                    chatMessageStream.loadConversation(conversationId)
+                }
+
                 chatMessageStream.observeMessages(conversationId).collect { messageState ->
                     when (messageState) {
                         is ChatMessagesData.Initializing -> {
@@ -1607,7 +1646,8 @@ class ConversationListViewModel(
                         }
 
                         is ChatMessagesData.Messages -> {
-                            val messages = messageState.messages
+                            val window = messageState.window
+                            val messages = window.messages
                             // Group messages within day sections
                             val timezone = TimeZone.currentSystemDefault()
                             val groupedMessages =
@@ -1616,7 +1656,14 @@ class ConversationListViewModel(
                                     date
                                 }
                             val messagesModels: MutableList<MessageListContentModel> =
-                                mutableListOf(MessageListContentModel.Header)
+                                mutableListOf()
+
+                            // Add loading indicator at the top if there are older messages
+                            if (window.hasOlderMessages) {
+                                messagesModels.add(MessageListContentModel.LoadingOlder)
+                            }
+
+                            messagesModels.add(MessageListContentModel.Header)
 
                             messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
                                 listOf(MessageListContentModel.Section(date)) + messages.map {
@@ -1626,6 +1673,11 @@ class ConversationListViewModel(
                                         MessageListContentModel.Message(it)
                                 }
                             })
+
+                            // Add loading indicator at the bottom if there are newer messages
+                            if (window.hasNewerMessages) {
+                                messagesModels.add(MessageListContentModel.LoadingNewer)
+                            }
 
                             // Scroll handling, either use new message id, click message id or null
                             val newMessageId =
@@ -1655,8 +1707,19 @@ class ConversationListViewModel(
                                 it.copy(
                                     isLoadingMessages = false,
                                     messages = messagesModels.toPersistentList(),
+                                    hasOlderMessages = window.hasOlderMessages,
+                                    hasNewerMessages = window.hasNewerMessages,
+                                    isLoadingOlder = window.isLoadingOlder,
+                                    isLoadingNewer = window.isLoadingNewer,
                                     scrollPosition = if (indexOfMessageForScroll == null) {
-                                        if (setInitialScroll) getScrollPosition(conversationId) else null
+                                        if (setInitialScroll) {
+                                            if (!window.hasNewerMessages) {
+                                                // At the bottom - scroll to end
+                                                null
+                                            } else {
+                                                getScrollPosition(conversationId)
+                                            }
+                                        } else null
                                     } else {
                                         ScrollPosition(
                                             indexOfMessageForScroll,
@@ -1675,6 +1738,16 @@ class ConversationListViewModel(
             } catch (e: Exception) {
                 sendEvent(ShowErrorMessage("Failed to load messages: ${e.message}"))
             }
+        }
+    }
+
+    private fun getSavedScrollMessageId(conversationId: Uuid): Uuid? {
+        val messageIdStr = userPreferences.getConversationScrollMessageId(conversationId.toString())
+            ?: return null
+        return try {
+            Uuid.parse(messageIdStr)
+        } catch (_: Exception) {
+            null
         }
     }
 

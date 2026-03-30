@@ -74,7 +74,8 @@ sealed interface ConversationListUiAction {
     data class SaveScrollPosition(
         val conversationId: Uuid,
         val firstVisibleItemIndex: Int,
-        val firstVisibleItemScrollOffset: Int
+        val firstVisibleItemScrollOffset: Int,
+        val anchorMessageId: Uuid? = null,
     ) : ConversationListUiAction
 
     data class ShowConversationSettings(val conversation: ConversationUiModel) :
@@ -113,6 +114,9 @@ sealed interface ConversationListUiAction {
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
     data class DecryptFile(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class ScrollToMessageId(val messageId: Uuid) : ConversationListUiAction
+    data class LoadOlderMessages(val conversationId: Uuid) : ConversationListUiAction
+    data class LoadNewerMessages(val conversationId: Uuid) : ConversationListUiAction
+    data class ScrollToLatest(val conversationId: Uuid) : ConversationListUiAction
     data object HideReactionDetails : ConversationListUiAction
     data class StartRecording(val conversationId: Uuid) : ConversationListUiAction
     data object StopRecording : ConversationListUiAction

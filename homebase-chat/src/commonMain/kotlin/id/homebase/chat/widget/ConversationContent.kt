@@ -387,6 +387,18 @@ fun ConversationContent(
                     ) {
                         items(uiState.messages, key = { message -> message.id }) { messageItem ->
                             when (messageItem) {
+                                is MessageListContentModel.LoadingOlder -> {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.width(24.dp).height(24.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    }
+                                }
+
                                 is MessageListContentModel.Header -> {
                                     Column {
                                         AvatarNameDisplay(
@@ -439,6 +451,18 @@ fun ConversationContent(
                                         uploadStatus = uiState.uploadProgress[messageItem.message.id],
                                     )
                                 }
+
+                                is MessageListContentModel.LoadingNewer -> {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.width(24.dp).height(24.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    }
+                                }
                             }
                         }
                         // If only one message item (the header) show no messages info
@@ -462,8 +486,13 @@ fun ConversationContent(
                         ) {
                             SmallFloatingActionButton(
                                 onClick = {
-                                    coroutineScope.launch {
-                                        listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                                    if (uiState.hasNewerMessages) {
+                                        // User is deep in history - reload latest messages
+                                        onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
+                                    } else {
+                                        coroutineScope.launch {
+                                            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                                        }
                                     }
                                 },
                                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

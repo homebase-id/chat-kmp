@@ -47,6 +47,10 @@ data class MessageListUiState(
     val userDefaultReactions: ImmutableList<String> = persistentListOf(),
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
     val isLoadingMessages: Boolean = true,
+    val hasOlderMessages: Boolean = false,
+    val hasNewerMessages: Boolean = false,
+    val isLoadingOlder: Boolean = false,
+    val isLoadingNewer: Boolean = false,
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
@@ -101,6 +105,8 @@ sealed interface ConversationListContentModel {
 @Immutable
 sealed class MessageListContentModel(val id: String) {
     data object Header : MessageListContentModel("header")
+    data object LoadingOlder : MessageListContentModel("loading-older")
+    data object LoadingNewer : MessageListContentModel("loading-newer")
     data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
     data class System(val text: String, val created: Instant) : MessageListContentModel(created.toString())
     data class Message(val message: MessageUiModel) :

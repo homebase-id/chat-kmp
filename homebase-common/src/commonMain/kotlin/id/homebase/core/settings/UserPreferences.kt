@@ -59,6 +59,14 @@ class UserPreferences(private val settings: Settings) {
     fun setConversationScrollOffset(conversationId: String, position: Int) {
         settings.putInt("conversationScrollOffset-$conversationId", position)
     }
+
+    fun getConversationScrollMessageId(conversationId: String): String? {
+        return settings.getStringOrNull("conversationScrollMessageId-$conversationId")
+    }
+
+    fun setConversationScrollMessageId(conversationId: String, messageId: String) {
+        settings.putString("conversationScrollMessageId-$conversationId", messageId)
+    }
 }
 
 data class PreferenceState(

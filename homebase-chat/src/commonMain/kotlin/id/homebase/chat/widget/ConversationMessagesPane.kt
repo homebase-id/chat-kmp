@@ -20,6 +20,7 @@ import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiAction.CloseFullScreenOverlay
+import id.homebase.chat.services.PaginatedConversationState.Companion.LOAD_MORE_THRESHOLD
 import id.homebase.chat.conversationlist.ConversationListUiAction.DeleteMessage
 import id.homebase.chat.conversationlist.ConversationListUiAction.DownloadMedia
 import id.homebase.chat.conversationlist.ConversationListUiAction.DownloadVideoMedia
@@ -95,6 +96,15 @@ fun ConversationMessagesPane(
         }
     }
 
+    val seen = remember(conversation.conversation.id) { mutableSetOf<Uuid>() }
+    val messageIdByKey = remember(uiState.messages) {
+        uiState.messages.associateNotNull { item ->
+            if (item is MessageListContentModel.Message) {
+                item.id to item.message.id
+            } else null
+        }
+    }
+
     // Save scroll position when it changes
     LaunchedEffect(listState) {
         val conversationId = conversation.conversation.id
@@ -106,13 +116,40 @@ fun ConversationMessagesPane(
                 // and not restoring
                 if (!uiState.isLoadingMessages) {
                     Logger.i("Scroll changed: id=${conversationId} -> $index:$offset")
+
+                    // Resolve the first visible message's uniqueId for anchor-based persistence
+                    val anchorMessageId = listState.layoutInfo.visibleItemsInfo
+                        .firstNotNullOfOrNull { itemInfo ->
+                            val key = itemInfo.key as? String ?: return@firstNotNullOfOrNull null
+                            messageIdByKey[key]
+                        }
+
                     onUiAction(
                         SaveScrollPosition(
                             conversationId = conversationId,
                             firstVisibleItemIndex = index,
-                            firstVisibleItemScrollOffset = offset
+                            firstVisibleItemScrollOffset = offset,
+                            anchorMessageId = anchorMessageId,
                         )
                     )
+                }
+            }
+    }
+
+    // Edge detection: load older/newer messages as user scrolls near boundaries
+    LaunchedEffect(listState, uiState.hasOlderMessages, uiState.hasNewerMessages) {
+        val conversationId = conversation.conversation.id
+        snapshotFlow { listState.firstVisibleItemIndex to listState.layoutInfo.totalItemsCount }
+            .distinctUntilChanged()
+            .collect { (index, totalItems) ->
+                if (totalItems == 0) return@collect
+                // Near the top - load older messages
+                if (index < LOAD_MORE_THRESHOLD && uiState.hasOlderMessages && !uiState.isLoadingOlder) {
+                    onUiAction(ConversationListUiAction.LoadOlderMessages(conversationId))
+                }
+                // Near the bottom - load newer messages
+                if (index > totalItems - LOAD_MORE_THRESHOLD && uiState.hasNewerMessages && !uiState.isLoadingNewer) {
+                    onUiAction(ConversationListUiAction.LoadNewerMessages(conversationId))
                 }
             }
     }
@@ -123,15 +160,6 @@ fun ConversationMessagesPane(
                 uiState.scrollPosition.firstVisibleItemIndex,
                 uiState.scrollPosition.firstVisibleItemScrollOffset
             )
-        }
-    }
-
-    val seen = remember(conversation.conversation.id) { mutableSetOf<Uuid>() }
-    val messageIdByKey = remember(uiState.messages) {
-        uiState.messages.associateNotNull { item ->
-            if (item is MessageListContentModel.Message) {
-                item.id to item.message.id
-            } else null
         }
     }
 
