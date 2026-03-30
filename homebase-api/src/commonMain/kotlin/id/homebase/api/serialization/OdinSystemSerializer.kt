@@ -34,7 +34,7 @@ object OdinSystemSerializer {
      * - allowStructuredMapKeys = true → allows complex types as map keys
      * - prettyPrint = false → compact JSON output (minified)
      * - explicitNulls = false → exclude null values from output for compactness
-     * - coerceInputValues = false → don't coerce invalid values to defaults (default)
+     * - coerceInputValues = true → coerce unknown enum values and nulls to defaults
      */
     val json = Json {
         ignoreUnknownKeys = true
@@ -44,7 +44,7 @@ object OdinSystemSerializer {
         allowStructuredMapKeys = true
         prettyPrint = false
         explicitNulls = false
-        coerceInputValues = false
+        coerceInputValues = true
 
         serializersModule = SerializersModule {
             contextual(Uuid::class, UuidSerializer)
