@@ -59,10 +59,11 @@ class ChatMessageStream(
 
     private val conversationState = ActiveConversationState()
     private val chatDrive = chatTargetDrive.alias
-    private var isSyncing = false
-    private var syncedMessageCount = 0
     private val loadedConversations = mutableSetOf<Uuid>()
 
+    // Messages for open conversations are loaded on demand via loadConversation().
+    // All subsequent updates arrive incrementally through BatchReceived events —
+    // we do not re-read from DB on DriveEvent.Stopped (same rationale as ConversationStream).
     init {
         scope.launch {
             eventBus.events.collect { event ->
@@ -74,39 +75,14 @@ class ChatMessageStream(
                 if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
 
                 when (event) {
-                    is BackendEvent.DriveEvent.Started -> {
-                        isSyncing = true
-                        syncedMessageCount = 0
-                    }
+                    is BackendEvent.DriveEvent.Started -> { }
 
                     is BackendEvent.DriveEvent.Stopped -> {
-                        isSyncing = false
-                        if (event.totalCount > 0) {
-                            Logger.d("ChatMessageStream: Stopped with totalCount=${event.totalCount}, syncedMessageCount=$syncedMessageCount")
-                            refreshLoadedConversations()
-                        } else {
-                            Logger.d("ChatMessageStream: Stopped with totalCount=0, skipping refresh")
-                        }
+                        Logger.d("ChatMessageStream: Stopped(totalCount=${event.totalCount})")
                     }
 
                     is BackendEvent.DriveEvent.BatchReceived -> {
-                        if (!isSyncing) {
-                            processIncrementalBatch(event.batchData)
-                        } else {
-                            val messageFiles = event.batchData.count {
-                                it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType
-                            }
-                            val conversationFiles = event.batchData.count {
-                                it.fileMetadata.appData.fileType == ChatProtocol.ConversationFileType
-                            }
-                            val otherFiles = event.batchData.size - messageFiles - conversationFiles
-                            syncedMessageCount += messageFiles
-                            Logger.d(
-                                "ChatMessageStream: BatchReceived suppressed (isSyncing=true), " +
-                                "${event.batchData.size} files (messages=$messageFiles, " +
-                                "conversations=$conversationFiles, other=$otherFiles)"
-                            )
-                        }
+                        processIncrementalBatch(event.batchData)
                     }
                 }
             }

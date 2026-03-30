@@ -50,7 +50,6 @@ class ConversationStream(
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
     private val _shareableConversations = MutableStateFlow<List<ShareableConversation>>(emptyList())
-    private var isSyncing = false // Track if chat drive sync is in progress
     private var loadJob: Job? = null
     private var shareCacheJob: Job? = null
 
@@ -62,6 +61,14 @@ class ConversationStream(
     val shareableConversations: StateFlow<List<ShareableConversation>> =
         _shareableConversations.asStateFlow()
 
+    // The full conversation list is loaded once from the local DB on authentication
+    // (via start(), called from onPostAuthenticated in AppModule).
+    //
+    // After that, all updates — whether from a reconnect syncAll() or a single WS
+    // file notification — arrive as BatchReceived events and are applied incrementally.
+    // We intentionally do NOT re-read the full list on DriveEvent.Stopped; the
+    // incremental BatchReceived path is sufficient and avoids an expensive full reload
+    // on every incoming message.
     init {
         scope.launch {
             eventBus.events.collect { event ->
@@ -71,51 +78,32 @@ class ConversationStream(
                     return@collect
                 }
 
-
                 if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
 
                 when (event) {
+                    is BackendEvent.DriveEvent.Started -> { }
 
-
-                    is BackendEvent.DriveEvent.Started -> {
-                        isSyncing = true
-                    }
-
-                    is BackendEvent.DriveEvent.Stopped -> when (event.result) {
-                        is BackendEvent.DriveResult.Success -> {
-                            isSyncing = false
-                            Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
-                            if (event.totalCount > 0) start()
-                        }
-
-                        is BackendEvent.DriveResult.Failure -> {
-                            isSyncing = false
-                            Logger.e { "Failed during drive sync" }
-                            Logger.d("ConversationStream: Stopped(FAILED, totalCount=${event.totalCount})")
-                            if (event.totalCount > 0) start()
-                        }
+                    is BackendEvent.DriveEvent.Stopped -> {
+                        Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
                     }
 
                     is BackendEvent.DriveEvent.BatchReceived -> {
-                        if (!isSyncing) {
-                            val conversationFiles =
-                                event.batchData.filter {
-                                    it.fileMetadata.appData.fileType ==
-                                            ChatProtocol.ConversationFileType
-                                }
-                            val messageFiles =
-                                event.batchData.filter {
-                                    it.fileMetadata.appData.fileType ==
-                                            ChatProtocol.MessageFileType
-                                }
+                        val conversationFiles =
+                            event.batchData.filter {
+                                it.fileMetadata.appData.fileType ==
+                                        ChatProtocol.ConversationFileType
+                            }
+                        val messageFiles =
+                            event.batchData.filter {
+                                it.fileMetadata.appData.fileType ==
+                                        ChatProtocol.MessageFileType
+                            }
 
-                            if (!conversationFiles.isEmpty())
-                                processConversationBatchIncrementally(conversationFiles)
+                        if (conversationFiles.isNotEmpty())
+                            processConversationBatchIncrementally(conversationFiles)
 
-                            if (!messageFiles.isEmpty())
-                                processMessageBatchIncrementally(messageFiles)
-                        }
-                        // Ignore during sync; refresh() will cover it post-Completed
+                        if (messageFiles.isNotEmpty())
+                            processMessageBatchIncrementally(messageFiles)
                     }
                 }
             }
