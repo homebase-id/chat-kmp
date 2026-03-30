@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.googleServices)
     alias(libs.plugins.playPublisherPlugin)
+    alias(libs.plugins.firebaseCrashlytics)
 }
 
 val versionProps = Properties()
@@ -148,6 +149,7 @@ dependencies {
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.sharetarget)
     implementation(libs.firebase.messaging)
+    implementation(libs.firebase.crashlytics)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

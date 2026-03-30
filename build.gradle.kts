@@ -11,6 +11,7 @@ plugins {
     alias(libs.plugins.composeHotReload) apply false
     alias(libs.plugins.androidLint) apply false
     alias(libs.plugins.googleServices) apply false
+    alias(libs.plugins.firebaseCrashlytics) apply false
 }
 
 subprojects {

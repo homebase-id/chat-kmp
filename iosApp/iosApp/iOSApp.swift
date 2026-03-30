@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseCore
+import FirebaseCrashlytics
 import FirebaseMessaging
 import ComposeApp
 import UserNotifications
