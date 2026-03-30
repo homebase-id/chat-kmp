@@ -60,16 +60,16 @@ fun messageContentLabel(
 
     if (firstPayload != null) {
         return when {
-            firstPayload.contentType?.startsWith("image") == true -> ContentLabel(
+            firstPayload.contentType?.startsWith("image/") == true -> ContentLabel(
                 text = stringResource(MR.string.chat_message_image),
                 icon = Icons.Default.Image
             )
-            firstPayload.contentType?.startsWith("video") == true ||
+            firstPayload.contentType?.startsWith("video/") == true ||
                 firstPayload.contentType == "application/vnd.apple.mpegurl" -> ContentLabel(
                 text = stringResource(MR.string.chat_message_video),
                 icon = Icons.Default.PlayArrow
             )
-            firstPayload.contentType?.startsWith("audio") == true -> ContentLabel(
+            firstPayload.contentType?.startsWith("audio/") == true -> ContentLabel(
                 text = stringResource(MR.string.chat_message_audio),
                 icon = Icons.Default.PlayArrow
             )
