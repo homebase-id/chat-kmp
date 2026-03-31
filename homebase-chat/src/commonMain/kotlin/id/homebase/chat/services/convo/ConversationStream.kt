@@ -99,6 +99,10 @@ class ConversationStream(
                                         ChatProtocol.MessageFileType
                             }
 
+                        Logger.d("ConversationStream: BatchReceived " +
+                                "${event.batchData.size} files " +
+                                "(conversations=${conversationFiles.size}, messages=${messageFiles.size})")
+
                         if (conversationFiles.isNotEmpty())
                             processConversationBatchIncrementally(conversationFiles)
 
@@ -160,6 +164,7 @@ class ConversationStream(
                             m.isAuthoredBy(credentialsManager.getActiveDomain())
                     )
 
+                Logger.w("ConversationStream: message arrived for unknown conversation ${m.conversationId}, creating placeholder")
                 insertNewConversation(emptyConversation)
             } else {
                 updateConversationFromNewMessage(matchingConversation, m)
@@ -272,6 +277,7 @@ class ConversationStream(
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     fun start() {
         if (loadJob?.isActive == true) return
+        Logger.d("ConversationStream: start() — loading full conversation list from DB")
         loadJob = scope.launch {
             loadConversations()
         }

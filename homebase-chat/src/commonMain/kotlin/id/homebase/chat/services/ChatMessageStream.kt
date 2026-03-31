@@ -116,7 +116,9 @@ class ChatMessageStream(
                 .filter { it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType }
                 .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) }
 
-        messages.groupBy { it.conversationId }.forEach { (conversationId, msgs) ->
+        val grouped = messages.groupBy { it.conversationId }
+        Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
+        grouped.forEach { (conversationId, msgs) ->
             conversationState.upsert(conversationId, msgs)
         }
     }
