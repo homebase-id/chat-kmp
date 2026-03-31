@@ -280,14 +280,14 @@ class ConversationListViewModel(
         }
     }
 
-    fun selectConversation(conversationId: Uuid, messageId: Uuid? = null) {
+    fun selectConversation(conversationId: Uuid, messageId: Uuid? = null, scrollToBottom: Boolean = false) {
         // Check for pending shared content (from iOS share extension or other handoff)
         viewModelScope.launch {
             processPendingSharedContent(conversationId)
         }
 
         ActiveConversation.selectConversation(conversationId)
-        loadMessagesForConversation(conversationId, messageId)
+        loadMessagesForConversation(conversationId, messageId, scrollToBottom)
     }
 
     fun eventConsumed() {
@@ -1589,7 +1589,7 @@ class ConversationListViewModel(
         }
     }
 
-    private fun loadMessagesForConversation(conversationId: Uuid, messageIdForScroll: Uuid?) {
+    private fun loadMessagesForConversation(conversationId: Uuid, messageIdForScroll: Uuid?, scrollToBottom: Boolean = false) {
         _messagesUiState.update { it.copy(scrollPosition = null, isLoadingMessages = true) }
 
 
@@ -1658,7 +1658,7 @@ class ConversationListViewModel(
                                     isLoadingMessages = false,
                                     messages = messagesModels.toPersistentList(),
                                     scrollPosition = if (indexOfMessageForScroll == null) {
-                                        if (setInitialScroll) getScrollPosition(conversationId) else null
+                                        if (setInitialScroll && !scrollToBottom) getScrollPosition(conversationId) else null
                                     } else {
                                         ScrollPosition(
                                             indexOfMessageForScroll,
