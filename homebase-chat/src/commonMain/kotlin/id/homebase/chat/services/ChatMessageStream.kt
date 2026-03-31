@@ -97,6 +97,9 @@ class ChatMessageStream(
             .map { ChatMessagesData.Messages(it[conversationId].orEmpty()) }
             .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ChatMessagesData.Initializing)
 
+    // Full message load from local DB for a single conversation.
+    // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
+    // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     suspend fun loadConversation(conversationId: Uuid) {
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
         loadedConversations += conversationId
@@ -115,16 +118,6 @@ class ChatMessageStream(
 
         messages.groupBy { it.conversationId }.forEach { (conversationId, msgs) ->
             conversationState.upsert(conversationId, msgs)
-        }
-    }
-
-    private suspend fun refreshLoadedConversations() {
-        val snapshot = loadedConversations.toSet()
-        Logger.d("ChatMessageStream: refreshLoadedConversations called, ${snapshot.size} active conversations")
-        snapshot.forEach { conversationId ->
-            val result = fetchMessages(conversationId)
-            Logger.d("ChatMessageStream: fetchMessages($conversationId) → ${result.records.size} messages")
-            conversationState.set(conversationId, result.records)
         }
     }
 

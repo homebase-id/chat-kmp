@@ -263,6 +263,13 @@ class ConversationStream(
         _conversations.value = ConversationsData(items = result)
     }
 
+    // Full conversation list load from local DB.  Idempotent (skips if already running).
+    // Intended call sites — all user-initiated or startup:
+    //   - AppModule onPostAuthenticated  (auth startup, preloads while UI composes)
+    //   - ConversationListViewModel init (user navigates to list)
+    //   - ArchivedConversationsViewModel init (user opens archived screen)
+    //   - GroupSettingsViewModel init     (user opens group settings)
+    // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     fun start() {
         if (loadJob?.isActive == true) return
         loadJob = scope.launch {
