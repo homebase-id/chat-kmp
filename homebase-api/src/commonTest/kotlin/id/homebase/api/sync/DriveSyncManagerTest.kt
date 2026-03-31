@@ -15,6 +15,7 @@ import io.ktor.http.HttpStatusCode
 import id.homebase.api.client.eventbus.BackendEvent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -50,7 +51,7 @@ class DriveSyncManagerTest {
                 driveQueryProvider = driveQueryProvider,
                 credentialsManager = credentialsManager,
                 eventBus = EventBus(),
-                scope = this,
+                scope = backgroundScope,
                 databaseManager = db,
                 drives = mapOf(driveId to "Test Drive"),
             )
@@ -88,7 +89,7 @@ class DriveSyncManagerTest {
                 driveQueryProvider = driveQueryProvider,
                 credentialsManager = credentialsManager,
                 eventBus = eventBus,
-                scope = this,
+                scope = backgroundScope,
                 databaseManager = db,
                 drives = mapOf(driveId to "Test Drive"),
             )
@@ -135,7 +136,7 @@ class DriveSyncManagerTest {
         )
     }
 
-    private fun buildCredentials(): CredentialsManager {
+    private suspend fun buildCredentials(): CredentialsManager {
         val credentialsManager = CredentialsManager()
         credentialsManager.setActiveCredentials(
             ApiCredentials.create(
@@ -151,7 +152,7 @@ class DriveSyncManagerTest {
     fun syncStateIsIdleBeforeStart() {
         val db = DatabaseManager { createInMemoryDatabase() }
         runTest {
-            val manager = buildManager(db, buildCredentials(), EventBus(), this)
+            val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope)
             assertEquals(SyncState.Idle, manager.syncState.value)
         }
         db.close()
@@ -163,7 +164,7 @@ class DriveSyncManagerTest {
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
-            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId to "Drive"))
             manager.start()
             runCurrent()
 
@@ -181,7 +182,7 @@ class DriveSyncManagerTest {
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
-            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId to "Drive"))
             manager.start()
             runCurrent()
 
@@ -201,7 +202,7 @@ class DriveSyncManagerTest {
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
-            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId to "Drive"))
             manager.start()
             runCurrent()
 
@@ -221,7 +222,7 @@ class DriveSyncManagerTest {
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
-            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId to "Drive"))
             manager.start()
             runCurrent()
 
@@ -243,7 +244,7 @@ class DriveSyncManagerTest {
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
-            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId to "Drive"))
             manager.start()
             runCurrent()
 
@@ -268,7 +269,7 @@ class DriveSyncManagerTest {
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
-            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId to "Drive"))
+            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId to "Drive"))
             manager.start()
             runCurrent()
 
@@ -294,7 +295,7 @@ class DriveSyncManagerTest {
             val eventBus = EventBus()
             val driveId1 = Uuid.random()
             val driveId2 = Uuid.random()
-            val manager = buildManager(db, buildCredentials(), eventBus, this, mapOf(driveId1 to "Drive 1", driveId2 to "Drive 2"))
+            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId1 to "Drive 1", driveId2 to "Drive 2"))
             manager.start()
             runCurrent()
 
