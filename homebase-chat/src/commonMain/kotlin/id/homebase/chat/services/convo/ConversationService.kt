@@ -105,7 +105,7 @@ class ConversationService(
                 title = title ?: "",
                 recipients = (normalizedRecipients + domain).distinct(),
                 version = 1,
-                admins = listOf(domain)
+                adminData = ConversationAdminInfo(admins = listOf(domain))
             )
 
         val encryptedBundle =
@@ -438,7 +438,7 @@ class ConversationService(
             ConversationAppDataJson(
                 title = title ?: "",
                 recipients = participants,
-                admins = admins?.toList() ?: conversation.admins.toList(),
+                adminData = ConversationAdminInfo(admins = admins?.toList() ?: conversation.admins.toList()),
                 version = 1 // logical version; server enforces via versionTag
             )
 

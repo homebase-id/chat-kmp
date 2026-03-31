@@ -162,7 +162,8 @@ class ConversationStream(
                         lastMessageFirstPayload = m.payloads?.firstOrNull(),
                         lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
                         lastMessageIsFromActiveUser =
-                            m.isAuthoredBy(credentialsManager.getActiveDomain())
+                            m.isAuthoredBy(credentialsManager.getActiveDomain()),
+                        isGroup = false
                     )
 
                 Logger.w("ConversationStream: message arrived for unknown conversation ${m.conversationId}, creating placeholder")

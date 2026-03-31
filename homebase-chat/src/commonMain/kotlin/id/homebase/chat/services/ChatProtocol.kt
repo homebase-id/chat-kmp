@@ -74,6 +74,7 @@ object ChatProtocol {
             ),
             admins = setOf(domain),
             isPinned = true,
+            isGroup = false,
         )
     }
 }

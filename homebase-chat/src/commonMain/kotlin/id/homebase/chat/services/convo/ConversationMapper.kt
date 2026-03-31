@@ -66,10 +66,7 @@ class ConversationMapper(
 
             require(participants.isNotEmpty()) { "Conversation has no valid participants" }
 
-            val others = participants.filterNot { it == domain }
             val isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
-                || others.size > 1
-
             val displayNames = participants.map { it.domainName }
 
             val title =
@@ -84,7 +81,7 @@ class ConversationMapper(
 
             val admins: Set<OdinId> =
                 if (isGroup) {
-                    (conversationData.admins ?: listOf(
+                    (conversationData.adminData?.admins ?: listOf(
                         metadata.originalAuthor
                             ?: metadata.senderOdinId
                             ?: domain
@@ -127,7 +124,8 @@ class ConversationMapper(
                         ?: UnixTimeUtc(0).toInstant(),
                     avatarModel = avatarModel,
                     admins = admins,
-                    conversationState = conversationState
+                    conversationState = conversationState,
+                    isGroup = isGroup
                 )
 
             if (lastMsg != null) {
@@ -160,7 +158,8 @@ class ConversationMapper(
                 lastRead = UnixTimeUtc(0).toInstant(),
                 avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
                 admins = emptySet(),
-                conversationState = ConversationState.Invalid
+                conversationState = ConversationState.Invalid,
+                isGroup = false
             )
         }
     }
@@ -187,7 +186,8 @@ class ConversationMapper(
             lastRead = UnixTimeUtc(0).toInstant(),
             avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
             admins = setOf(domain),
-            conversationState = ConversationState.Deleted
+            conversationState = ConversationState.Deleted,
+            isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
         )
 
         if (lastMsg != null) {

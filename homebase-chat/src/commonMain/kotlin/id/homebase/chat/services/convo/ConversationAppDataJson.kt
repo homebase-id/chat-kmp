@@ -24,8 +24,7 @@ data class ConversationAppDataJson(
 
     val recipients: List<OdinId?> = listOf(),
 
-    // this may come back as null
-    val admins: List<OdinId>? = null
+    val adminData: ConversationAdminInfo? = null
 )
 
 object ConversationAppDataJsonSerializer : KSerializer<ConversationAppDataJson> {
@@ -44,10 +43,17 @@ object ConversationAppDataJsonSerializer : KSerializer<ConversationAppDataJson> 
                 ?: obj["recipient"]?.jsonPrimitive?.contentOrNull?.let { listOf(OdinId(it)) }
                 ?: emptyList()
 
-        val admins =
-            obj["admins"]?.jsonArray?.map { OdinId(it.jsonPrimitive.content) }
+        // Prefer the structured adminData object; fall back to legacy top-level admins list
+        val adminData =
+            obj["adminData"]?.jsonObject?.let { adminObj ->
+                val admins = adminObj["admins"]?.jsonArray
+                    ?.map { OdinId(it.jsonPrimitive.content) }
+                ConversationAdminInfo(admins = admins)
+            } ?: obj["admins"]?.jsonArray?.let { legacyAdmins ->
+                ConversationAdminInfo(admins = legacyAdmins.map { OdinId(it.jsonPrimitive.content) })
+            }
 
-        return ConversationAppDataJson(title, version, recipients, admins)
+        return ConversationAppDataJson(title, version, recipients, adminData)
     }
 
     override fun serialize(encoder: Encoder, value: ConversationAppDataJson) {
@@ -60,17 +66,19 @@ object ConversationAppDataJsonSerializer : KSerializer<ConversationAppDataJson> 
                     "recipients",
                     JsonArray(value.recipients.map { JsonPrimitive(it?.domainName) })
                 )
-                value.admins?.let {
-                    put("admins", JsonArray(it.map { a -> JsonPrimitive(a.domainName) }))
+                value.adminData?.let { adminData ->
+                    put("adminData", buildJsonObject {
+                        adminData.admins?.let { admins ->
+                            put("admins", JsonArray(admins.map { JsonPrimitive(it.domainName) }))
+                        }
+                    })
                 }
             }
         )
     }
 }
 
-
 @Serializable
-data class ConversationAdminContentJson(
-    // this may come back as null
+data class ConversationAdminInfo(
     val admins: List<OdinId>? = null
 )
