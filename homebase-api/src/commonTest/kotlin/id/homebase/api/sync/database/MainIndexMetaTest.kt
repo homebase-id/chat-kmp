@@ -46,8 +46,8 @@ class MainIndexMetaTest {
                     "transitCreated": 0,
                     "transitUpdated": 0,
                     "serverFileIsEncrypted": true,
-                    "senderOdinId": "test-sender",
-                    "originalAuthor": "test-sender",
+                    "senderOdinId": "test.sender",
+                    "originalAuthor": "test.sender",
                     "appData": {
                         "uniqueId": "55d2e47e-ec86-f9b8-1e3d-d7bdeeb0527b",
                         "tags": null,
@@ -102,7 +102,7 @@ class MainIndexMetaTest {
             assertEquals(identityId, retrievedRecord.identityId)
             assertEquals(driveId, retrievedRecord.driveId)
             assertEquals(fileId, retrievedRecord.fileId)
-            assertEquals("test-sender", retrievedRecord.senderId)
+            assertEquals("test.sender", retrievedRecord.senderId)
             // Note: byteCount is now consolidated in jsonHeader
         }
     }
@@ -140,8 +140,8 @@ class MainIndexMetaTest {
                     "transitCreated": 0,
                     "transitUpdated": 0,
                     "serverFileIsEncrypted": true,
-                    "senderOdinId": "test-sender",
-                    "originalAuthor": "test-sender",
+                    "senderOdinId": "test.sender",
+                    "originalAuthor": "test.sender",
                     "appData": {
                         "uniqueId": "${uniqueId}",
                         "tags": [
@@ -244,7 +244,7 @@ class MainIndexMetaTest {
 
             assertNotNull(retrievedRecord, "Record should exist after BaseUpsertEntryZapZap")
             assertEquals(identityId, retrievedRecord.identityId)
-            assertEquals("test-sender", retrievedRecord.senderId)
+            assertEquals("test.sender", retrievedRecord.senderId)
 
             val cursorStorage = CursorStorage(dbm, driveId)
             val loadedCursor = cursorStorage.loadCursor()
@@ -316,8 +316,8 @@ class MainIndexMetaTest {
                     "transitCreated": 0,
                     "transitUpdated": 0,
                     "serverFileIsEncrypted": true,
-                    "senderOdinId": "test-sender",
-                    "originalAuthor": "test-sender",
+                    "senderOdinId": "test.sender",
+                    "originalAuthor": "test.sender",
                     "appData": {
                         "uniqueId": "55d2e47e-ec86-f9b8-1e3d-d7bdeeb0527b",
                         "tags": null,
@@ -376,7 +376,7 @@ class MainIndexMetaTest {
                 retrievedRecord, "Record should exist after BaseUpsertEntryZapZap with null cursor"
             )
             assertEquals(identityId, retrievedRecord.identityId)
-            assertEquals("test-sender", retrievedRecord.senderId)
+            assertEquals("test.sender", retrievedRecord.senderId)
         }
     }
 
@@ -430,8 +430,8 @@ class MainIndexMetaTest {
                     "transitCreated": 0,
                     "transitUpdated": 0,
                     "serverFileIsEncrypted": true,
-                    "senderOdinId": "test-sender",
-                    "originalAuthor": "test-sender",
+                    "senderOdinId": "test.sender",
+                    "originalAuthor": "test.sender",
                     "appData": {
                         "uniqueId": "${uniqueId}",
                         "tags": ["${newTagId1}", "${newTagId2}"],
@@ -483,7 +483,7 @@ class MainIndexMetaTest {
 
             assertNotNull(retrievedRecord, "Record should exist after BaseUpsertEntryZapZap")
             assertEquals(identityId, retrievedRecord.identityId)
-            assertEquals("test-sender", retrievedRecord.senderId)
+            assertEquals("test.sender", retrievedRecord.senderId)
 
             // Verify that old tags were deleted and new tags were inserted
             val finalTags = dbm.driveTagIndex.selectByFile(
@@ -533,8 +533,8 @@ class MainIndexMetaTest {
                     "transitCreated": 0,
                     "transitUpdated": 0,
                     "serverFileIsEncrypted": true,
-                    "senderOdinId": "test-sender",
-                    "originalAuthor": "test-sender",
+                    "senderOdinId": "test.sender",
+                    "originalAuthor": "test.sender",
                     "appData": {
                         "uniqueId": "55d2e47e-ec86-f9b8-1e3d-d7bdeeb0527b",
                         "tags": null,
@@ -698,8 +698,8 @@ class MainIndexMetaTest {
                     "transitCreated": 0,
                     "transitUpdated": 0,
                     "serverFileIsEncrypted": true,
-                    "senderOdinId": "initial-sender",
-                    "originalAuthor": "initial-sender",
+                    "senderOdinId": "initial.sender",
+                    "originalAuthor": "initial.sender",
                     "appData": {
                         "uniqueId": "${uniqueId1}",
                         "tags": null,
@@ -740,7 +740,7 @@ class MainIndexMetaTest {
             // Verify initial record
             val initialRecord = dbm.driveMainIndex.selectByIdentityAndDriveAndFile(identityId, driveId, fileId)
             assertNotNull(initialRecord)
-            assertEquals("initial-sender", initialRecord.senderId)
+            assertEquals("initial.sender", initialRecord.senderId)
             assertEquals(uniqueId1, initialRecord.uniqueId)
             assertEquals(globalId1, initialRecord.globalTransitId)
 
@@ -765,8 +765,8 @@ class MainIndexMetaTest {
                     "transitCreated": 0,
                     "transitUpdated": 0,
                     "serverFileIsEncrypted": true,
-                    "senderOdinId": "updated-sender",
-                    "originalAuthor": "updated-sender",
+                    "senderOdinId": "updated.sender",
+                    "originalAuthor": "updated.sender",
                     "appData": {
                         "uniqueId": "${uniqueId1}",
                         "tags": null,
@@ -808,7 +808,7 @@ class MainIndexMetaTest {
             val updatedRecord = dbm.driveMainIndex.selectByIdentityAndDriveAndFile(identityId, driveId, fileId)
             assertNotNull(updatedRecord)
             assertEquals(
-                "updated-sender", updatedRecord.senderId, "ON CONFLICT fileId should update senderId"
+                "updated.sender", updatedRecord.senderId, "ON CONFLICT fileId should update senderId"
             )
             assertEquals(2L, updatedRecord.fileType, "ON CONFLICT fileId should update fileType")
             assertEquals(uniqueId1, updatedRecord.uniqueId, "uniqueId should remain unchanged")
@@ -859,8 +859,8 @@ class MainIndexMetaTest {
     //                    "transitCreated": 0,
     //                    "transitUpdated": 0,
     //                    "serverFileIsEncrypted": true,
-    //                    "senderOdinId": "initial-sender",
-    //                    "originalAuthor": "initial-sender",
+    //                    "senderOdinId": "initial.sender",
+    //                    "originalAuthor": "initial.sender",
     //                    "appData": {
     //                        "uniqueId": "${sharedUniqueId}",
     //                        "tags": null,
@@ -903,7 +903,7 @@ class MainIndexMetaTest {
     //            val initialRecord =
     // dbm.driveMainIndex.selectByIdentityAndDriveAndUnique(identityId, driveId, sharedUniqueId)
     //            assertNotNull(initialRecord)
-    //            assertEquals("initial-sender", initialRecord.senderId)
+    //            assertEquals("initial.sender", initialRecord.senderId)
     //            assertEquals(sharedUniqueId, initialRecord.uniqueId)
     //            assertEquals(globalId1, initialRecord.globalTransitId)
     //

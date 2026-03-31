@@ -63,8 +63,9 @@ class OutboxSyncTest {
             val uploader = TestUploader()
 
             val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = this
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
             )
+            sync.setOnline(true)
 
             // This will count total number of items sent via the events.
             // It's necessary to ensure all threads are finished.
@@ -121,8 +122,9 @@ class OutboxSyncTest {
             uploader.shouldFail = true
 
             val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = this
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
             )
+            sync.setOnline(true)
 
             val completedDeferred = async {
                 eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
@@ -172,8 +174,9 @@ class OutboxSyncTest {
             val uploader = TestUploader()
 
             val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = this
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
             )
+            sync.setOnline(true)
 
             val completedDeferred = async {
                 eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
@@ -228,8 +231,9 @@ class OutboxSyncTest {
             val uploader = TestUploader()
 
             val sync = OutboxSync(
-                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = this
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
             )
+            sync.setOnline(true)
 
             val completedDeferred = async {
                 eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>()
