@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.encoding.Base64
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 class ChatMessageStream(
@@ -59,10 +60,12 @@ class ChatMessageStream(
 
     private val conversationState = ActiveConversationState()
     private val chatDrive = chatTargetDrive.alias
-    private var isSyncing = false
-    private var syncedMessageCount = 0
     private val loadedConversations = mutableSetOf<Uuid>()
+    private val conversationLoadTimestamps = mutableMapOf<Uuid, kotlin.time.TimeMark>()
 
+    // Messages for open conversations are loaded on demand via loadConversation().
+    // All subsequent updates arrive incrementally through BatchReceived events —
+    // we do not re-read from DB on DriveEvent.Stopped (same rationale as ConversationStream).
     init {
         scope.launch {
             eventBus.events.collect { event ->
@@ -74,39 +77,14 @@ class ChatMessageStream(
                 if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
 
                 when (event) {
-                    is BackendEvent.DriveEvent.Started -> {
-                        isSyncing = true
-                        syncedMessageCount = 0
-                    }
+                    is BackendEvent.DriveEvent.Started -> { }
 
                     is BackendEvent.DriveEvent.Stopped -> {
-                        isSyncing = false
-                        if (event.totalCount > 0) {
-                            Logger.d("ChatMessageStream: Stopped with totalCount=${event.totalCount}, syncedMessageCount=$syncedMessageCount")
-                            refreshLoadedConversations()
-                        } else {
-                            Logger.d("ChatMessageStream: Stopped with totalCount=0, skipping refresh")
-                        }
+                        Logger.d("ChatMessageStream: Stopped(totalCount=${event.totalCount})")
                     }
 
                     is BackendEvent.DriveEvent.BatchReceived -> {
-                        if (!isSyncing) {
-                            processIncrementalBatch(event.batchData)
-                        } else {
-                            val messageFiles = event.batchData.count {
-                                it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType
-                            }
-                            val conversationFiles = event.batchData.count {
-                                it.fileMetadata.appData.fileType == ChatProtocol.ConversationFileType
-                            }
-                            val otherFiles = event.batchData.size - messageFiles - conversationFiles
-                            syncedMessageCount += messageFiles
-                            Logger.d(
-                                "ChatMessageStream: BatchReceived suppressed (isSyncing=true), " +
-                                "${event.batchData.size} files (messages=$messageFiles, " +
-                                "conversations=$conversationFiles, other=$otherFiles)"
-                            )
-                        }
+                        processIncrementalBatch(event.batchData)
                     }
                 }
             }
@@ -121,9 +99,13 @@ class ChatMessageStream(
             .map { ChatMessagesData.Messages(it[conversationId].orEmpty()) }
             .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ChatMessagesData.Initializing)
 
+    // Full message load from local DB for a single conversation.
+    // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
+    // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     suspend fun loadConversation(conversationId: Uuid) {
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
         loadedConversations += conversationId
+        conversationLoadTimestamps[conversationId] = kotlin.time.TimeSource.Monotonic.markNow()
         val result = fetchMessages(conversationId)
         Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages")
         conversationState.set(conversationId, result.records)
@@ -137,7 +119,9 @@ class ChatMessageStream(
                 .filter { it.fileMetadata.appData.fileType == ChatProtocol.MessageFileType }
                 .mapNotNull { mapToMessageData(it, credentialsManager, ::resolveDisplayName) }
 
-        messages.groupBy { it.conversationId }.forEach { (conversationId, msgs) ->
+        val grouped = messages.groupBy { it.conversationId }
+        Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
+        grouped.forEach { (conversationId, msgs) ->
             conversationState.upsert(conversationId, msgs)
         }
     }
@@ -146,6 +130,11 @@ class ChatMessageStream(
         val snapshot = loadedConversations.toSet()
         Logger.d("ChatMessageStream: refreshLoadedConversations called, ${snapshot.size} active conversations")
         snapshot.forEach { conversationId ->
+            val loadedAt = conversationLoadTimestamps[conversationId]
+            if (loadedAt != null && loadedAt.elapsedNow() < REFRESH_COOLDOWN) {
+                Logger.d("ChatMessageStream: skipping refresh for $conversationId (loaded ${loadedAt.elapsedNow()} ago)")
+                return@forEach
+            }
             val result = fetchMessages(conversationId)
             Logger.d("ChatMessageStream: fetchMessages($conversationId) → ${result.records.size} messages")
             conversationState.set(conversationId, result.records)
@@ -359,6 +348,7 @@ class ChatMessageStream(
     }
 
     companion object {
+        private val REFRESH_COOLDOWN = 5.seconds
 
         private fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
