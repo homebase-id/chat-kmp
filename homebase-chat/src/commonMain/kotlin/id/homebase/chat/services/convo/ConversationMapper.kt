@@ -67,7 +67,8 @@ class ConversationMapper(
             require(participants.isNotEmpty()) { "Conversation has no valid participants" }
 
             val others = participants.filterNot { it == domain }
-            val isGroup = others.size > 1
+            val isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
+                || others.size > 1
 
             val displayNames = participants.map { it.domainName }
 

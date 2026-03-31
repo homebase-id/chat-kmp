@@ -123,6 +123,7 @@ class ConversationService(
                 appData =
                     UploadAppFileMetaData(
                         uniqueId = newConversationId,
+                        tags = if (isGroup) listOf(ChatProtocol.ConversationGroupTag) else null,
                         fileType = ChatProtocol.ConversationFileType,
                         content = OdinSystemSerializer.serialize(content),
                         previewThumbnail =

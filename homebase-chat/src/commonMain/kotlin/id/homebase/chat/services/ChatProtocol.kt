@@ -38,6 +38,9 @@ object ChatProtocol {
     /** Local metadata tag: conversation has been pinned by the user */
     val ConversationPinnedTag = Uuid.parse("3f7e4c1d-5a2b-4f89-b3e7-9c1d2e3f4a5b")
 
+    /** Server-side appData tag: conversation was originally created as a group (never removed) */
+    val ConversationGroupTag = Uuid.parse("b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f")
+
     const val ARCHIVAL_STATUS_DELETED = 2
 
     const val DEFAULT_PAYLOAD_DESCRIPTOR_KEY = "pld_desc"
