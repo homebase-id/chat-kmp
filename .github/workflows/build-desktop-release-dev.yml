@@ -75,6 +75,8 @@ jobs:
           SIGNING_KEY: ${{ secrets.CONVEYOR_SIGNING_KEY }}
           CONVEYOR_AGREE_TO_LICENSE: 1
           JDK_21: ${{ env.JAVA_HOME }}
+          ORG_GRADLE_PROJECT_version.name: ${{ steps.version.outputs.VERSION_NAME }}
+          ORG_GRADLE_PROJECT_VERSION_CODE: ${{ steps.version.outputs.VERSION_CODE }}
         shell: bash
         run: |
           PATH="$PATH:../.conveyor/install/conveyor-22.0/bin"
