@@ -16,12 +16,9 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -101,7 +98,6 @@ class DriveSync(
     private suspend fun performSync() {
         var totalCount = 0
         var queryBatchResponse: QueryBatchResponse? = null
-        val dbDeferreds = mutableListOf<Deferred<Unit>>()
 
         eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
 
@@ -132,8 +128,6 @@ class DriveSync(
 
                     if (queryBatchResponse.cursorState != null)
                         cursor = QueryBatchCursor.fromJson(queryBatchResponse.cursorState)
-                    // Snapshot cursor into a local val so the fire-and-forget DB coroutine below
-                    // always uses this batch's cursor, not whatever `cursor` is when it eventually runs.
                     Logger.i("Received ${queryBatchResponse.searchResults.size} records from QueryBatch() on Drive $driveId")
 
                     val searchResults = queryBatchResponse.searchResults
@@ -149,19 +143,14 @@ class DriveSync(
                         totalCount += recordsRead
                         val batchCursorToSave = cursor
 
-                        // Run DB operation in background without waiting - fire and forget
-                        val job = scope.async {
-                            val dbMs = measureTimedValue {
-                                fileHeaderProcessor.baseUpsertEntryZapZap(
-                                    identityId = identityId,
-                                    driveId = driveId,
-                                    fileHeaders = searchResults,
-                                    cursor = batchCursorToSave
-                                )
-                            }
-                            // Logger.i("DB insert time $dbMs for ${searchResults.size} rows")
-                        }
-                        dbDeferreds.add(job)
+                        // Write to DB before emitting event to ensure DB is consistent
+                        // when any event handler (e.g. loadConversation) reads from it.
+                        fileHeaderProcessor.baseUpsertEntryZapZap(
+                            identityId = identityId,
+                            driveId = driveId,
+                            fileHeaders = searchResults,
+                            cursor = batchCursorToSave
+                        )
 
                         val latestModified = searchResults.last().fileMetadata.updated
 
@@ -218,14 +207,7 @@ class DriveSync(
             }
         }
 
-        try {
-            dbDeferreds.awaitAll()  // Suspends until all complete; rethrows the first exception if any
-            Logger.d("DriveSync: all DB writes complete for drive $driveId ($totalCount total records)")
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Success))
-            Logger.d("Drive $driveId synchronized with $totalCount records read.")
-        } catch (e: Exception) {
-            Logger.e("Sync failed due to DB error: ${e.message}")
-            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Failure(e.message ?: "DB upsert failed")))
-        }
+        eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Success))
+        Logger.d("Drive $driveId synchronized with $totalCount records read.")
     }
 }

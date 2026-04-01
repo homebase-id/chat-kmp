@@ -794,7 +794,7 @@ private fun testMessageUiModel(message: String): MessageUiModel {
         fileId = Uuid.generateV4(),
         conversationId = Uuid.generateV4(),
         content = message,
-        created = Clock.System.now(),
+        userDate = Clock.System.now(),
         modified = null,
         originalAuthor = null,
         displayName = "John Doe",

@@ -213,7 +213,7 @@ fun FullScreenMediaViewer(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = formatTimestamp(data.created),
+                            text = formatTimestamp(data.userDate),
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }

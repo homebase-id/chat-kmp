@@ -4,6 +4,7 @@ import id.homebase.chat.data.MessageUiModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlin.uuid.Uuid
 
 class ActiveConversationState {
@@ -15,28 +16,30 @@ class ActiveConversationState {
         _messages.asStateFlow()
 
     fun set(conversationId: Uuid, messages: List<MessageUiModel>) {
-        _messages.value =
-            _messages.value.toMutableMap().apply {
+        _messages.update { current ->
+            current.toMutableMap().apply {
                 this[conversationId] = messages
             }
+        }
     }
 
     fun removeMessage(messageId: Uuid) {
-        _messages.value = _messages.value.mapValues { (_, messages) ->
-            messages.filter { it.id != messageId }
+        _messages.update { current ->
+            current.mapValues { (_, messages) ->
+                messages.filter { it.id != messageId }
+            }
         }
     }
 
     fun upsert(conversationId: Uuid, incoming: List<MessageUiModel>) {
         if (incoming.isEmpty()) return
 
-        val updated =
-            _messages.value.toMutableMap().apply {
-                val current = this[conversationId].orEmpty()
-                this[conversationId] = upsertMessages(current, incoming)
+        _messages.update { current ->
+            current.toMutableMap().apply {
+                val existing = this[conversationId].orEmpty()
+                this[conversationId] = upsertMessages(existing, incoming)
             }
-
-        _messages.value = updated
+        }
     }
 
     private fun upsertMessages(
@@ -47,6 +50,6 @@ class ActiveConversationState {
         for (msg in incoming) {
             byId[msg.id] = msg
         }
-        return byId.values.sortedByDescending { it.created }
+        return byId.values.sortedByDescending { it.userDate }
     }
 }

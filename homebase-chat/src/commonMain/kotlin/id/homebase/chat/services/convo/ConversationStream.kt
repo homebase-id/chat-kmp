@@ -141,7 +141,7 @@ class ConversationStream(
                         id = m.conversationId,
                         name = "Pending...",
                         lastMessage = m.content,
-                        timestamp = m.created,
+                        latestMessageTimestamp = m.userDate,
                         admins = (if (m.originalAuthor == null) emptySet() else setOf(m.originalAuthor)),
                         unreadCount = 0,
                         avatarTiny = null,
@@ -174,7 +174,7 @@ class ConversationStream(
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
-        val sortedList = _conversations.value.items.sortedByDescending { it.timestamp }
+        val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
         _conversations.value = ConversationsData(true, sortedList)
     }
 
@@ -182,13 +182,13 @@ class ConversationStream(
         c: ConversationUiModel,
         m: MessageUiModel
     ) {
-        if (m.created > c.timestamp) {
+        if (m.userDate >= c.latestMessageTimestamp) {
             val domain = credentialsManager.getActiveDomain()
 
             // new message that was not sent by the current user
             val updatedConversation = c.copy(
                 unreadCount = c.unreadCount + if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) 1 else 0,
-                timestamp = m.created,
+                latestMessageTimestamp = m.userDate,
                 lastMessage = m.content.truncateToCodePoints(40), // TODO: Global constant
                 lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
                 lastMessageIsDeleted = m.isDeleted,
@@ -223,7 +223,7 @@ class ConversationStream(
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
-        val sortedList = _conversations.value.items.sortedByDescending { it.timestamp }
+        val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
         _conversations.value = ConversationsData(items = sortedList)
     }
 
@@ -244,10 +244,10 @@ class ConversationStream(
             && incoming.conversationState != ConversationState.RejoinPending
         ) {
             ConversationState.Left
-        } else {
+          } else {
             incoming.conversationState
         }
-
+        
         // Structural fields (membership, identity) always come from the conversation file,
         // regardless of timestamp. The in-memory timestamp is driven by message arrivals and
         // is almost always newer than metadata.created, so a timestamp guard would silently
@@ -265,13 +265,13 @@ class ConversationStream(
             isPinned = incoming.isPinned,
             conversationState = resolvedState,
             // Message preview — only overwrite if the file carries a newer last-message snapshot
-            timestamp = if (incoming.timestamp >= existing.timestamp) incoming.timestamp else existing.timestamp,
-            lastMessage = if (incoming.timestamp >= existing.timestamp) incoming.lastMessage else existing.lastMessage,
-            lastMessageDeliveryStatus = if (incoming.timestamp >= existing.timestamp) incoming.lastMessageDeliveryStatus else existing.lastMessageDeliveryStatus,
-            lastMessageIsDeleted = if (incoming.timestamp >= existing.timestamp) incoming.lastMessageIsDeleted else existing.lastMessageIsDeleted,
-            lastMessageFirstPayload = if (incoming.timestamp >= existing.timestamp) incoming.lastMessageFirstPayload else existing.lastMessageFirstPayload,
-            lastMessageHasMultiplePayloads = if (incoming.timestamp >= existing.timestamp) incoming.lastMessageHasMultiplePayloads else existing.lastMessageHasMultiplePayloads,
-            lastMessageIsFromActiveUser = if (incoming.timestamp >= existing.timestamp) incoming.lastMessageIsFromActiveUser else existing.lastMessageIsFromActiveUser,
+            latestMessageTimestamp = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.timestamp else existing.timestamp,
+            lastMessage = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessage else existing.lastMessage,
+            lastMessageDeliveryStatus = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageDeliveryStatus else existing.lastMessageDeliveryStatus,
+            lastMessageIsDeleted = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageIsDeleted else existing.lastMessageIsDeleted,
+            lastMessageFirstPayload = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageFirstPayload else existing.lastMessageFirstPayload,
+            lastMessageHasMultiplePayloads = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageHasMultiplePayloads else existing.lastMessageHasMultiplePayloads,
+            lastMessageIsFromActiveUser = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageIsFromActiveUser else existing.lastMessageIsFromActiveUser,
         )
         // We should optimize later to not map the full list
         _conversations.value =
@@ -439,7 +439,7 @@ class ConversationStream(
                     avatarInitials = convo.avatarInitials,
                     isGroup = convo.isGroupConversation,
                     participantCount = convo.participants.size,
-                    lastMessageTimestamp = convo.timestamp.toEpochMilliseconds(),
+                    lastMessageTimestamp = convo.latestMessageTimestamp.toEpochMilliseconds(),
                     avatarUrl = avatarUrl,
                 )
             }

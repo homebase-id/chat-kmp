@@ -348,7 +348,7 @@ class ChatMessageSenderService(
                 groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
                 dataType = 0,
-                userDate = UnixTimeUtc.now().milliseconds,
+                userDate = msg.userDate.toEpochMilliseconds(),
                 content = built.headerContent,
                 previewThumbnail = msg.previewThumbnail
             )

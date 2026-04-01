@@ -47,7 +47,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.encoding.Base64
-import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 class ChatMessageStream(
@@ -61,8 +60,6 @@ class ChatMessageStream(
 
     private val conversationState = ActiveConversationState()
     private val chatDrive = chatTargetDrive.alias
-    private val loadedConversations = mutableSetOf<Uuid>()
-    private val conversationLoadTimestamps = mutableMapOf<Uuid, kotlin.time.TimeMark>()
 
     // Messages for open conversations are loaded on demand via loadConversation().
     // All subsequent updates arrive incrementally through BatchReceived events —
@@ -105,8 +102,6 @@ class ChatMessageStream(
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     suspend fun loadConversation(conversationId: Uuid) {
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
-        loadedConversations += conversationId
-        conversationLoadTimestamps[conversationId] = kotlin.time.TimeSource.Monotonic.markNow()
         val result = fetchMessages(conversationId)
         Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages")
         conversationState.set(conversationId, result.records)
@@ -124,21 +119,6 @@ class ChatMessageStream(
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
         grouped.forEach { (conversationId, msgs) ->
             conversationState.upsert(conversationId, msgs)
-        }
-    }
-
-    private suspend fun refreshLoadedConversations() {
-        val snapshot = loadedConversations.toSet()
-        Logger.d("ChatMessageStream: refreshLoadedConversations called, ${snapshot.size} active conversations")
-        snapshot.forEach { conversationId ->
-            val loadedAt = conversationLoadTimestamps[conversationId]
-            if (loadedAt != null && loadedAt.elapsedNow() < REFRESH_COOLDOWN) {
-                Logger.d("ChatMessageStream: skipping refresh for $conversationId (loaded ${loadedAt.elapsedNow()} ago)")
-                return@forEach
-            }
-            val result = fetchMessages(conversationId)
-            Logger.d("ChatMessageStream: fetchMessages($conversationId) → ${result.records.size} messages")
-            conversationState.set(conversationId, result.records)
         }
     }
 
@@ -349,8 +329,6 @@ class ChatMessageStream(
     }
 
     companion object {
-        private val REFRESH_COOLDOWN = 5.seconds
-
         private fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
             val count = header.serverMetadata.originalRecipientCount
@@ -399,14 +377,17 @@ class ChatMessageStream(
                         header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
 
                 if (isDeleted) {
+                    val deletedUserDate = if (appData.userDate == null)
+                        metadata.created
+                    else
+                        minOf(UnixTimeUtc(appData.userDate!!), metadata.created)
+
                     return MessageUiModel(
                         id = appData.uniqueId ?: header.fileId,
                         globalTransitId = metadata.globalTransitId,
                         fileId = header.fileId,
                         conversationId = appData.groupId!!,
-                        created = if (appData.userDate == null)
-                            metadata.created.toInstant() else
-                            UnixTimeUtc(appData.userDate!!).toInstant(),
+                        userDate = deletedUserDate.toInstant(),
                         modified = metadata.updated.toInstant(),
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
@@ -460,7 +441,7 @@ class ChatMessageStream(
                 else
                     metadata.transitCreated
 
-                val created =
+                val rawUserDate =
                     if (messageAppData.version == null) {
                         // older edited messages; use older logic that seems to drop the
                         // appData.userDate when a message is edited
@@ -484,13 +465,16 @@ class ChatMessageStream(
                             UnixTimeUtc(appData.userDate!!)
                     }
 
+                // Clamp: userDate should never exceed the server-side timestamp
+                val userDate = minOf(rawUserDate, authorSpecificDate)
+
                 return MessageUiModel(
                     id = appData.uniqueId!!,
                     globalTransitId = metadata.globalTransitId,
                     fileId = header.fileId,
                     conversationId = appData.groupId!!,
                     content = messageAppData.getMessage(),
-                    created = created.toInstant(),
+                    userDate = userDate.toInstant(),
                     modified = metadata.updated.toInstant(),
                     originalAuthor = metadata.originalAuthor,
                     displayName = displayName,
@@ -520,7 +504,7 @@ class ChatMessageStream(
                         fileId = header.fileId,
                         conversationId = appData.groupId!!,
                         content = "Failed to parse message from server",
-                        created = metadata.created.toInstant(),
+                        userDate = metadata.created.toInstant(),
                         modified = metadata.updated.toInstant(),
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",

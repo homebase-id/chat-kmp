@@ -19,7 +19,7 @@ class ActiveConversationStateTest {
             fileId = Uuid.random(),
             conversationId = conversationId,
             content = "test",
-            created = Instant.fromEpochMilliseconds(0),
+            userDate = Instant.fromEpochMilliseconds(0),
             modified = null,
             originalAuthor = null,
             displayName = "Tester",
