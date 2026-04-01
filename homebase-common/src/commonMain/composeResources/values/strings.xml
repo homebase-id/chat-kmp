@@ -133,6 +133,7 @@
     <string name="system_conversation_admin_removed">%1$s removed an admin</string>
     <string name="system_group_conversation_started">%1$s started the conversation</string>
     <string name="system_group_conversation_member_left">%1$s left the conversation</string>
+    <string name="system_group_conversation_member_declined_rejoin">%1$s declined to rejoin the conversation</string>
 
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filter by unread</string>
@@ -178,6 +179,10 @@
     <string name="chat_group_choose_new_admin_disclaimer">Before you leave, you must choose at least one new admin for this group.</string>
     <string name="chat_group_not_connected_disclaimer">You can only chat with connected identities, messages will not be delivered to all group members.</string>
     <string name="chat_group_you_left">You left this group</string>
+    <string name="chat_group_rejoin_pending">Re-added</string>
+    <string name="chat_group_rejoin_pending_description">You were re-added to this group</string>
+    <string name="chat_group_rejoin_accept">Rejoin</string>
+    <string name="chat_group_rejoin_decline">Decline</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>

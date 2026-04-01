@@ -110,6 +110,7 @@
     <string name="system_conversation_admin_removed">%1$s fjernede en administrator</string>
     <string name="system_group_conversation_started">%1$s startede samtalen</string>
     <string name="system_group_conversation_member_left">%1$s forlod samtalen</string>
+    <string name="system_group_conversation_member_declined_rejoin">%1$s afslog at genindtræde i samtalen</string>
 
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
@@ -155,6 +156,10 @@
     <string name="chat_group_choose_new_admin_disclaimer">Før du forlader gruppen, skal du vælge mindst én ny admin til denne gruppe.</string>
     <string name="chat_group_not_connected_disclaimer">Du kan kun chatte med tilsluttede identiteter, beskeder vil ikke blive leveret til alle gruppemedlemmer.</string>
     <string name="chat_group_you_left">Du har forladt denne gruppe</string>
+    <string name="chat_group_rejoin_pending">Tilføjet igen</string>
+    <string name="chat_group_rejoin_pending_description">Du er blevet tilføjet til denne gruppe igen</string>
+    <string name="chat_group_rejoin_accept">Genindtræd</string>
+    <string name="chat_group_rejoin_decline">Afvis</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>

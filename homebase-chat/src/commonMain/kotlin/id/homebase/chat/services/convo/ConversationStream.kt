@@ -237,37 +237,42 @@ class ConversationStream(
 
     private fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
         // Left is sticky — only cleared by an explicit rejoin action, not by outbox responses
-        // which may not preserve localAppData tags
-        val resolvedState = if (existing.conversationState == ConversationState.Left && incoming.conversationState != ConversationState.Left) {
+        // which may not preserve localAppData tags. RejoinPending is the one exception: it means
+        // the server shows us back in participants while we still have the Left tag locally.
+        val resolvedState = if (existing.conversationState == ConversationState.Left
+            && incoming.conversationState != ConversationState.Left
+            && incoming.conversationState != ConversationState.RejoinPending
+        ) {
             ConversationState.Left
         } else {
             incoming.conversationState
         }
 
-        // isPinned and conversationState are always applied regardless of timestamp ordering
-        val updatedConvo = if (incoming.timestamp >= existing.timestamp) {
-            existing.copy(
-                name = incoming.name,
-                avatarTiny = incoming.avatarTiny,
-                avatarUrl = incoming.avatarUrl,
-                avatarInitials = incoming.avatarInitials,
-                participants = incoming.participants,
-                timestamp = incoming.timestamp,
-                lastMessage = incoming.lastMessage,
-                lastMessageDeliveryStatus = incoming.lastMessageDeliveryStatus,
-                lastMessageIsDeleted = incoming.lastMessageIsDeleted,
-                lastMessageFirstPayload = incoming.lastMessageFirstPayload,
-                lastMessageHasMultiplePayloads = incoming.lastMessageHasMultiplePayloads,
-                lastMessageIsFromActiveUser = incoming.lastMessageIsFromActiveUser,
-                isPinned = incoming.isPinned,
-                conversationState = resolvedState
-            )
-        } else {
-            existing.copy(
-                isPinned = incoming.isPinned,
-                conversationState = resolvedState
-            )
-        }
+        // Structural fields (membership, identity) always come from the conversation file,
+        // regardless of timestamp. The in-memory timestamp is driven by message arrivals and
+        // is almost always newer than metadata.created, so a timestamp guard would silently
+        // drop participant/admin/name changes distributed by peers (e.g. leave, add member).
+        // Message-preview fields are only applied when the file is genuinely newer.
+        val updatedConvo = existing.copy(
+            name = incoming.name,
+            isGroup = incoming.isGroup,
+            admins = incoming.admins,
+            avatarModel = incoming.avatarModel,
+            avatarTiny = incoming.avatarTiny,
+            avatarUrl = incoming.avatarUrl,
+            avatarInitials = incoming.avatarInitials,
+            participants = incoming.participants,
+            isPinned = incoming.isPinned,
+            conversationState = resolvedState,
+            // Message preview — only overwrite if the file carries a newer last-message snapshot
+            timestamp = if (incoming.timestamp >= existing.timestamp) incoming.timestamp else existing.timestamp,
+            lastMessage = if (incoming.timestamp >= existing.timestamp) incoming.lastMessage else existing.lastMessage,
+            lastMessageDeliveryStatus = if (incoming.timestamp >= existing.timestamp) incoming.lastMessageDeliveryStatus else existing.lastMessageDeliveryStatus,
+            lastMessageIsDeleted = if (incoming.timestamp >= existing.timestamp) incoming.lastMessageIsDeleted else existing.lastMessageIsDeleted,
+            lastMessageFirstPayload = if (incoming.timestamp >= existing.timestamp) incoming.lastMessageFirstPayload else existing.lastMessageFirstPayload,
+            lastMessageHasMultiplePayloads = if (incoming.timestamp >= existing.timestamp) incoming.lastMessageHasMultiplePayloads else existing.lastMessageHasMultiplePayloads,
+            lastMessageIsFromActiveUser = if (incoming.timestamp >= existing.timestamp) incoming.lastMessageIsFromActiveUser else existing.lastMessageIsFromActiveUser,
+        )
         // We should optimize later to not map the full list
         _conversations.value =
             ConversationsData(items = _conversations.value.items.map { if (it.id == existing.id) updatedConvo else it })

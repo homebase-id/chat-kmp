@@ -100,7 +100,7 @@ class GroupSettingsViewModel(
             is GroupSettingsUiAction.LeaveGroupClicked -> {
                 uiState.value.conversation?.let { conversation ->
                     uiState.value.currentOdinId?.let { currentUser ->
-                        if (conversation.isCurrentUserAdmin(currentUser) && conversation.admins.size == 1 && conversation.participants.size > 1) {
+                        if (conversation.isCurrentUserAdmin(currentUser) && conversation.admins.size == 1 && conversation.isGroupConversation) {
                             _uiState.update { it.copy(uiDialog = GroupSettingsUiDialog.LeaveChooseAdmin) }
                         } else {
                             _uiState.update { it.copy(uiDialog = GroupSettingsUiDialog.ConfirmLeave) }

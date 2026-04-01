@@ -35,6 +35,7 @@ import id.homebase.resources.system_conversation_member_name_removed
 import id.homebase.resources.system_conversation_member_removed
 import id.homebase.resources.system_conversation_photo_updated
 import id.homebase.resources.system_conversation_title_updated
+import id.homebase.resources.system_group_conversation_member_declined_rejoin
 import id.homebase.resources.system_group_conversation_member_left
 import id.homebase.resources.system_group_conversation_started
 import kotlinx.collections.immutable.toPersistentList
@@ -613,6 +614,9 @@ class ChatMessageStream(
 
                 StatusMessage.ConversationMemberLeft ->
                     TranslationUtil.getString(MR.string.system_group_conversation_member_left, name)
+
+                StatusMessage.ConversationMemberDeclinedRejoin ->
+                    TranslationUtil.getString(MR.string.system_group_conversation_member_declined_rejoin, name)
             }
         }
     }

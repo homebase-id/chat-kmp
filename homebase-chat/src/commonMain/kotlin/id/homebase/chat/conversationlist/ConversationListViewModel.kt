@@ -127,9 +127,11 @@ class ConversationListViewModel(
     private val _uiState = MutableStateFlow(ConversationListUiState())
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
-    private val _messagesUiState = MutableStateFlow(MessageListUiState(
-        userDefaultReactions = userPreferences.preferredUserReactions.toPersistentList()
-    ))
+    private val _messagesUiState = MutableStateFlow(
+        MessageListUiState(
+            userDefaultReactions = userPreferences.preferredUserReactions.toPersistentList()
+        )
+    )
     val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
 
     val conversationSearchTextState = TextFieldState()
@@ -265,22 +267,35 @@ class ConversationListViewModel(
             eventBus.events
                 .filter {
                     it is BackendEvent.SyncAllStarted ||
-                    it is BackendEvent.SyncAllStopped
+                            it is BackendEvent.SyncAllStopped
                 }
                 .collectLatest { event ->
                     when (event) {
-                        is BackendEvent.SyncAllStarted -> _uiState.update { it.copy(driveIsSyncing = true, hasDriveError = false) }
-                        is BackendEvent.SyncAllStopped -> _uiState.update { it.copy(
-                            driveIsSyncing = false,
-                            hasDriveError = event.result is BackendEvent.SyncAllResult.Failure
-                        )}
+                        is BackendEvent.SyncAllStarted -> _uiState.update {
+                            it.copy(
+                                driveIsSyncing = true,
+                                hasDriveError = false
+                            )
+                        }
+
+                        is BackendEvent.SyncAllStopped -> _uiState.update {
+                            it.copy(
+                                driveIsSyncing = false,
+                                hasDriveError = event.result is BackendEvent.SyncAllResult.Failure
+                            )
+                        }
+
                         else -> Unit
                     }
                 }
         }
     }
 
-    fun selectConversation(conversationId: Uuid, messageId: Uuid? = null, scrollToBottom: Boolean = false) {
+    fun selectConversation(
+        conversationId: Uuid,
+        messageId: Uuid? = null,
+        scrollToBottom: Boolean = false
+    ) {
         // Check for pending shared content (from iOS share extension or other handoff)
         viewModelScope.launch {
             processPendingSharedContent(conversationId)
@@ -327,7 +342,12 @@ class ConversationListViewModel(
                 ActiveConversation.selectConversation(null)
                 currentConversationJob?.cancel()
                 _uiState.update { it.copy(selectedConversationId = null) }
-                _messagesUiState.update { it.copy(messages = persistentListOf(), isLoadingMessages = false) }
+                _messagesUiState.update {
+                    it.copy(
+                        messages = persistentListOf(),
+                        isLoadingMessages = false
+                    )
+                }
             }
 
             is ConversationListUiAction.FilterByUnreadClicked -> {
@@ -800,7 +820,8 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         if (action.reaction.isEmpty()) return@launch
-                        val newTopReactions = _messagesUiState.value.userDefaultReactions.toMutableList()
+                        val newTopReactions =
+                            _messagesUiState.value.userDefaultReactions.toMutableList()
                         newTopReactions.remove(action.reaction)
                         newTopReactions.add(0, action.reaction)
                         _messagesUiState.update {
@@ -1347,6 +1368,19 @@ class ConversationListViewModel(
                 }
             }
 
+            is ConversationListUiAction.AcceptRejoin -> {
+                viewModelScope.launch {
+                    conversationService.acceptRejoin(action.conversationId)
+                }
+            }
+
+            is ConversationListUiAction.DeclineRejoin -> {
+                viewModelScope.launch {
+                    conversationService.declineRejoin(action.conversationId)
+                    conversationStream.onConversationLeft(action.conversationId)
+                }
+            }
+
             /* Clipboard image paste */
             is ConversationListUiAction.AttachClipboardImage -> {
                 viewModelScope.launch {
@@ -1515,7 +1549,11 @@ class ConversationListViewModel(
                     }
 
                     val normalItems = conversationsPool
-                        .filter { !it.conversation.isPinned && (it.conversation.conversationState == ConversationState.Active || it.conversation.conversationState == ConversationState.Left) }
+                        .filter {
+                            !it.conversation.isPinned && (it.conversation.conversationState == ConversationState.Active
+                                    || it.conversation.conversationState == ConversationState.Left
+                                    || it.conversation.conversationState == ConversationState.RejoinPending)
+                        }
                         .map { conv -> ConversationListContentModel.Conversation(conv) }
                         .toPersistentList()
                     val archivedCount =
@@ -1589,7 +1627,11 @@ class ConversationListViewModel(
         }
     }
 
-    private fun loadMessagesForConversation(conversationId: Uuid, messageIdForScroll: Uuid?, scrollToBottom: Boolean = false) {
+    private fun loadMessagesForConversation(
+        conversationId: Uuid,
+        messageIdForScroll: Uuid?,
+        scrollToBottom: Boolean = false
+    ) {
         _messagesUiState.update { it.copy(scrollPosition = null, isLoadingMessages = true) }
 
 
@@ -1658,7 +1700,9 @@ class ConversationListViewModel(
                                     isLoadingMessages = false,
                                     messages = messagesModels.toPersistentList(),
                                     scrollPosition = if (indexOfMessageForScroll == null) {
-                                        if (setInitialScroll && !scrollToBottom) getScrollPosition(conversationId) else null
+                                        if (setInitialScroll && !scrollToBottom) getScrollPosition(
+                                            conversationId
+                                        ) else null
                                     } else {
                                         ScrollPosition(
                                             indexOfMessageForScroll,
@@ -1987,14 +2031,15 @@ class ConversationListViewModel(
                 addMessage(conversationId, text)
             } else {
                 // Build AttachmentInput list from shared files
-                val attachments = descriptor.fileNames.zip(descriptor.mimeTypes).map { (name, mime) ->
-                    val filePath = shareContentProcessor.resolveFilePath(name)
-                    AttachmentInput(
-                        filePath = filePath,
-                        contentType = mime,
-                        displayName = name,
-                    )
-                }
+                val attachments =
+                    descriptor.fileNames.zip(descriptor.mimeTypes).map { (name, mime) ->
+                        val filePath = shareContentProcessor.resolveFilePath(name)
+                        AttachmentInput(
+                            filePath = filePath,
+                            contentType = mime,
+                            displayName = name,
+                        )
+                    }
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId

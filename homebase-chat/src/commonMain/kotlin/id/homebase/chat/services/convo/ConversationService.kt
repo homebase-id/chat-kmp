@@ -404,9 +404,60 @@ class ConversationService(
             dependencyUniqueId = messageId
         )
 
-        // 3. Mark as left locally — preserves history and blocks sending
+        // 3. Mark as left locally — preserves history and blocks sending.
+        // Depend on conversationId so the tags update is only sent to the server AFTER the
+        // participant-removal file update (UpdateFileByUniqueIdRequest, uniqueId=conversationId)
+        // has been processed. Without this ordering, the server could briefly see the LeftTag
+        // while domain is still in participants, causing a spurious RejoinPending state.
+        updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
+            it + ChatProtocol.ConversationLeftTag
+        }
+    }
+
+    suspend fun acceptRejoin(conversationId: Uuid) {
+        val conversation = requireConversation(conversationId)
+        if (conversation.conversationState != ConversationState.RejoinPending) {
+            throw IllegalStateException("Conversation is not in RejoinPending state")
+        }
+        // Clear the left tag — mapper will produce Active state on next load
         updateConversationTags(conversationId) {
-//            it + ChatProtocol.ConversationArchivedTag + ChatProtocol.ConversationLeftTag
+            it - ChatProtocol.ConversationLeftTag
+        }
+    }
+
+    suspend fun declineRejoin(conversationId: Uuid) {
+        val conversation = requireConversation(conversationId)
+        val domain = credentialsManager.requireActiveDomain()
+
+        if (conversation.conversationState != ConversationState.RejoinPending) {
+            throw IllegalStateException("Conversation is not in RejoinPending state")
+        }
+
+        val remaining = conversation.participants.filterNot { it == domain }
+        val updatedAdmins = conversation.admins - domain
+
+        // 1. Tell the group this person declined — distinct from a voluntary leave
+        val messageId = Uuid.random()
+        chatMessageSenderService.sendStatusMessage(
+            messageUniqueId = messageId,
+            conversationId = conversationId,
+            statusMessage = StatusMessageData(
+                statusMessage = StatusMessage.ConversationMemberDeclinedRejoin,
+                subject = domain
+            )
+        )
+
+        // 2. Remove self from participants — chained after status message
+        updateConversationInternal(
+            conversationId = conversationId,
+            title = conversation.name,
+            participants = remaining,
+            admins = updatedAdmins,
+            dependencyUniqueId = messageId
+        )
+
+        // 3. Keep the left tag locally — same ordering dependency as leaveGroup
+        updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
             it + ChatProtocol.ConversationLeftTag
         }
     }
@@ -485,18 +536,25 @@ class ConversationService(
             }
         }
 
+        val existingAppData = conversationFile.fileMetadata.appData
         val metadata =
             UploadFileMetadata(
-                allowDistribution = true, // todo: base on transfer history as optimization
-                isEncrypted = true,
+                allowDistribution = conversationFile.serverMetadata.allowDistribution,
+                isEncrypted = conversationFile.fileMetadata.isEncrypted,
+                accessControlList = conversationFile.serverMetadata.accessControlList,
+                referencedFile = conversationFile.fileMetadata.referencedFile,
                 versionTag = conversationFile.fileMetadata.versionTag,
                 appData =
                     UploadAppFileMetaData(
                         uniqueId = conversationId,
-                        fileType = ChatProtocol.ConversationFileType,
+                        tags = existingAppData.tags,
+                        fileType = existingAppData.fileType,
+                        dataType = existingAppData.dataType,
+                        groupId = existingAppData.groupId,
+                        userDate = existingAppData.userDate,
                         content = OdinSystemSerializer.serialize(content),
                         previewThumbnail = previewThumb,
-                        archivalStatus = archivalStatus
+                        archivalStatus = archivalStatus ?: existingAppData.archivalStatus
                     )
             )
 
@@ -518,6 +576,16 @@ class ConversationService(
                 payloads = payloads,
                 thumbnails = thumbs
             )
+
+        // Optimistically apply the participant/content change to the local DB immediately.
+        // This ensures that any code running after this call (e.g. updateConversationTags)
+        // sees the updated participant list when it reads the file, preventing a false
+        // RejoinPending detection caused by the outbox/localTags race.
+        optimisticWriter.writeUpdate(
+            driveId = chatDrive,
+            keyHeader = keyHeader,
+            unecryptedMetadata = metadata
+        )
 
         val enqueued = outboxSync.tryEnqueue(request, dependencyUniqueId = dependencyUniqueId)
         if (!enqueued) {
@@ -609,6 +677,7 @@ class ConversationService(
 
     private suspend fun updateConversationTags(
         conversationId: Uuid,
+        dependencyUniqueId: Uuid? = null,
         transform: (Set<Uuid>) -> Set<Uuid>
     ) {
         val file = getConversationHomebaseFile(conversationId)
@@ -623,6 +692,11 @@ class ConversationService(
             newTags = newTags.toList()
         )
 
+        // Use a random uniqueId so this request does not conflict with a concurrent
+        // UpdateFileByUniqueIdRequest that also uses uniqueId=conversationId.
+        // The UNIQUE(driveId, uniqueId) outbox constraint would otherwise silently drop this
+        // enqueue while the file update is still pending, causing the LeftTag to never reach
+        // the server.  The dependencyUniqueId still ensures correct ordering when provided.
         outboxSync.tryEnqueue(
             request = UpdateLocalMetadataTagsOutboxRequest(
                 file = FileIdFileIdentifier(
@@ -633,7 +707,8 @@ class ConversationService(
                 tags = newTags.map { it.toString() }
             ),
             driveId = chatDrive,
-            uniqueId = conversationId
+            uniqueId = Uuid.random(),
+            dependencyUniqueId = dependencyUniqueId
         )
     }
 

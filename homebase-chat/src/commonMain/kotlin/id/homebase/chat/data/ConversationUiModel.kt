@@ -47,9 +47,8 @@ data class ConversationUiModel(
 
 
     fun getDisplayName(): String {
-        if (name.isEmpty() || name.isBlank()) {
-            return participants.first().domainName
-        }
+        if (isGroup) return name
+        if (name.isEmpty() || name.isBlank()) return participants.first().domainName
         return name
     }
 

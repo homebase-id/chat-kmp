@@ -73,7 +73,7 @@ class ConversationMapper(
                 if (conversationId == ChatProtocol.ConversationWithYourselfId) {
                     "" // Display name resolved via string resource at UI layer
                 } else if (isGroup) {
-                    conversationData.title ?: displayNames.joinToString(", ")
+                    conversationData.title?.takeIf { it.isNotBlank() } ?: displayNames.joinToString(", ")
                 } else {
                     val other = participants.first { it != domain }
                     other.domainName
@@ -103,6 +103,7 @@ class ConversationMapper(
             val isPinnedByTag = localTags.contains(ChatProtocol.ConversationPinnedTag)
 
             val conversationState = when {
+                isLeftByTag && participants.contains(domain) -> ConversationState.RejoinPending
                 isLeftByTag -> ConversationState.Left
                 isArchivedByTag -> ConversationState.Archived
                 else -> ConversationState.Active

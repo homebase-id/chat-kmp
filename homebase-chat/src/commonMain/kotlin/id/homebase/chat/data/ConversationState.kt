@@ -7,6 +7,7 @@ enum class ConversationState {
     Active,
     Archived,
     Left,
+    RejoinPending,
     Deleted,
     Invalid
 }
