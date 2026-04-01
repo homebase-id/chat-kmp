@@ -171,6 +171,9 @@ sealed interface BackendEvent {
     data object ConnectionOnline : BackendEvent
     data object ConnectionOffline : BackendEvent
 
+    // A drive subscription was rejected by the server (non-fatal — other drives still sync)
+    data class DriveAuthorizationFailed(val message: String) : BackendEvent
+
     // We need an event for when someone is typing something for you...
     // data object UserTyping : backendEvent
 }

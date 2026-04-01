@@ -68,14 +68,13 @@ val appPermissions: List<AppPermissionType> =
 // Target drive access requests
 val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
     listOf(
-        //TODO: Bring it back if we really need it
-//        TargetDriveAccessRequest(
-//            alias = feedTargetDrive.alias.toString(),
-//            type = feedTargetDrive.type.toString(),
-//            name = "Feed Drive",
-//            description = " ",
-//            permissions = listOf(DrivePermission.Read, DrivePermission.Write)
-//        ),
+        TargetDriveAccessRequest(
+            alias = feedTargetDrive.alias.toString(),
+            type = feedTargetDrive.type.toString(),
+            name = "Feed Drive",
+            description = " ",
+            permissions = listOf(DrivePermission.Read, DrivePermission.Write)
+        ),
         TargetDriveAccessRequest(
             alias = chatTargetDrive.alias.toString(),
             type = chatTargetDrive.type.toString(),
