@@ -8,6 +8,10 @@ on:
   # Allow manual triggering from GitHub UI
   workflow_dispatch:
 
+  push:
+    branches: [ main, desktopOptimizations ]
+
+
 concurrency:
   group: desktop-release-dev-${{ github.ref }}
   cancel-in-progress: true
@@ -15,8 +19,6 @@ concurrency:
 jobs:
   build-desktop:
     runs-on: ubuntu-latest
-    # Only run on main branch
-    #if: github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@v4
