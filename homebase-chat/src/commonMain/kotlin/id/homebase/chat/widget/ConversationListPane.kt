@@ -493,7 +493,7 @@ fun ConversationLisContentItem(
                 memberName = listItem.message.displayName,
                 message = listItem.message.content,
                 contactOdinId = listItem.message.originalAuthor,
-                timestamp = listItem.message.created,
+                timestamp = listItem.message.userDate,
                 onClick = {
                     onUiAction(
                         ConversationListUiAction.ConversationClicked(

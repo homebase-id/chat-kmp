@@ -376,14 +376,17 @@ class ChatMessageStream(
                         header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
 
                 if (isDeleted) {
+                    val deletedUserDate = if (appData.userDate == null)
+                        metadata.created
+                    else
+                        minOf(UnixTimeUtc(appData.userDate!!), metadata.created)
+
                     return MessageUiModel(
                         id = appData.uniqueId ?: header.fileId,
                         globalTransitId = metadata.globalTransitId,
                         fileId = header.fileId,
                         conversationId = appData.groupId!!,
-                        created = if (appData.userDate == null)
-                            metadata.created.toInstant() else
-                            UnixTimeUtc(appData.userDate!!).toInstant(),
+                        userDate = deletedUserDate.toInstant(),
                         modified = metadata.updated.toInstant(),
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
@@ -437,7 +440,7 @@ class ChatMessageStream(
                 else
                     metadata.transitCreated
 
-                val created =
+                val rawUserDate =
                     if (messageAppData.version == null) {
                         // older edited messages; use older logic that seems to drop the
                         // appData.userDate when a message is edited
@@ -461,13 +464,16 @@ class ChatMessageStream(
                             UnixTimeUtc(appData.userDate!!)
                     }
 
+                // Clamp: userDate should never exceed the server-side timestamp
+                val userDate = minOf(rawUserDate, authorSpecificDate)
+
                 return MessageUiModel(
                     id = appData.uniqueId!!,
                     globalTransitId = metadata.globalTransitId,
                     fileId = header.fileId,
                     conversationId = appData.groupId!!,
                     content = messageAppData.getMessage(),
-                    created = created.toInstant(),
+                    userDate = userDate.toInstant(),
                     modified = metadata.updated.toInstant(),
                     originalAuthor = metadata.originalAuthor,
                     displayName = displayName,
@@ -497,7 +503,7 @@ class ChatMessageStream(
                         fileId = header.fileId,
                         conversationId = appData.groupId!!,
                         content = "Failed to parse message from server",
-                        created = metadata.created.toInstant(),
+                        userDate = metadata.created.toInstant(),
                         modified = metadata.updated.toInstant(),
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",

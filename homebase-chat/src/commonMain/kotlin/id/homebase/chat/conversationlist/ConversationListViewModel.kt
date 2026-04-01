@@ -1010,7 +1010,7 @@ class ConversationListViewModel(
                                             messageId = action.message.id,
                                             title = action.message.originalAuthor?.domainName
                                                 ?: "null",
-                                            created = action.message.created,
+                                            userDate = action.message.userDate,
                                             content = action.message.content,
                                             fileId = action.message.fileId,
                                             driveId = chatTargetDrive.alias,
@@ -1613,8 +1613,8 @@ class ConversationListViewModel(
                             // Group messages within day sections
                             val timezone = TimeZone.currentSystemDefault()
                             val groupedMessages =
-                                messages.sortedBy { it.created }.groupBy { message ->
-                                    val date = message.created.toLocalDateTime(timezone).date
+                                messages.sortedBy { it.userDate }.groupBy { message ->
+                                    val date = message.userDate.toLocalDateTime(timezone).date
                                     date
                                 }
                             val messagesModels: MutableList<MessageListContentModel> =
@@ -1623,7 +1623,7 @@ class ConversationListViewModel(
                             messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
                                 listOf(MessageListContentModel.Section(date)) + messages.map {
                                     if (it.isStatusMessage)
-                                        MessageListContentModel.System(it.content, it.created)
+                                        MessageListContentModel.System(it.content, it.userDate)
                                     else
                                         MessageListContentModel.Message(it)
                                 }
