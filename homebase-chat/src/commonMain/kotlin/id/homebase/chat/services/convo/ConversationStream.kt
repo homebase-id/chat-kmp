@@ -180,7 +180,7 @@ class ConversationStream(
         c: ConversationUiModel,
         m: MessageUiModel
     ) {
-        if (m.userDate > c.timestamp) {
+        if (m.userDate >= c.timestamp) {
             val domain = credentialsManager.getActiveDomain()
 
             // new message that was not sent by the current user
