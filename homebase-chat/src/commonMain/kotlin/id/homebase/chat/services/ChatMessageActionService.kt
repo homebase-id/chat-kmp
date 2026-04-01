@@ -53,12 +53,13 @@ class ChatMessageActionService(
 
         Logger.d { "Attempting mark-as-read for batch count: ${batch.records.size}" }
 
+        val isSelfConversation = conversationId == ChatProtocol.ConversationWithYourselfId
         val unreadRecords = batch.records
             .filter {
                 it.localReadTimestamp == null &&
                         !it.isDeleted &&
-                        !it.isPendingSend
-                         && !it.isAuthoredBy(domain)
+                        !it.isPendingSend &&
+                        (isSelfConversation || !it.isAuthoredBy(domain))
             }
 
         if (unreadRecords.isEmpty()) {
@@ -78,15 +79,17 @@ class ChatMessageActionService(
         dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
         conversationStream.updateUnreadCounts()
 
-        outboxSync.tryEnqueue(
-            request = SendReadReceiptByTimeOutboxRequest(
-                driveId = chatDrive,
-                fileType = ChatProtocol.MessageFileType,
-                dataType = 0,
-                groupId = conversationId,
-                endTime = UnixTimeUtc(endTime.toEpochMilliseconds()).addMilliseconds(1)
+        if (!isSelfConversation) {
+            outboxSync.tryEnqueue(
+                request = SendReadReceiptByTimeOutboxRequest(
+                    driveId = chatDrive,
+                    fileType = ChatProtocol.MessageFileType,
+                    dataType = 0,
+                    groupId = conversationId,
+                    endTime = UnixTimeUtc(endTime.toEpochMilliseconds()).addMilliseconds(1)
+                )
             )
-        )
+        }
     }
 
     suspend fun markAsReadByFiles(messageIds: List<Uuid>) {
