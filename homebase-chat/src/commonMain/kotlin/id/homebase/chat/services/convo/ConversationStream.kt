@@ -140,7 +140,7 @@ class ConversationStream(
                         id = m.conversationId,
                         name = "Pending...",
                         lastMessage = m.content,
-                        timestamp = m.userDate,
+                        latestMessageTimestamp = m.userDate,
                         admins = (if (m.originalAuthor == null) emptySet() else setOf(m.originalAuthor)),
                         unreadCount = 0,
                         avatarTiny = null,
@@ -172,7 +172,7 @@ class ConversationStream(
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
-        val sortedList = _conversations.value.items.sortedByDescending { it.timestamp }
+        val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
         _conversations.value = ConversationsData(true, sortedList)
     }
 
@@ -180,13 +180,13 @@ class ConversationStream(
         c: ConversationUiModel,
         m: MessageUiModel
     ) {
-        if (m.userDate >= c.timestamp) {
+        if (m.userDate >= c.latestMessageTimestamp) {
             val domain = credentialsManager.getActiveDomain()
 
             // new message that was not sent by the current user
             val updatedConversation = c.copy(
                 unreadCount = c.unreadCount + if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) 1 else 0,
-                timestamp = m.userDate,
+                latestMessageTimestamp = m.userDate,
                 lastMessage = m.content.truncateToCodePoints(40), // TODO: Global constant
                 lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
                 lastMessageIsDeleted = m.isDeleted,
@@ -221,7 +221,7 @@ class ConversationStream(
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
-        val sortedList = _conversations.value.items.sortedByDescending { it.timestamp }
+        val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
         _conversations.value = ConversationsData(items = sortedList)
     }
 
@@ -235,14 +235,14 @@ class ConversationStream(
 
     private fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
         // isPinned and conversationState are always applied regardless of timestamp ordering
-        val updatedConvo = if (incoming.timestamp >= existing.timestamp) {
+        val updatedConvo = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) {
             existing.copy(
                 name = incoming.name,
                 avatarTiny = incoming.avatarTiny,
                 avatarUrl = incoming.avatarUrl,
                 avatarInitials = incoming.avatarInitials,
                 participants = incoming.participants,
-                timestamp = incoming.timestamp,
+                latestMessageTimestamp = incoming.latestMessageTimestamp,
                 lastMessage = incoming.lastMessage,
                 lastMessageDeliveryStatus = incoming.lastMessageDeliveryStatus,
                 lastMessageIsDeleted = incoming.lastMessageIsDeleted,
@@ -405,7 +405,7 @@ class ConversationStream(
                     avatarInitials = convo.avatarInitials,
                     isGroup = convo.isGroupConversation,
                     participantCount = convo.participants.size,
-                    lastMessageTimestamp = convo.timestamp.toEpochMilliseconds(),
+                    lastMessageTimestamp = convo.latestMessageTimestamp.toEpochMilliseconds(),
                     avatarUrl = avatarUrl,
                 )
             }

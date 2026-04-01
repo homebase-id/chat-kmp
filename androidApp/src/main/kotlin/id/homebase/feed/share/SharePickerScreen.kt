@@ -108,7 +108,7 @@ fun SharePickerScreen(
     val recents by remember {
         derivedStateOf {
             enrichedConversations
-                .sortedByDescending { it.conversation.timestamp }
+                .sortedByDescending { it.conversation.latestMessageTimestamp }
                 .take(RECENTS_COUNT)
         }
     }
@@ -121,7 +121,7 @@ fun SharePickerScreen(
         derivedStateOf {
             enrichedConversations
                 .filter { !it.conversation.isGroupConversation && it.conversation.id !in recentIds }
-                .sortedByDescending { it.conversation.timestamp }
+                .sortedByDescending { it.conversation.latestMessageTimestamp }
                 .distinctBy { it.getDisplayName().lowercase() }
                 .sortedBy { it.getDisplayName().lowercase() }
         }

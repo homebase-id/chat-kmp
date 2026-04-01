@@ -167,7 +167,7 @@ class ConversationListViewModel(
                     _uiState.update {
                         it.copy(
                             activeConversations = enriched
-                                .sortedByDescending { conversation -> conversation.conversation.timestamp }
+                                .sortedByDescending { conversation -> conversation.conversation.latestMessageTimestamp }
                                 .toPersistentList()
                         )
                     }
