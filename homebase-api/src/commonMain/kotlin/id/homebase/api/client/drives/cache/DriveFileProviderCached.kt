@@ -53,10 +53,21 @@ class DriveFileProviderCached(
     @Volatile private var notFoundCache: Set<String> = emptySet()
     private val notFoundCacheMutex = Mutex()
 
+    // All cache directories are scoped under the active user's hashed domain so that
+    // switching accounts never reads another user's cached data.
+    private val userDirectory: String by lazy {
+        kotlinx.coroutines.runBlocking {
+            "$directory/${credentialsManager.requireActiveDomain().toHashId()}"
+        }
+    }
+    private val payloadsDirectory  get() = "$userDirectory/homebase-payloads"
+    private val thumbsDirectory    get() = "$userDirectory/homebase-thumbs"
+    private val preloadDirectory   get() = "$userDirectory/hbvid_preload"
+
     private val payloadDiskKache by lazy {
         kotlinx.coroutines.runBlocking {
             FileKache(
-                    directory = "$directory/homebase-payloads",
+                    directory = payloadsDirectory,
                     maxSize = 200L * 1024L * 1024L // 200MB
             )
         }
@@ -65,7 +76,7 @@ class DriveFileProviderCached(
     private val thumbDiskKache by lazy {
         kotlinx.coroutines.runBlocking {
             FileKache(
-                    directory = "$directory/homebase-thumbs",
+                    directory = thumbsDirectory,
                     maxSize = 300L * 1024L * 1024L // 300MB
             )
         }
@@ -412,22 +423,18 @@ class DriveFileProviderCached(
                     .joinToString(":")
 
     suspend fun clearCaches() {
-        val payloadDir = "$directory/homebase-payloads".toPath()
-        val thumbDir = "$directory/homebase-thumbs".toPath()
-        val preloadDir = "$directory/hbvid_preload".toPath()
-
         try {
             payloadDiskKache.clear()
             thumbDiskKache.clear()
         } catch (e: Exception) {
             Logger.w("Kache.clear() failed, falling back to manual delete", e)
 
-            fileSystem.delete(payloadDir, mustExist = false)
-            fileSystem.delete(thumbDir, mustExist = false)
+            fileSystem.delete(payloadsDirectory.toPath(), mustExist = false)
+            fileSystem.delete(thumbsDirectory.toPath(), mustExist = false)
         }
 
         try {
-            fileSystem.deleteRecursively(preloadDir)
+            fileSystem.deleteRecursively(preloadDirectory.toPath())
         } catch (_: Exception) {}
 
         notFoundCache = emptySet()
