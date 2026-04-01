@@ -64,7 +64,7 @@ jobs:
 
       - name: Build binaries
         working-directory: ./desktopApp
-        run: ./gradlew clean createReleaseDistributable -Pversion.name=${{ steps.version.outputs.VERSION_NAME }} -PVERSION_CODE=${{ steps.version.outputs.VERSION_CODE }}
+        run: ./gradlew clean createReleaseDistributable
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 
@@ -75,8 +75,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.CONVEYOR_SIGNING_KEY }}
           CONVEYOR_AGREE_TO_LICENSE: 1
           JDK_21: ${{ env.JAVA_HOME }}
-          ORG_GRADLE_PROJECT_version.name: ${{ steps.version.outputs.VERSION_NAME }}
-          ORG_GRADLE_PROJECT_VERSION_CODE: ${{ steps.version.outputs.VERSION_CODE }}
+          APP_VERSION: ${{ steps.version.outputs.VERSION_NAME }}
         shell: bash
         run: |
           PATH="$PATH:../.conveyor/install/conveyor-22.0/bin"
