@@ -11,6 +11,7 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
@@ -75,7 +76,7 @@ val appModule = module {
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
                     conversationStream.getConversationById(conversationId)
-                        ?.conversationState == id.homebase.chat.data.ConversationState.Left
+                        ?.conversationState == ConversationState.Left
                 }
             }
         )
