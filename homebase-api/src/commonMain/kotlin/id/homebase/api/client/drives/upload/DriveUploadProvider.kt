@@ -18,6 +18,7 @@ import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.client.UploadProgress
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.toBase64
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import kotlinx.serialization.Serializable
@@ -239,6 +240,10 @@ class DriveUploadProvider(
             )
 
         val path = "/drives/${request.driveId}/files/by-uid/${request.uniqueId}"
+
+        Logger.e { "Update uid: ${request.uniqueId} | aesKey: ${request.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "key header is null in request"}" }
+
+
         val result = pureUpdate(data, path, onProgress, onVersionConflict)
 
         if (result != null) {

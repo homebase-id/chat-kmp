@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
+import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -24,6 +25,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.QueryBatch
+import id.homebase.api.toBase64
 import id.homebase.chat.services.ChatProtocol
 import kotlin.uuid.Uuid
 
@@ -151,6 +153,11 @@ class OptimisticWriter(
         ) ?: LocalAppMetadata(
             tags = listOf(ChatProtocol.isPendingSendTag)
         )
+
+        if(keyHeader.aesKey.unsafeBytes != existingFile.keyHeader.aesKey.unsafeBytes)
+        {
+            Logger.e { "KeyHeader mismatch - why? Optimistic uid: ${unecryptedMetadata.appData.uniqueId} | aesKey: ${existingFile.keyHeader.aesKey.unsafeBytes.toBase64()}" }
+        }
 
         val file = existingFile.copy(
             keyHeader = keyHeader,
