@@ -117,7 +117,6 @@ class ConversationService(
                 scope
             )
 
-        Logger.i { "Created convoId: ${newConversationId} | aesKey: ${keyHeader.aesKey.unsafeBytes.toBase64()}" }
         val metadata =
             UploadFileMetadata(
                 allowDistribution = true,
@@ -374,6 +373,8 @@ class ConversationService(
     suspend fun leaveGroup(conversationId: Uuid) {
         val conversation = requireConversation(conversationId)
         val domain = credentialsManager.requireActiveDomain()
+        val leaveFile = getConversationHomebaseFile(conversationId)
+        Logger.d { "leaveGroup START: conversationId=$conversationId isEncrypted=${leaveFile?.fileMetadata?.isEncrypted} aesKey=${leaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
 
         if (!conversation.isGroupConversation) {
             throw IllegalStateException("Can only leave group conversations")
@@ -420,6 +421,9 @@ class ConversationService(
         updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
             it + ChatProtocol.ConversationLeftTag
         }
+
+        val postLeaveFile = getConversationHomebaseFile(conversationId)
+        Logger.d { "leaveGroup END: conversationId=$conversationId aesKey=${postLeaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
     }
 
     suspend fun acceptRejoin(conversationId: Uuid) {
@@ -488,6 +492,8 @@ class ConversationService(
 
         val conversation = requireConversation(conversationId)
 
+        Logger.d { "updateConversationInternal: conversationId=$conversationId isEncrypted=${conversationFile.fileMetadata.isEncrypted} aesKey=${conversationFile.keyHeader.aesKey.unsafeBytes.toBase64()} ivLen=${conversationFile.keyHeader.iv.size} keyLen=${conversationFile.keyHeader.aesKey.unsafeBytes.size}" }
+
         val keyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16),
             aesKey = conversationFile.keyHeader.aesKey
@@ -550,7 +556,7 @@ class ConversationService(
         val metadata =
             UploadFileMetadata(
                 allowDistribution = conversationFile.serverMetadata.allowDistribution,
-                isEncrypted = conversationFile.fileMetadata.isEncrypted,
+                isEncrypted = true, // we always encrypt conversation files
                 accessControlList = conversationFile.serverMetadata.accessControlList,
                 referencedFile = conversationFile.fileMetadata.referencedFile,
                 versionTag = conversationFile.fileMetadata.versionTag,
@@ -576,6 +582,8 @@ class ConversationService(
                 manifest = manifest
             )
 
+        Logger.d { "updateConversationInternal PRE-REQUEST: conversationId=$conversationId aesKey=${keyHeader.aesKey.unsafeBytes.toBase64()} versionTag=${conversationFile.fileMetadata.versionTag}" }
+
         val request =
             UpdateFileByUniqueIdRequest(
                 driveId = chatDrive,
@@ -586,6 +594,8 @@ class ConversationService(
                 payloads = payloads,
                 thumbnails = thumbs
             )
+
+        Logger.d { "updateConversationInternal POST-ENCRYPT: conversationId=$conversationId aesKey=${keyHeader.aesKey.unsafeBytes.toBase64()} requestKeyHeader=${request.keyHeader?.aesKey?.unsafeBytes?.toBase64()}" }
 
         // Optimistically apply the participant/content change to the local DB immediately.
         // This ensures that any code running after this call (e.g. updateConversationTags)
@@ -663,6 +673,9 @@ class ConversationService(
         ) {
             throw IllegalStateException("You must leave the group before deleting it")
         }
+
+        val deleteFile = getConversationHomebaseFile(conversationId)
+        Logger.d { "deleteConversation: conversationId=$conversationId isEncrypted=${deleteFile?.fileMetadata?.isEncrypted} aesKey=${deleteFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
 
         outboxSync.tryEnqueue(
             DeleteFilesByGroupIdOutboxRequest(
@@ -745,11 +758,6 @@ class ConversationService(
             )
 
         val file = result.records.firstOrNull()
-
-        if(null!= file)
-        {
-            Logger.i { "get convo homebasefile: ${conversationId} | aesKey: ${file.keyHeader.aesKey.unsafeBytes.toBase64()}" }
-        }
 
         return file
     }

@@ -68,8 +68,15 @@ val appModule = module {
             onPostAuthenticated = {
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
-                get<ConversationStream>().start()
+                val conversationStream = get<ConversationStream>()
+                conversationStream.start()
                 get<ContactService>().start()
+
+                // Let ChatMessageStream skip messages for left conversations
+                get<ChatMessageStream>().isConversationLeft = { conversationId ->
+                    conversationStream.getConversationById(conversationId)
+                        ?.conversationState == id.homebase.chat.data.ConversationState.Left
+                }
             }
         )
     }

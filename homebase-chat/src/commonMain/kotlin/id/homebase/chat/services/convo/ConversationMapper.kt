@@ -45,8 +45,6 @@ class ConversationMapper(
 
             val conversationId = appData.uniqueId ?: error("Missing uniqueId")
 
-            Logger.i { "Mapped convoId: ${conversationId} | aesKey: ${conversationFile.keyHeader.aesKey.unsafeBytes.toBase64()}" }
-
             val isDeleted = conversationFile.fileState == FileState.Deleted
                     || appData.archivalStatus == ArchivalStatus.Removed
 

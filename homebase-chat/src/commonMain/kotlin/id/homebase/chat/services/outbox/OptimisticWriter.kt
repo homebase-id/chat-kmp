@@ -154,11 +154,6 @@ class OptimisticWriter(
             tags = listOf(ChatProtocol.isPendingSendTag)
         )
 
-        if(keyHeader.aesKey.unsafeBytes != existingFile.keyHeader.aesKey.unsafeBytes)
-        {
-            Logger.e { "KeyHeader mismatch - why? Optimistic uid: ${unecryptedMetadata.appData.uniqueId} | aesKey: ${existingFile.keyHeader.aesKey.unsafeBytes.toBase64()}" }
-        }
-
         val file = existingFile.copy(
             keyHeader = keyHeader,
             fileMetadata = existingFile.fileMetadata.copy(

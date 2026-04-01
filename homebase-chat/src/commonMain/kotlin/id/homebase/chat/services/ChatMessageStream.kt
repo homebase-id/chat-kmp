@@ -57,6 +57,8 @@ class ChatMessageStream(
     private val scope: CoroutineScope,
     private val driveFileProvider: DriveFileProvider
 ) {
+    /** Set by ConversationStream to let us skip messages for left conversations. */
+    var isConversationLeft: (Uuid) -> Boolean = { false }
 
     private val conversationState = ActiveConversationState()
     private val chatDrive = chatTargetDrive.alias
@@ -118,6 +120,7 @@ class ChatMessageStream(
         val grouped = messages.groupBy { it.conversationId }
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
         grouped.forEach { (conversationId, msgs) ->
+            if (isConversationLeft(conversationId)) return@forEach
             conversationState.upsert(conversationId, msgs)
         }
     }

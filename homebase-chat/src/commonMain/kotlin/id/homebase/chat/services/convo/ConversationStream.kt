@@ -135,6 +135,10 @@ class ConversationStream(
 
         for (m in incomingMessages) {
             val matchingConversation = _conversations.value.items.find { it.id == m.conversationId }
+
+            // Drop messages for conversations the user has left
+            if (matchingConversation?.conversationState == ConversationState.Left) continue
+
             if (matchingConversation == null) {
                 val emptyConversation =
                     ConversationUiModel(

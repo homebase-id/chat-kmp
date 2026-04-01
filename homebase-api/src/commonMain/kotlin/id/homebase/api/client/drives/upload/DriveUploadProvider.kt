@@ -241,9 +241,6 @@ class DriveUploadProvider(
 
         val path = "/drives/${request.driveId}/files/by-uid/${request.uniqueId}"
 
-        Logger.e { "Update uid: ${request.uniqueId} | aesKey: ${request.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "key header is null in request"}" }
-
-
         val result = pureUpdate(data, path, onProgress, onVersionConflict)
 
         if (result != null) {

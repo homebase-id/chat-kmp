@@ -37,7 +37,8 @@ class OutboxSync(
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
     private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    @kotlin.concurrent.Volatile private var isOnline = false
+    @kotlin.concurrent.Volatile
+    private var isOnline = false
 
     fun setOnline(online: Boolean) {
         isOnline = online
@@ -190,8 +191,7 @@ class OutboxSync(
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean
-    {
+    ): Boolean {
         val enqueued = tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(), //random because our request is a list of files
@@ -214,6 +214,7 @@ class OutboxSync(
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
     ): Boolean {
+        val json = OdinSystemSerializer.serialize(request)
         val enqueued = tryEnqueue(
             driveId = request.driveId,
             uniqueId = request.metadata.appData.uniqueId
@@ -221,7 +222,7 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateFile,
-            json = OdinSystemSerializer.serialize(request)
+            json = json
         )
 
         if (enqueued && sendNow) {
