@@ -102,7 +102,7 @@ sealed interface ConversationListContentModel {
 sealed class MessageListContentModel(val id: String) {
     data object Header : MessageListContentModel("header")
     data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
-    data class System(val text: String, val userDate: Instant) : MessageListContentModel(userDate.toString())
+    data class System(val text: String, val userDate: Instant, val index: Int) : MessageListContentModel("system-$index")
     data class Message(val message: MessageUiModel) :
         MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
 }

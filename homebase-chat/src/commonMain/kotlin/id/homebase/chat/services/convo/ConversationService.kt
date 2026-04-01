@@ -29,6 +29,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.QueryBatch
+import id.homebase.api.toBase64
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatMessageSenderService
@@ -116,6 +117,7 @@ class ConversationService(
                 scope
             )
 
+        Logger.i { "Created convoId: ${newConversationId} | aesKey: ${keyHeader.aesKey.unsafeBytes.toBase64()}" }
         val metadata =
             UploadFileMetadata(
                 allowDistribution = true,
@@ -384,16 +386,22 @@ class ConversationService(
         val remaining = conversation.participants.filterNot { it == domain }
         val updatedAdmins = conversation.admins - domain
 
-        // 1. Notify the group first
         val messageId = Uuid.random()
-        chatMessageSenderService.sendStatusMessage(
-            messageUniqueId = messageId,
-            conversationId = conversationId,
-            statusMessage = StatusMessageData(
-                statusMessage = StatusMessage.ConversationMemberLeft,
-                subject = domain
+
+        // this is not critical for leaving a group so don't block
+        try {
+            // 1. Notify the group first
+            chatMessageSenderService.sendStatusMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.ConversationMemberLeft,
+                    subject = domain
+                )
             )
-        )
+        } catch (t: Throwable) {
+            // gu
+        }
 
         // 2. Remove self from participants — chained after status message
         updateConversationInternal(
@@ -489,7 +497,9 @@ class ConversationService(
             ConversationAppDataJson(
                 title = title ?: "",
                 recipients = participants,
-                adminData = ConversationAdminInfo(admins = admins?.toList() ?: conversation.admins.toList()),
+                adminData = ConversationAdminInfo(
+                    admins = admins?.toList() ?: conversation.admins.toList()
+                ),
                 version = 1 // logical version; server enforces via versionTag
             )
 
@@ -646,7 +656,11 @@ class ConversationService(
     suspend fun deleteConversation(conversationId: Uuid) {
         val conversation = requireConversation(conversationId)
 
-        if (conversation.isGroupConversation && conversation.conversationState != ConversationState.Left) {
+        if (conversation.isGroupConversation && !(
+                    conversation.conversationState == ConversationState.Left ||
+                            conversation.conversationState == ConversationState.RejoinPending
+                    )
+        ) {
             throw IllegalStateException("You must leave the group before deleting it")
         }
 
@@ -731,6 +745,12 @@ class ConversationService(
             )
 
         val file = result.records.firstOrNull()
+
+        if(null!= file)
+        {
+            Logger.i { "get convo homebasefile: ${conversationId} | aesKey: ${file.keyHeader.aesKey.unsafeBytes.toBase64()}" }
+        }
+
         return file
     }
 }

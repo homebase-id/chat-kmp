@@ -92,7 +92,7 @@ class DriveUploadProvider(
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
 
     companion object {
-        private const val TAG = "DriveUploadProvider"
+        const val TAG = "DriveUploadProvider"
     }
 
     // ==================== HIGH-LEVEL UPLOAD METHODS ====================

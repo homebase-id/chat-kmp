@@ -1662,10 +1662,11 @@ class ConversationListViewModel(
                             val messagesModels: MutableList<MessageListContentModel> =
                                 mutableListOf(MessageListContentModel.Header)
 
+                            var systemIndex = 0
                             messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
                                 listOf(MessageListContentModel.Section(date)) + messages.map {
                                     if (it.isStatusMessage)
-                                        MessageListContentModel.System(it.content, it.userDate)
+                                        MessageListContentModel.System(it.content, it.userDate, systemIndex++)
                                     else
                                         MessageListContentModel.Message(it)
                                 }

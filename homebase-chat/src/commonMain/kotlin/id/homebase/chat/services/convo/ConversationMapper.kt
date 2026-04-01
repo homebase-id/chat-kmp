@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.toBase64
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessage
@@ -43,6 +44,8 @@ class ConversationMapper(
             }
 
             val conversationId = appData.uniqueId ?: error("Missing uniqueId")
+
+            Logger.i { "Mapped convoId: ${conversationId} | aesKey: ${conversationFile.keyHeader.aesKey.unsafeBytes.toBase64()}" }
 
             val isDeleted = conversationFile.fileState == FileState.Deleted
                     || appData.archivalStatus == ArchivalStatus.Removed
