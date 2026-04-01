@@ -5,7 +5,11 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.QueryBatchSortField
+import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -23,10 +27,12 @@ import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 class ConversationMapper(
-    private val credentialsManager: CredentialsManager
+    private val credentialsManager: CredentialsManager,
+    private val dbm: DatabaseManager,
 ) {
 
     private val logger = Logger.withTag("ConversationMapper")
+    private val chatDrive = chatTargetDrive.alias
 
     suspend fun mapToConversationUi(
         conversationFile: HomebaseFile,
@@ -82,11 +88,14 @@ class ConversationMapper(
 
             val admins: Set<OdinId> =
                 if (isGroup) {
-                    (conversationData.adminData?.admins ?: listOf(
-                        metadata.originalAuthor
-                            ?: metadata.senderOdinId
-                            ?: domain
-                    )).toSet()
+                    queryAdmins(conversationId)
+                    // Backward compat: fall back to conversation content, then originalAuthor
+                        ?: (conversationData.adminData?.admins?.toSet())
+                        ?: setOf(
+                            metadata.originalAuthor
+                                ?: metadata.senderOdinId
+                                ?: domain
+                        )
                 } else {
                     emptySet()
                 }
@@ -201,6 +210,36 @@ class ConversationMapper(
         }
 
         return m
+    }
+
+    private suspend fun queryAdmins(conversationId: Uuid): Set<OdinId>? {
+        val c = credentialsManager.requireActiveCredentials()
+        val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
+        val queryBatch = QueryBatch(c.getIdentityId())
+
+        val result = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = chatDrive,
+            noOfItems = 1,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = listOf(adminUniqueId),
+            filetypesAnyOf = listOf(ChatProtocol.ConversationAdminFileType),
+        )
+
+        val file = result.records.firstOrNull() ?: return null
+        val content = file.fileMetadata.appData.content
+        if (content.isNullOrEmpty()) return null
+
+        return try {
+            val adminInfo = OdinSystemSerializer.deserialize<ConversationAdminInfo>(content)
+            adminInfo.admins?.toSet()
+        } catch (e: Exception) {
+            logger.w("Failed to deserialize admin file for $conversationId: ${e.message}")
+            null
+        }
     }
 
     private suspend fun buildConversationAvatarModel(

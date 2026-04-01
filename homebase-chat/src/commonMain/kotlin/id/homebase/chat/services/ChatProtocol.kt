@@ -2,6 +2,7 @@ package id.homebase.chat.services
 
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.core.avatars.ConversationAvatarModel
 import kotlin.uuid.Uuid
@@ -21,9 +22,16 @@ object ChatProtocol {
     const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889;
 
     const val ConversationFileType = 8888
+    const val ConversationAdminFileType = 8890
     const val ChatStatusMessageDataType = 202
 
     const val MessageFileType = 7878
+
+    /** Derives a deterministic uniqueId for the admin file from a conversationId. */
+    suspend fun getAdminFileUniqueId(conversationId: Uuid): Uuid {
+        // never change this; period - full stop
+        return ByteArrayUtil.reduceSha256Hash("admin$conversationId")
+    }
 
 
     /** Indicates a file was optimistically written and not coming from the server */

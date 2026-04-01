@@ -55,12 +55,14 @@ class ConversationStream(
     private var shareCacheJob: Job? = null
 
     private val mapper: ConversationMapper = ConversationMapper(
-        credentialsManager = credentialsManager
+        credentialsManager = credentialsManager,
+        dbm = dbm
     )
 
     val conversations: StateFlow<ConversationsData> = _conversations.asStateFlow()
     val shareableConversations: StateFlow<List<ShareableConversation>> =
         _shareableConversations.asStateFlow()
+
 
     // The full conversation list is loaded once from the local DB on authentication
     // (via start(), called from onPostAuthenticated in AppModule).
