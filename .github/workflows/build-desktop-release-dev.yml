@@ -83,6 +83,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.CONVEYOR_SIGNING_KEY }}
           CONVEYOR_AGREE_TO_LICENSE: 1
           JDK_21: ${{ env.JAVA_HOME }}
+          APP_VERSION: ${{ steps.version.outputs.VERSION_NAME }}
         shell: bash
         run: |
           PATH="$PATH:../.conveyor/install/conveyor-22.0/bin"
