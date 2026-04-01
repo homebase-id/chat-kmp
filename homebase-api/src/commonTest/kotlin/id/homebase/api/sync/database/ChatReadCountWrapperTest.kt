@@ -163,7 +163,7 @@ class ChatReadCountWrapperTest {
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
-            val conversations = wrapper.selectAllConversations()
+            val conversations = wrapper.selectAllConversations(testData.identityId)
 
             // Should return all 3 conversations (fileType 8888)
             assertEquals(3, conversations.size, "Should return all conversations")
@@ -187,7 +187,7 @@ class ChatReadCountWrapperTest {
         DatabaseManager { createInMemoryDatabase() }.use { dbm ->
             val wrapper = dbm.chatReadCount
 
-            val conversations = wrapper.selectAllConversations()
+            val conversations = wrapper.selectAllConversations(Uuid.random())
 
             assertTrue(
                 conversations.isEmpty(), "Should return empty list when no conversations exist"
@@ -201,7 +201,7 @@ class ChatReadCountWrapperTest {
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
-            val conversationsWithMessages = wrapper.selectAllConversationPlusLastMessage()
+            val conversationsWithMessages = wrapper.selectAllConversationPlusLastMessage(testData.identityId)
 
             // Should return all 3 conversations
             assertEquals(
@@ -261,7 +261,7 @@ class ChatReadCountWrapperTest {
         DatabaseManager { createInMemoryDatabase() }.use { dbm ->
             val wrapper = dbm.chatReadCount
 
-            val conversationsWithMessages = wrapper.selectAllConversationPlusLastMessage()
+            val conversationsWithMessages = wrapper.selectAllConversationPlusLastMessage(Uuid.random())
 
             assertTrue(
                 conversationsWithMessages.isEmpty(),
@@ -415,7 +415,7 @@ class ChatReadCountWrapperTest {
             val wrapper = dbm.chatReadCount
 
             val originalAuthor: OdinId = OdinId("somewhere.demo.rocks")
-            val allReadCounts = wrapper.selectAllUnreadCount(originalAuthor)
+            val allReadCounts = wrapper.selectAllUnreadCount(Uuid.random(), originalAuthor)
 
             assertTrue(
                 allReadCounts.isEmpty(), "Should return empty list when no conversations exist"

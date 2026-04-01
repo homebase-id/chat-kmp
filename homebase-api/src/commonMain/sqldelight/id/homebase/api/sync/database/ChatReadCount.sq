@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_filetype_datatype_groupid_created
 selectAllCoversations:
 SELECT jsonHeader
 FROM DriveMainIndex
-WHERE fileType = 8888;
+WHERE identityId = ? AND fileType = 8888;
 
 -- Like above, but add last message from each conversation
 -- This is needed at boot-time to efficiently load the full list of conversations
@@ -38,13 +38,14 @@ LEFT JOIN DriveMainIndex AS m
   ON m.rowId = (
     SELECT m2.rowId
     FROM DriveMainIndex AS m2
-    WHERE m2.groupId = d.uniqueId
+    WHERE m2.identityId = d.identityId
+      AND m2.groupId = d.uniqueId
       AND m2.fileType = 7878
       AND m2.dataType = 0
     ORDER BY m2.created DESC
     LIMIT 1
   )
-WHERE d.fileType = 8888 -- Conversation
+WHERE d.identityId = ? AND d.fileType = 8888 -- Conversation
 ORDER BY msgCreated DESC;
 
 -- Return unread message count for a specific groupId
@@ -73,7 +74,8 @@ selectAllUnreadCount:
 SELECT d.groupId, COUNT(*) AS unreadCount
 FROM DriveMainIndex AS d
 LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
-WHERE d.fileType = 7878  -- Message
+WHERE d.identityId = ?
+  AND d.fileType = 7878  -- Message
   AND d.dataType = 0 -- Standard message
   AND (c.lastReadTime IS NULL OR d.created > c.lastReadTime)
   AND d.groupId IS NOT NULL

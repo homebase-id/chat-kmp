@@ -307,8 +307,9 @@ class ConversationStream(
     }
 
     suspend fun updateUnreadCounts() {
-        val domain = credentialsManager.requireActiveDomain()
-        val unread = dbm.chatReadCount.selectAllUnreadCount(domain)
+        val c = credentialsManager.requireActiveCredentials()
+        val domain = c.domain
+        val unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), domain)
         val unreadMap = unread.associate { it.conversationId to it.unreadCount.toInt() }
 
         var changed = false
@@ -329,10 +330,10 @@ class ConversationStream(
     }
 
     suspend fun fetchConversations(): List<ConversationUiModel> {
-        val result = dbm.chatReadCount.selectAllConversationPlusLastMessage()
-        val conversations = result.map { mapper.mapToConversationUi(it.conversation, it.message) }
         val c = credentialsManager.requireActiveCredentials()
         val domain = c.domain
+        val result = dbm.chatReadCount.selectAllConversationPlusLastMessage(c.getIdentityId())
+        val conversations = result.map { mapper.mapToConversationUi(it.conversation, it.message) }
         var self = ChatProtocol.buildSelfConversation(domain)
 
         // Query the latest message for the self-conversation directly from the DB.

@@ -47,7 +47,6 @@ class ConversationService(
     private val credentialsManager: CredentialsManager,
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
     private val dbm: DatabaseManager,
-    private val contactService: ContactService,
     private val introductionProvider: ConnectionIntroductionProvider,
     private val scope: CoroutineScope,
     private val outboxSync: OutboxSync,
