@@ -57,7 +57,6 @@ jobs:
 
       - name: Read version info
         id: version
-
         run: |
           VERSION_NAME=$(grep 'version.name=' gradle/version.properties | cut -d'=' -f2)
           BASE=$(grep 'version.code.base=' gradle/version.properties | cut -d'=' -f2)
@@ -68,7 +67,13 @@ jobs:
           FULL_VERSION="${MAJOR_MINOR}.${VERSION_CODE}"
           echo "VERSION_NAME=$FULL_VERSION" >> $GITHUB_OUTPUT
           echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "Version: $FULL_VERSION ($VERSION_CODE)"               
+          echo "Version: $FULL_VERSION ($VERSION_CODE)"
+          
+          # Update version.properties with the full version
+          sed -i "s/^version.name=.*/version.name=$FULL_VERSION/" gradle/version.properties
+          
+          echo "Updated version.properties:"
+          cat gradle/version.properties         
 
       - name: Build binaries
         working-directory: ./desktopApp
@@ -83,7 +88,6 @@ jobs:
           SIGNING_KEY: ${{ secrets.CONVEYOR_SIGNING_KEY }}
           CONVEYOR_AGREE_TO_LICENSE: 1
           JDK_21: ${{ env.JAVA_HOME }}
-          APP_VERSION: ${{ steps.version.outputs.VERSION_NAME }}
         shell: bash
         run: |
           PATH="$PATH:../.conveyor/install/conveyor-22.0/bin"
