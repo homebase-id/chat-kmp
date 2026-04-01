@@ -1,0 +1,64 @@
+name: Build Desktop Dev Release
+
+on:
+  push:
+    branches: [ main, desktopOptimizations ]
+
+concurrency:
+  group: desktop-release-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-desktop:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Read version info
+        id: version
+        working-directory: ./desktopApp
+        run: |
+          VERSION_NAME=$(grep 'version.name=' ../gradle/version.properties | cut -d'=' -f2)
+          BASE=$(grep 'version.code.base=' ../gradle/version.properties | cut -d'=' -f2)
+          VERSION_CODE=$((BASE + ${{ github.run_number }}))
+          # Create version like 1.3.0-dev.123
+          FULL_VERSION="${VERSION_NAME}-dev.${VERSION_CODE}"
+          echo "VERSION_NAME=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version: $FULL_VERSION ($VERSION_CODE)"
+
+      - name: Build binaries
+        working-directory: ./desktopApp
+        run: ./gradlew clean createReleaseDistributable -Pversion.name=${{ steps.version.outputs.VERSION_NAME }} -PVERSION_CODE=${{ steps.version.outputs.VERSION_CODE }}
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+
+      - name: Run Conveyor
+        uses: hydraulic-software/conveyor/actions/build@v17.0
+        with:
+          working-directory: ./desktopApp
+          command: make copied-site
+
+          # Tell Conveyor to load the alternative CI config.
+          extra_flags: -f ci.conveyor.conf
+
+          # The signing key is an action parameter,
+          # because it is mandatory.
+          signing_key: ${{ secrets.CONVEYOR_SIGNING_KEY }}
+
+          agree_to_license: 1
+        env:
+          CONVEYOR_GITHUB_TOKEN: ${{ secrets.CONVEYOR_DESKTOP_DEV_GITHUB_TOKEN }}
+
+

@@ -5,6 +5,10 @@ import java.util.Properties
 val versionProps = Properties()
 versionProps.load(rootProject.file("gradle/version.properties").inputStream())
 
+// Use version from command line (-Pversion.name=...) if provided, otherwise use properties file
+val versionName: String = findProperty("version.name")?.toString()
+    ?: versionProps.getProperty("version.name")
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
@@ -14,7 +18,7 @@ plugins {
     alias(libs.plugins.conveyorPlugin)
 }
 
-version = versionProps.getProperty("version.name")
+version = versionName
 
 kotlin {
     applyDefaultHierarchyTemplate()
@@ -131,15 +135,15 @@ val generateVersionProperties by tasks.registering {
     // Resolve values at configuration time to be configuration-cache compatible
     val versionCode = (providers.gradleProperty("VERSION_CODE").orNull)
         ?: versionProps.getProperty("version.code.base")
-    val versionName = (providers.gradleProperty("VERSION_NAME").orNull)
+    val resolvedVersionName = (providers.gradleProperty("version.name").orNull)
         ?: versionProps.getProperty("version.name")
     inputs.property("versionCode", versionCode)
-    inputs.property("versionName", versionName)
+    inputs.property("versionName", resolvedVersionName)
     outputs.dir(outputDir)
     doLast {
         val outFile = outputDir.get().file("version.properties").asFile
         outFile.parentFile.mkdirs()
-        outFile.writeText("version.name=$versionName\nversion.code=$versionCode\n")
+        outFile.writeText("version.name=$resolvedVersionName\nversion.code=$versionCode\n")
     }
 }
 
@@ -167,8 +171,8 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
 
-            packageName = "homebae-chat"
-            packageVersion = versionProps.getProperty("version.name")
+            packageName = "homebase-chat"
+            packageVersion = versionName
             description = "Homebase Chat for Desktop"
             vendor = "Homebase"
 
