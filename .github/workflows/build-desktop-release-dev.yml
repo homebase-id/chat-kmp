@@ -33,20 +33,27 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Check cache
-        id: check_cache
-        shell: bash
-        run: |
-          [ -d ".conveyor" ] && FOUND=true || FOUND=false
-          echo "found=$FOUND" >> "$GITHUB_OUTPUT"    
-
-      - name: Load cache
-        if: ${{ steps.check_cache.outputs.found != 'true' }}
+      - name: Cache Conveyor installation
+        id: cache-conveyor
         uses: actions/cache@v4
         with:
-          key: conveyor-${{ github.run_id }}
-          path: .conveyor
-          restore-keys: conveyor
+          path: .conveyor/install
+          key: conveyor-22.0-linux-amd64
+
+      - name: Download Conveyor
+        if: steps.cache-conveyor.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          wget https://downloads.hydraulic.dev/conveyor/conveyor-22.0-linux-amd64.tar.gz
+          mkdir -p .conveyor/install
+          tar xzvf conveyor-22.0-linux-amd64.tar.gz -C .conveyor/install
+
+      - name: Cache Conveyor data
+        uses: actions/cache@v4
+        with:
+          key: conveyor-data-${{ github.run_id }}
+          path: .conveyor/cache
+          restore-keys: conveyor-data
 
       - name: Read version info
         id: version
@@ -61,14 +68,7 @@ jobs:
           FULL_VERSION="${MAJOR_MINOR}.${VERSION_CODE}"
           echo "VERSION_NAME=$FULL_VERSION" >> $GITHUB_OUTPUT
           echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "Version: $FULL_VERSION ($VERSION_CODE)"
-
-      - name: Download Conveyor
-        shell: bash
-        run: |          
-          wget https://downloads.hydraulic.dev/conveyor/conveyor-22.0-linux-amd64.tar.gz
-          mkdir -p .conveyor/install
-          tar xzvf conveyor-22.0-linux-amd64.tar.gz -C .conveyor/install                
+          echo "Version: $FULL_VERSION ($VERSION_CODE)"               
 
       - name: Build binaries
         working-directory: ./desktopApp
@@ -83,9 +83,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.CONVEYOR_SIGNING_KEY }}
           CONVEYOR_AGREE_TO_LICENSE: 1
           JDK_21: ${{ env.JAVA_HOME }}
-          APP_VERSION: ${{ steps.version.outputs.VERSION_NAME }}
         shell: bash
         run: |
           PATH="$PATH:../.conveyor/install/conveyor-22.0/bin"
-          conveyor --cache-dir="../.conveyor/cache" "-Kapp.signing-key=$SIGNING_KEY" -f ci.conveyor.conf make site
-          conveyor --cache-dir="../.conveyor/cache" "-Kapp.signing-key=$SIGNING_KEY" -f ci.conveyor.conf make copied-site
+          conveyor --cache-dir="../.conveyor/cache" "-Kapp.signing-key=$SIGNING_KEY" -f ci.conveyor.conf make copied-site          
