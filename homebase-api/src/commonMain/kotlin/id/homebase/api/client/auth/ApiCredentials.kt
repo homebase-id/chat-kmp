@@ -19,7 +19,8 @@ data class ApiCredentials private constructor(
 
     fun getIdentityId(): Uuid {
         // TODO: <- get the real identityId
-        val identityId = Uuid.parse("7b1be23b-48bb-4304-bc7b-db5910c09a92")
+//        val identityId = Uuid.parse("7b1be23b-48bb-4304-bc7b-db5910c09a92")
+        val identityId = this.domain.toHashId()
         return identityId
     }
 
