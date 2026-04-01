@@ -610,6 +610,23 @@ class OdinWebSocketClient(
     }
 
     /**
+     * Send processInbox for every subscribed drive so the server moves any
+     * queued inbox items to the drive before the next QueryBatch sync.
+     * Call this right after a successful handshake / reconnect.
+     */
+    suspend fun processAllInboxes() {
+        for (drive in drives) {
+            notify(
+                command = "processInbox",
+                payload = ProcessInboxPayload(
+                    targetDrive = drive,
+                    batchSize = 100
+                )
+            )
+        }
+    }
+
+    /**
      * Close the client and release resources
      */
     fun close() {

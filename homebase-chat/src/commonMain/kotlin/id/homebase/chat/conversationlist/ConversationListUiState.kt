@@ -102,7 +102,7 @@ sealed interface ConversationListContentModel {
 sealed class MessageListContentModel(val id: String) {
     data object Header : MessageListContentModel("header")
     data class Section(val date: LocalDate) : MessageListContentModel(date.toString())
-    data class System(val text: String, val created: Instant) : MessageListContentModel(created.toString())
+    data class System(val text: String, val userDate: Instant) : MessageListContentModel(userDate.toString())
     data class Message(val message: MessageUiModel) :
         MessageListContentModel(message.id.toString() + message.versionTag.toString() + message.hasMore)
 }
@@ -132,7 +132,7 @@ sealed interface FullScreenOverlay {
     data class ViewMessageData(
         val messageId: Uuid,
         val title: String,
-        val created: Instant,
+        val userDate: Instant,
         val content: String,
         val fileId: Uuid,
         val driveId: Uuid,

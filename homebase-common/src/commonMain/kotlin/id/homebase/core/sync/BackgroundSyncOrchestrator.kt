@@ -2,8 +2,10 @@ package id.homebase.core.sync
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.config.syncLabeledDrives
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -13,6 +15,7 @@ import org.koin.mp.KoinPlatformTools
 class BackgroundSyncOrchestrator(
     private val credentialsManager: CredentialsManager,
     private val driveSyncManager: DriveSyncManager,
+    private val driveFileHttpProvider: DriveFileHttpProvider,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
 ) {
     suspend fun syncIfAuthenticated(): SyncOutcome {
@@ -30,6 +33,15 @@ class BackgroundSyncOrchestrator(
         Logger.i(tag = "BackgroundSync") { "syncIfAuthenticated: WS offline — running background sync" }
         return runCatching {
             driveSyncManager.start()
+
+            // TODO TODD: Poke the inbox via HTTP here
+            // The server holds incoming transfers in the inbox until a processInbox
+            // command is sent.  Over WebSocket this happens automatically via
+            // inboxItemReceived notifications, but when WS is offline we need an
+            // HTTP equivalent (e.g. POST /api/v2/transit/inbox/process) so that
+            // QueryBatch can find the new records.
+            processInboxViaHttp()
+
             driveSyncManager.syncAll()
         }.fold(
             onSuccess = {
@@ -49,6 +61,17 @@ class BackgroundSyncOrchestrator(
             val outcome = runCatching { syncIfAuthenticated() }.getOrElse { SyncOutcome.Failed(it) }
             onComplete(outcome is SyncOutcome.Success)
         }
+    }
+
+    /**
+     * TODO TODD: Poke the inbox via HTTP here
+     * Flush the server inbox over plain HTTP so that items transferred while the
+     * WebSocket was offline become visible to QueryBatch.  This is the HTTP
+     * counterpart of the WS "processInbox" command.
+     */
+    private suspend fun processInboxViaHttp() {
+        // no-op until the server exposes an HTTP endpoint for inbox processing
+        driveFileHttpProvider.processInbox(chatTargetDrive.alias)
     }
 
     companion object {
