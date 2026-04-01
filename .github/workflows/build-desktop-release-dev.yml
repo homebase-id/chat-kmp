@@ -1,8 +1,12 @@
 name: Build Desktop Dev Release
 
 on:
-  push:
-    branches: [ main, desktopOptimizations ]
+  # Run on schedule (every day at 2 AM UTC)
+  schedule:
+    - cron: '0 2 * * *'  # Adjust time as needed
+
+  # Allow manual triggering from GitHub UI
+  workflow_dispatch:
 
 concurrency:
   group: desktop-release-dev-${{ github.ref }}
@@ -11,6 +15,8 @@ concurrency:
 jobs:
   build-desktop:
     runs-on: ubuntu-latest
+    # Only run on main branch
+    #if: github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@v4
@@ -79,4 +85,4 @@ jobs:
         shell: bash
         run: |
           PATH="$PATH:../.conveyor/install/conveyor-22.0/bin"
-          conveyor --cache-dir="../.conveyor/cache" "-Kapp.signing-key=$SIGNING_KEY" -f ci.conveyor.conf make copied-site
+          conveyor --cache-dir="../.conveyor/cache" "-Kapp.signing-key=$SIGNING_KEY" -f ci.conveyor.conf make site
