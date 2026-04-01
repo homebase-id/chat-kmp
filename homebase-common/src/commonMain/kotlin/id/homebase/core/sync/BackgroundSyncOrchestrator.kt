@@ -30,6 +30,15 @@ class BackgroundSyncOrchestrator(
         Logger.i(tag = "BackgroundSync") { "syncIfAuthenticated: WS offline — running background sync" }
         return runCatching {
             driveSyncManager.start()
+
+            // TODO TODD: Poke the inbox via HTTP here
+            // The server holds incoming transfers in the inbox until a processInbox
+            // command is sent.  Over WebSocket this happens automatically via
+            // inboxItemReceived notifications, but when WS is offline we need an
+            // HTTP equivalent (e.g. POST /api/v2/transit/inbox/process) so that
+            // QueryBatch can find the new records.
+            processInboxViaHttp()
+
             driveSyncManager.syncAll()
         }.fold(
             onSuccess = {
@@ -49,6 +58,16 @@ class BackgroundSyncOrchestrator(
             val outcome = runCatching { syncIfAuthenticated() }.getOrElse { SyncOutcome.Failed(it) }
             onComplete(outcome is SyncOutcome.Success)
         }
+    }
+
+    /**
+     * TODO TODD: Poke the inbox via HTTP here
+     * Flush the server inbox over plain HTTP so that items transferred while the
+     * WebSocket was offline become visible to QueryBatch.  This is the HTTP
+     * counterpart of the WS "processInbox" command.
+     */
+    private suspend fun processInboxViaHttp() {
+        // no-op until the server exposes an HTTP endpoint for inbox processing
     }
 
     companion object {

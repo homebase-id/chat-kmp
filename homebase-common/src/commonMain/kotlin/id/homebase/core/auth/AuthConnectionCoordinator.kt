@@ -141,6 +141,14 @@ class AuthConnectionCoordinator(
                             // because pause() sets isRunning=false on disconnect, and syncAll()
                             // would silently skip if isRunning is still false.
                             driveSyncManager.start()
+
+                            // Flush the server inbox before syncing.  While connected the
+                            // server pushes inboxItemReceived notifications in real-time,
+                            // but those notifications are NOT replayed after a reconnect.
+                            // Without this call, items that arrived while we were offline
+                            // stay in the inbox and QueryBatch returns 0 records.
+                            wsClient?.processAllInboxes()
+
                             driveSyncManager.syncAll()
                         } catch (e: Exception) {
                             Logger.e(e) { "syncAll() failed on connect" }
