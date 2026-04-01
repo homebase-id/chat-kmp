@@ -5,7 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.ui.navigation.Route
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +20,8 @@ import kotlin.uuid.Uuid
 class ConversationSettingsViewModel(
     savedStateHandle: SavedStateHandle,
     val conversationService: ConversationService,
+    private val conversationStream: ConversationStream,
+    private val ownerSessionRepository: OwnerSessionRepository,
 ) : ViewModel() {
 
     val route = savedStateHandle.toRoute<Route.ConversationSettings>()
@@ -42,15 +47,28 @@ class ConversationSettingsViewModel(
     private fun loadData() {
         viewModelScope.launch {
             try {
-                val conversation = conversationService.getConversation(Uuid.parse(route.conversationId))
-                if (conversation != null) {
-                    _uiState.update { it.copy(conversation = conversation, isLoading = false) }
+                val conversationId = Uuid.parse(route.conversationId)
+                if (conversationId == ChatProtocol.ConversationWithYourselfId) {
+                    val conversation = conversationStream.getConversationById(conversationId)
+                    val owner = ownerSessionRepository.user.value
+                    _uiState.update {
+                        it.copy(
+                            conversation = conversation,
+                            ownerSession = owner,
+                            isLoading = false
+                        )
+                    }
                 } else {
-                    Logger.d( "Failed to load contact for conversation")
-                    _uiState.update { it.copy(isLoading = false) }
+                    val conversation = conversationService.getConversation(conversationId)
+                    if (conversation != null) {
+                        _uiState.update { it.copy(conversation = conversation, isLoading = false) }
+                    } else {
+                        Logger.d("Failed to load contact for conversation")
+                        _uiState.update { it.copy(isLoading = false) }
+                    }
                 }
             } catch (e: Exception) {
-                Logger.e( "Failed to load conversation", e)
+                Logger.e("Failed to load conversation", e)
                 _uiState.update { it.copy(isLoading = false) }
             }
         }
