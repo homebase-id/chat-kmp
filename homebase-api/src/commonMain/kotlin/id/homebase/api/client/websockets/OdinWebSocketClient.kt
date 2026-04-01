@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 
 /**
  * WebSocket client for connecting to Odin notify/ws endpoint
@@ -70,6 +71,8 @@ class OdinWebSocketClient(
 
     @Volatile
     private var handshakeDone = false
+
+    private val unauthorizedDriveAliases = mutableSetOf<Uuid>()
 
     private val notificationBuffer =
         mutableListOf<ClientNotificationPayload>()
@@ -472,10 +475,35 @@ class OdinWebSocketClient(
         }
     }
 
+    // Auth errors are per-drive, not per-connection. We intentionally do NOT emit
+    // ConnectionOffline here — doing so would cascade through onDisconnected →
+    // driveSyncManager.pause() and kill syncing for ALL drives, even authorized ones.
+    //
+    // Instead we track the rejected drive alias so establishConnectionRequest() can
+    // exclude it on the next (re)connect. On the first attempt the server may still
+    // close the connection after the error; in that case the normal reconnect loop
+    // fires and the second attempt succeeds without the rejected drive (~1 s delay).
+    // The set resets when a new OdinWebSocketClient is created (i.e. on re-auth).
+    //
+    // We emit DriveAuthorizationFailed so the UI can offer the user a chance to
+    // extend permissions via the owner console.
     private suspend fun handleAuthError(notification: ClientNotificationPayload) {
-        var message = notification.data
-        Logger.e("Authentication Error was sent from web socket. [$message]")
-        eventBus.emit(BackendEvent.ConnectionOffline)
+        val message = notification.data
+        Logger.w("WebSocket auth error (non-fatal): [$message]")
+
+        // Parse drive alias from server message format:
+        // "Unauthorized to read to drive [<uuid>]"
+        val uuidRegex = Regex("\\[([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})]")
+        val match = uuidRegex.find(message)
+        if (match != null) {
+            val alias = runCatching { Uuid.parse(match.groupValues[1]) }.getOrNull()
+            if (alias != null) {
+                unauthorizedDriveAliases.add(alias)
+                Logger.w("Drive $alias excluded from future WebSocket subscriptions")
+            }
+        }
+
+        eventBus.emit(BackendEvent.DriveAuthorizationFailed(message))
     }
 
     private suspend fun onHandshakeSuccess() {
@@ -540,10 +568,15 @@ class OdinWebSocketClient(
      * Send EstablishConnectionRequest to server
      */
     suspend fun establishConnectionRequest() {
+        val activeDrives = drives.filter { it.alias !in unauthorizedDriveAliases }
+        if (activeDrives.isEmpty()) {
+            Logger.e("No authorized drives for WebSocket subscription")
+            return
+        }
         notify(
             command = "establishConnectionRequest",
             payload = EstablishConnectionRequest(
-                drives = drives
+                drives = activeDrives
             )
         )
     }

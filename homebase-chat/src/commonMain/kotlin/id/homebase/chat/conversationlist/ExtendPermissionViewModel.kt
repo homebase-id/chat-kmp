@@ -4,12 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.core.config.getPermissionExtensionConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
 
 /**
@@ -21,7 +24,8 @@ import kotlinx.coroutines.launch
  */
 class ExtendPermissionViewModel(
         private val securityContextProvider: SecurityContextProvider,
-        private val credentialsManager: CredentialsManager
+        private val credentialsManager: CredentialsManager,
+        private val eventBus: EventBus,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ExtendPermissionUiState>(ExtendPermissionUiState.Idle)
@@ -29,9 +33,18 @@ class ExtendPermissionViewModel(
 
     init {
         viewModelScope.launch { checkPermissions() }
+
+        // Re-check permissions when a drive subscription is rejected at the WebSocket level.
+        // This lets the user extend permissions without restarting the app.
+        viewModelScope.launch {
+            eventBus.events
+                .filterIsInstance<BackendEvent.DriveAuthorizationFailed>()
+                .collect { checkPermissions() }
+        }
     }
 
     private suspend fun checkPermissions() {
+        if (_uiState.value is ExtendPermissionUiState.Dismissed) return
         try {
             val domain = credentialsManager.requireActiveCredentials().domain.domainName
             val manager = PermissionExtensionManager.create(securityContextProvider, domain)
