@@ -15,6 +15,8 @@ androidx-testRunner = "1.7.0"
 androidx-testCore = "1.7.0"
 composeMultiplatform = "1.10.2"
 composeHotReload = "1.1.0-beta01"
+composenativetray = "1.1.0"
+conveyor = "2.0"
 ffmpegKit = "1.0"
 vlcj = "4.8.2"
 jetbrains-compose-material3 = "1.9.0"
@@ -160,6 +162,7 @@ kmpnotifier = { module = "io.github.mirzemehdi:kmpnotifier", version.ref = "kmpn
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
 kache-file = { module = "com.mayakapps.kache:file-kache", version.ref = "kache" }
 kache = { module = "com.mayakapps.kache:kache", version.ref = "kache" }
+composenativetray = { module = "io.github.kdroidfilter:composenativetray", version.ref = "composenativetray" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
@@ -173,3 +176,4 @@ kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 androidLint = { id = "com.android.lint", version.ref = "agp" }
 googleServices = { id = "com.google.gms.google-services", version.ref = "google-services" }
+conveyorPlugin = { id = "dev.hydraulic.conveyor", version.ref = "conveyor" }

@@ -1,12 +1,19 @@
 package id.homebase.app
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import co.touchlab.kermit.Logger
+import com.kdroid.composetray.tray.api.Tray
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
+import id.homebase.api.file.JvmFileSystemUtil
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
@@ -16,25 +23,28 @@ import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
+import id.homebase.core.ui.screens.appearance.getIconForTheme
+import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
+import id.homebase.core.ui.screens.desktop.DesktopUiAction
+import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
+import id.homebase.resources.homebase_icon_round
 import io.github.vinceglb.filekit.FileKit
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.GlobalContext.startKoin
 import java.io.File
 
-fun main() = application {
-    // Initialize Koin first
-    startKoin { modules(allModules) }
-
+fun main() {
     // Initialize file logging
     try {
         // Use user's home directory for logs
-        val userHome = System.getProperty("user.home")
-        val logsDir = File(userHome, ".homebase-chat/logs")
+        val userHome = JvmFileSystemUtil.getAppDataDirectory()
+        val logsDir = File(userHome, "logs")
         if (!logsDir.exists()) {
             logsDir.mkdirs()
         }
@@ -45,6 +55,9 @@ fun main() = application {
 
     // Set up crash handler
     setupCrashHandler()
+
+    // Initialize Koin first
+    startKoin { modules(allModules) }
 
     // OSX customizations
     System.setProperty("apple.awt.application.appearance", "system")
@@ -69,38 +82,97 @@ fun main() = application {
     val minHeight = 400
     val config = DesktopPreferences()
 
-    val state = rememberWindowState(
-        placement = config.windowPlacement,
-        position = config.windowPosition,
-        width = maxOf(config.windowWidthDp, minWidth.dp), // Minimum width
-        height = maxOf(config.windowHeightDp, minHeight.dp), // Minimum height
-    )
-
     runBlocking {
         val dbKey = DatabaseKeyManager.getOrGenerateKey()
         DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
     }
 
-    Window(
-        onCloseRequest = {
-            try {
-                config.windowPlacement = state.placement
-                config.windowPosition = state.position
-                config.windowWidthDp = maxOf(state.size.width, minWidth.dp)
-                config.windowHeightDp = maxOf(state.size.height, minHeight.dp)
-            } catch (_: Exception) {
-                // Logger.w(TAG, e, "Error saving window state")
+    application {
+        val viewModel = koin.get<DesktopViewModel>()
+        val uiState by viewModel.uiState.collectAsState()
+        val icon = painterResource(MR.drawable.homebase_icon_round)
+        var isWindowVisible by remember { mutableStateOf(true) }
+        var notificationsEnabled by remember { mutableStateOf(true) }
+        val state = rememberWindowState(
+            placement = config.windowPlacement,
+            position = config.windowPosition,
+            width = maxOf(config.windowWidthDp, minWidth.dp), // Minimum width
+            height = maxOf(config.windowHeightDp, minHeight.dp), // Minimum height
+        )
+        val themeLabel = uiState.theme.getStringResourceForTheme()
+
+        Tray(
+            icon = icon,
+            tooltip = stringResource(MR.string.app_name),
+            primaryAction = {
+                isWindowVisible = !isWindowVisible
+            },
+        ) {
+            Item(label = "Show Window") {
+                isWindowVisible = true
             }
-            exitApplication()
-        },
-        alwaysOnTop = false,
-        title = stringResource(MR.string.app_name),
-        undecorated = false,
-        state = state,
-    ) {
-        DesktopAppFocusManager.registerWindowProvider { window }
-        window.minimumSize = java.awt.Dimension(minWidth, minHeight)
-        App()
+
+            Divider()
+            Item(label = "Theme", isEnabled = false)
+            Item(
+                label = themeLabel,
+                icon = uiState.theme.getIconForTheme(),
+            ) {
+                viewModel.onUiAction(DesktopUiAction.ToggleTheme)
+            }
+
+            Divider()
+
+            // Reactive checkable item
+            CheckableItem(
+                label = "Notifications",
+                checked = notificationsEnabled,
+                onCheckedChange = { notificationsEnabled = it }
+            )
+
+            Divider()
+
+            Item(label = "Homebase Chat", isEnabled = false)
+            Item(label = "Version ${uiState.version}", isEnabled = false)
+
+            Divider()
+
+            // Quit option
+            Item(label = "Quit") {
+                try {
+                    config.windowPlacement = state.placement
+                    config.windowPosition = state.position
+                    config.windowWidthDp = maxOf(state.size.width, minWidth.dp)
+                    config.windowHeightDp = maxOf(state.size.height, minHeight.dp)
+                } catch (_: Exception) {
+                    // ignore
+                }
+                exitApplication()  // This properly exits the application
+            }
+        }
+
+        Window(
+            onCloseRequest = {
+                try {
+                    config.windowPlacement = state.placement
+                    config.windowPosition = state.position
+                    config.windowWidthDp = maxOf(state.size.width, minWidth.dp)
+                    config.windowHeightDp = maxOf(state.size.height, minHeight.dp)
+                } catch (_: Exception) {
+                    // ignore
+                }
+                isWindowVisible = false
+            },
+            alwaysOnTop = false,
+            title = stringResource(MR.string.app_name),
+            icon = icon,
+            state = state,
+            visible = isWindowVisible
+        ) {
+            DesktopAppFocusManager.registerWindowProvider { window }
+            window.minimumSize = java.awt.Dimension(minWidth, minHeight)
+            App()
+        }
     }
 }
 
