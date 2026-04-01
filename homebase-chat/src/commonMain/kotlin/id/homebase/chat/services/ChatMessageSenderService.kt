@@ -182,8 +182,8 @@ class ChatMessageSenderService(
     ): SendMessageResult {
 
         val conversation = conversationStream.getConversationById(conversationId)
-        if (conversation?.conversationState == ConversationState.Left
-            || conversation?.conversationState == ConversationState.RejoinPending
+        if (!isStatusMessage && (conversation?.conversationState == ConversationState.Left
+            || conversation?.conversationState == ConversationState.RejoinPending)
         ) {
             error("Cannot send messages to a group you have left")
         }
