@@ -2,8 +2,10 @@ package id.homebase.core.sync
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.config.syncLabeledDrives
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -13,6 +15,7 @@ import org.koin.mp.KoinPlatformTools
 class BackgroundSyncOrchestrator(
     private val credentialsManager: CredentialsManager,
     private val driveSyncManager: DriveSyncManager,
+    private val driveFileHttpProvider: DriveFileHttpProvider,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
 ) {
     suspend fun syncIfAuthenticated(): SyncOutcome {
@@ -68,6 +71,7 @@ class BackgroundSyncOrchestrator(
      */
     private suspend fun processInboxViaHttp() {
         // no-op until the server exposes an HTTP endpoint for inbox processing
+        driveFileHttpProvider.processInbox(chatTargetDrive.alias)
     }
 
     companion object {
