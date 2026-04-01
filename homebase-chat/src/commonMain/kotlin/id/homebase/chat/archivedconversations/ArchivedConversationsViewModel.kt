@@ -58,7 +58,7 @@ class ArchivedConversationsViewModel(
                     _uiState.update {
                         it.copy(
                             conversations = enriched
-                                .sortedByDescending { conversation -> conversation.conversation.timestamp }
+                                .sortedByDescending { conversation -> conversation.conversation.latestMessageTimestamp }
                                 .toPersistentList(),
                             isLoading = false,
                         )

@@ -56,7 +56,7 @@ object ChatProtocol {
             id = ConversationWithYourselfId,
             name = "", // Display name resolved via string resource at UI layer
             lastMessage = "",
-            timestamp = UnixTimeUtc(0).toInstant(),
+            latestMessageTimestamp = UnixTimeUtc(0).toInstant(),
             unreadCount = 0,
             avatarInitials = "",
             avatarTiny = null,

@@ -103,7 +103,7 @@ fun ConversationItem(
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Text(
-                    text = formatTimestamp(enrichedData.conversation.timestamp),
+                    text = formatTimestamp(enrichedData.conversation.latestMessageTimestamp),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (enrichedData.conversation.unreadCount > 0) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,

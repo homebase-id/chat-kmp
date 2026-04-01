@@ -371,6 +371,29 @@ public class DriveFileHttpProvider(
 
     }
 
+    // ==================== INBOX METHODS ====================
+
+    suspend fun processInbox(
+        driveId: Uuid,
+        batchSize: Int = 10
+    ): InboxStatus {
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+
+        val creds = requireCreds()
+        val endpoint = "/drives/$driveId/inbox/process"
+
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, endpoint),
+            token = creds.accessToken,
+            secret = creds.secret,
+            queryString = "batchSize=$batchSize"
+        )
+
+        throwForFailure(response)
+
+        return deserialize<InboxStatus>(response.body)
+    }
+
     // ==================== PRIVATE HELPER METHODS ====================
 
     /** Decrypts the key header using the shared secret. */
