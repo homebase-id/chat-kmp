@@ -72,7 +72,7 @@ class ChatMessageActionService(
 
         Logger.d { "Calling mark-as-read for unread-records count: ${unreadRecords.size}" }
 
-        val endTime = unreadRecords.maxOf { it.created }
+        val endTime = unreadRecords.maxOf { it.userDate }
 
         Logger.d { "Upserting chatReadCount->lastReadTime=${newReadTime.milliseconds} for $conversationId" }
         dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)

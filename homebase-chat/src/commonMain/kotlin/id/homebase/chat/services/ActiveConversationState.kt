@@ -50,6 +50,6 @@ class ActiveConversationState {
         for (msg in incoming) {
             byId[msg.id] = msg
         }
-        return byId.values.sortedByDescending { it.created }
+        return byId.values.sortedByDescending { it.userDate }
     }
 }

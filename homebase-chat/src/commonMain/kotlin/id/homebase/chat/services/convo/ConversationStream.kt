@@ -140,7 +140,7 @@ class ConversationStream(
                         id = m.conversationId,
                         name = "Pending...",
                         lastMessage = m.content,
-                        timestamp = m.created,
+                        timestamp = m.userDate,
                         admins = (if (m.originalAuthor == null) emptySet() else setOf(m.originalAuthor)),
                         unreadCount = 0,
                         avatarTiny = null,
@@ -180,13 +180,13 @@ class ConversationStream(
         c: ConversationUiModel,
         m: MessageUiModel
     ) {
-        if (m.created > c.timestamp) {
+        if (m.userDate > c.timestamp) {
             val domain = credentialsManager.getActiveDomain()
 
             // new message that was not sent by the current user
             val updatedConversation = c.copy(
                 unreadCount = c.unreadCount + if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) 1 else 0,
-                timestamp = m.created,
+                timestamp = m.userDate,
                 lastMessage = m.content.truncateToCodePoints(40), // TODO: Global constant
                 lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
                 lastMessageIsDeleted = m.isDeleted,

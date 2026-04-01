@@ -159,7 +159,7 @@ fun MessageBubbleRaw(
         }
     }
 
-    val timestamp = formatMessageTimestamp(message.created)
+    val timestamp = formatMessageTimestamp(message.userDate)
     val messageInfoText =
         if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $timestamp" else timestamp
     val mediaOnly = remember { !message.content.hasContent() && hasMedia }

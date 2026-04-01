@@ -137,7 +137,7 @@ fun MessageInfoUi(
                 Text(
                     text = stringResource(
                         MR.string.label_sent,
-                        uiState.message?.created?.let { formateDateTime(it) } ?: "",
+                        uiState.message?.userDate?.let { formateDateTime(it) } ?: "",
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -146,7 +146,7 @@ fun MessageInfoUi(
                     text = stringResource(
                         MR.string.label_updated,
                         uiState.message?.modified?.let { formateDateTime(it) }
-                            ?: uiState.message?.created?.let { formateDateTime(it) } ?: "",
+                            ?: uiState.message?.userDate?.let { formateDateTime(it) } ?: "",
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
