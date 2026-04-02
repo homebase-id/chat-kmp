@@ -1662,7 +1662,13 @@ class ConversationListViewModel(
                         }
 
                         is ChatMessagesData.Messages -> {
-                            val messages = messageState.messages
+                            val exitedAt = _uiState.value.activeConversations
+                                .find { it.conversation.id == conversationId }
+                                ?.conversation?.exitedAt
+                            val messages = if (exitedAt != null)
+                                messageState.messages.filter { it.userDate <= exitedAt }
+                            else
+                                messageState.messages
                             // Group messages within day sections
                             val timezone = TimeZone.currentSystemDefault()
                             val groupedMessages =

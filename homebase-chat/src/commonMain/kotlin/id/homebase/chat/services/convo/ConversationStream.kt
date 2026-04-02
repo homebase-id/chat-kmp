@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class ConversationStream(
@@ -292,6 +293,15 @@ class ConversationStream(
           } else {
             incoming.conversationState
         }
+
+        // Stamp exitedAt the first time we transition into Left or Removed.
+        // Preserved on subsequent updates so messages after this instant can be filtered out.
+        val resolvedExitedAt = existing.exitedAt ?: run {
+            val isNewlyExited = (resolvedState == ConversationState.Left || resolvedState == ConversationState.Removed)
+                && existing.conversationState != ConversationState.Left
+                && existing.conversationState != ConversationState.Removed
+            if (isNewlyExited) Clock.System.now() else null
+        }
         
         // Structural fields (membership, identity) always come from the conversation file,
         // regardless of timestamp. The in-memory timestamp is driven by message arrivals and
@@ -309,6 +319,7 @@ class ConversationStream(
             participants = incoming.participants,
             isPinned = incoming.isPinned,
             conversationState = resolvedState,
+            exitedAt = resolvedExitedAt,
             // Message preview — only overwrite if the file carries a newer last-message snapshot
             latestMessageTimestamp = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.latestMessageTimestamp else existing.latestMessageTimestamp,
             lastMessage = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessage else existing.lastMessage,

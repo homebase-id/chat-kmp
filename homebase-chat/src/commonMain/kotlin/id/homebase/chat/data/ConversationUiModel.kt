@@ -33,6 +33,7 @@ data class ConversationUiModel(
     val admins: Set<OdinId>,
     val conversationState: ConversationState = ConversationState.Active,
     val isGroup: Boolean = false,
+    val exitedAt: Instant? = null,
 ) {
     fun isCurrentUserAdmin(odinId: OdinId): Boolean {
         return admins.contains(odinId)
