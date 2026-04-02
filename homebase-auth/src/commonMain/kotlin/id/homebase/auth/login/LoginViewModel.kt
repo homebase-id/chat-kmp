@@ -21,6 +21,7 @@ import id.homebase.core.notifications.NotificationService
 import id.homebase.core.util.StartupState
 import id.homebase.core.util.mapToStartupState
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -90,22 +91,31 @@ class LoginViewModel(
 
     suspend fun isValidHomebaseId(identity: OdinId): Boolean {
         try {
-            val response = httpClient.get("https://$identity/api/v2/health/ping")
+            Logger.i(tag = "LoginViewModel", messageString = "Pinging https://$identity/api/v2/health/ping ...")
+            val response = httpClient.get("https://$identity/api/v2/health/ping") {
+                timeout {
+                    requestTimeoutMillis = 15_000
+                    connectTimeoutMillis = 10_000
+                }
+            }
+            Logger.i(tag = "LoginViewModel", messageString = "Ping response: ${response.status.value}")
             return when (response.status.value) {
                 200 -> true
                 else -> false
             }
-        } catch (_: Throwable) {
-//            Logger.e("LoginViewModel", t, "failed while trying to ping $identity")
+        } catch (t: Throwable) {
+            Logger.e(tag = "LoginViewModel", messageString = "Ping failed for $identity: ${t::class.simpleName}: ${t.message}")
             return false
         }
     }
 
     private fun startLogin(homebaseIdValue: String) {
+        Logger.i(tag = "LoginViewModel", messageString = "startLogin($homebaseIdValue)")
 
         val homebaseId = try {
             OdinId(homebaseIdValue)
         } catch (_: Exception) {
+            Logger.w(tag = "LoginViewModel", messageString = "Invalid Homebase ID: $homebaseIdValue")
             _uiState.update {
                 it.copy(errorMessage = "Valid Homebase ID is required")
             }
@@ -117,14 +127,17 @@ class LoginViewModel(
                 it.copy(
                     homebaseId = homebaseId.domainName,
                     isLoading = true,
+                    isPinging = true,
                     errorMessage = null
                 )
             }
 
             if (!isValidHomebaseId(homebaseId)) {
+                Logger.w(tag = "LoginViewModel", messageString = "Identity $homebaseId failed ping check, aborting login")
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        isPinging = false,
                         errorMessage = "Unable to ping $homebaseId - are you sure it's a Homebase ID?"
                     )
                 }
@@ -132,7 +145,10 @@ class LoginViewModel(
                 return@launch
             }
 
+            _uiState.update { it.copy(isPinging = false) }
+
             try {
+                Logger.i(tag = "LoginViewModel", messageString = "Ping OK, calling youAuthFlowManager.authorize()...")
                 val authUrl = youAuthFlowManager.authorize(
                     identity = homebaseId,
                     appId = AppConfig.APP_ID,
@@ -143,10 +159,12 @@ class LoginViewModel(
                     circles =
                         listOf(CONFIRMED_CONNECTIONS_CIRCLE_ID, AUTO_CONNECTIONS_CIRCLE_ID)
                 )
+                Logger.i(tag = "LoginViewModel", messageString = "Auth URL ready, launching browser")
                 _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenAuthUrl(authUrl)) }
             } catch (_: AuthInProgressException) {
-                // ignore
+                Logger.w(tag = "LoginViewModel", messageString = "Auth already in progress, ignoring")
             } catch (e: Exception) {
+                Logger.e(tag = "LoginViewModel", messageString = "authorize() failed: ${e::class.simpleName}: ${e.message}")
                 _uiState.update {
                     it.copy(isLoading = false, errorMessage = e.message ?: "Login failed")
                 }

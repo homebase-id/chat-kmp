@@ -33,6 +33,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,6 +43,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -73,6 +76,7 @@ import id.homebase.resources.login_successful
 import id.homebase.resources.login_title
 import id.homebase.resources.login_try_again_button
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.coroutines.delay
 import kotlinx.collections.immutable.persistentListOf
 import org.jetbrains.compose.resources.stringResource
 
@@ -161,7 +165,8 @@ fun LoginUi(
 
             when {
                 uiState.isLoading -> LoginLoading(
-                    driveProgresses = uiState.driveProgresses
+                    driveProgresses = uiState.driveProgresses,
+                    isPinging = uiState.isPinging
                 )
                 uiState.isAuthenticated -> LoginSuccess()
                 uiState.errorMessage != null ->
@@ -194,7 +199,7 @@ fun LoginUi(
 /* ---------- STATES ---------- */
 
 @Composable
-private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>) {
+private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>, isPinging: Boolean = false) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = stringResource(MR.string.loading),
@@ -210,6 +215,21 @@ private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (isPinging) {
+                var secondsLeft by remember { mutableIntStateOf(15) }
+                LaunchedEffect(Unit) {
+                    while (secondsLeft > 0) {
+                        delay(1000)
+                        secondsLeft--
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Timeout in ${secondsLeft}s",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         } else {
             driveProgresses.forEach { drive ->
                 DriveProgressRow(
@@ -329,7 +349,9 @@ private fun LoginForm(
     onCreateAccountClick: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
-    var homebaseId by remember { mutableStateOf(homebaseId) }
+    var homebaseIdField by remember {
+        mutableStateOf(TextFieldValue(homebaseId, selection = TextRange(homebaseId.length)))
+    }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
@@ -357,15 +379,15 @@ private fun LoginForm(
             Spacer(modifier = Modifier.height(16.dp))
         }
         HomebaseIdField(
-            value = homebaseId,
-            onValueChange = { homebaseId = it.cleanDomain().replace(".", " ") },
+            value = homebaseIdField,
+            onValueChange = { homebaseIdField = it.copy(text = it.text.cleanDomain().replace(".", " ")) },
             focusRequester = focusRequester,
-            onDone = { onLoginClick(homebaseId.cleanDomain(preserveTrailingDot = false)) }
+            onDone = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) }
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Button(onClick = { onLoginClick(homebaseId.cleanDomain(preserveTrailingDot = false)) }, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) }, modifier = Modifier.fillMaxWidth()) {
             if (errorMessage != null) Text(stringResource(MR.string.login_try_again_button)) else Text(stringResource(MR.string.login_sign_in_button))
         }
         Spacer(modifier = Modifier.height(16.dp))
@@ -381,14 +403,14 @@ private fun LoginForm(
 
 @Composable
 private fun HomebaseIdField(
-    value: String,
-    onValueChange: (String) -> Unit,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
     focusRequester: FocusRequester,
     onDone: () -> Unit,
 ) {
     OutlinedTextField(
         value = value,
-        onValueChange = { onValueChange(it) },
+        onValueChange = onValueChange,
         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
         placeholder = { Text(stringResource(MR.string.login_id_placeholder)) },
         label = { Text(stringResource(MR.string.login_id_label)) },
