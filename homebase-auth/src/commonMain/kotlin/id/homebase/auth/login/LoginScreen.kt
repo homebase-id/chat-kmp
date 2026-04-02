@@ -216,7 +216,7 @@ private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>, isPingin
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if (isPinging) {
-                var secondsLeft by remember { mutableIntStateOf(15) }
+                var secondsLeft by remember { mutableIntStateOf(10) }
                 LaunchedEffect(Unit) {
                     while (secondsLeft > 0) {
                         delay(1000)

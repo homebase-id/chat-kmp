@@ -94,8 +94,8 @@ class LoginViewModel(
             Logger.i(tag = "LoginViewModel", messageString = "Pinging https://$identity/api/v2/health/ping ...")
             val response = httpClient.get("https://$identity/api/v2/health/ping") {
                 timeout {
-                    requestTimeoutMillis = 15_000
-                    connectTimeoutMillis = 10_000
+                    requestTimeoutMillis = 10_000
+                    connectTimeoutMillis = 5_000
                 }
             }
             Logger.i(tag = "LoginViewModel", messageString = "Ping response: ${response.status.value}")
