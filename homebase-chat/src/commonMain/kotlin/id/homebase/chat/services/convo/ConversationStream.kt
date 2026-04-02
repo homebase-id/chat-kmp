@@ -101,16 +101,24 @@ class ConversationStream(
                                 it.fileMetadata.appData.fileType ==
                                         ChatProtocol.MessageFileType
                             }
+                        val adminFiles =
+                            event.batchData.filter {
+                                it.fileMetadata.appData.fileType ==
+                                        ChatProtocol.ConversationAdminFileType
+                            }
 
                         Logger.d("ConversationStream: BatchReceived " +
                                 "${event.batchData.size} files " +
-                                "(conversations=${conversationFiles.size}, messages=${messageFiles.size})")
+                                "(conversations=${conversationFiles.size}, messages=${messageFiles.size}, adminFiles=${adminFiles.size})")
 
                         if (conversationFiles.isNotEmpty())
                             processConversationBatchIncrementally(conversationFiles)
 
                         if (messageFiles.isNotEmpty())
                             processMessageBatchIncrementally(messageFiles)
+
+                        if (adminFiles.isNotEmpty())
+                            processAdminFileBatch(adminFiles)
                     }
                 }
             }
@@ -209,6 +217,36 @@ class ConversationStream(
 
         // Logger.i("Unread count now ${c.unreadCount} edited ${m.isEdited} on conversation id
         // ${c.id}")
+    }
+
+    private suspend fun processAdminFileBatch(adminFiles: List<HomebaseFile>) {
+        val c = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(c.getIdentityId())
+
+        // Each admin file's groupId is the conversationId. Re-fetch and re-map the conversation
+        // file so the updated admin list is reflected in the stream.
+        val conversationIds = adminFiles.mapNotNull { it.fileMetadata.appData.groupId }.distinct()
+        for (conversationId in conversationIds) {
+            val conversationFile = queryBatch.queryBatchAsync(
+                dbm = dbm,
+                driveId = chatDrive,
+                noOfItems = 1,
+                cursor = null,
+                sortOrder = QueryBatchSortOrder.NewestFirst,
+                sortField = QueryBatchSortField.CreatedDate,
+                fileSystemType = 0,
+                uniqueIdAnyOf = listOf(conversationId),
+                filetypesAnyOf = listOf(ChatProtocol.ConversationFileType)
+            ).records.firstOrNull() ?: continue
+
+            val incoming = mapper.mapToConversationUi(conversationFile, null)
+            val existing = _conversations.value.items.find { it.id == conversationId }
+            if (existing == null) {
+                insertNewConversation(incoming)
+            } else {
+                updateConversation(existing, incoming)
+            }
+        }
     }
 
     private suspend fun processConversationBatchIncrementally(
