@@ -1,9 +1,13 @@
-import java.util.Properties
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import java.util.Properties
 
 val versionProps = Properties()
 versionProps.load(rootProject.file("gradle/version.properties").inputStream())
+
+// Use version from command line (-Pversion.name=...) if provided, otherwise use properties file
+val versionName: String = findProperty("version.name")?.toString()
+    ?: versionProps.getProperty("version.name")
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -11,7 +15,10 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.composeHotReload)
+    alias(libs.plugins.conveyorPlugin)
 }
+
+version = versionName
 
 kotlin {
     applyDefaultHierarchyTemplate()
@@ -50,17 +57,23 @@ kotlin {
 
     jvm()
 
+    jvmToolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(project(":homebase-api"))
             implementation(project(":homebase-common"))
-            implementation(project(":homebase-core"))
-            implementation(project(":homebase-chat"))
+            implementation(project(":homebase-core")) {
+                exclude(module = "homebase-chat")
+            }
 
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
             implementation(libs.jetbrains.compose.resources)
             implementation(libs.jetbrains.compose.material3)
+            implementation(libs.jetbrains.compose.material.icons.extended)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.kotlinx.coroutines.core)
@@ -72,13 +85,12 @@ kotlin {
         }
 
         jvmMain.dependencies {
-            implementation(libs.jetbrains.compose.desktop.jvm.macos.arm64)
-            implementation(libs.jetbrains.compose.desktop.jvm.macos.x64)
-            implementation(libs.jetbrains.compose.desktop.jvm.windows.x64)
-            implementation(libs.jetbrains.compose.desktop.jvm.linux.arm64)
-            implementation(libs.jetbrains.compose.desktop.jvm.linux.x64)
             implementation(libs.kotlinx.coroutinesSwing)
-            implementation(libs.sqldelight.sqlite.driver)
+            implementation(libs.sqldelight.sqlite.driver.get().toString()) {
+                exclude(group = "org.xerial", module = "sqlite-jdbc")
+            }
+            implementation(libs.sqlite.jdbc.crypt)
+            implementation(libs.composenativetray)
         }
 
         commonTest.dependencies {
@@ -87,6 +99,22 @@ kotlin {
             implementation(libs.kotlinx.datetime)
         }
     }
+}
+
+dependencies {
+    // Platform-specific homebase-chat JARs
+    linuxAmd64(project(":homebase-chat", configuration = "jvmJarLinuxX64"))
+    linuxAarch64(project(":homebase-chat", configuration = "jvmJarLinuxArm64"))
+    macAmd64(project(":homebase-chat", configuration = "jvmJarMacosX64"))
+    macAarch64(project(":homebase-chat", configuration = "jvmJarMacosArm64"))
+    windowsAmd64(project(":homebase-chat", configuration = "jvmJarWindowsX64"))
+
+    // Use the configurations created by the Conveyor plugin to tell Gradle/Conveyor where to find the artifacts for each platform.
+    linuxAmd64(libs.jetbrains.compose.desktop.jvm.linux.x64)
+    linuxAarch64(libs.jetbrains.compose.desktop.jvm.linux.arm64)
+    macAmd64(libs.jetbrains.compose.desktop.jvm.macos.x64)
+    macAarch64(libs.jetbrains.compose.desktop.jvm.macos.arm64)
+    windowsAmd64(libs.jetbrains.compose.desktop.jvm.windows.x64)
 }
 
 // Disable allWarningsAsErrors for metadata compilation tasks only
@@ -107,15 +135,15 @@ val generateVersionProperties by tasks.registering {
     // Resolve values at configuration time to be configuration-cache compatible
     val versionCode = (providers.gradleProperty("VERSION_CODE").orNull)
         ?: versionProps.getProperty("version.code.base")
-    val versionName = (providers.gradleProperty("VERSION_NAME").orNull)
+    val resolvedVersionName = (providers.gradleProperty("version.name").orNull)
         ?: versionProps.getProperty("version.name")
     inputs.property("versionCode", versionCode)
-    inputs.property("versionName", versionName)
+    inputs.property("versionName", resolvedVersionName)
     outputs.dir(outputDir)
     doLast {
         val outFile = outputDir.get().file("version.properties").asFile
         outFile.parentFile.mkdirs()
-        outFile.writeText("version.name=$versionName\nversion.code=$versionCode\n")
+        outFile.writeText("version.name=$resolvedVersionName\nversion.code=$versionCode\n")
     }
 }
 
@@ -125,6 +153,7 @@ kotlin.sourceSets.named("jvmMain") {
 
 compose.desktop {
     application {
+        javaHome = System.getenv("JDK_21")
         mainClass = "id.homebase.app.MainKt"
 
         jvmArgs += listOf(
@@ -136,12 +165,37 @@ compose.desktop {
             configurationFiles.from(project.file("compose-desktop.pro"))
             obfuscate.set(true)
             optimize.set(false)
-            isEnabled.set(true)
+            isEnabled.set(false)
         }
 
         nativeDistributions {
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+
+            packageName = "homebase-chat"
+            packageVersion = versionName
+            description = "Homebase Chat for Desktop"
+            vendor = "Homebase"
+
+            modules(
+                "java.base",
+                "java.compiler",
+                "java.instrument",
+                "java.management",
+                "java.net.http",
+                "java.prefs",
+                "java.rmi",
+                "java.security.jgss",
+                "java.sql.rowset",
+                "jdk.httpserver",
+                "jdk.unsupported",
+                "jdk.xml.dom",
+                "jdk.security.auth"
+            )
+
             macOS {
                 iconFile.set(project.rootProject.file("icons/icon.icns"))  // Path to your .icns file
+                packageName = "Homebase Chat"
+                bundleID = "id.homebase.feed"
 
                 // Add Info.plist configuration for macOS
                 infoPlist {
@@ -154,14 +208,15 @@ compose.desktop {
             }
             windows {
                 iconFile.set(project.rootProject.file("icons/icon.ico"))  // Path to your .ico file
+                menuGroup = "Homebase"
+                // see https://wixtoolset.org/documentation/manual/v3/howtos/general/generate_guids.html
+                upgradeUuid = "01f4e182-6e97-4a96-83e7-b25800fa9f83"
+                dirChooser = true
+                perUserInstall = true
             }
             linux {
                 iconFile.set(project.rootProject.file("icons/icon.png"))  // Path to your .png file
-                modules("jdk.security.auth")
             }
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "Homebase Chat"
-            packageVersion = versionProps.getProperty("version.name")
         }
     }
 }

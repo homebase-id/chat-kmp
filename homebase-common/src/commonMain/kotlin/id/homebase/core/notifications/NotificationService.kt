@@ -333,7 +333,6 @@ class NotificationService(
             val appId = notification.options.appId
             val typeId = notification.options.typeId
             val tagId = notification.options.tagId
-            //TODO: COMMUNITY_APP_ID needs to be use openURL
             val event = when (appId) {
                 Uuid.parse(AppConfig.APP_ID).toString() ->
                     NotificationNavigationEvent.OpenConversation(typeId)

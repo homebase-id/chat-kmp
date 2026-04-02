@@ -136,8 +136,8 @@ class ConversationListViewModel(
 
     val conversationSearchTextState = TextFieldState()
     val messageInputTextState = RichTextState().applyDefaultStyling()
-    var currentConversationJob: Job? = null
-    var pendingMessageId: Uuid? = null
+    private var currentConversationJob: Job? = null
+    private var pendingMessageId: Uuid? = null
 
     init {
         viewModelScope.launch {
@@ -1276,12 +1276,21 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ShowContactInfo -> {
-                // ignore if click on own contact
-                if (action.odinId == uiState.value.ownerSession?.odinId?.domainName) return
-                _uiState.update {
-                    it.copy(
-                        uiEvent = NavigateToContactInfo((action.odinId))
-                    )
+                if (action.odinId == uiState.value.ownerSession?.odinId?.domainName) {
+                    // Show self-conversation settings as owner profile
+                    _uiState.update {
+                        it.copy(
+                            uiEvent = NavigateToConversationSettings(
+                                ChatProtocol.ConversationWithYourselfId.toString()
+                            )
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            uiEvent = NavigateToContactInfo(action.odinId)
+                        )
+                    }
                 }
             }
 
@@ -1674,23 +1683,51 @@ class ConversationListViewModel(
                             })
 
                             // Scroll handling, either use new message id, click message id or null
-                            val newMessageId =
-                                messages.firstOrNull { it.id == pendingMessageId }?.id
+                            val newMessageId = messages.firstOrNull { it.id == pendingMessageId }?.id
                             pendingMessageId = null
                             val indexOfMessageForScroll = if (newMessageId != null) {
-                                Logger.i("Resetting scroll position, new message seen")
-                                messagesModels.indexOfLast {
+                                val index = messagesModels.indexOfLast {
                                     it is MessageListContentModel.Message && it.message.id == newMessageId
                                 }
+                                Logger.i("Resetting scroll position, new message seen, index: $index")
+                                index
                             } else {
-                                if (messageIdForScrollNullable == null) null
-                                else {
+                                if (messageIdForScrollNullable == null) {
+                                    null
+                                } else {
                                     val messageIndex = messagesModels.indexOfLast {
                                         it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
                                     }
                                     messageIdForScrollNullable = null
                                     messageIndex
                                 }
+                            }
+
+                            val newScroll = if (indexOfMessageForScroll == null) {
+                                if (setInitialScroll && !scrollToBottom) {
+                                    Logger.i("Getting saved scroll position")
+                                    getScrollPosition(conversationId)
+                                } else {
+                                    Logger.i("No saved scroll position")
+                                    null
+                                }
+                            } else {
+                                Logger.i("Setting scroll position: $indexOfMessageForScroll")
+                                ScrollPosition(
+                                    firstVisibleItemIndex = indexOfMessageForScroll,
+                                    triggerScroll = true
+                                )
+                            }
+
+                            if (newScroll != null) {
+                                userPreferences.setConversationScrollIndex(
+                                    conversationId.toString(),
+                                    newScroll.firstVisibleItemIndex
+                                )
+                                userPreferences.setConversationScrollOffset(
+                                    conversationId.toString(),
+                                    newScroll.firstVisibleItemScrollOffset
+                                )
                             }
 
                             _uiState.value = _uiState.value.copy(
@@ -1701,22 +1738,13 @@ class ConversationListViewModel(
                                 it.copy(
                                     isLoadingMessages = false,
                                     messages = messagesModels.toPersistentList(),
-                                    scrollPosition = if (indexOfMessageForScroll == null) {
-                                        if (setInitialScroll && !scrollToBottom) getScrollPosition(
-                                            conversationId
-                                        ) else null
-                                    } else {
-                                        ScrollPosition(
-                                            indexOfMessageForScroll,
-                                            triggerScroll = true
-                                        )
-                                    },
+                                    scrollPosition = newScroll
+                                        ?: it.scrollPosition?.takeIf { pos -> pos.triggerScroll },
                                 )
                             }
                             setInitialScroll = false
                         }
                     }
-
                 }
             } catch (_: CancellationException) {
                 // ignore

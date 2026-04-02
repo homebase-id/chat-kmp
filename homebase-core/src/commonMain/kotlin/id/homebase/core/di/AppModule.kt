@@ -30,14 +30,15 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.syncLabeledDrives
-import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.settings.UserPreferences
-import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareContentProcessor
+import id.homebase.core.share.ShareConversationCacheWriter
+import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
+import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
@@ -122,6 +123,7 @@ val appModule = module {
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::HelpViewModel)
     viewModelOf(::LoginViewModel)
+    viewModelOf(::DesktopViewModel)
 }
 
 // Common module that each platform will implement

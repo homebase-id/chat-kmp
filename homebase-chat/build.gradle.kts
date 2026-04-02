@@ -92,3 +92,72 @@ kotlin {
         }
     }
 }
+
+// Create platform-specific JARs that only include native libs for that platform
+
+// Define a custom attribute to identify the target platform
+val targetPlatformAttribute = Attribute.of("targetPlatform", String::class.java)
+
+val platformConfigs = mapOf(
+    "LinuxX64" to "linux-x64",
+    "LinuxArm64" to "linux-arm64",
+    "MacosX64" to "macos-x64",
+    "MacosArm64" to "macos-arm64",
+    "WindowsX64" to "windows-x64"
+)
+
+val platformJarTasks = mutableListOf<TaskProvider<Jar>>()
+
+platformConfigs.forEach { (platformName, resourcePath) ->
+    val taskName = "jvmJar$platformName"
+
+    // Create the JAR task
+    val jarTask = tasks.register<Jar>(taskName) {
+        // Get the base jvmJar task
+        val baseJar = tasks.named<Jar>("jvmJar")
+
+        // Copy all compiled classes from the base JAR
+        from(baseJar.map { zipTree(it.archiveFile) }) {
+            exclude("ffmpeg/**")  // Exclude all ffmpeg directories
+        }
+
+        // Add only the platform-specific ffmpeg resources
+        from(kotlin.sourceSets.named("jvmMain").map { sourceSet ->
+            sourceSet.resources.sourceDirectories.files.map { dir ->
+                fileTree(dir) {
+                    include("ffmpeg/$resourcePath/**")
+                }
+            }
+        })
+
+        archiveClassifier.set(platformName.lowercase())
+
+        // Make this task depend on the base jvmJar
+        dependsOn(baseJar)
+    }
+
+    platformJarTasks.add(jarTask)
+
+    // Create a consumable configuration for this platform
+    val configurationName = "jvmJar$platformName"
+    configurations.create(configurationName) {
+        isCanBeConsumed = true
+        isCanBeResolved = false
+        attributes {
+            attribute(targetPlatformAttribute, platformName)
+        }
+    }
+
+    // Add the JAR as an artifact to the configuration
+    artifacts.add(configurationName, jarTask)
+}
+
+// Ensure all platform JARs are built when building the module
+tasks.named("assemble") {
+    dependsOn(platformJarTasks)
+}
+
+// Also wire them up to the jvmJar task for good measure
+tasks.named("jvmJar") {
+    finalizedBy(platformJarTasks)
+}

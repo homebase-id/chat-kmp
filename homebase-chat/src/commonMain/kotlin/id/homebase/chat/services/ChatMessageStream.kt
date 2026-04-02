@@ -334,13 +334,13 @@ class ChatMessageStream(
     companion object {
         private fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
-            val count = header.serverMetadata.originalRecipientCount
-            val transferSummary =
-                header.serverMetadata.transferHistory?.summary ?: return ChatDeliveryStatus.Sent
-
             if (header.fileMetadata.appData.groupId == ChatProtocol.ConversationWithYourselfId) {
                 return ChatDeliveryStatus.Read
             }
+
+            val count = header.serverMetadata.originalRecipientCount
+            val transferSummary =
+                header.serverMetadata.transferHistory?.summary ?: return ChatDeliveryStatus.Sent
 
             return when {
                 transferSummary.totalFailed > 0 -> ChatDeliveryStatus.Failed
@@ -392,6 +392,7 @@ class ChatMessageStream(
                         conversationId = appData.groupId!!,
                         userDate = deletedUserDate.toInstant(),
                         modified = metadata.updated.toInstant(),
+                        created = metadata.created.toInstant(),
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         localReadTimestamp = localReadTimestamp,
@@ -479,6 +480,7 @@ class ChatMessageStream(
                     content = messageAppData.getMessage(),
                     userDate = userDate.toInstant(),
                     modified = metadata.updated.toInstant(),
+                    created = metadata.created.toInstant(),
                     originalAuthor = metadata.originalAuthor,
                     displayName = displayName,
                     isEdited = messageAppData.isEdited,
@@ -509,6 +511,7 @@ class ChatMessageStream(
                         content = "Failed to parse message from server",
                         userDate = metadata.created.toInstant(),
                         modified = metadata.updated.toInstant(),
+                        created = metadata.created.toInstant(),
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         messageAppData = MessageAppData(),
