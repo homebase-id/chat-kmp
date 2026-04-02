@@ -24,6 +24,7 @@ data class MessageUiModel(
     val content: String, // the message
     val userDate: Instant, // User-specified message timestamp (from appData.userDate)
     val modified: Instant?, // When the message was last modified
+    val created: Instant, // Server-side creation timestamp
     val originalAuthor: OdinId?,
     val displayName: String,
 

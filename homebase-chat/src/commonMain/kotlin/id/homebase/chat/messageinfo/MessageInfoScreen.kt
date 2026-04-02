@@ -45,8 +45,9 @@ import id.homebase.resources.chat_message_info
 import id.homebase.resources.delivered_to
 import id.homebase.resources.details
 import id.homebase.resources.failed
+import id.homebase.resources.label_edited
+import id.homebase.resources.label_received
 import id.homebase.resources.label_sent
-import id.homebase.resources.label_updated
 import id.homebase.resources.menu_back
 import id.homebase.resources.reactions
 import id.homebase.resources.read_by
@@ -144,13 +145,22 @@ fun MessageInfoUi(
                 )
                 Text(
                     text = stringResource(
-                        MR.string.label_updated,
-                        uiState.message?.modified?.let { formateDateTime(it) }
-                            ?: uiState.message?.userDate?.let { formateDateTime(it) } ?: "",
+                        MR.string.label_received,
+                        uiState.message?.created?.let { formateDateTime(it) } ?: "",
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                 )
+                if (uiState.message?.isEdited == true) {
+                    Text(
+                        text = stringResource(
+                            MR.string.label_edited,
+                            uiState.message?.modified?.let { formateDateTime(it) } ?: "",
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                }
 
                 // Recipients section grouped by status
                 if (uiState.isTransferHistoryLoading) {

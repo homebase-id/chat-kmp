@@ -40,8 +40,9 @@
     <string name="updated">Updated</string>
     <string name="reactions">Reactions</string>
     <string name="sent">Sent</string>
-    <string name="label_sent">Sent: %1$s</string>
-    <string name="label_updated">Updated: %1$s</string>
+    <string name="label_sent">App sent: %1$s</string>
+    <string name="label_received">Received: %1$s</string>
+    <string name="label_edited">Edited: %1$s</string>
     <string name="error_server_not_responding">Server not responding</string>
     <string name="error_access_denied">Access denied</string>
     <string name="error_too_many_attempts">Too many attempts</string>
