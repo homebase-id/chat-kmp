@@ -96,6 +96,7 @@ class LoginViewModel(
                 timeout {
                     requestTimeoutMillis = 10_000
                     connectTimeoutMillis = 5_000
+                    socketTimeoutMillis = 5_000
                 }
             }
             Logger.i(tag = "LoginViewModel", messageString = "Ping response: ${response.status.value}")
