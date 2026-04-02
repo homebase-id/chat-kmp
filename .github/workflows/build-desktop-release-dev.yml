@@ -91,4 +91,4 @@ jobs:
         shell: bash
         run: |
           PATH="$PATH:../.conveyor/install/conveyor-22.0/bin"
-          conveyor --cache-dir="../.conveyor/cache" "-Kapp.signing-key=$SIGNING_KEY" -f ci.conveyor.conf make copied-site          
+          conveyor --cache-dir="../.conveyor/cache" "-Kapp.signing-key=$SIGNING_KEY" -v -f ci.conveyor.conf make copied-site          
