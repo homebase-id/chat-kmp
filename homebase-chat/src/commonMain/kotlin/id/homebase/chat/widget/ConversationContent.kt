@@ -101,6 +101,7 @@ import id.homebase.resources.chat_group_rejoin_accept
 import id.homebase.resources.chat_group_rejoin_decline
 import id.homebase.resources.chat_group_rejoin_pending_description
 import id.homebase.resources.chat_group_you_left
+import id.homebase.resources.chat_group_you_were_removed
 import id.homebase.resources.chat_message_forward_to
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
