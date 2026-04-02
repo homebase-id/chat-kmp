@@ -272,6 +272,12 @@ class ConversationService(
         requireCallerIsGroupAdmin(conversation)
 
         val domain = credentialsManager.requireActiveDomain()
+
+        val adminsInRemoveList = conversation.admins.intersect(remove.toSet())
+        require(adminsInRemoveList.isEmpty()) {
+            "Cannot remove admins via updateGroupMembers. Use updateAdmins first to remove their admin role: $adminsInRemoveList"
+        }
+
         val current = conversation.participants.toMutableSet()
 
         val removed = current.intersect(remove.toSet())
@@ -308,36 +314,27 @@ class ConversationService(
 
         // tell the group who was added after we update the conversation so
         // the new people will get the message too
-        added.forEach { user ->
-            val messageId = Uuid.random()
-            chatMessageSenderService.sendStatusMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                statusMessage = StatusMessageData(
-                    statusMessage = StatusMessage.ConversationMemberAdded,
-                    subject = user
-                ),
-                previousMessageUniqueId = previousMessageId,
-                additionalRecipients = listOf(user)
-            )
+        if (added.isNotEmpty()) {
 
-            previousMessageId = messageId
-        }
+            // ensure the message is sent to added after they get the new conversation file
+            previousMessageId = conversationId
 
-        // If any removed members were admins, strip them from the admin file and push
-        // the updated admin file to remaining members + the removed members so everyone
-        // has a consistent view.
-        if (removed.isNotEmpty()) {
-            val updatedAdmins = conversation.admins.filterNot { removed.contains(it) }
-            updateAdminFile(
-                conversationId = conversationId,
-                admins = updatedAdmins,
-                recipients = normalized + removed.toList()
-            )
-        }
+            added.forEach { user ->
+                val messageId = Uuid.random()
+                chatMessageSenderService.sendStatusMessage(
+                    messageUniqueId = messageId,
+                    conversationId = conversationId,
+                    statusMessage = StatusMessageData(
+                        statusMessage = StatusMessage.ConversationMemberAdded,
+                        subject = user
+                    ),
+                    previousMessageUniqueId = previousMessageId,
+                    additionalRecipients = listOf(user)
+                )
 
-        if(added.isNotEmpty())
-        {
+                previousMessageId = messageId
+            }
+
             trySendIntroductions(added, "$domain has added you to a group chat")
         }
     }
@@ -616,7 +613,8 @@ class ConversationService(
             FileUpdateInstructionSet(
                 transferIv = ByteArrayUtil.getRndByteArray(16),
                 locale = UpdateLocale.Local,
-                recipients = if (distribute) (participants + additionalDistributionRecipients).filterNot { it == domain }.distinct() else emptyList(),
+                recipients = if (distribute) (participants + additionalDistributionRecipients).filterNot { it == domain }
+                    .distinct() else emptyList(),
                 manifest = manifest
             )
 
