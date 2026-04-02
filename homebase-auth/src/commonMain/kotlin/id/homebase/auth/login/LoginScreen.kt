@@ -33,6 +33,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -75,6 +76,7 @@ import id.homebase.resources.login_successful
 import id.homebase.resources.login_title
 import id.homebase.resources.login_try_again_button
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.coroutines.delay
 import kotlinx.collections.immutable.persistentListOf
 import org.jetbrains.compose.resources.stringResource
 
@@ -163,7 +165,8 @@ fun LoginUi(
 
             when {
                 uiState.isLoading -> LoginLoading(
-                    driveProgresses = uiState.driveProgresses
+                    driveProgresses = uiState.driveProgresses,
+                    isPinging = uiState.isPinging
                 )
                 uiState.isAuthenticated -> LoginSuccess()
                 uiState.errorMessage != null ->
@@ -196,7 +199,7 @@ fun LoginUi(
 /* ---------- STATES ---------- */
 
 @Composable
-private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>) {
+private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>, isPinging: Boolean = false) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = stringResource(MR.string.loading),
@@ -212,6 +215,21 @@ private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (isPinging) {
+                var secondsLeft by remember { mutableIntStateOf(15) }
+                LaunchedEffect(Unit) {
+                    while (secondsLeft > 0) {
+                        delay(1000)
+                        secondsLeft--
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Timeout in ${secondsLeft}s",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         } else {
             driveProgresses.forEach { drive ->
                 DriveProgressRow(

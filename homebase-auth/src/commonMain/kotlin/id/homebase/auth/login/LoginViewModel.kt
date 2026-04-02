@@ -127,6 +127,7 @@ class LoginViewModel(
                 it.copy(
                     homebaseId = homebaseId.domainName,
                     isLoading = true,
+                    isPinging = true,
                     errorMessage = null
                 )
             }
@@ -136,12 +137,15 @@ class LoginViewModel(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
+                        isPinging = false,
                         errorMessage = "Unable to ping $homebaseId - are you sure it's a Homebase ID?"
                     )
                 }
 
                 return@launch
             }
+
+            _uiState.update { it.copy(isPinging = false) }
 
             try {
                 Logger.i(tag = "LoginViewModel", messageString = "Ping OK, calling youAuthFlowManager.authorize()...")
