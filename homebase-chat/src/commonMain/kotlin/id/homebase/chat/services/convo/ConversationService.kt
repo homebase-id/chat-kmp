@@ -290,7 +290,8 @@ class ConversationService(
                     statusMessage = StatusMessage.ConversationMemberAdded,
                     subject = user
                 ),
-                previousMessageUniqueId = previousMessageId
+                previousMessageUniqueId = previousMessageId,
+                additionalRecipients = listOf(user)
             )
 
             previousMessageId = messageId

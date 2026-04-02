@@ -160,7 +160,8 @@ class ChatMessageSenderService(
         conversationId: Uuid,
         statusMessage: StatusMessageData,
         previousMessageUniqueId: Uuid? = null,
-        payloadBundle: PayloadBundle? = null
+        payloadBundle: PayloadBundle? = null,
+        additionalRecipients: List<OdinId> = emptyList()
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
@@ -168,7 +169,8 @@ class ChatMessageSenderService(
         notificationText = "",
         previousMessageUniqueId = previousMessageUniqueId,
         payloadBundle = payloadBundle,
-        isStatusMessage = true
+        isStatusMessage = true,
+        additionalRecipients = additionalRecipients
     )
 
     private suspend fun sendMessageInternal(
@@ -178,7 +180,8 @@ class ChatMessageSenderService(
         notificationText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
-        isStatusMessage: Boolean = false
+        isStatusMessage: Boolean = false,
+        additionalRecipients: List<OdinId> = emptyList()
     ): SendMessageResult {
 
         val conversation = conversationStream.getConversationById(conversationId)
@@ -190,7 +193,7 @@ class ChatMessageSenderService(
         }
 
         val keyHeader = KeyHeader.newRandom16()
-        val recipients = conversationStream.getRecipients(conversationId)
+        val recipients = (conversationStream.getRecipients(conversationId) + additionalRecipients).distinct()
         val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
         val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
