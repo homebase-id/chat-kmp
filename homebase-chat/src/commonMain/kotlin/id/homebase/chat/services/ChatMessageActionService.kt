@@ -45,13 +45,9 @@ class ChatMessageActionService(
 
     suspend fun markAsReadLatestFileCreated(conversationId: Uuid, messageIds: List<Uuid>) {
 
-        Logger.d { "Attempting mark-as-read for messageIds: ${messageIds.size}" }
-
         val batch = chatMessageStream.getMessages(messageIds)
         val domain = credentialsManager.requireActiveDomain()
         val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
-
-        Logger.d { "Attempting mark-as-read for batch count: ${batch.records.size}" }
 
         val isSelfConversation = conversationId == ChatProtocol.ConversationWithYourselfId
         val unreadRecords = batch.records
@@ -63,19 +59,15 @@ class ChatMessageActionService(
             }
 
         if (unreadRecords.isEmpty()) {
-            // Todd says: This line deals with the fact that messages from the sender shouldn't count towards unread messages
             dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
-            Logger.d { "markAsReadLatestFileCreated: no unread records for $conversationId (newReadTime=${newReadTime.milliseconds} not written)" }
-
             conversationStream.updateUnreadCounts()
             return
         }
 
-        Logger.d { "Calling mark-as-read for unread-records count: ${unreadRecords.size}" }
+        // Use server-side 'created' timestamp for the read receipt endTime.
+        // The server matches against 'created', not the client-side 'userDate'.
+        val endTime = unreadRecords.maxOf { it.created }
 
-        val endTime = unreadRecords.maxOf { it.userDate }
-
-        Logger.d { "Upserting chatReadCount->lastReadTime=${newReadTime.milliseconds} for $conversationId" }
         dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
         conversationStream.updateUnreadCounts()
 
