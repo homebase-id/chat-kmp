@@ -141,22 +141,22 @@ class DriveSync(
                             .distinct()
                         Logger.d("DriveSync: batch contains ${chatGroupIds.size} chat conversation(s): $chatGroupIds")
                     }
-                    if (searchResults.isNotEmpty()) {
-                        // Gate: if previous batch's DB write failed, stop sync immediately
-                        try {
-                            pendingDbJob?.await()
-                            pendingDbJob = null
-                        } catch (e: Exception) {
-                            Logger.e("DriveSync: DB write failed for drive $driveId, stopping sync: ${e.message}")
-                            eventBus.emit(
-                                BackendEvent.DriveEvent.Stopped(
-                                    driveId, totalCount,
-                                    BackendEvent.DriveResult.Failure("DB write failed: ${e.message ?: "unknown error"}")
-                                )
+                    // Gate: if previous batch's DB write failed, stop sync immediately
+                    try {
+                        pendingDbJob?.await()
+                        pendingDbJob = null
+                    } catch (e: Exception) {
+                        Logger.e("DriveSync: DB write failed for drive $driveId, stopping sync: ${e.message}")
+                        eventBus.emit(
+                            BackendEvent.DriveEvent.Stopped(
+                                driveId, totalCount,
+                                BackendEvent.DriveResult.Failure("DB write failed: ${e.message ?: "unknown error"}")
                             )
-                            return
-                        }
-                        
+                        )
+                        return
+                    }
+
+                    if (searchResults.isNotEmpty()) {
                         recordsRead = searchResults.size
                         totalCount += recordsRead
                         val batchCursorToSave = cursor
