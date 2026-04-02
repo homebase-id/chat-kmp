@@ -142,17 +142,27 @@ class DriveSync(
                         Logger.d("DriveSync: batch contains ${chatGroupIds.size} chat conversation(s): $chatGroupIds")
                     }
                     if (searchResults.isNotEmpty()) {
+                        // Gate: if previous batch's DB write failed, stop sync immediately
+                        try {
+                            pendingDbJob?.await()
+                            pendingDbJob = null
+                        } catch (e: Exception) {
+                            Logger.e("DriveSync: DB write failed for drive $driveId, stopping sync: ${e.message}")
+                            eventBus.emit(
+                                BackendEvent.DriveEvent.Stopped(
+                                    driveId, totalCount,
+                                    BackendEvent.DriveResult.Failure("DB write failed: ${e.message ?: "unknown error"}")
+                                )
+                            )
+                            return
+                        }
+                        
                         recordsRead = searchResults.size
                         totalCount += recordsRead
                         val batchCursorToSave = cursor
                         val batchTotalCount = totalCount
                         val batchRecordsRead = recordsRead
                         val latestModified = searchResults.last().fileMetadata.updated
-
-                        // Await previous DB write before launching a new one
-                        // (network call above runs concurrently with the previous DB write)
-                        pendingDbJob?.await()
-                        pendingDbJob = null
 
                         pendingDbJob = scope.async {
                             fileHeaderProcessor.baseUpsertEntryZapZap(
