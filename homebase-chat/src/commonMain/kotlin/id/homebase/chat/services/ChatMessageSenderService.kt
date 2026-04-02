@@ -194,7 +194,7 @@ class ChatMessageSenderService(
         }
 
         val keyHeader = KeyHeader.newRandom16()
-        val recipients = (conversationStream.getRecipients(conversationId) + additionalRecipients).distinct()
+        val recipients = conversationStream.getRecipients(conversationId, additionalRecipients)
         val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
         val encryptedBundle = payloadBundleEncryptionService.encryptBundle(

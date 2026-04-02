@@ -281,21 +281,6 @@ class ConversationService(
         current.addAll(added)
 
         var previousMessageId: Uuid? = null
-        added.forEach { user ->
-            val messageId = Uuid.random()
-            chatMessageSenderService.sendStatusMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                statusMessage = StatusMessageData(
-                    statusMessage = StatusMessage.ConversationMemberAdded,
-                    subject = user
-                ),
-                previousMessageUniqueId = previousMessageId,
-                additionalRecipients = listOf(user)
-            )
-
-            previousMessageId = messageId
-        }
 
         removed.forEach { user ->
             val messageId = Uuid.random()
@@ -320,6 +305,24 @@ class ConversationService(
             participants = normalized,
             additionalDistributionRecipients = removed.toList()
         )
+
+        // tell the group who was added after we update the conversation so
+        // the new people will get the message too
+        added.forEach { user ->
+            val messageId = Uuid.random()
+            chatMessageSenderService.sendStatusMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.ConversationMemberAdded,
+                    subject = user
+                ),
+                previousMessageUniqueId = previousMessageId,
+                additionalRecipients = listOf(user)
+            )
+
+            previousMessageId = messageId
+        }
 
         // If any removed members were admins, strip them from the admin file and push
         // the updated admin file to remaining members + the removed members so everyone

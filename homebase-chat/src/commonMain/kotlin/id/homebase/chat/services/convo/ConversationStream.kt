@@ -408,11 +408,11 @@ class ConversationStream(
         )
     }
 
-    suspend fun getRecipients(conversationId: Uuid): List<OdinId> {
+    suspend fun getRecipients(conversationId: Uuid, additionalRecipients: List<OdinId> = emptyList()): List<OdinId> {
 
-        val domain = credentialsManager.getActiveDomain()!!
+        val domain = credentialsManager.requireActiveDomain()
         val conversation = getConversationById(conversationId) ?: return listOf()
-        val recipients = conversation.participants.filter { it != domain }
+        val recipients = (conversation.participants + additionalRecipients).filter { it != domain }.distinct()
         return recipients
     }
 
