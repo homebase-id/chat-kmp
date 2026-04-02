@@ -16,9 +16,11 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -98,6 +100,7 @@ class DriveSync(
     private suspend fun performSync() {
         var totalCount = 0
         var queryBatchResponse: QueryBatchResponse? = null
+        var pendingDbJob: Deferred<Unit>? = null
 
         eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
 
@@ -138,31 +141,47 @@ class DriveSync(
                             .distinct()
                         Logger.d("DriveSync: batch contains ${chatGroupIds.size} chat conversation(s): $chatGroupIds")
                     }
+                    // Gate: if previous batch's DB write failed, stop sync immediately
+                    try {
+                        pendingDbJob?.await()
+                        pendingDbJob = null
+                    } catch (e: Exception) {
+                        Logger.e("DriveSync: DB write failed for drive $driveId, stopping sync: ${e.message}")
+                        eventBus.emit(
+                            BackendEvent.DriveEvent.Stopped(
+                                driveId, totalCount,
+                                BackendEvent.DriveResult.Failure("DB write failed: ${e.message ?: "unknown error"}")
+                            )
+                        )
+                        return
+                    }
+
                     if (searchResults.isNotEmpty()) {
                         recordsRead = searchResults.size
                         totalCount += recordsRead
                         val batchCursorToSave = cursor
-
-                        // Write to DB before emitting event to ensure DB is consistent
-                        // when any event handler (e.g. loadConversation) reads from it.
-                        fileHeaderProcessor.baseUpsertEntryZapZap(
-                            identityId = identityId,
-                            driveId = driveId,
-                            fileHeaders = searchResults,
-                            cursor = batchCursorToSave
-                        )
-
+                        val batchTotalCount = totalCount
+                        val batchRecordsRead = recordsRead
                         val latestModified = searchResults.last().fileMetadata.updated
 
-                        eventBus.emit(
-                            BackendEvent.DriveEvent.BatchReceived(
+                        pendingDbJob = scope.async {
+                            fileHeaderProcessor.baseUpsertEntryZapZap(
+                                identityId = identityId,
                                 driveId = driveId,
-                                totalCount = totalCount,
-                                batchCount = recordsRead,
-                                latestModified = latestModified,
-                                batchData = searchResults
+                                fileHeaders = searchResults,
+                                cursor = batchCursorToSave
                             )
-                        )
+
+                            eventBus.emit(
+                                BackendEvent.DriveEvent.BatchReceived(
+                                    driveId = driveId,
+                                    totalCount = batchTotalCount,
+                                    batchCount = batchRecordsRead,
+                                    latestModified = latestModified,
+                                    batchData = searchResults
+                                )
+                            )
+                        }
                     }
 
                     if (!queryBatchResponse.hasMoreRows)
@@ -207,7 +226,14 @@ class DriveSync(
             }
         }
 
-        eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Success))
-        Logger.d("Drive $driveId synchronized with $totalCount records read.")
+        try {
+            pendingDbJob?.await()
+            Logger.d("DriveSync: all DB writes complete for drive $driveId ($totalCount total records)")
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Success))
+            Logger.d("Drive $driveId synchronized with $totalCount records read.")
+        } catch (e: Exception) {
+            Logger.e("Sync failed due to DB error: ${e.message}")
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.Failure(e.message ?: "DB upsert failed")))
+        }
     }
 }

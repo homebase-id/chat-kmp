@@ -22,7 +22,7 @@ data class MessageUiModel(
     val fileId: Uuid, // fileId
     val conversationId: Uuid, // groupId
     val content: String, // the message
-    val created: Instant, // When the message was created by the author
+    val userDate: Instant, // User-specified message timestamp (from appData.userDate)
     val modified: Instant?, // When the message was last modified
     val originalAuthor: OdinId?,
     val displayName: String,

@@ -16,7 +16,7 @@ data class ConversationUiModel(
     val id: Uuid,
     val name: String,
     var lastMessage: String,
-    var timestamp: Instant, // Timestamp of the last message in this convo
+    var latestMessageTimestamp: Instant, // Timestamp of the last message in this convo
     var unreadCount: Int = 0,
     val avatarInitials: String,
     val avatarUrl: String = "",
@@ -58,10 +58,10 @@ data class ConversationUiModel(
             activeUserDomain: OdinId?
         ): ConversationUiModel {
             // TODO: Should we also increase unread count here if it's a new message?
-            if (msg.created >= timestamp) {
+            if (msg.userDate >= latestMessageTimestamp) {
                 return this.copy(
                     lastMessage = msg.content.truncateToCodePoints(40),
-                    timestamp = msg.created,
+                    latestMessageTimestamp = msg.userDate,
                     lastMessageDeliveryStatus = msg.messageAppData.deliveryStatus,
                     lastMessageIsDeleted = msg.isDeleted,
                     lastMessageFirstPayload = msg.payloads?.firstOrNull(),

@@ -55,14 +55,14 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.data.MessageUiModel
-import id.homebase.core.image.HomebaseImage
-import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.image.ImageSize
 import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
@@ -772,7 +772,7 @@ fun SentMessageBubblePreviewDark() {
         Surface {
             Column {
                 ReceivedMessageBubbleDisplayOnly(
-                    message = testMessageUiModel("Message 😀"),
+                    message = testMessageUiModel("Message somewhat longer 😀"),
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -794,7 +794,7 @@ private fun testMessageUiModel(message: String): MessageUiModel {
         fileId = Uuid.generateV4(),
         conversationId = Uuid.generateV4(),
         content = message,
-        created = Clock.System.now(),
+        userDate = Clock.System.now(),
         modified = null,
         originalAuthor = null,
         displayName = "John Doe",
