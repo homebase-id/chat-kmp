@@ -427,13 +427,20 @@ class ConversationService(
             Logger.e("Failed to send leave status message", t)
         }
 
-        // 2. Remove self from participants — chained after status message
-        updateConversationInternal(
-            conversationId = conversationId,
-            title = conversation.name,
-            participants = remaining,
-            dependencyUniqueId = messageId
-        )
+        // 2. Remove self from participants — chained after status message.
+        // If this fails, roll back the optimistic status message so it doesn't
+        // persist in the DB as a ghost "X left" entry.
+        try {
+            updateConversationInternal(
+                conversationId = conversationId,
+                title = conversation.name,
+                participants = remaining,
+                dependencyUniqueId = messageId
+            )
+        } catch (t: Throwable) {
+            optimisticWriter.removeOptimisticFile(chatDrive, messageId)
+            throw t
+        }
 
         // 3. Remove self from admins (separate file)
         if (conversation.admins.contains(domain)) {
