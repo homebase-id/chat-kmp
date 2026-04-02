@@ -120,6 +120,12 @@ class ConversationMapper(
                 else -> ConversationState.Active
             }
 
+            val exitedAt = if (conversationState == ConversationState.Left
+                || conversationState == ConversationState.Removed
+            ) {
+                localAppData?.lastExitedAt?.toInstant()
+            } else null
+
             var ui =
                 ConversationUiModel(
                     id = conversationId,
@@ -137,7 +143,8 @@ class ConversationMapper(
                     avatarModel = avatarModel,
                     admins = admins,
                     conversationState = conversationState,
-                    isGroup = isGroup
+                    isGroup = isGroup,
+                    exitedAt = exitedAt
                 )
 
             if (lastMsg != null) {

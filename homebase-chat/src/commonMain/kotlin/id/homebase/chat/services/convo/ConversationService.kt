@@ -460,6 +460,8 @@ class ConversationService(
         updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
             it + ChatProtocol.ConversationLeftTag
         }
+        optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
+            ?.let { outboxSync.tryEnqueue(it) }
 
         val postLeaveFile = getConversationHomebaseFile(conversationId)
         Logger.d { "leaveGroup END: conversationId=$conversationId aesKey=${postLeaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
@@ -519,6 +521,8 @@ class ConversationService(
         updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
             it + ChatProtocol.ConversationLeftTag
         }
+        optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
+            ?.let { outboxSync.tryEnqueue(it) }
     }
 
     suspend fun updateConversationInternal(

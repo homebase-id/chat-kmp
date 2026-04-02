@@ -19,6 +19,8 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.api.sync.database.OutboxSync
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageLoader
@@ -35,7 +37,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class ConversationStream(
@@ -47,6 +48,8 @@ class ConversationStream(
     private val shareCacheWriter: ShareConversationCacheWriter,
     private val imageLoader: HomebaseImageLoader,
     private val cacheStorage: ShareCacheStorage,
+    private val optimisticWriter: OptimisticWriter,
+    private val outboxSync: OutboxSync,
 ) {
 
     private val chatDrive = chatTargetDrive.alias
@@ -281,7 +284,7 @@ class ConversationStream(
         _conversations.value = ConversationsData(items = currentList)
     }
 
-    private fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
+    private suspend fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
         // Left is sticky — only cleared by an explicit rejoin action, not by outbox responses
         // which may not preserve localAppData tags. RejoinPending is the one exception: it means
         // the server shows us back in participants while we still have the Left tag locally.
@@ -294,13 +297,22 @@ class ConversationStream(
             incoming.conversationState
         }
 
-        // Stamp exitedAt the first time we transition into Left or Removed.
-        // Preserved on subsequent updates so messages after this instant can be filtered out.
-        val resolvedExitedAt = existing.exitedAt ?: run {
-            val isNewlyExited = (resolvedState == ConversationState.Left || resolvedState == ConversationState.Removed)
-                && existing.conversationState != ConversationState.Left
-                && existing.conversationState != ConversationState.Removed
-            if (isNewlyExited) Clock.System.now() else null
+        // Stamp lastExitedAt in localAppData the first time we detect a Removed transition.
+        // The mapper reads it back from localAppData on subsequent loads (cold start, reconnect).
+        val isNewlyRemoved = resolvedState == ConversationState.Removed
+            && existing.conversationState != ConversationState.Removed
+            && existing.conversationState != ConversationState.Left
+        if (isNewlyRemoved) {
+            optimisticWriter.stampConversationExitedAt(chatDrive, existing.id)
+                ?.let { outboxSync.tryEnqueue(it) }
+        }
+
+        // Clear exitedAt when active again; preserve on Left/Removed (first stamp wins).
+        val resolvedExitedAt = when {
+            resolvedState == ConversationState.Active
+                || resolvedState == ConversationState.RejoinPending -> null
+            isNewlyRemoved -> UnixTimeUtc().toInstant()
+            else -> existing.exitedAt ?: incoming.exitedAt
         }
         
         // Structural fields (membership, identity) always come from the conversation file,

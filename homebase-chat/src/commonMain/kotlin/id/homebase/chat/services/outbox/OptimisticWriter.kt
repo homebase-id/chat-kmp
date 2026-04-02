@@ -26,13 +26,16 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.toBase64
+import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.convo.ConversationLocalAppDataJson
 import kotlin.uuid.Uuid
 
 class OptimisticWriter(
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
-    private val eventBus: EventBus
+    private val eventBus: EventBus,
 ) {
     private val fileProcessor: MainIndexMetaHelpers.HomebaseFileProcessor =
         MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
@@ -426,6 +429,71 @@ class OptimisticWriter(
         else
             ToggleReactionResultType.Deleted
         return Pair(resultType, existingFile)
+    }
+
+    suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalMetadataContentOutboxRequest? {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(credentials.getIdentityId())
+
+        val result = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = driveId,
+            noOfItems = 1,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = listOf(conversationId)
+        )
+
+        val existingFile = result.records.singleOrNull() ?: return null
+
+        val existing = existingFile.fileMetadata.localAppData?.content?.let {
+            try { OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it) } catch (_: Throwable) { null }
+        }
+        val updatedLocalAppData = (existing ?: ConversationLocalAppDataJson())
+            .copy(lastExitedAt = UnixTimeUtc())
+        val content = OdinSystemSerializer.serialize(updatedLocalAppData)
+
+        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val updatedFile = existingFile.copy(
+            fileMetadata = existingFile.fileMetadata.copy(
+                localAppData = (existingFile.fileMetadata.localAppData ?: LocalAppMetadata()).copy(
+                    content = content
+                ),
+                updated = lastModified
+            )
+        )
+
+        return try {
+            val batch = listOf(updatedFile)
+            fileProcessor.baseUpsertEntryZapZap(
+                identityId = credentials.getIdentityId(),
+                driveId = driveId,
+                fileHeaders = batch,
+                cursor = null
+            )
+            eventBus.emit(
+                BackendEvent.DriveEvent.BatchReceived(
+                    driveId = driveId,
+                    totalCount = batch.size,
+                    batchCount = batch.size,
+                    latestModified = lastModified,
+                    batchData = batch,
+                    source = BackendEvent.SyncSource.DriveSync
+                )
+            )
+            UpdateLocalMetadataContentOutboxRequest(
+                driveId = driveId,
+                fileId = existingFile.fileId,
+                versionTag = existingFile.fileMetadata.localAppData?.versionTag?.toString(),
+                content = content,
+                iv = null
+            )
+        } catch (e: Exception) {
+            Logger.e("stampConversationExitedAt failed: ${e.message}")
+            null
+        }
     }
 
     /**
