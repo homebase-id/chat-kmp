@@ -199,6 +199,8 @@ class ConversationService(
         val conversation = requireConversation(conversationId)
         val domain = credentialsManager.requireActiveDomain()
 
+        Logger.d { "updateAdmins: conversationId=$conversationId add=$add remove=$remove currentAdmins=${conversation.admins} participants=${conversation.participants}" }
+
         requireCallerIsGroupAdmin(conversation)
 
         val recipients = conversation.participants
@@ -209,7 +211,6 @@ class ConversationService(
             "Admins must be recipients"
         }
 
-        //TODO: reconcile the data here
         admins.addAll(add)
         admins.removeAll(remove)
 
@@ -223,6 +224,8 @@ class ConversationService(
                 throw IllegalStateException("Cannot remove the last admin.  You must first add another to replace you")
             }
         }
+
+        Logger.d { "updateAdmins: resolved admins=$admins recipients=${recipients.filterNot { it == domain }}" }
 
         updateAdminFile(
             conversationId = conversationId,
@@ -886,7 +889,22 @@ class ConversationService(
         recipients: List<OdinId>
     ) {
         val existingFile = getConversationAdminHomebaseFile(conversationId)
+        Logger.d { "updateAdminFile: conversationId=$conversationId existingFile=${existingFile?.fileMetadata?.appData?.uniqueId} versionTag=${existingFile?.fileMetadata?.versionTag} admins=$admins recipients=$recipients" }
+
         if (existingFile == null) {
+            Logger.d { "updateAdminFile: no existing file, uploading new admin file" }
+            uploadAdminFile(conversationId, admins, recipients)
+            return
+        }
+
+        // If the file was never confirmed by the server (still pending), the local optimistic
+        // record is stale. Remove it and re-upload so the server sees a fresh create.
+        val isPending = existingFile.fileMetadata.localAppData?.tags
+            ?.contains(ChatProtocol.isPendingSendTag) == true
+        Logger.d { "updateAdminFile: isPending=$isPending localTags=${existingFile.fileMetadata.localAppData?.tags}" }
+        if (isPending) {
+            Logger.d { "updateAdminFile: stale optimistic file detected, removing and re-uploading" }
+            optimisticWriter.removeOptimisticFile(chatDrive, ChatProtocol.getAdminFileUniqueId(conversationId))
             uploadAdminFile(conversationId, admins, recipients)
             return
         }
