@@ -71,7 +71,7 @@ fun OwnerAvatar(
             }
             if (driveIsSyncing == true && connectionStatus == AppConnectionStatus.Connected) {
                 CircularProgressIndicator(
-                    modifier = modifier
+                    modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .size(16.dp),
                     color = color,
@@ -79,7 +79,7 @@ fun OwnerAvatar(
                 )
             } else {
                 Box(
-                    modifier = modifier
+                    modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .size(16.dp)
                         .clip(CircleShape)

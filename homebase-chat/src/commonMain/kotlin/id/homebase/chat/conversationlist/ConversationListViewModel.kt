@@ -1255,12 +1255,21 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ShowContactInfo -> {
-                // ignore if click on own contact
-                if (action.odinId == uiState.value.ownerSession?.odinId?.domainName) return
-                _uiState.update {
-                    it.copy(
-                        uiEvent = NavigateToContactInfo((action.odinId))
-                    )
+                if (action.odinId == uiState.value.ownerSession?.odinId?.domainName) {
+                    // Show self-conversation settings as owner profile
+                    _uiState.update {
+                        it.copy(
+                            uiEvent = NavigateToConversationSettings(
+                                ChatProtocol.ConversationWithYourselfId.toString()
+                            )
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            uiEvent = NavigateToContactInfo(action.odinId)
+                        )
+                    }
                 }
             }
 
