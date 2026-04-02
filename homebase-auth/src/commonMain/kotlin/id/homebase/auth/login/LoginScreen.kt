@@ -42,6 +42,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -329,7 +331,9 @@ private fun LoginForm(
     onCreateAccountClick: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
-    var homebaseId by remember { mutableStateOf(homebaseId) }
+    var homebaseIdField by remember {
+        mutableStateOf(TextFieldValue(homebaseId, selection = TextRange(homebaseId.length)))
+    }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
@@ -357,15 +361,15 @@ private fun LoginForm(
             Spacer(modifier = Modifier.height(16.dp))
         }
         HomebaseIdField(
-            value = homebaseId,
-            onValueChange = { homebaseId = it.cleanDomain().replace(".", " ") },
+            value = homebaseIdField,
+            onValueChange = { homebaseIdField = it.copy(text = it.text.cleanDomain().replace(".", " ")) },
             focusRequester = focusRequester,
-            onDone = { onLoginClick(homebaseId.cleanDomain(preserveTrailingDot = false)) }
+            onDone = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) }
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Button(onClick = { onLoginClick(homebaseId.cleanDomain(preserveTrailingDot = false)) }, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) }, modifier = Modifier.fillMaxWidth()) {
             if (errorMessage != null) Text(stringResource(MR.string.login_try_again_button)) else Text(stringResource(MR.string.login_sign_in_button))
         }
         Spacer(modifier = Modifier.height(16.dp))
@@ -381,14 +385,14 @@ private fun LoginForm(
 
 @Composable
 private fun HomebaseIdField(
-    value: String,
-    onValueChange: (String) -> Unit,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
     focusRequester: FocusRequester,
     onDone: () -> Unit,
 ) {
     OutlinedTextField(
         value = value,
-        onValueChange = { onValueChange(it) },
+        onValueChange = onValueChange,
         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
         placeholder = { Text(stringResource(MR.string.login_id_placeholder)) },
         label = { Text(stringResource(MR.string.login_id_label)) },
