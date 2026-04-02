@@ -41,7 +41,7 @@ fun OwnerAvatar(
         if (profileImageData != null) {
             HomebaseImage(
                 imageData = profileImageData,
-                modifier = modifier
+                modifier = Modifier
                     .size(options.size)
                     .clip(CircleShape)
                     .let {
@@ -60,7 +60,6 @@ fun OwnerAvatar(
                 odinId = odinId,
                 initials = initials,
                 options = options,
-                modifier = modifier
             )
         }
         if (connectionStatus != null) {
