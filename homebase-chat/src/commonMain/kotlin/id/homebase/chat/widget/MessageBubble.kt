@@ -796,6 +796,7 @@ private fun testMessageUiModel(message: String): MessageUiModel {
         content = message,
         userDate = Clock.System.now(),
         modified = null,
+        created = Clock.System.now(),
         originalAuthor = null,
         displayName = "John Doe",
         keyHeader = KeyHeader(
