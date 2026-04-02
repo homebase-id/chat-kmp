@@ -45,12 +45,15 @@ import id.homebase.resources.chat_message_info
 import id.homebase.resources.delivered_to
 import id.homebase.resources.details
 import id.homebase.resources.failed
+import id.homebase.resources.label_edited
+import id.homebase.resources.label_received
 import id.homebase.resources.label_sent
-import id.homebase.resources.label_updated
 import id.homebase.resources.menu_back
 import id.homebase.resources.reactions
 import id.homebase.resources.read_by
+import id.homebase.resources.sending_to
 import id.homebase.resources.sent_to
+import id.homebase.resources.unknown_status
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -144,13 +147,22 @@ fun MessageInfoUi(
                 )
                 Text(
                     text = stringResource(
-                        MR.string.label_updated,
-                        uiState.message?.modified?.let { formateDateTime(it) }
-                            ?: uiState.message?.userDate?.let { formateDateTime(it) } ?: "",
+                        MR.string.label_received,
+                        uiState.message?.created?.let { formateDateTime(it) } ?: "",
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                 )
+                if (uiState.message?.isEdited == true) {
+                    Text(
+                        text = stringResource(
+                            MR.string.label_edited,
+                            uiState.message?.modified?.let { formateDateTime(it) } ?: "",
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                }
 
                 // Recipients section grouped by status
                 if (uiState.isTransferHistoryLoading) {
@@ -161,35 +173,30 @@ fun MessageInfoUi(
                         contentAlignment = Alignment.Center,
                     ) { CircularProgressIndicator() }
                 } else if (uiState.recipients.isNotEmpty()) {
-                    // Merge Sending into Sent to avoid duplicate "Sent to" sections
-                    val normalizedRecipients = remember(uiState.recipients) {
-                        uiState.recipients.map { recipient ->
-                            if (recipient.deliveryStatus == ChatDeliveryStatus.Sending) {
-                                recipient.copy(deliveryStatus = ChatDeliveryStatus.Sent)
-                            } else {
-                                recipient
-                            }
-                        }
-                    }
-                    val grouped = remember(normalizedRecipients) {
-                        normalizedRecipients.groupBy { it.deliveryStatus }
+                    val grouped = remember(uiState.recipients) {
+                        uiState.recipients.groupBy { it.deliveryStatus }
                     }
 
                     val statusOrder = listOf(
                         ChatDeliveryStatus.Read,
                         ChatDeliveryStatus.Delivered,
                         ChatDeliveryStatus.Sent,
+                        ChatDeliveryStatus.Sending,
                         ChatDeliveryStatus.Failed,
                     )
 
-                    statusOrder.forEach { status ->
+                    // Render known statuses in defined order, then any unknown ones
+                    val allStatuses = statusOrder + (grouped.keys - statusOrder.toSet())
+
+                    allStatuses.forEach { status ->
                         val entries = grouped[status] ?: return@forEach
                         val label = when (status) {
                             ChatDeliveryStatus.Read -> stringResource(MR.string.read_by)
                             ChatDeliveryStatus.Delivered -> stringResource(MR.string.delivered_to)
                             ChatDeliveryStatus.Sent -> stringResource(MR.string.sent_to)
+                            ChatDeliveryStatus.Sending -> stringResource(MR.string.sending_to)
                             ChatDeliveryStatus.Failed -> stringResource(MR.string.failed)
-                            else -> return@forEach
+                            else -> stringResource(MR.string.unknown_status)
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         SectionHeader(

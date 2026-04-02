@@ -21,6 +21,7 @@ class ActiveConversationStateTest {
             content = "test",
             userDate = Instant.fromEpochMilliseconds(0),
             modified = null,
+            created = Instant.fromEpochMilliseconds(0),
             originalAuthor = null,
             displayName = "Tester",
             messageAppData = MessageAppData(),
