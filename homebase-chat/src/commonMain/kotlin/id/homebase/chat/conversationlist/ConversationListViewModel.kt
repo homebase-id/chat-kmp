@@ -86,7 +86,6 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -96,6 +95,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.JsonPrimitive
@@ -187,7 +187,8 @@ class ConversationListViewModel(
         viewModelScope.launch {
             snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300)
                 .collectLatest {
-                    if (uiState.value.conversationsContent is ConversationListContentState.Items) {
+                    if (uiState.value.conversationsContent is ConversationListContentState.Items
+                        || uiState.value.conversationsContent is ConversationListContentState.EmptySearch) {
                         updateListContent()
                     }
                 }

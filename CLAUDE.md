@@ -86,6 +86,39 @@ Use `expect`/`actual` declarations for platform-specific code. The flag `-Xexpec
 
 homebase-core exports as `ComposeApp` framework, transitively exporting homebase-api and homebase-common. Other modules export individual frameworks (`homebase-commonKit`, `homebase-authKit`, `homebase-chatKit`).
 
+## Android Emulator/Device Logs (adb)
+
+`adb` must be in PATH (ships with the Android SDK under `platform-tools/`).
+
+**Package names:** debug = `id.homebase.feed.dev`, release = `id.homebase.feed`.
+The examples below use the debug package; substitute for release as needed.
+
+### On-device log file (preferred — contains all app-level Kermit logs)
+
+```bash
+# Read the log file directly
+adb shell run-as id.homebase.feed.dev cat files/logs/homebase.log
+
+# Copy to local machine
+adb shell run-as id.homebase.feed.dev cat files/logs/homebase.log > homebase.log
+
+# Tail recent entries (filter out stack trace lines)
+adb shell run-as id.homebase.feed.dev cat files/logs/homebase.log | grep -v "^\tat " | tail -50
+```
+
+The `run-as` prefix is required because the app's data directory is not world-readable.
+Note: `run-as` only works on debug builds (or devices with root).
+
+### Logcat (system-level, includes non-Kermit logs)
+
+```bash
+# Dump recent logs for the app
+adb logcat -d --pid=$(adb shell pidof id.homebase.feed.dev)
+
+# Clear buffer before a fresh capture
+adb logcat -c
+```
+
 ## CI/CD
 
 GitHub Actions workflows in `.github/workflows/`:

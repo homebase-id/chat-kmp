@@ -303,7 +303,12 @@ fun MessageTextFieldExpanded(
             state = state,
         )
         if (editExistingMode) {
-            MessageEditMessageInfo()
+            MessageEditMessageInfo(
+                showingEmojiSheet = false,
+                showExtraButtons = false,
+                onEmojiClick = onEmojiClick,
+                onKeyboardClick = {}
+            )
         }
         if (linkPreviewData != null) {
             LinkPreviewCard(
@@ -328,6 +333,7 @@ fun MessageTextFieldExpanded(
                                 sendMessage()
                                 true
                             }
+
                             keyEvent.key == Key.V && keyEvent.isCtrlPressed && onPasteImage != null -> {
                                 val imageBytes = getImageFromClipboard()
                                 if (imageBytes != null) {
@@ -337,6 +343,7 @@ fun MessageTextFieldExpanded(
                                     false
                                 }
                             }
+
                             else -> false
                         }
                     } else {
@@ -525,29 +532,18 @@ fun MessageTextFieldCompact(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
         ) {
-            if (editExistingMode) {
-                IconButton(
-                    onClick = onCancelEdit,
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(MR.string.cancel),
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-            }
             // Left area: text field (normal) or recording progress (while recording).
             // These are siblings in a Box so the recording overlay never covers the mic
             // button on the right, which keeps its pointerInput alive throughout the gesture.
             Box(modifier = Modifier.weight(1f)) {
                 Column {
                     if (editExistingMode) {
-                        MessageEditMessageInfo()
+                        MessageEditMessageInfo(
+                            showingEmojiSheet = showingEmojiSheet,
+                            showExtraButtons = true,
+                            onEmojiClick = onEmojiClick,
+                            onKeyboardClick = onKeyboardClick,
+                        )
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -570,6 +566,7 @@ fun MessageTextFieldCompact(
                                                 onSendMessage()
                                                 true
                                             }
+
                                             keyEvent.key == Key.V && keyEvent.isCtrlPressed && onPasteImage != null -> {
                                                 val imageBytes = getImageFromClipboard()
                                                 if (imageBytes != null) {
@@ -579,6 +576,7 @@ fun MessageTextFieldCompact(
                                                     false
                                                 }
                                             }
+
                                             else -> false
                                         }
                                     } else {
@@ -586,25 +584,27 @@ fun MessageTextFieldCompact(
                                     }
                                 },
                             placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
-                            leadingIcon = {
-                                if (!showingEmojiSheet) {
-                                    IconButton(onClick = onEmojiClick) {
-                                        Icon(
-                                            imageVector = Icons.Default.EmojiEmotions,
-                                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                                        )
-                                    }
-                                } else {
-                                    IconButton(onClick = onKeyboardClick) {
-                                        Icon(
-                                            imageVector = Icons.Default.Keyboard,
-                                            contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                                        )
+                            leadingIcon = if (editExistingMode) null else {
+                                {
+                                    if (!showingEmojiSheet) {
+                                        IconButton(onClick = onEmojiClick) {
+                                            Icon(
+                                                imageVector = Icons.Default.EmojiEmotions,
+                                                contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                            )
+                                        }
+                                    } else {
+                                        IconButton(onClick = onKeyboardClick) {
+                                            Icon(
+                                                imageVector = Icons.Default.Keyboard,
+                                                contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                            )
+                                        }
                                     }
                                 }
                             },
-                            trailingIcon = {
-                                if (!editExistingMode) {
+                            trailingIcon = if (editExistingMode) null else {
+                                {
                                     if (state.annotatedString.isNotBlank()) {
                                         IconButton(onClick = onAddAttachmentClick) {
                                             Icon(
@@ -636,7 +636,7 @@ fun MessageTextFieldCompact(
                                 disabledIndicatorColor = Color.Transparent,
                             ),
                             minLines = 1,
-                            maxLines = 3,
+                            maxLines = if (editExistingMode) 10 else 3,
                             keyboardOptions = KeyboardOptions(
                                 capitalization = KeyboardCapitalization.Sentences,
                                 imeAction = ImeAction.Default
@@ -741,11 +741,29 @@ fun MessageTextFieldCompact(
             if (isRecordingActive) {
                 Spacer(modifier = Modifier.width(56.dp))
             } else if (showSendButton) {
-                BlueBackgroundIconButton(
-                    onClick = onSendMessage,
-                    imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
-                    contentDescription = stringResource(MR.string.chat_send_message_button),
-                )
+                Column {
+                    if (editExistingMode) {
+                        IconButton(
+                            onClick = onCancelEdit,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = stringResource(MR.string.cancel),
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    BlueBackgroundIconButton(
+                        onClick = onSendMessage,
+                        imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
+                        contentDescription = stringResource(MR.string.chat_send_message_button),
+                    )
+                }
             } else if (!editExistingMode) {
                 BlueBackgroundIconButton(
                     onClick = onAddAttachmentClick,
@@ -843,9 +861,15 @@ fun BlueBackgroundIconButton(
 }
 
 @Composable
-private fun MessageEditMessageInfo() {
+private fun MessageEditMessageInfo(
+    modifier: Modifier = Modifier,
+    showExtraButtons: Boolean = false,
+    showingEmojiSheet: Boolean,
+    onEmojiClick: () -> Unit,
+    onKeyboardClick: () -> Unit,
+) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
@@ -860,9 +884,26 @@ private fun MessageEditMessageInfo() {
         )
         Text(
             text = stringResource(MR.string.chat_message_edit_message),
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier.padding(8.dp).weight(1f),
             style = MaterialTheme.typography.labelSmall,
         )
+        if (showExtraButtons) {
+            if (!showingEmojiSheet) {
+                IconButton(onClick = onEmojiClick) {
+                    Icon(
+                        imageVector = Icons.Default.EmojiEmotions,
+                        contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                    )
+                }
+            } else {
+                IconButton(onClick = onKeyboardClick) {
+                    Icon(
+                        imageVector = Icons.Default.Keyboard,
+                        contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                    )
+                }
+            }
+        }
     }
 }
 

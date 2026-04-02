@@ -133,7 +133,7 @@ class ConversationStream(
             }
 
         if (messageFiles.size != incomingMessages.size)
-            throw IllegalArgumentException("Size mismatch - conversion problem")
+            Logger.w("ConversationStream: ${messageFiles.size - incomingMessages.size} of ${messageFiles.size} messages failed to convert")
 
         for (m in incomingMessages) {
             val matchingConversation = _conversations.value.items.find { it.id == m.conversationId }
