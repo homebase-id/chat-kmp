@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -20,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.core.settings.Language
 import id.homebase.core.settings.ThemeState
@@ -120,12 +124,12 @@ fun AppearanceSettingsUi(
             SettingsClickableRow(
                 label = stringResource(MR.string.theme),
                 selectedValue = SettingsRowItemData(
-                    displayName = stringResource(getStringResourceForTheme(uiState.selectedTheme)),
+                    displayName = uiState.selectedTheme.getStringResourceForTheme(),
                     data = uiState.selectedTheme
                 ),
                 options = ThemeState.entries.map {
                     SettingsRowItemData(
-                        displayName = stringResource(getStringResourceForTheme(it)),
+                        displayName = it.getStringResourceForTheme(),
                         data = it,
                     )
                 }.toPersistentList(),
@@ -150,13 +154,19 @@ private fun getStringResourceForLanguage(
 }
 
 @Composable
-private fun getStringResourceForTheme(
-    themeState: ThemeState
-): StringResource {
-    return when (themeState) {
-        ThemeState.System -> MR.string.theme_system
-        ThemeState.Dark -> MR.string.theme_dark
-        ThemeState.Light -> MR.string.theme_light
+fun ThemeState.getStringResourceForTheme(): String {
+    return when (this) {
+        ThemeState.System -> stringResource(MR.string.theme_system)
+        ThemeState.Dark -> stringResource(MR.string.theme_dark)
+        ThemeState.Light -> stringResource(MR.string.theme_light)
+    }
+}
+
+fun ThemeState.getIconForTheme(): ImageVector {
+    return when (this) {
+        ThemeState.System -> Icons.Default.Brightness6
+        ThemeState.Dark -> Icons.Default.DarkMode
+        ThemeState.Light ->  Icons.Default.LightMode
     }
 }
 

@@ -2,12 +2,10 @@ package id.homebase.api.file
 
 import io.ktor.client.request.forms.InputProvider
 import io.ktor.utils.io.streams.asInput
-import java.io.File
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import java.io.FileOutputStream
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class JvmFileOperationsProvider : FileOperationsProvider {
     override fun openFileInput(path: String): InputProvider {
@@ -35,28 +33,7 @@ class JvmFileOperationsProvider : FileOperationsProvider {
 
 
     override fun getCacheDirectory(): String {
-        val osName = System.getProperty("os.name").lowercase()
-        val userHome = System.getProperty("user.home")
-
-        val cacheDir =
-            when {
-                osName.contains("mac") -> File(userHome, "Library/Caches/homebase-chat")
-                osName.contains("win") -> {
-                    val localAppData =
-                        System.getenv("LOCALAPPDATA")
-                            ?: File(userHome, "AppData/Local").absolutePath
-                    File(localAppData, "homebase-chat/cache")
-                }
-
-                else -> { // Linux and other Unix-like systems
-                    val xdgCache =
-                        System.getenv("XDG_CACHE_HOME")
-                            ?: File(userHome, ".cache").absolutePath
-                    File(xdgCache, "homebase-chat")
-                }
-            }
-
-        return cacheDir.absolutePath
+        return JvmFileSystemUtil.getCacheDirectory().absolutePath
     }
 
     override fun getFileSize(path: String): Long {

@@ -15,7 +15,7 @@ import id.homebase.core.ui.navigation.AppNavHost
 import id.homebase.core.ui.theme.HomebaseTheme
 import org.koin.compose.koinInject
 
-/** Main application entry point. Sets up Koin DI, theme, and navigation. */
+/** Main application entry point. Sets up theme, and navigation. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App(

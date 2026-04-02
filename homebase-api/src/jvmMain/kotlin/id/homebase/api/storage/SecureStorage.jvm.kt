@@ -1,5 +1,6 @@
 package id.homebase.api.storage
 
+import id.homebase.api.file.JvmFileSystemUtil
 import java.io.File
 import java.security.KeyStore
 import java.security.SecureRandom
@@ -27,9 +28,7 @@ actual object SecureStorage {
     private const val GCM_IV_LENGTH = 12
 
     private val storageDir: File by lazy {
-        val userHome = System.getProperty("user.home")
-        val appDir = File(userHome, ".homebase-chat")
-        appDir.mkdirs()
+        val appDir = JvmFileSystemUtil.getAppDataDirectory()
         appDir
     }
 

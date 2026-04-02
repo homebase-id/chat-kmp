@@ -20,11 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: "17"
+          java-version: "21"
           cache: gradle
 
       - name: Set up Gradle cache
@@ -61,6 +61,7 @@ jobs:
           SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
           SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
           SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
+          JDK_21: ${{ env.JAVA_HOME }}
 
       - name: Rename output
         run: |
