@@ -108,10 +108,6 @@ class DriveSync(
         val maxRetries = 3
 
         while (true) {
-            // Wait for previous batch's DB write to complete before starting next network call
-            pendingDbJob?.await()
-            pendingDbJob = null
-
             Logger.i("Synchronizing drive $driveId")
             val request = QueryBatchRequest(
                 queryParams = FileQueryParams(
@@ -145,6 +141,21 @@ class DriveSync(
                             .distinct()
                         Logger.d("DriveSync: batch contains ${chatGroupIds.size} chat conversation(s): $chatGroupIds")
                     }
+                    // Gate: if previous batch's DB write failed, stop sync immediately
+                    try {
+                        pendingDbJob?.await()
+                        pendingDbJob = null
+                    } catch (e: Exception) {
+                        Logger.e("DriveSync: DB write failed for drive $driveId, stopping sync: ${e.message}")
+                        eventBus.emit(
+                            BackendEvent.DriveEvent.Stopped(
+                                driveId, totalCount,
+                                BackendEvent.DriveResult.Failure("DB write failed: ${e.message ?: "unknown error"}")
+                            )
+                        )
+                        return
+                    }
+
                     if (searchResults.isNotEmpty()) {
                         recordsRead = searchResults.size
                         totalCount += recordsRead
@@ -153,8 +164,6 @@ class DriveSync(
                         val batchRecordsRead = recordsRead
                         val latestModified = searchResults.last().fileMetadata.updated
 
-                        // Launch DB write + event emission in background;
-                        // next loop iteration awaits this before starting a new DB write
                         pendingDbJob = scope.async {
                             fileHeaderProcessor.baseUpsertEntryZapZap(
                                 identityId = identityId,
