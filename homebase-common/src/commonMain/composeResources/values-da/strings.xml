@@ -156,6 +156,7 @@
     <string name="chat_group_choose_new_admin_disclaimer">Før du forlader gruppen, skal du vælge mindst én ny admin til denne gruppe.</string>
     <string name="chat_group_not_connected_disclaimer">Du kan kun chatte med tilsluttede identiteter, beskeder vil ikke blive leveret til alle gruppemedlemmer.</string>
     <string name="chat_group_you_left">Du har forladt denne gruppe</string>
+    <string name="chat_group_you_were_removed">Du er ikke længere i denne samtale</string>
     <string name="chat_group_rejoin_pending">Tilføjet igen</string>
     <string name="chat_group_rejoin_pending_description">Du er blevet tilføjet til denne gruppe igen</string>
     <string name="chat_group_rejoin_accept">Genindtræd</string>

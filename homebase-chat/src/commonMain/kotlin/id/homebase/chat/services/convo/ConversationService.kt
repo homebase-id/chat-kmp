@@ -280,16 +280,6 @@ class ConversationService(
         val added = add.filterNot { current.contains(it) }
         current.addAll(added)
 
-        val normalized = (current + domain).distinct()
-
-        updateConversationInternal(
-            conversationId = conversationId,
-            title = conversation.name,
-            participants = normalized
-        )
-
-        trySendIntroductions(added, "$domain has added you to a group chat")
-
         var previousMessageId: Uuid? = null
         added.forEach { user ->
             val messageId = Uuid.random()
@@ -320,6 +310,32 @@ class ConversationService(
 
             previousMessageId = messageId
         }
+
+        val normalized = (current + domain).distinct()
+
+        updateConversationInternal(
+            conversationId = conversationId,
+            title = conversation.name,
+            participants = normalized,
+            additionalDistributionRecipients = removed.toList()
+        )
+
+        // If any removed members were admins, strip them from the admin file and push
+        // the updated admin file to remaining members + the removed members so everyone
+        // has a consistent view.
+        if (removed.isNotEmpty()) {
+            val updatedAdmins = conversation.admins.filterNot { removed.contains(it) }
+            updateAdminFile(
+                conversationId = conversationId,
+                admins = updatedAdmins,
+                recipients = normalized + removed.toList()
+            )
+        }
+
+        if(added.isNotEmpty())
+        {
+            trySendIntroductions(added, "$domain has added you to a group chat")
+        }
     }
 
     suspend fun updateConversation(
@@ -341,8 +357,6 @@ class ConversationService(
         )
 
         var previousMessageId: Uuid? = null
-        val domain = credentialsManager.requireActiveDomain()
-
         if (title != null && title != conversation.name) {
 
             val messageId = Uuid.random()
@@ -504,7 +518,8 @@ class ConversationService(
         payloadBundle: PayloadBundle? = null,
         dependencyUniqueId: Uuid? = null,
         archivalStatus: ArchivalStatus? = null,
-        distribute: Boolean = true
+        distribute: Boolean = true,
+        additionalDistributionRecipients: List<OdinId> = emptyList()
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
@@ -597,7 +612,7 @@ class ConversationService(
             FileUpdateInstructionSet(
                 transferIv = ByteArrayUtil.getRndByteArray(16),
                 locale = UpdateLocale.Local,
-                recipients = if (distribute) participants.filterNot { it == domain } else emptyList(),
+                recipients = if (distribute) (participants + additionalDistributionRecipients).filterNot { it == domain }.distinct() else emptyList(),
                 manifest = manifest
             )
 
@@ -687,7 +702,8 @@ class ConversationService(
 
         if (conversation.isGroupConversation && !(
                     conversation.conversationState == ConversationState.Left ||
-                            conversation.conversationState == ConversationState.RejoinPending
+                            conversation.conversationState == ConversationState.RejoinPending ||
+                            conversation.conversationState == ConversationState.Removed
                     )
         ) {
             throw IllegalStateException("You must leave the group before deleting it")

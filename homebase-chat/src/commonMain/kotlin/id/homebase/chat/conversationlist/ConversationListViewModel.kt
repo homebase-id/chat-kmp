@@ -1562,7 +1562,8 @@ class ConversationListViewModel(
                         .filter {
                             !it.conversation.isPinned && (it.conversation.conversationState == ConversationState.Active
                                     || it.conversation.conversationState == ConversationState.Left
-                                    || it.conversation.conversationState == ConversationState.RejoinPending)
+                                    || it.conversation.conversationState == ConversationState.RejoinPending
+                                    || it.conversation.conversationState == ConversationState.Removed)
                         }
                         .map { conv -> ConversationListContentModel.Conversation(conv) }
                         .toPersistentList()

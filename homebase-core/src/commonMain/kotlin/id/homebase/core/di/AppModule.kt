@@ -77,7 +77,7 @@ val appModule = module {
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
                     conversationStream.getConversationById(conversationId)
-                        ?.conversationState == ConversationState.Left
+                        ?.conversationState.let { it == ConversationState.Left || it == ConversationState.Removed }
                 }
             }
         )

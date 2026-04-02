@@ -182,6 +182,7 @@
     <string name="chat_group_choose_new_admin_disclaimer">Before you leave, you must choose at least one new admin for this group.</string>
     <string name="chat_group_not_connected_disclaimer">You can only chat with connected identities, messages will not be delivered to all group members.</string>
     <string name="chat_group_you_left">You left this group</string>
+    <string name="chat_group_you_were_removed">You are no longer in this conversation</string>
     <string name="chat_group_rejoin_pending">Re-added</string>
     <string name="chat_group_rejoin_pending_description">You were re-added to this group</string>
     <string name="chat_group_rejoin_accept">Rejoin</string>

@@ -524,6 +524,19 @@ fun ConversationContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                } else if (conversation.conversation.conversationState == ConversationState.Removed) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_group_you_were_removed),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 } else if (conversation.conversation.conversationState == ConversationState.RejoinPending) {
                     Column(
                         modifier = Modifier.fillMaxWidth()

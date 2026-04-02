@@ -115,6 +115,7 @@ class ConversationMapper(
             val conversationState = when {
                 isLeftByTag && participants.contains(domain) -> ConversationState.RejoinPending
                 isLeftByTag -> ConversationState.Left
+                isGroup && !participants.contains(domain) -> ConversationState.Removed
                 isArchivedByTag -> ConversationState.Archived
                 else -> ConversationState.Active
             }
