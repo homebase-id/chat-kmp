@@ -413,9 +413,8 @@ class ConversationService(
 
         val messageId = Uuid.random()
 
-        // this is not critical for leaving a group so don't block
+        // 1. Notify the group first so they see the leave message
         try {
-            // 1. Notify the group first
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = messageId,
                 conversationId = conversationId,
@@ -646,7 +645,7 @@ class ConversationService(
             unecryptedMetadata = metadata
         )
 
-        val enqueued = outboxSync.tryEnqueue(request, dependencyUniqueId = dependencyUniqueId)
+        val enqueued = outboxSync.replaceEnqueue(request, dependencyUniqueId = dependencyUniqueId)
         if (!enqueued) {
             error("Failed to update conversation")
         }

@@ -232,6 +232,30 @@ class OutboxSync(
         return enqueued
     }
 
+    public suspend fun replaceEnqueue(
+        request: UpdateFileByUniqueIdRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val json = OdinSystemSerializer.serialize(request)
+        val enqueued = replaceEnqueue(
+            driveId = request.driveId,
+            uniqueId = request.metadata.appData.uniqueId
+                ?: error("unique id required to place in outbox"),
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.UpdateFile,
+            json = json
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
+    }
+
     public suspend fun tryEnqueue(
         request: UploadFileRequest,
         priority: Long = 100,
@@ -343,6 +367,21 @@ class OutboxSync(
         }
 
         return enqueued
+    }
+
+    /** Like tryEnqueue but replaces any existing pending item with the same (driveId, uniqueId).
+     *  Use when the new request supersedes a stale pending one, e.g. a conversation file update
+     *  that was queued while offline and is now outdated. */
+    public suspend fun replaceEnqueue(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        dependencyUniqueId: Uuid? = null,
+        priority: Long,
+        uploadType: Long,
+        json: String
+    ): Boolean {
+        databaseManager.outbox.deleteBy(driveId, uniqueId)
+        return tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
     }
 
     public suspend fun tryEnqueue(
