@@ -16,6 +16,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
@@ -86,16 +87,25 @@ fun ConversationSettingsUi(
             }
 
             uiState.conversation?.let { conversation ->
+                val isWithSelf = conversation.id == ChatProtocol.ConversationWithYourselfId
                 AvatarNameDisplay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                         .padding(bottom = 16.dp),
-                    displayName = conversation.name,
+                    displayName = if (isWithSelf) {
+                        uiState.ownerSession?.displayName ?: conversation.name
+                    } else {
+                        conversation.name
+                    },
                     avatarModel = conversation.avatarModel,
-                    onClick = {
-                        conversation.participants.firstOrNull()?.let {
-                            onUiAction(ConversationSettingsUiAction.ShowContactInfo(it))
+                    onClick = if (isWithSelf) {
+                        null  // No further navigation for self
+                    } else {
+                        {
+                            conversation.participants.firstOrNull()?.let {
+                                onUiAction(ConversationSettingsUiAction.ShowContactInfo(it))
+                            }
                         }
                     }
                 )

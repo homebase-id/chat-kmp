@@ -330,13 +330,13 @@ class ChatMessageStream(
     companion object {
         private fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
-            val count = header.serverMetadata.originalRecipientCount
-            val transferSummary =
-                header.serverMetadata.transferHistory?.summary ?: return ChatDeliveryStatus.Sent
-
             if (header.fileMetadata.appData.groupId == ChatProtocol.ConversationWithYourselfId) {
                 return ChatDeliveryStatus.Read
             }
+
+            val count = header.serverMetadata.originalRecipientCount
+            val transferSummary =
+                header.serverMetadata.transferHistory?.summary ?: return ChatDeliveryStatus.Sent
 
             return when {
                 transferSummary.totalFailed > 0 -> ChatDeliveryStatus.Failed

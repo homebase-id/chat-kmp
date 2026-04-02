@@ -41,7 +41,7 @@ fun OwnerAvatar(
         if (profileImageData != null) {
             HomebaseImage(
                 imageData = profileImageData,
-                modifier = modifier
+                modifier = Modifier
                     .size(options.size)
                     .clip(CircleShape)
                     .let {
@@ -60,7 +60,6 @@ fun OwnerAvatar(
                 odinId = odinId,
                 initials = initials,
                 options = options,
-                modifier = modifier
             )
         }
         if (connectionStatus != null) {
@@ -72,7 +71,7 @@ fun OwnerAvatar(
             }
             if (driveIsSyncing == true && connectionStatus == AppConnectionStatus.Connected) {
                 CircularProgressIndicator(
-                    modifier = modifier
+                    modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .size(16.dp),
                     color = color,
@@ -80,7 +79,7 @@ fun OwnerAvatar(
                 )
             } else {
                 Box(
-                    modifier = modifier
+                    modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .size(16.dp)
                         .clip(CircleShape)

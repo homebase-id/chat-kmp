@@ -30,7 +30,7 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: "17"
+          java-version: "21"
           distribution: "temurin"
 
       - name: Gradle Cache
@@ -48,6 +48,8 @@ jobs:
 
       - name: Run build command
         run: ${{ matrix.build-command }}
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
 
       - name: Verify Android build artifact
         if: ${{ matrix.name == 'Android & Desktop' }}

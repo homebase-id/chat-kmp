@@ -1,5 +1,6 @@
 package id.homebase.api.storage
 
+import id.homebase.api.file.JvmFileSystemUtil
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -10,9 +11,7 @@ actual object SharedPreferences {
     private const val PREFS_FILE = "shared_preferences.properties"
 
     private val storageDir: File by lazy {
-        val userHome = System.getProperty("user.home")
-        val appDir = File(userHome, ".homebase-chat")
-        appDir.mkdirs()
+        val appDir = JvmFileSystemUtil.getAppDataDirectory()
         appDir
     }
 
