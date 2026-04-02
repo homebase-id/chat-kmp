@@ -8,6 +8,7 @@ import kotlinx.collections.immutable.persistentListOf
 data class LoginUiState(
     val homebaseId: String = "",
     val isLoading: Boolean = false,
+    val isPinging: Boolean = false,
     val isAuthenticated: Boolean = false,
     val errorMessage: String? = null,
     val driveProgresses: ImmutableList<DriveProgress> = persistentListOf(),
