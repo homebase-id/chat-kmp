@@ -108,10 +108,6 @@ class DriveSync(
         val maxRetries = 3
 
         while (true) {
-            // Wait for previous batch's DB write to complete before starting next network call
-            pendingDbJob?.await()
-            pendingDbJob = null
-
             Logger.i("Synchronizing drive $driveId")
             val request = QueryBatchRequest(
                 queryParams = FileQueryParams(
@@ -153,8 +149,11 @@ class DriveSync(
                         val batchRecordsRead = recordsRead
                         val latestModified = searchResults.last().fileMetadata.updated
 
-                        // Launch DB write + event emission in background;
-                        // next loop iteration awaits this before starting a new DB write
+                        // Await previous DB write before launching a new one
+                        // (network call above runs concurrently with the previous DB write)
+                        pendingDbJob?.await()
+                        pendingDbJob = null
+
                         pendingDbJob = scope.async {
                             fileHeaderProcessor.baseUpsertEntryZapZap(
                                 identityId = identityId,
