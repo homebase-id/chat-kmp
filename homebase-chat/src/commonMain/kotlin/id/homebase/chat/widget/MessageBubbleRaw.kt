@@ -398,33 +398,59 @@ fun MessageBubbleRaw(
                         else constraints
                     )
 
-                    // Measure reply, set width to minium of text
-                    val replyPlaceable = if (replyIndex != -1) measurables[replyIndex].measure(
-                        constraints.copy(minWidth = textPlaceable.width)
-                    ) else null
-                    val replyWidth = replyPlaceable?.width ?: 0
-
                     // Measure show more text
                     val showMorePlaceable = measurables[showMoreIndex].measure(constraints)
 
                     // Measure info text
                     val infoPlaceable = measurables[infoIndex].measure(constraints)
 
+                    // Calculate potential final width BEFORE measuring reply
                     val layoutResult = textLayoutResult
-                    val finalWidth: Int
-                    val finalHeight: Int
-                    val infoX: Int
-                    val infoY: Int
-                    val replyHeight = replyPlaceable?.height ?: 0
+                    val potentialFinalWidth: Int
 
                     if (layoutResult != null && layoutResult.lineCount > 0) {
                         val lastLineIndex = layoutResult.lineCount - 1
                         val lastLineRight = layoutResult.getLineRight(lastLineIndex)
                         val horizontalGap = 8.dp.roundToPx()
-
                         val textRowPadding = 12.dp.roundToPx()
-                        val availableWidth =
-                            if (mediaWidth > 0) mediaWidth else constraints.maxWidth
+                        val availableWidth = if (mediaWidth > 0) mediaWidth else constraints.maxWidth
+                        val lastLineEnd = textRowPadding + lastLineRight.toInt()
+                        val fitsOnLastLine =
+                            (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
+
+                        potentialFinalWidth = if (fitsOnLastLine) {
+                            maxOf(
+                                mediaWidth,
+                                textPlaceable.width,
+                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
+                                authorWidth
+                            )
+                        } else {
+                            maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
+                        }
+                    } else {
+                        potentialFinalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
+                    }
+
+                    // NOW measure reply with the correct width that accounts for info placement
+                    val replyPlaceable = if (replyIndex != -1) measurables[replyIndex].measure(
+                        constraints.copy(minWidth = potentialFinalWidth, maxWidth = potentialFinalWidth)
+                    ) else null
+                    val replyWidth = replyPlaceable?.width ?: 0
+                    val replyHeight = replyPlaceable?.height ?: 0
+
+                    // Calculate final dimensions (now including reply width)
+                    val finalWidth: Int
+                    val finalHeight: Int
+                    val infoX: Int
+                    val infoY: Int
+
+                    if (layoutResult != null && layoutResult.lineCount > 0) {
+                        val lastLineIndex = layoutResult.lineCount - 1
+                        val lastLineRight = layoutResult.getLineRight(lastLineIndex)
+                        val horizontalGap = 8.dp.roundToPx()
+                        val textRowPadding = 12.dp.roundToPx()
+                        val availableWidth = if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                         val lastLineEnd = textRowPadding + lastLineRight.toInt()
                         val fitsOnLastLine =
                             (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
@@ -447,7 +473,7 @@ fun MessageBubbleRaw(
                                         textPlaceable.height +
                                         (showMorePlaceable.height)
                         } else {
-                            finalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
+                            finalWidth = maxOf(mediaWidth, replyWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
                             infoY = placeables.sumOf { it.height } + replyHeight + textPlaceable.height
                             infoX = finalWidth - infoPlaceable.width - 8.dp.roundToPx()
                             finalHeight =
