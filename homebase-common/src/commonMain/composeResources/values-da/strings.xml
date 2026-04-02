@@ -99,18 +99,31 @@
 
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s opdaterede samtalens titel</string>
+    <string name="system_conversation_title_updated_you">Du opdaterede samtalens titel</string>
     <string name="system_conversation_photo_updated">%1$s opdaterede samtalens billede</string>
+    <string name="system_conversation_photo_updated_you">Du opdaterede samtalens billede</string>
     <string name="system_conversation_member_name_added">%1$s tilføjede %2$s til samtalen</string>
     <string name="system_conversation_member_added">%1$s tilføjede et medlem til samtalen</string>
+    <string name="system_conversation_member_you_added">Du tilføjede %1$s til samtalen</string>
+    <string name="system_conversation_member_added_you">%1$s tilføjede dig til samtalen</string>
     <string name="system_conversation_member_name_removed">%1$s fjernede %2$s fra samtalen</string>
     <string name="system_conversation_member_removed">%1$s fjernede et medlem fra samtalen</string>
+    <string name="system_conversation_member_you_removed">Du fjernede %1$s fra samtalen</string>
+    <string name="system_conversation_member_removed_you">%1$s fjernede dig fra samtalen</string>
     <string name="system_conversation_admin_name_added">%1$s gjorde %2$s til administrator</string>
     <string name="system_conversation_admin_added">%1$s tilføjede en administrator</string>
+    <string name="system_conversation_admin_you_added">Du gjorde %1$s til administrator</string>
+    <string name="system_conversation_admin_added_you">%1$s gjorde dig til administrator</string>
     <string name="system_conversation_admin_name_removed">%1$s fjernede %2$s som administrator</string>
     <string name="system_conversation_admin_removed">%1$s fjernede en administrator</string>
+    <string name="system_conversation_admin_you_removed">Du fjernede %1$s som administrator</string>
+    <string name="system_conversation_admin_removed_you">%1$s fjernede dig som administrator</string>
     <string name="system_group_conversation_started">%1$s startede samtalen</string>
+    <string name="system_group_conversation_started_you">Du startede samtalen</string>
     <string name="system_group_conversation_member_left">%1$s forlod samtalen</string>
+    <string name="system_group_conversation_member_left_you">Du forlod samtalen</string>
     <string name="system_group_conversation_member_declined_rejoin">%1$s afslog at genindtræde i samtalen</string>
+    <string name="system_group_conversation_member_declined_rejoin_you">Du afslog at genindtræde i samtalen</string>
 
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
