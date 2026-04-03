@@ -26,17 +26,31 @@ import id.homebase.core.localization.TranslationUtil
 import id.homebase.resources.MR
 import id.homebase.resources.someone
 import id.homebase.resources.system_conversation_admin_added
+import id.homebase.resources.system_conversation_admin_added_you
 import id.homebase.resources.system_conversation_admin_name_added
 import id.homebase.resources.system_conversation_admin_name_removed
 import id.homebase.resources.system_conversation_admin_removed
+import id.homebase.resources.system_conversation_admin_removed_you
+import id.homebase.resources.system_conversation_admin_you_added
+import id.homebase.resources.system_conversation_admin_you_removed
 import id.homebase.resources.system_conversation_member_added
+import id.homebase.resources.system_conversation_member_added_you
 import id.homebase.resources.system_conversation_member_name_added
 import id.homebase.resources.system_conversation_member_name_removed
 import id.homebase.resources.system_conversation_member_removed
+import id.homebase.resources.system_conversation_member_removed_you
+import id.homebase.resources.system_conversation_member_you_added
+import id.homebase.resources.system_conversation_member_you_removed
 import id.homebase.resources.system_conversation_photo_updated
+import id.homebase.resources.system_conversation_photo_updated_you
 import id.homebase.resources.system_conversation_title_updated
+import id.homebase.resources.system_conversation_title_updated_you
+import id.homebase.resources.system_group_conversation_member_declined_rejoin
+import id.homebase.resources.system_group_conversation_member_declined_rejoin_you
 import id.homebase.resources.system_group_conversation_member_left
+import id.homebase.resources.system_group_conversation_member_left_you
 import id.homebase.resources.system_group_conversation_started
+import id.homebase.resources.system_group_conversation_started_you
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -56,6 +70,8 @@ class ChatMessageStream(
     private val scope: CoroutineScope,
     private val driveFileProvider: DriveFileProvider
 ) {
+    /** Set by ConversationStream to let us skip messages for left conversations. */
+    var isConversationLeft: (Uuid) -> Boolean = { false }
 
     private val conversationState = ActiveConversationState()
     private val chatDrive = chatTargetDrive.alias
@@ -117,6 +133,15 @@ class ChatMessageStream(
         val grouped = messages.groupBy { it.conversationId }
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
         grouped.forEach { (conversationId, msgs) ->
+            if (isConversationLeft(conversationId)) return@forEach
+            // Evict stale entries where the server returned a file whose id (uniqueId)
+            // changed (e.g. cleared on delete, so id falls back to fileId). Without this,
+            // the old entry (keyed by uniqueId) and new entry (keyed by fileId) both exist.
+            for (msg in msgs) {
+                if (msg.id == msg.fileId) {
+                    conversationState.removeByFileId(conversationId, msg.fileId)
+                }
+            }
             conversationState.upsert(conversationId, msgs)
         }
     }
@@ -419,7 +444,8 @@ class ChatMessageStream(
                     val status = OdinSystemSerializer.deserialize<StatusMessageData>(content)
                     val rendered = renderStatusMessage(
                         author = metadata.originalAuthor,
-                        status = status
+                        status = status,
+                        currentUser = domain
                     )
                     messageAppData = MessageAppData(
                         message = JsonPrimitive(rendered),
@@ -532,74 +558,80 @@ class ChatMessageStream(
             }
         }
 
-        fun renderStatusMessage(author: OdinId?, status: StatusMessageData): String {
+        fun renderStatusMessage(author: OdinId?, status: StatusMessageData, currentUser: OdinId? = null): String {
+            val authorIsYou = currentUser != null && author == currentUser
+            val subjectIsYou = currentUser != null && status.subject != null && status.subject == currentUser
             val name = author?.domainName ?: TranslationUtil.getString(MR.string.someone)
             val subject = status.subject?.domainName
 
             return when (status.statusMessage) {
                 StatusMessage.ConversationTitleUpdated ->
-                    TranslationUtil.getString(MR.string.system_conversation_title_updated, name)
+                    if (authorIsYou) TranslationUtil.getString(MR.string.system_conversation_title_updated_you)
+                    else TranslationUtil.getString(MR.string.system_conversation_title_updated, name)
 
                 StatusMessage.ConversationPhotoUpdated ->
-                    TranslationUtil.getString(MR.string.system_conversation_photo_updated, name)
+                    if (authorIsYou) TranslationUtil.getString(MR.string.system_conversation_photo_updated_you)
+                    else TranslationUtil.getString(MR.string.system_conversation_photo_updated, name)
 
                 StatusMessage.ConversationMemberAdded ->
-                    subject?.let {
-                        TranslationUtil.getString(
-                            MR.string.system_conversation_member_name_added,
-                            name,
-                            it
-                        )
+                    when {
+                        authorIsYou && subject != null ->
+                            TranslationUtil.getString(MR.string.system_conversation_member_you_added, subject)
+                        subjectIsYou ->
+                            TranslationUtil.getString(MR.string.system_conversation_member_added_you, name)
+                        subject != null ->
+                            TranslationUtil.getString(MR.string.system_conversation_member_name_added, name, subject)
+                        else ->
+                            TranslationUtil.getString(MR.string.system_conversation_member_added, name)
                     }
-                        ?: TranslationUtil.getString(
-                            MR.string.system_conversation_member_added,
-                            name
-                        )
 
                 StatusMessage.ConversationMemberRemoved ->
-                    subject?.let {
-                        TranslationUtil.getString(
-                            MR.string.system_conversation_member_name_removed,
-                            name,
-                            it
-                        )
+                    when {
+                        authorIsYou && subject != null ->
+                            TranslationUtil.getString(MR.string.system_conversation_member_you_removed, subject)
+                        subjectIsYou ->
+                            TranslationUtil.getString(MR.string.system_conversation_member_removed_you, name)
+                        subject != null ->
+                            TranslationUtil.getString(MR.string.system_conversation_member_name_removed, name, subject)
+                        else ->
+                            TranslationUtil.getString(MR.string.system_conversation_member_removed, name)
                     }
-                        ?: TranslationUtil.getString(
-                            MR.string.system_conversation_member_removed,
-                            name
-                        )
 
                 StatusMessage.ConversationAdminAdded ->
-                    subject?.let {
-                        TranslationUtil.getString(
-                            MR.string.system_conversation_admin_name_added,
-                            name,
-                            it
-                        )
+                    when {
+                        authorIsYou && subject != null ->
+                            TranslationUtil.getString(MR.string.system_conversation_admin_you_added, subject)
+                        subjectIsYou ->
+                            TranslationUtil.getString(MR.string.system_conversation_admin_added_you, name)
+                        subject != null ->
+                            TranslationUtil.getString(MR.string.system_conversation_admin_name_added, name, subject)
+                        else ->
+                            TranslationUtil.getString(MR.string.system_conversation_admin_added, name)
                     }
-                        ?: TranslationUtil.getString(
-                            MR.string.system_conversation_admin_added,
-                            name
-                        )
 
                 StatusMessage.ConversationAdminRemoved ->
-                    subject?.let {
-                        TranslationUtil.getString(
-                            MR.string.system_conversation_admin_name_removed,
-                            name,
-                            it
-                        )
+                    when {
+                        authorIsYou && subject != null ->
+                            TranslationUtil.getString(MR.string.system_conversation_admin_you_removed, subject)
+                        subjectIsYou ->
+                            TranslationUtil.getString(MR.string.system_conversation_admin_removed_you, name)
+                        subject != null ->
+                            TranslationUtil.getString(MR.string.system_conversation_admin_name_removed, name, subject)
+                        else ->
+                            TranslationUtil.getString(MR.string.system_conversation_admin_removed, name)
                     }
-                        ?: TranslationUtil.getString(
-                            MR.string.system_conversation_admin_removed,
-                            name
-                        )
 
                 StatusMessage.GroupConversationStarted ->
-                    TranslationUtil.getString(MR.string.system_group_conversation_started, name)
+                    if (authorIsYou) TranslationUtil.getString(MR.string.system_group_conversation_started_you)
+                    else TranslationUtil.getString(MR.string.system_group_conversation_started, name)
 
                 StatusMessage.ConversationMemberLeft ->
-                    TranslationUtil.getString(MR.string.system_group_conversation_member_left, name)
+                    if (authorIsYou) TranslationUtil.getString(MR.string.system_group_conversation_member_left_you)
+                    else TranslationUtil.getString(MR.string.system_group_conversation_member_left, name)
+
+                StatusMessage.ConversationMemberDeclinedRejoin ->
+                    if (authorIsYou) TranslationUtil.getString(MR.string.system_group_conversation_member_declined_rejoin_you)
+                    else TranslationUtil.getString(MR.string.system_group_conversation_member_declined_rejoin, name)
             }
         }
     }

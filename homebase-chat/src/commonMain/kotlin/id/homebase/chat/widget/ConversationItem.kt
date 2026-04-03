@@ -44,6 +44,7 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived
+import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
 import org.jetbrains.compose.resources.stringResource
@@ -159,6 +160,15 @@ fun ConversationItem(
                             .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(4.dp))
                             .padding(horizontal = 4.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                if (enrichedData.conversation.conversationState == ConversationState.RejoinPending) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(stringResource(MR.string.chat_group_rejoin_pending),
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer
                     )
                 }
             }

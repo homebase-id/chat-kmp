@@ -12,12 +12,15 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessage
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.api.sync.database.OutboxSync
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageLoader
@@ -45,6 +48,8 @@ class ConversationStream(
     private val shareCacheWriter: ShareConversationCacheWriter,
     private val imageLoader: HomebaseImageLoader,
     private val cacheStorage: ShareCacheStorage,
+    private val optimisticWriter: OptimisticWriter,
+    private val outboxSync: OutboxSync,
 ) {
 
     private val chatDrive = chatTargetDrive.alias
@@ -54,12 +59,14 @@ class ConversationStream(
     private var shareCacheJob: Job? = null
 
     private val mapper: ConversationMapper = ConversationMapper(
-        credentialsManager = credentialsManager
+        credentialsManager = credentialsManager,
+        dbm = dbm
     )
 
     val conversations: StateFlow<ConversationsData> = _conversations.asStateFlow()
     val shareableConversations: StateFlow<List<ShareableConversation>> =
         _shareableConversations.asStateFlow()
+
 
     // The full conversation list is loaded once from the local DB on authentication
     // (via start(), called from onPostAuthenticated in AppModule).
@@ -98,16 +105,24 @@ class ConversationStream(
                                 it.fileMetadata.appData.fileType ==
                                         ChatProtocol.MessageFileType
                             }
+                        val adminFiles =
+                            event.batchData.filter {
+                                it.fileMetadata.appData.fileType ==
+                                        ChatProtocol.ConversationAdminFileType
+                            }
 
                         Logger.d("ConversationStream: BatchReceived " +
                                 "${event.batchData.size} files " +
-                                "(conversations=${conversationFiles.size}, messages=${messageFiles.size})")
+                                "(conversations=${conversationFiles.size}, messages=${messageFiles.size}, adminFiles=${adminFiles.size})")
 
                         if (conversationFiles.isNotEmpty())
                             processConversationBatchIncrementally(conversationFiles)
 
                         if (messageFiles.isNotEmpty())
                             processMessageBatchIncrementally(messageFiles)
+
+                        if (adminFiles.isNotEmpty())
+                            processAdminFileBatch(adminFiles)
                     }
                 }
             }
@@ -134,6 +149,11 @@ class ConversationStream(
 
         for (m in incomingMessages) {
             val matchingConversation = _conversations.value.items.find { it.id == m.conversationId }
+
+            // Drop messages for conversations the user has left or been removed from
+            if (matchingConversation?.conversationState == ConversationState.Left
+                || matchingConversation?.conversationState == ConversationState.Removed) continue
+
             if (matchingConversation == null) {
                 val emptyConversation =
                     ConversationUiModel(
@@ -161,7 +181,8 @@ class ConversationStream(
                         lastMessageFirstPayload = m.payloads?.firstOrNull(),
                         lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
                         lastMessageIsFromActiveUser =
-                            m.isAuthoredBy(credentialsManager.getActiveDomain())
+                            m.isAuthoredBy(credentialsManager.getActiveDomain()),
+                        isGroup = false
                     )
 
                 Logger.w("ConversationStream: message arrived for unknown conversation ${m.conversationId}, creating placeholder")
@@ -202,6 +223,38 @@ class ConversationStream(
         }
     }
 
+    suspend fun loadConversation(conversationId: Uuid) {
+        val c = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(c.getIdentityId())
+
+        val conversationFile = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = chatDrive,
+            noOfItems = 1,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = listOf(conversationId),
+            filetypesAnyOf = listOf(ChatProtocol.ConversationFileType)
+        ).records.firstOrNull() ?: return
+
+        val incoming = mapper.mapToConversationUi(conversationFile, null)
+        val existing = _conversations.value.items.find { it.id == conversationId }
+        if (existing == null) {
+            insertNewConversation(incoming)
+        } else {
+            updateConversation(existing, incoming)
+        }
+    }
+
+    private suspend fun processAdminFileBatch(adminFiles: List<HomebaseFile>) {
+        val conversationIds = adminFiles.mapNotNull { it.fileMetadata.appData.groupId }.distinct()
+        for (conversationId in conversationIds) {
+            loadConversation(conversationId)
+        }
+    }
+
     private suspend fun processConversationBatchIncrementally(
         conversationFiles: List<HomebaseFile>
     ) {
@@ -233,38 +286,79 @@ class ConversationStream(
         _conversations.value = ConversationsData(items = currentList)
     }
 
-    private fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
-        // isPinned and conversationState are always applied regardless of timestamp ordering
-        val updatedConvo = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) {
-            existing.copy(
-                name = incoming.name,
-                avatarTiny = incoming.avatarTiny,
-                avatarUrl = incoming.avatarUrl,
-                avatarInitials = incoming.avatarInitials,
-                participants = incoming.participants,
-                latestMessageTimestamp = incoming.latestMessageTimestamp,
-                lastMessage = incoming.lastMessage,
-                lastMessageDeliveryStatus = incoming.lastMessageDeliveryStatus,
-                lastMessageIsDeleted = incoming.lastMessageIsDeleted,
-                lastMessageFirstPayload = incoming.lastMessageFirstPayload,
-                lastMessageHasMultiplePayloads = incoming.lastMessageHasMultiplePayloads,
-                lastMessageIsFromActiveUser = incoming.lastMessageIsFromActiveUser,
-                isPinned = incoming.isPinned,
-                conversationState = incoming.conversationState
-            )
-        } else {
-            existing.copy(
-                isPinned = incoming.isPinned,
-                conversationState = incoming.conversationState
-            )
+    private suspend fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
+        // Left is sticky — only cleared by an explicit rejoin action, not by outbox responses
+        // which may not preserve localAppData tags. RejoinPending is the one exception: it means
+        // the server shows us back in participants while we still have the Left tag locally.
+        val resolvedState = if (existing.conversationState == ConversationState.Left
+            && incoming.conversationState != ConversationState.Left
+            && incoming.conversationState != ConversationState.RejoinPending
+        ) {
+            ConversationState.Left
+          } else {
+            incoming.conversationState
         }
+
+        // Stamp lastExitedAt in localAppData the first time we detect a Removed transition.
+        // The mapper reads it back from localAppData on subsequent loads (cold start, reconnect).
+        val isNewlyRemoved = resolvedState == ConversationState.Removed
+            && existing.conversationState != ConversationState.Removed
+            && existing.conversationState != ConversationState.Left
+        if (isNewlyRemoved) {
+            optimisticWriter.stampConversationExitedAt(chatDrive, existing.id)
+                ?.let { outboxSync.tryEnqueue(it) }
+        }
+
+        // Clear exitedAt when active again; preserve on Left/Removed (first stamp wins).
+        val resolvedExitedAt = when {
+            resolvedState == ConversationState.Active
+                || resolvedState == ConversationState.RejoinPending -> null
+            isNewlyRemoved -> UnixTimeUtc().toInstant()
+            else -> existing.exitedAt ?: incoming.exitedAt
+        }
+        
+        // Structural fields (membership, identity) always come from the conversation file,
+        // regardless of timestamp. The in-memory timestamp is driven by message arrivals and
+        // is almost always newer than metadata.created, so a timestamp guard would silently
+        // drop participant/admin/name changes distributed by peers (e.g. leave, add member).
+        // Message-preview fields are only applied when the file is genuinely newer.
+        val updatedConvo = existing.copy(
+            name = incoming.name,
+            isGroup = incoming.isGroup,
+            admins = incoming.admins,
+            avatarModel = incoming.avatarModel,
+            avatarTiny = incoming.avatarTiny,
+            avatarUrl = incoming.avatarUrl,
+            avatarInitials = incoming.avatarInitials,
+            participants = incoming.participants,
+            isPinned = incoming.isPinned,
+            conversationState = resolvedState,
+            exitedAt = resolvedExitedAt,
+            // Message preview — only overwrite if the file carries a newer last-message snapshot
+            latestMessageTimestamp = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.latestMessageTimestamp else existing.latestMessageTimestamp,
+            lastMessage = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessage else existing.lastMessage,
+            lastMessageDeliveryStatus = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageDeliveryStatus else existing.lastMessageDeliveryStatus,
+            lastMessageIsDeleted = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageIsDeleted else existing.lastMessageIsDeleted,
+            lastMessageFirstPayload = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageFirstPayload else existing.lastMessageFirstPayload,
+            lastMessageHasMultiplePayloads = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageHasMultiplePayloads else existing.lastMessageHasMultiplePayloads,
+            lastMessageIsFromActiveUser = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageIsFromActiveUser else existing.lastMessageIsFromActiveUser,
+        )
         // We should optimize later to not map the full list
         _conversations.value =
             ConversationsData(items = _conversations.value.items.map { if (it.id == existing.id) updatedConvo else it })
     }
 
     private suspend fun loadConversations() {
-        val result = fetchConversations()
+        val leftIds = _conversations.value.items
+            .filter { it.conversationState == ConversationState.Left }
+            .map { it.id }
+            .toSet()
+
+        val result = fetchConversations().map { convo ->
+            if (convo.id in leftIds && convo.conversationState != ConversationState.Left)
+                convo.copy(conversationState = ConversationState.Left)
+            else convo
+        }
         _conversations.value = ConversationsData(items = result)
     }
 
@@ -368,11 +462,21 @@ class ConversationStream(
         return _conversations.value.items.firstOrNull { it.id == conversationId }
     }
 
-    suspend fun getRecipients(conversationId: Uuid): List<OdinId> {
+    fun onConversationLeft(conversationId: Uuid) {
+        _conversations.value = _conversations.value.copy(
+            items = _conversations.value.items.map { convo ->
+                if (convo.id == conversationId)
+                    convo.copy(conversationState = ConversationState.Left)
+                else convo
+            }
+        )
+    }
 
-        val domain = credentialsManager.getActiveDomain()!!
+    suspend fun getRecipients(conversationId: Uuid, additionalRecipients: List<OdinId> = emptyList()): List<OdinId> {
+
+        val domain = credentialsManager.requireActiveDomain()
         val conversation = getConversationById(conversationId) ?: return listOf()
-        val recipients = conversation.participants.filter { it != domain }
+        val recipients = (conversation.participants + additionalRecipients).filter { it != domain }.distinct()
         return recipients
     }
 

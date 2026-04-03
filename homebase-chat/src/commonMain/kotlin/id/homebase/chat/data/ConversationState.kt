@@ -6,6 +6,9 @@ import kotlinx.serialization.Serializable
 enum class ConversationState {
     Active,
     Archived,
+    Left,
+    RejoinPending,
+    Removed,
     Deleted,
     Invalid
 }

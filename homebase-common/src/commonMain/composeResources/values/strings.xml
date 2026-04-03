@@ -125,17 +125,31 @@
 
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s updated the conversation title</string>
+    <string name="system_conversation_title_updated_you">You updated the conversation title</string>
     <string name="system_conversation_photo_updated">%1$s updated the conversation photo</string>
+    <string name="system_conversation_photo_updated_you">You updated the conversation photo</string>
     <string name="system_conversation_member_name_added">%1$s added %2$s to the conversation</string>
     <string name="system_conversation_member_added">%1$s added a member to the conversation</string>
+    <string name="system_conversation_member_you_added">You added %1$s to the conversation</string>
+    <string name="system_conversation_member_added_you">%1$s added you to the conversation</string>
     <string name="system_conversation_member_name_removed">%1$s removed %2$s from the conversation</string>
     <string name="system_conversation_member_removed">%1$s removed a member from the conversation</string>
+    <string name="system_conversation_member_you_removed">You removed %1$s from the conversation</string>
+    <string name="system_conversation_member_removed_you">%1$s removed you from the conversation</string>
     <string name="system_conversation_admin_name_added">%1$s made %2$s an admin</string>
     <string name="system_conversation_admin_added">%1$s added an admin</string>
+    <string name="system_conversation_admin_you_added">You made %1$s an admin</string>
+    <string name="system_conversation_admin_added_you">%1$s made you an admin</string>
     <string name="system_conversation_admin_name_removed">%1$s removed %2$s as admin</string>
     <string name="system_conversation_admin_removed">%1$s removed an admin</string>
+    <string name="system_conversation_admin_you_removed">You removed %1$s as admin</string>
+    <string name="system_conversation_admin_removed_you">%1$s removed you as admin</string>
     <string name="system_group_conversation_started">%1$s started the conversation</string>
+    <string name="system_group_conversation_started_you">You started the conversation</string>
     <string name="system_group_conversation_member_left">%1$s left the conversation</string>
+    <string name="system_group_conversation_member_left_you">You left the conversation</string>
+    <string name="system_group_conversation_member_declined_rejoin">%1$s declined to rejoin the conversation</string>
+    <string name="system_group_conversation_member_declined_rejoin_you">You declined to rejoin the conversation</string>
 
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filter by unread</string>
@@ -180,6 +194,12 @@
     <string name="chat_group_choose_new_admin">Choose new admin</string>
     <string name="chat_group_choose_new_admin_disclaimer">Before you leave, you must choose at least one new admin for this group.</string>
     <string name="chat_group_not_connected_disclaimer">You can only chat with connected identities, messages will not be delivered to all group members.</string>
+    <string name="chat_group_you_left">You left this group</string>
+    <string name="chat_group_you_were_removed">You are no longer in this conversation</string>
+    <string name="chat_group_rejoin_pending">Re-added</string>
+    <string name="chat_group_rejoin_pending_description">You were re-added to this group</string>
+    <string name="chat_group_rejoin_accept">Rejoin</string>
+    <string name="chat_group_rejoin_decline">Decline</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>

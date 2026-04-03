@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
+import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -24,13 +25,20 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.QueryBatch
+import id.homebase.api.toBase64
+import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
+import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import id.homebase.chat.services.convo.ConversationLocalAppDataJson
 import kotlin.uuid.Uuid
 
 class OptimisticWriter(
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
-    private val eventBus: EventBus
+    private val eventBus: EventBus,
 ) {
     private val fileProcessor: MainIndexMetaHelpers.HomebaseFileProcessor =
         MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
@@ -424,6 +432,89 @@ class OptimisticWriter(
         else
             ToggleReactionResultType.Deleted
         return Pair(resultType, existingFile)
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalMetadataContentOutboxRequest? {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val queryBatch = QueryBatch(credentials.getIdentityId())
+
+        val result = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = driveId,
+            noOfItems = 1,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = listOf(conversationId)
+        )
+
+        val existingFile = result.records.singleOrNull() ?: return null
+
+        val existing = existingFile.fileMetadata.localAppData?.content?.let {
+            try { OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it) } catch (_: Throwable) { null }
+        }
+        val updatedLocalAppData = (existing ?: ConversationLocalAppDataJson())
+            .copy(lastExitedAt = UnixTimeUtc())
+        val content = OdinSystemSerializer.serialize(updatedLocalAppData)
+
+        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val updatedFile = existingFile.copy(
+            fileMetadata = existingFile.fileMetadata.copy(
+                localAppData = (existingFile.fileMetadata.localAppData ?: LocalAppMetadata()).copy(
+                    content = content
+                ),
+                updated = lastModified
+            )
+        )
+
+        // Pre-encrypt while we still have access to the key header. The outbox
+        // processes this later, possibly after the participant-update has removed
+        // us from the group — at which point getFileHeader returns isEncrypted=false
+        // and the server rejects the update with "A string IV is required".
+        val ivBase64: String?
+        val encryptedContent: String?
+        if (existingFile.serverFileIsEncrypted) {
+            val iv = ByteArrayUtil.getRndByteArray(16)
+            val keyHeader = KeyHeader(iv = iv, aesKey = existingFile.keyHeader.aesKey)
+            val encrypted = keyHeader.encryptDataAes(content.encodeToByteArray())
+            ivBase64 = Base64.encode(iv)
+            encryptedContent = Base64.encode(encrypted)
+        } else {
+            ivBase64 = null
+            encryptedContent = content
+        }
+
+        return try {
+            val batch = listOf(updatedFile)
+            fileProcessor.baseUpsertEntryZapZap(
+                identityId = credentials.getIdentityId(),
+                driveId = driveId,
+                fileHeaders = batch,
+                cursor = null
+            )
+            eventBus.emit(
+                BackendEvent.DriveEvent.BatchReceived(
+                    driveId = driveId,
+                    totalCount = batch.size,
+                    batchCount = batch.size,
+                    latestModified = lastModified,
+                    batchData = batch,
+                    source = BackendEvent.SyncSource.DriveSync
+                )
+            )
+            UpdateLocalMetadataContentOutboxRequest(
+                driveId = driveId,
+                fileId = existingFile.fileId,
+                versionTag = existingFile.fileMetadata.localAppData?.versionTag?.toString(),
+                content = encryptedContent,
+                iv = ivBase64
+            )
+        } catch (e: Exception) {
+            Logger.e("stampConversationExitedAt failed: ${e.message}")
+            null
+        }
     }
 
     /**

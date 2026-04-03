@@ -153,7 +153,7 @@ kotlin.sourceSets.named("jvmMain") {
 
 compose.desktop {
     application {
-        javaHome = System.getenv("JDK_21")
+        javaHome = System.getenv("JDK_21") ?: System.getProperty("java.home")
         mainClass = "id.homebase.app.MainKt"
 
         jvmArgs += listOf(

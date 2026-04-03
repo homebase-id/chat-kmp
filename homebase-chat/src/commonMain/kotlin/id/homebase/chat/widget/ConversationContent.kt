@@ -97,6 +97,11 @@ import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_not_connected_disclaimer
+import id.homebase.resources.chat_group_rejoin_accept
+import id.homebase.resources.chat_group_rejoin_decline
+import id.homebase.resources.chat_group_rejoin_pending_description
+import id.homebase.resources.chat_group_you_left
+import id.homebase.resources.chat_group_you_were_removed
 import id.homebase.resources.chat_message_forward_to
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
@@ -507,6 +512,59 @@ fun ConversationContent(
             }
 
             Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
+                if (conversation.conversation.conversationState == ConversationState.Left) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_group_you_left),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else if (conversation.conversation.conversationState == ConversationState.Removed) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_group_you_were_removed),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else if (conversation.conversation.conversationState == ConversationState.RejoinPending) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_group_rejoin_pending_description),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            ElevatedButton(onClick = {
+                                onUiAction(ConversationListUiAction.AcceptRejoin(conversation.conversation.id))
+                            }) {
+                                Text(stringResource(MR.string.chat_group_rejoin_accept))
+                            }
+                            ElevatedButton(onClick = {
+                                onUiAction(ConversationListUiAction.DeclineRejoin(conversation.conversation.id))
+                            }) {
+                                Text(stringResource(MR.string.chat_group_rejoin_decline))
+                            }
+                        }
+                    }
+                } else {
                 Column(modifier = Modifier.animateContentSize()) {
                     uiState.replyToMessage?.let { msg ->
                         ReplyPreviewBar(
@@ -642,6 +700,7 @@ fun ConversationContent(
                         })
                     }
                 }
+                } // else (not Left)
             }
         }
     }

@@ -32,20 +32,24 @@ data class ConversationUiModel(
     val lastMessageIsFromActiveUser: Boolean = false,
     val admins: Set<OdinId>,
     val conversationState: ConversationState = ConversationState.Active,
+    val isGroup: Boolean = false,
+    val exitedAt: Instant? = null,
 ) {
     fun isCurrentUserAdmin(odinId: OdinId): Boolean {
         return admins.contains(odinId)
     }
 
-    /** True when there are multiple participants (i.e., a group conversation). */
+    /** True when this conversation was created as a group (tag-authoritative). */
     val isGroupConversation: Boolean
-        get() = participants.size > 2
+        get() = isGroup
 
     val isWithSelf: Boolean
         get() = id == ChatProtocol.ConversationWithYourselfId
 
 
     fun getDisplayName(): String {
+        if (isGroup) return name
+
         if (name.isEmpty() || name.isBlank()) {
             return participants.firstOrNull()?.domainName ?: ""
         }

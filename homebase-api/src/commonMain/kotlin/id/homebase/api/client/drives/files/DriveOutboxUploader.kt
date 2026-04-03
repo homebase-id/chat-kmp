@@ -36,10 +36,11 @@ class DriveOutboxUploader(
                 UpdateLocalMetadataContent -> updateLocalMetadataContent(outboxRecord)
                 SendReadReceiptByTime -> sendReadReceiptByTime(outboxRecord)
                 ToggleReaction -> toggleReaction(outboxRecord)
+                DeleteFilesByGroupId -> deleteFilesByGroupId(outboxRecord)
             }
         } catch (e: ClientException) {
             if (e.status == 400) {
-                Logger.w("Dropping outbox item ${outboxRecord.uniqueId} — 400 Bad Request: ${e.message}")
+                Logger.w("Dropping outbox item ${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadType} — 400 Bad Request: ${e.message}")
                 return
             }
             throw e
@@ -116,6 +117,11 @@ class DriveOutboxUploader(
         )
     }
 
+    private suspend fun deleteFilesByGroupId(outboxRecord: Outbox) {
+        val request = OdinSystemSerializer.deserialize<DeleteFilesByGroupIdOutboxRequest>(outboxRecord.json.decodeToString())
+        fileProvider.deleteFilesByGroupId(request.driveId, request.groupIds)
+    }
+
     private fun percentOf(sent: Long, total: Long?) =
         if (total != null && total > 0) (sent.toFloat() / total.toFloat()) * 100f else 0f
 
@@ -127,5 +133,6 @@ class DriveOutboxUploader(
         const val UpdateLocalMetadataContent = 5L
         const val SendReadReceiptByTime = 6L
         const val ToggleReaction = 8L
+        const val DeleteFilesByGroupId = 9L
     }
 }
