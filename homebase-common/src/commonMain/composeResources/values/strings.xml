@@ -36,7 +36,7 @@
     <string name="read_by">Read by</string>
     <string name="delivered_to">Delivered to</string>
     <string name="sending_to">Sending to</string>
-    <string name="sent_to">Sent to</string>
+    <string name="uploaded">Uploaded</string>
     <string name="failed">Failed</string>
     <string name="unknown_status">Other</string>
     <string name="updated">Updated</string>
