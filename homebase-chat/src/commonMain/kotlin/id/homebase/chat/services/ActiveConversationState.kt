@@ -42,6 +42,15 @@ class ActiveConversationState {
         }
     }
 
+    fun removeByFileId(conversationId: Uuid, fileId: Uuid) {
+        _messages.update { current ->
+            val existing = current[conversationId] ?: return@update current
+            current.toMutableMap().apply {
+                this[conversationId] = existing.filter { it.fileId != fileId }
+            }
+        }
+    }
+
     private fun upsertMessages(
         current: List<MessageUiModel>,
         incoming: List<MessageUiModel>

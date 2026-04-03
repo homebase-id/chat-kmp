@@ -134,6 +134,14 @@ class ChatMessageStream(
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
         grouped.forEach { (conversationId, msgs) ->
             if (isConversationLeft(conversationId)) return@forEach
+            // Evict stale entries where the server returned a file whose id (uniqueId)
+            // changed (e.g. cleared on delete, so id falls back to fileId). Without this,
+            // the old entry (keyed by uniqueId) and new entry (keyed by fileId) both exist.
+            for (msg in msgs) {
+                if (msg.id == msg.fileId) {
+                    conversationState.removeByFileId(conversationId, msg.fileId)
+                }
+            }
             conversationState.upsert(conversationId, msgs)
         }
     }

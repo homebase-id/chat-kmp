@@ -40,7 +40,7 @@ class DriveOutboxUploader(
             }
         } catch (e: ClientException) {
             if (e.status == 400) {
-                Logger.w("Dropping outbox item ${outboxRecord.uniqueId} — 400 Bad Request: ${e.message}")
+                Logger.w("Dropping outbox item ${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadType} — 400 Bad Request: ${e.message}")
                 return
             }
             throw e

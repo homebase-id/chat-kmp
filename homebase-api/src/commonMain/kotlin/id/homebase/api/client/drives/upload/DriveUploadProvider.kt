@@ -301,18 +301,18 @@ class DriveUploadProvider(
         // Decrypt key header if needed
         val decryptedKeyHeader: KeyHeader = file.keyHeader
 
-        // Build key header with new IV
-        val keyHeader: KeyHeader? =
-            if (file.fileMetadata.isEncrypted) {
-                KeyHeader(
-                    iv = localAppData.iv?.let { Base64.decode(it) }
-                        ?: ByteArrayUtil.getRndByteArray(16),
+        // If the caller pre-encrypted content and supplied an IV (e.g. stampConversationExitedAt
+        // which encrypts at enqueue time to avoid a race with participant removal), pass them
+        // through directly.  Otherwise encrypt here using the file's key header.
+        val (ivToSend, encryptedContent) =
+            if (localAppData.iv != null && localAppData.content != null) {
+                // Already encrypted by the caller
+                localAppData.iv to localAppData.content
+            } else if (file.serverFileIsEncrypted && localAppData.content != null) {
+                val keyHeader = KeyHeader(
+                    iv = ByteArrayUtil.getRndByteArray(16),
                     aesKey = decryptedKeyHeader.aesKey
                 )
-            } else null
-
-        val (ivToSend, encryptedContent) =
-            if (keyHeader != null && localAppData.content != null) {
                 val encrypted = keyHeader.encryptDataAes(localAppData.content.encodeToByteArray())
                 Base64.encode(keyHeader.iv) to Base64.encode(encrypted)
             } else {

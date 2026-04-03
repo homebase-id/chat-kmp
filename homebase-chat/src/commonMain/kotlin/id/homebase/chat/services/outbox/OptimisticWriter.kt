@@ -27,8 +27,11 @@ import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.toBase64
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.chat.services.convo.ConversationLocalAppDataJson
 import kotlin.uuid.Uuid
 
@@ -431,6 +434,7 @@ class OptimisticWriter(
         return Pair(resultType, existingFile)
     }
 
+    @OptIn(ExperimentalEncodingApi::class)
     suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalMetadataContentOutboxRequest? {
         val credentials = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(credentials.getIdentityId())
@@ -465,6 +469,23 @@ class OptimisticWriter(
             )
         )
 
+        // Pre-encrypt while we still have access to the key header. The outbox
+        // processes this later, possibly after the participant-update has removed
+        // us from the group — at which point getFileHeader returns isEncrypted=false
+        // and the server rejects the update with "A string IV is required".
+        val ivBase64: String?
+        val encryptedContent: String?
+        if (existingFile.serverFileIsEncrypted) {
+            val iv = ByteArrayUtil.getRndByteArray(16)
+            val keyHeader = KeyHeader(iv = iv, aesKey = existingFile.keyHeader.aesKey)
+            val encrypted = keyHeader.encryptDataAes(content.encodeToByteArray())
+            ivBase64 = Base64.encode(iv)
+            encryptedContent = Base64.encode(encrypted)
+        } else {
+            ivBase64 = null
+            encryptedContent = content
+        }
+
         return try {
             val batch = listOf(updatedFile)
             fileProcessor.baseUpsertEntryZapZap(
@@ -487,8 +508,8 @@ class OptimisticWriter(
                 driveId = driveId,
                 fileId = existingFile.fileId,
                 versionTag = existingFile.fileMetadata.localAppData?.versionTag?.toString(),
-                content = content,
-                iv = null
+                content = encryptedContent,
+                iv = ivBase64
             )
         } catch (e: Exception) {
             Logger.e("stampConversationExitedAt failed: ${e.message}")
