@@ -40,7 +40,6 @@ import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.StatusMessage
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
-import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlin.uuid.Uuid
@@ -227,13 +226,10 @@ class ConversationService(
         admins.removeAll(remove)
 
         if (admins.isEmpty()) {
-            throw IllegalStateException("Conversation must have at least one admin")
-        }
-
-        // forbid removing yourself if you would leave zero admins
-        if (remove.contains(domain) && !admins.contains(domain)) {
-            if (admins.size == 0) {
-                throw IllegalStateException("Cannot remove the last admin.  You must first add another to replace you")
+            if (remove.contains(domain)) {
+                throw IllegalStateException("Cannot remove the last admin. You must first add another to replace you.")
+            } else {
+                throw IllegalStateException("Conversation must have at least one admin")
             }
         }
 
@@ -552,8 +548,6 @@ class ConversationService(
 
         val conversationFile = getConversationHomebaseFile(conversationId)
             ?: error("No conversation found")
-
-        val conversation = requireConversation(conversationId)
 
         Logger.d { "updateConversationInternal: conversationId=$conversationId isEncrypted=${conversationFile.fileMetadata.isEncrypted} aesKey=${conversationFile.keyHeader.aesKey.unsafeBytes.toBase64()} ivLen=${conversationFile.keyHeader.iv.size} keyLen=${conversationFile.keyHeader.aesKey.unsafeBytes.size}" }
 
