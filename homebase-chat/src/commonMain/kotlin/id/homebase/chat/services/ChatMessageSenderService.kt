@@ -185,7 +185,9 @@ class ChatMessageSenderService(
         additionalRecipients: List<OdinId> = emptyList()
     ): SendMessageResult {
 
-        val conversation = conversationStream.getConversationById(conversationId)
+        val conversation =
+            conversationStream.getConversationById(conversationId) ?: error("no conversation found")
+
         if (!isStatusMessage && (conversation?.conversationState == ConversationState.Left
             || conversation?.conversationState == ConversationState.RejoinPending
             || conversation?.conversationState == ConversationState.Removed)

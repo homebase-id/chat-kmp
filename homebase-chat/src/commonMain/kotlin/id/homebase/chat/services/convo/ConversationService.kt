@@ -145,6 +145,14 @@ class ConversationService(
                 thumbnails = encryptedBundle.thumbnails
             )
 
+        optimisticWriter.writeNewFile(
+            driveId = chatDrive,
+            keyHeader = keyHeader,
+            unecryptedMetadata = metadata,
+            originalRecipientCount = normalizedRecipients.size,
+            fileSystemType = FileSystemType.Standard,
+        )
+
         val enqueued = outboxSync.tryEnqueue(request)
 
         if (!enqueued) {
@@ -166,10 +174,12 @@ class ConversationService(
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = Uuid.random(),
                 conversationId = newConversationId,
+                previousMessageUniqueId = newConversationId,
                 statusMessage = StatusMessageData(
                     statusMessage = StatusMessage.GroupConversationStarted,
                     subject = null
-                )
+                ),
+
             )
         }
 
