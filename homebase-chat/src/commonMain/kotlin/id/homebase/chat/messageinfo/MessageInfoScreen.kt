@@ -52,7 +52,7 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.reactions
 import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
-import id.homebase.resources.sent_to
+import id.homebase.resources.uploaded
 import id.homebase.resources.unknown_status
 import org.jetbrains.compose.resources.stringResource
 
@@ -178,10 +178,10 @@ fun MessageInfoUi(
                     }
 
                     val statusOrder = listOf(
-                        ChatDeliveryStatus.Read,
-                        ChatDeliveryStatus.Delivered,
-                        ChatDeliveryStatus.Sent,
                         ChatDeliveryStatus.Sending,
+                        ChatDeliveryStatus.Sent,
+                        ChatDeliveryStatus.Delivered,
+                        ChatDeliveryStatus.Read,
                         ChatDeliveryStatus.Failed,
                     )
 
@@ -193,7 +193,7 @@ fun MessageInfoUi(
                         val label = when (status) {
                             ChatDeliveryStatus.Read -> stringResource(MR.string.read_by)
                             ChatDeliveryStatus.Delivered -> stringResource(MR.string.delivered_to)
-                            ChatDeliveryStatus.Sent -> stringResource(MR.string.sent_to)
+                            ChatDeliveryStatus.Sent -> stringResource(MR.string.uploaded)
                             ChatDeliveryStatus.Sending -> stringResource(MR.string.sending_to)
                             ChatDeliveryStatus.Failed -> stringResource(MR.string.failed)
                             else -> stringResource(MR.string.unknown_status)
