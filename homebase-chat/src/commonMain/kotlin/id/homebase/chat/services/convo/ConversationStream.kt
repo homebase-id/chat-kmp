@@ -223,33 +223,35 @@ class ConversationStream(
         // ${c.id}")
     }
 
-    private suspend fun processAdminFileBatch(adminFiles: List<HomebaseFile>) {
+    suspend fun loadConversation(conversationId: Uuid) {
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
 
-        // Each admin file's groupId is the conversationId. Re-fetch and re-map the conversation
-        // file so the updated admin list is reflected in the stream.
+        val conversationFile = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = chatDrive,
+            noOfItems = 1,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = listOf(conversationId),
+            filetypesAnyOf = listOf(ChatProtocol.ConversationFileType)
+        ).records.firstOrNull() ?: return
+
+        val incoming = mapper.mapToConversationUi(conversationFile, null)
+        val existing = _conversations.value.items.find { it.id == conversationId }
+        if (existing == null) {
+            insertNewConversation(incoming)
+        } else {
+            updateConversation(existing, incoming)
+        }
+    }
+
+    private suspend fun processAdminFileBatch(adminFiles: List<HomebaseFile>) {
         val conversationIds = adminFiles.mapNotNull { it.fileMetadata.appData.groupId }.distinct()
         for (conversationId in conversationIds) {
-            val conversationFile = queryBatch.queryBatchAsync(
-                dbm = dbm,
-                driveId = chatDrive,
-                noOfItems = 1,
-                cursor = null,
-                sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
-                fileSystemType = 0,
-                uniqueIdAnyOf = listOf(conversationId),
-                filetypesAnyOf = listOf(ChatProtocol.ConversationFileType)
-            ).records.firstOrNull() ?: continue
-
-            val incoming = mapper.mapToConversationUi(conversationFile, null)
-            val existing = _conversations.value.items.find { it.id == conversationId }
-            if (existing == null) {
-                insertNewConversation(incoming)
-            } else {
-                updateConversation(existing, incoming)
-            }
+            loadConversation(conversationId)
         }
     }
 

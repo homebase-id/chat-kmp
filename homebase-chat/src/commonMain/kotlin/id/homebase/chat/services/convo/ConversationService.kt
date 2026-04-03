@@ -55,7 +55,8 @@ class ConversationService(
     private val scope: CoroutineScope,
     private val outboxSync: OutboxSync,
     private val chatMessageSenderService: ChatMessageSenderService,
-    private val optimisticWriter: OptimisticWriter
+    private val optimisticWriter: OptimisticWriter,
+    private val conversationStream: ConversationStream,
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -152,6 +153,7 @@ class ConversationService(
             originalRecipientCount = normalizedRecipients.size,
             fileSystemType = FileSystemType.Standard,
         )
+        conversationStream.loadConversation(newConversationId)
 
         val enqueued = outboxSync.tryEnqueue(request)
 
