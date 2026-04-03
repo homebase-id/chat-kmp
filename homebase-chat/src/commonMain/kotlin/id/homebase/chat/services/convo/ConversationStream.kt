@@ -204,9 +204,13 @@ class ConversationStream(
         if (m.userDate >= c.latestMessageTimestamp) {
             val domain = credentialsManager.getActiveDomain()
 
-            // new message that was not sent by the current user
+            val increment = if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) 1 else 0
+            if (increment > 0) {
+                Logger.d("ConversationStream: unread++ convo=${c.id} count=${c.unreadCount + increment}")
+            }
+
             val updatedConversation = c.copy(
-                unreadCount = c.unreadCount + if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) 1 else 0,
+                unreadCount = c.unreadCount + increment,
                 latestMessageTimestamp = m.userDate,
                 lastMessage = m.content.truncateToCodePoints(40), // TODO: Global constant
                 lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
@@ -217,10 +221,6 @@ class ConversationStream(
             )
             updateConversation(c, updatedConversation)
         }
-
-
-        // Logger.i("Unread count now ${c.unreadCount} edited ${m.isEdited} on conversation id
-        // ${c.id}")
     }
 
     suspend fun loadConversation(conversationId: Uuid) {
@@ -411,6 +411,7 @@ class ConversationStream(
             val newCount = unreadMap[convo.id] ?: 0
             if (newCount != convo.unreadCount) {
                 changed = true
+                Logger.d("ConversationStream: unreadSync convo=${convo.id} ${convo.unreadCount}->${newCount}")
                 convo.copy(unreadCount = newCount)
             } else {
                 convo
