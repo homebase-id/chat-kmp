@@ -18,7 +18,7 @@ class ActiveConversationState {
     fun set(conversationId: Uuid, messages: List<MessageUiModel>) {
         _messages.update { current ->
             current.toMutableMap().apply {
-                this[conversationId] = messages
+                this[conversationId] = messages.sortedByDescending { it.userDate }
             }
         }
     }
