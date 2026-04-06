@@ -5,10 +5,10 @@ import kotlinx.serialization.Serializable
 /** Summary of transfer recipients. Ported from TypeScript RecipientTransferSummary interface. */
 @Serializable
 data class RecipientTransferSummary(
-        val totalInOutbox: Int = 0,
-        val totalFailed: Int = 0,
-        val totalDelivered: Int = 0,
-        val totalReadByRecipient: Int = 0
+    val totalInOutbox: Int = 0,
+    val totalFailed: Int = 0,
+    val totalDelivered: Int = 0,
+    val totalReadByRecipient: Int = 0
 )
 
 /**
@@ -22,8 +22,12 @@ data class RecipientTransferHistoryEntry(
     val latestTransferStatus: TransferStatus,
     val isInOutbox: Boolean,
     val latestSuccessfullyDeliveredVersionTag: String? = null,
-    val isReadByRecipient: Boolean = false
+    val readByRecipientTimestamp: Long? = null
 )
+{
+    val isReadByRecipient: Boolean
+        get() = readByRecipientTimestamp != null
+}
 
 /** Transfer history with pagination. Ported from TypeScript TransferHistory interface. */
 @Serializable
@@ -38,4 +42,5 @@ data class TransferHistoryPage(
 )
 
 /** Request parameters for transfer history pagination. */
-@Serializable data class TransferHistoryRequest(val pageNumber: Int, val pageSize: Int)
+@Serializable
+data class TransferHistoryRequest(val pageNumber: Int, val pageSize: Int)
