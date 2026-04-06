@@ -22,11 +22,12 @@ data class RecipientTransferHistoryEntry(
     val latestTransferStatus: TransferStatus,
     val isInOutbox: Boolean,
     val latestSuccessfullyDeliveredVersionTag: String? = null,
+    val isReadByRecipient: Boolean = false, //TODO: remove when is in production readByRecipientTimestamp
     val readByRecipientTimestamp: Long? = null
 )
 {
-    val isReadByRecipient: Boolean
-        get() = readByRecipientTimestamp != null
+    val isRead: Boolean
+        get() = readByRecipientTimestamp != null || isReadByRecipient
 }
 
 /** Transfer history with pagination. Ported from TypeScript TransferHistory interface. */
