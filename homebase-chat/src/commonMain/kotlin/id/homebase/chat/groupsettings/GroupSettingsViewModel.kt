@@ -188,10 +188,13 @@ class GroupSettingsViewModel(
     private fun loadData(conversation: ConversationUiModel) {
         viewModelScope.launch {
             try {
-                val contacts = conversation.participants.mapNotNull { odinId ->
-                    contactService.resolveByOdinId(odinId)
-                }
                 val domain = credentialsManager.requireActiveCredentials().domain
+
+                val contacts = conversation.participants
+                    .filterNot { it == domain }
+                    .mapNotNull { odinId ->
+                        contactService.resolveByOdinId(odinId)
+                    }
 
                 _uiState.update {
                     it.copy(

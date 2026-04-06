@@ -64,6 +64,14 @@ class ContactService(
     }
 
     fun resolveByOdinId(odinId: OdinId): ContactUiModel? {
-        return contactByOdinId.value[odinId]
+        return contactByOdinId.value[odinId] ?: ContactUiModel(
+            id = odinId.toHashId(),
+            odinId = odinId,
+            name = odinId.domainName,
+            avatarInitials = "",
+            avatarUrl = "",
+            connection = null,
+            connectionState = ContactConnectionState.NotConnected
+        )
     }
 }

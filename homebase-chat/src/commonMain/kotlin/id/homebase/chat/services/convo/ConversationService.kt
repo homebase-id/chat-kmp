@@ -421,19 +421,19 @@ class ConversationService(
 
         val messageId = Uuid.random()
 
-        // 1. Notify the group first so they see the leave message
-        try {
-            chatMessageSenderService.sendStatusMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                statusMessage = StatusMessageData(
-                    statusMessage = StatusMessage.ConversationMemberLeft,
-                    subject = domain
-                )
-            )
-        } catch (t: Throwable) {
-            Logger.e("Failed to send leave status message", t)
-        }
+//        // 1. Notify the group first so they see the leave message
+//        try {
+//            chatMessageSenderService.sendStatusMessage(
+//                messageUniqueId = messageId,
+//                conversationId = conversationId,
+//                statusMessage = StatusMessageData(
+//                    statusMessage = StatusMessage.ConversationMemberLeft,
+//                    subject = domain
+//                )
+//            )
+//        } catch (t: Throwable) {
+//            Logger.e("Failed to send leave status message", t)
+//        }
 
         // 2. Remove self from participants — chained after status message.
         // If this fails, roll back the optimistic status message AND its outbox entry
@@ -443,7 +443,7 @@ class ConversationService(
                 conversationId = conversationId,
                 title = conversation.name,
                 participants = remaining,
-                dependencyUniqueId = messageId
+//                dependencyUniqueId = messageId
             )
         } catch (t: Throwable) {
             optimisticWriter.removeOptimisticFile(chatDrive, messageId)
@@ -469,8 +469,11 @@ class ConversationService(
         updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
             it + ChatProtocol.ConversationLeftTag
         }
-        optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
-            ?.let { outboxSync.tryEnqueue(it) }
+
+//        optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
+//            ?.let {
+//                outboxSync.tryEnqueue(it)
+//            }
 
 //        val postLeaveFile = getConversationHomebaseFile(conversationId)
 //        Logger.d { "leaveGroup END: conversationId=$conversationId aesKey=${postLeaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
@@ -516,20 +519,11 @@ class ConversationService(
             dependencyUniqueId = messageId
         )
 
-        // 3. Remove self from admins (separate file)
-        if (conversation.admins.contains(domain)) {
-            val updatedAdmins = conversation.admins - domain
-            updateAdminFile(
-                conversationId = conversationId,
-                admins = updatedAdmins.toList(),
-                recipients = remaining.filterNot { it == domain }
-            )
-        }
-
-        // 4. Keep the left tag locally — same ordering dependency as leaveGroup
+        // 3. Keep the left tag locally — same ordering dependency as leaveGroup
         updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
             it + ChatProtocol.ConversationLeftTag
         }
+
         optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
             ?.let { outboxSync.tryEnqueue(it) }
     }
@@ -610,7 +604,7 @@ class ConversationService(
         val existingAppData = conversationFile.fileMetadata.appData
         val metadata =
             UploadFileMetadata(
-                allowDistribution = conversationFile.serverMetadata.allowDistribution,
+                allowDistribution = distribute, // conversationFile.serverMetadata.allowDistribution,
                 isEncrypted = true, // we always encrypt conversation files
                 accessControlList = conversationFile.serverMetadata.accessControlList,
                 referencedFile = conversationFile.fileMetadata.referencedFile,
@@ -657,11 +651,11 @@ class ConversationService(
         // This ensures that any code running after this call (e.g. updateConversationTags)
         // sees the updated participant list when it reads the file, preventing a false
         // RejoinPending detection caused by the outbox/localTags race.
-        optimisticWriter.writeUpdate(
-            driveId = chatDrive,
-            keyHeader = keyHeader,
-            unecryptedMetadata = metadata
-        )
+//        optimisticWriter.writeUpdate(
+//            driveId = chatDrive,
+//            keyHeader = keyHeader,
+//            unecryptedMetadata = metadata
+//        )
 
         val enqueued = outboxSync.replaceEnqueue(request, dependencyUniqueId = dependencyUniqueId)
         if (!enqueued) {
