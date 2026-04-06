@@ -421,19 +421,19 @@ class ConversationService(
 
         val messageId = Uuid.random()
 
-//        // 1. Notify the group first so they see the leave message
-//        try {
-//            chatMessageSenderService.sendStatusMessage(
-//                messageUniqueId = messageId,
-//                conversationId = conversationId,
-//                statusMessage = StatusMessageData(
-//                    statusMessage = StatusMessage.ConversationMemberLeft,
-//                    subject = domain
-//                )
-//            )
-//        } catch (t: Throwable) {
-//            Logger.e("Failed to send leave status message", t)
-//        }
+        // 1. Notify the group first so they see the leave message
+        try {
+            chatMessageSenderService.sendStatusMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.ConversationMemberLeft,
+                    subject = domain
+                )
+            )
+        } catch (t: Throwable) {
+            Logger.e("Failed to send leave status message", t)
+        }
 
         // 2. Remove self from participants — chained after status message.
         // If this fails, roll back the optimistic status message AND its outbox entry
@@ -443,7 +443,7 @@ class ConversationService(
                 conversationId = conversationId,
                 title = conversation.name,
                 participants = remaining,
-//                dependencyUniqueId = messageId
+                dependencyUniqueId = messageId
             )
         } catch (t: Throwable) {
             optimisticWriter.removeOptimisticFile(chatDrive, messageId)
