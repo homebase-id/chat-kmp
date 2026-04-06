@@ -77,6 +77,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -329,7 +330,12 @@ fun MessageTextFieldExpanded(
                 .onPreviewKeyEvent { keyEvent ->
                     if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
                         when {
-                            keyEvent.key == Key.Enter && keyEvent.isCtrlPressed -> {
+                            keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
+                                state.addTextAfterSelection("\n")
+                                true
+                            }
+
+                            keyEvent.key == Key.Enter -> {
                                 sendMessage()
                                 true
                             }
@@ -562,7 +568,12 @@ fun MessageTextFieldCompact(
                                 .onPreviewKeyEvent { keyEvent ->
                                     if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
                                         when {
-                                            keyEvent.key == Key.Enter && keyEvent.isCtrlPressed -> {
+                                            keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
+                                                state.addTextAfterSelection("\n")
+                                                true
+                                            }
+
+                                            keyEvent.key == Key.Enter -> {
                                                 onSendMessage()
                                                 true
                                             }
@@ -931,11 +942,12 @@ fun MessageTextFieldForAttachment(
                 state = state,
                 modifier = Modifier.weight(1f).onPreviewKeyEvent { keyEvent ->
                     if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                        if (keyEvent.isCtrlPressed) {
-                            onSendMessage()
+                        if (keyEvent.isShiftPressed) {
+                            state.addTextAfterSelection("\n")
                             true
                         } else {
-                            false
+                            onSendMessage()
+                            true
                         }
                     } else {
                         false
