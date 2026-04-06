@@ -330,7 +330,12 @@ fun MessageTextFieldExpanded(
                 .onPreviewKeyEvent { keyEvent ->
                     if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
                         when {
-                            keyEvent.key == Key.Enter && !keyEvent.isShiftPressed -> {
+                            keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
+                                state.addTextAfterSelection("\n")
+                                true
+                            }
+
+                            keyEvent.key == Key.Enter -> {
                                 sendMessage()
                                 true
                             }
@@ -563,7 +568,12 @@ fun MessageTextFieldCompact(
                                 .onPreviewKeyEvent { keyEvent ->
                                     if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
                                         when {
-                                            keyEvent.key == Key.Enter && !keyEvent.isShiftPressed -> {
+                                            keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
+                                                state.addTextAfterSelection("\n")
+                                                true
+                                            }
+
+                                            keyEvent.key == Key.Enter -> {
                                                 onSendMessage()
                                                 true
                                             }
@@ -932,11 +942,12 @@ fun MessageTextFieldForAttachment(
                 state = state,
                 modifier = Modifier.weight(1f).onPreviewKeyEvent { keyEvent ->
                     if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                        if (!keyEvent.isShiftPressed) {
-                            onSendMessage()
+                        if (keyEvent.isShiftPressed) {
+                            state.addTextAfterSelection("\n")
                             true
                         } else {
-                            false
+                            onSendMessage()
+                            true
                         }
                     } else {
                         false
