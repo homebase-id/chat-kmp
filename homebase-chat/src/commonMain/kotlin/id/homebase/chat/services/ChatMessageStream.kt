@@ -197,7 +197,7 @@ class ChatMessageStream(
                 noOfItems = limit,
                 cursor = cursor,
                 sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
+                sortField = QueryBatchSortField.UserDate,
                 fileSystemType = 0,
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
                 groupIdAnyOf = listOf(conversationId)
@@ -230,7 +230,7 @@ class ChatMessageStream(
                 noOfItems = limit,
                 cursor = cursor,
                 sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
+                sortField = QueryBatchSortField.UserDate,
                 fileSystemType = 0,
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
             )

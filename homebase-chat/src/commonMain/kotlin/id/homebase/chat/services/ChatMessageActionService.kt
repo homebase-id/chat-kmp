@@ -62,7 +62,7 @@ class ChatMessageActionService(
 
         if (unreadRecords.isEmpty()) {
             dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
-            conversationStream.updateUnreadCounts()
+            conversationStream.updateUnreadCounts() // TODO: We can be more performant here
             return
         }
 
