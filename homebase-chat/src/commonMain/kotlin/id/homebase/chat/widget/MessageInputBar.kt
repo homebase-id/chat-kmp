@@ -77,6 +77,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -329,7 +330,7 @@ fun MessageTextFieldExpanded(
                 .onPreviewKeyEvent { keyEvent ->
                     if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
                         when {
-                            keyEvent.key == Key.Enter && keyEvent.isCtrlPressed -> {
+                            keyEvent.key == Key.Enter && !keyEvent.isShiftPressed -> {
                                 sendMessage()
                                 true
                             }
@@ -562,7 +563,7 @@ fun MessageTextFieldCompact(
                                 .onPreviewKeyEvent { keyEvent ->
                                     if (isDesktopOrWeb() && keyEvent.type == KeyEventType.KeyDown) {
                                         when {
-                                            keyEvent.key == Key.Enter && keyEvent.isCtrlPressed -> {
+                                            keyEvent.key == Key.Enter && !keyEvent.isShiftPressed -> {
                                                 onSendMessage()
                                                 true
                                             }
@@ -931,7 +932,7 @@ fun MessageTextFieldForAttachment(
                 state = state,
                 modifier = Modifier.weight(1f).onPreviewKeyEvent { keyEvent ->
                     if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                        if (keyEvent.isCtrlPressed) {
+                        if (!keyEvent.isShiftPressed) {
                             onSendMessage()
                             true
                         } else {
