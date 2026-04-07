@@ -242,7 +242,7 @@ fun AddGroupMembersUi(
                                 )
                             }
                         }
-                        items(item.contacts, key = { it.odinId }) { contact ->
+                        items(item.contacts, key = { it.odinId.domainName }) { contact ->
                             ContactItem(
                                 name = contact.name,
                                 subTitle = contact.odinId.domainName,
