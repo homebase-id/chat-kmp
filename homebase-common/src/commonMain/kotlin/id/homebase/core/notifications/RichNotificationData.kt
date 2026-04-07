@@ -22,6 +22,8 @@ data class RichNotificationData(
     val payloadData: Map<String, String>,
     val isGroupConversation: Boolean = false,
     val groupTitle: String? = null,
+    /** When true, the notification should not play a sound (chime cooldown active). */
+    val silent: Boolean = false,
 )
 
 /** Extension to generate a stable notification ID from the conversation ID or a random one. */

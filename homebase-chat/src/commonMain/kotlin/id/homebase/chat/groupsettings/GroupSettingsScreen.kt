@@ -37,7 +37,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.platform.LocalUriHandler
 import id.homebase.chat.createconversation.ContactItem
+import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
@@ -50,6 +52,8 @@ import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.connect
+import id.homebase.resources.not_connected
 import id.homebase.resources.chat_group_add_members
 import id.homebase.resources.chat_group_admin
 import id.homebase.resources.chat_group_choose_new_admin
@@ -85,6 +89,7 @@ fun GroupSettingsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val uriHandler = LocalUriHandler.current
 
     when (val event = uiState.uiEvent) {
         is GroupSettingsUiEvent.Back -> {
@@ -110,6 +115,11 @@ fun GroupSettingsScreen(
         is GroupSettingsUiEvent.ShowEditGroup -> {
             viewModel.eventConsumed()
             onEditGroup(event.conversationId)
+        }
+
+        is GroupSettingsUiEvent.OpenUrl -> {
+            viewModel.eventConsumed()
+            uriHandler.openUri(event.url)
         }
 
         null -> {}
@@ -228,7 +238,12 @@ fun GroupSettingsUi(
                             )
                         }
                     }
-                    items(uiState.contacts) { contact ->
+                    val (connectedContacts, notConnectedContacts) = uiState.contacts.partition { contact ->
+                        contact.connectionState == ContactConnectionState.Connected ||
+                                contact.connectionState == ContactConnectionState.Unknown
+                    }
+
+                    items(connectedContacts, key = { it.odinId }) { contact ->
                         ContactItem(
                             name = contact.name,
                             subTitle = contact.odinId.domainName,
@@ -243,6 +258,31 @@ fun GroupSettingsUi(
                                 )
                             },
                         )
+                    }
+
+                    if (notConnectedContacts.isNotEmpty()) {
+                        item {
+                            Text(
+                                modifier = Modifier.padding(horizontal = 24.dp).padding(top = 24.dp, bottom = 8.dp),
+                                text = stringResource(MR.string.not_connected),
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                        }
+                        items(notConnectedContacts, key = { it.odinId }) { contact ->
+                            ContactItem(
+                                name = contact.name,
+                                subTitle = contact.odinId.domainName,
+                                annotation = stringResource(MR.string.connect),
+                                annotationColor = MaterialTheme.colorScheme.primary,
+                                avatarInitials = contact.avatarInitials,
+                                odinId = contact.odinId,
+                                onContactClick = {
+                                    onUiAction(
+                                        GroupSettingsUiAction.ConnectToIdentity(contact.odinId)
+                                    )
+                                },
+                            )
+                        }
                     }
                     item {
                         HorizontalDivider()

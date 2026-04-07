@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.random.Random
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
 /**
@@ -41,6 +43,13 @@ class NotificationService(
     private var isListening = false
     private val richDisplayer = RichNotificationDisplayer()
 
+    /** Per-conversation message count for notification summary display. */
+    private val conversationMessageCounts = mutableMapOf<String, Int>()
+
+    /** Chime cooldown: suppress alert sounds within this window. */
+    private val ALERT_COOLDOWN = 15.minutes
+    private var lastAlertMark = TimeSource.Monotonic.markNow() - ALERT_COOLDOWN
+
     private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 5)
     val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
 
@@ -54,6 +63,17 @@ class NotificationService(
 
     init {
         startListening()
+        // Clear message counts when user opens a conversation
+        scope.launch {
+            ActiveConversation.conversation.collect { id ->
+                if (id != null) conversationMessageCounts.remove(id.toString())
+            }
+        }
+    }
+
+    /** Clears the accumulated message count for a conversation (e.g. on mark-as-read). */
+    fun clearNotificationCount(conversationId: String) {
+        conversationMessageCounts.remove(conversationId)
     }
 
     /**
@@ -191,6 +211,7 @@ class NotificationService(
                     Logger.d(tag = "NotificationService") {
                         "Suppressing notification — user is on chat screen"
                     }
+                    conversationMessageCounts.remove(conversationId)
                     return@launch
                 }
 
@@ -229,6 +250,23 @@ class NotificationService(
                     else -> Pair(appName, bodyText)
                 }
 
+                // Track per-conversation message count for summary display
+                val messageCount = if (conversationId != null) {
+                    val count = (conversationMessageCounts[conversationId] ?: 0) + 1
+                    conversationMessageCounts[conversationId] = count
+                    count
+                } else 1
+
+                // Override body with count summary when multiple messages accumulated
+                val finalBody = if (messageCount > 1) {
+                    "$messageCount new messages"
+                } else {
+                    displayBody
+                }
+
+                // Chime cooldown: suppress alert sound if one played recently
+                val shouldAlert = lastAlertMark.elapsedNow() >= ALERT_COOLDOWN
+
                 // Determine notification channel based on app type
                 val channelId = resolveChannelId(notification.options.appId)
 
@@ -240,18 +278,20 @@ class NotificationService(
                     channelId = channelId,
                     conversationId = resolveConversationId(notification),
                     title = displayTitle,
-                    body = displayBody,
+                    body = finalBody,
                     senderName = displayName,
                     senderId = notification.senderId,
                     senderImageBytes = senderImageBytes,
                     timestamp = notification.created,
                     payloadData = payloadMap,
+                    silent = !shouldAlert,
                 )
 
                 if (isAppInForeground) {
                     // Show in-app banner instead of system notification
                     _inAppNotificationEvents.tryEmit(richData)
                 } else {
+                    if (shouldAlert) lastAlertMark = TimeSource.Monotonic.markNow()
                     showRichNotification(richData)
                     BadgeManager.increment()
                 }

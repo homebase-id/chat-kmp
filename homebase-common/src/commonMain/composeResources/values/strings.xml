@@ -50,6 +50,7 @@
     <string name="error_too_many_attempts">Too many attempts</string>
     <string name="error_delivery_failed">Delivery failed</string>
     <string name="connect">Connect</string>
+    <string name="not_connected">Not connected</string>
     <string name="loading">Loading...</string>
     <string name="connection_requests_banner">%1$s connection request(s)</string>
     <string name="show_more">Show more</string>

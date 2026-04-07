@@ -61,13 +61,13 @@ class PublicProfileProviderCached(
             disk = profileDiskKache,
             fetch = { httpClient.get("https://${odinId}/pub/profile") },
             transform = { response ->
-                serializer.deserialize(response.bodyAsText())
+                serializer.deserialize<ProfileCard>(response.bodyAsText())
             },
             readFromDisk = { path ->
                 fileSystem.read(path.toPath()) {
                     val expiry = readLong()
                     val json = readUtf8()
-                    CachedEntry(expiry, serializer.deserialize(json))
+                    CachedEntry(expiry, serializer.deserialize<ProfileCard>(json))
                 }
             },
             writeToDisk = { path, expiry, value ->
