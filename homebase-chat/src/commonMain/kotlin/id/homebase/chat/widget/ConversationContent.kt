@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -271,18 +273,23 @@ fun ConversationContent(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable(
+                            interactionSource = MutableInteractionSource(),
+                            indication = null
+                        ) {
+                            onUiAction(
+                                ConversationListUiAction.ShowConversationSettings(
+                                    conversation.conversation
+                                )
+                            )
+                        }
+                    ) {
                         ConversationAvatar(
                             modifier = Modifier.focusable(), // to avoid textfield focus
                             avatarModel = conversation.conversation.avatarModel,
-                            options = AvatarOptions(
-                                size = 32.dp, fontSize = 12.sp, onClick = {
-                                    onUiAction(
-                                        ConversationListUiAction.ShowConversationSettings(
-                                            conversation.conversation
-                                        )
-                                    )
-                                })
+                            options = AvatarOptions(size = 32.dp, fontSize = 12.sp)
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {

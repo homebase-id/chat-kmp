@@ -199,7 +199,7 @@ fun CreateConversationUi(
                                         )
                                     }
                                 }
-                                items(contactGroup.contacts) { contact ->
+                                items(contactGroup.contacts, key = { it.odinId }) { contact ->
                                     ContactItem(
                                         name = contact.name,
                                         subTitle = contact.odinId.domainName,
