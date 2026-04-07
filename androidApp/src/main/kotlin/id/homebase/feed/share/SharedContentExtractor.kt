@@ -90,7 +90,7 @@ object SharedContentExtractor {
                 displayName = queryDisplayName(uri, contentResolver) ?: fileName,
             )
         } catch (e: Exception) {
-            Logger.e(TAG) { "Failed to copy shared URI: ${e.message}" }
+            Logger.e(tag = TAG) { "Failed to copy shared URI: ${e.message}" }
             null
         }
     }
