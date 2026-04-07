@@ -7,7 +7,9 @@ import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.logging.LoggerConfig
+import id.homebase.core.logging.setErrorCollectionEnabled
 import id.homebase.core.logging.setupIOSCrashHandler
+import id.homebase.core.settings.UserPreferencesHelper
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
@@ -35,6 +37,10 @@ fun MainViewController(): UIViewController {
     } catch (e: Exception) {
         Logger.e(throwable = e, tag = "MainViewController") { "Failed to initialize file logging" }
     }
+
+    // Configure Crashlytics based on user preference
+    // Note: Koin must be initialized before accessing UserPreferences
+    setErrorCollectionEnabled(UserPreferencesHelper.errorCollectionEnabled)
 
     // Set up crash handler
     setupIOSCrashHandler()
