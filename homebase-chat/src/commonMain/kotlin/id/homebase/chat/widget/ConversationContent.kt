@@ -297,7 +297,7 @@ fun ConversationContent(
                         Column {
                             Text(
                                 text = if (conversation.conversation.isWithSelf) stringResource(MR.string.chat_note_to_self)
-                                else conversation.conversation.name,
+                                else conversation.getDisplayName(),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -432,8 +432,15 @@ fun ConversationContent(
                                                 .padding(bottom = 16.dp),
                                             displayName = if (conversation.conversation.isWithSelf) stringResource(
                                                 MR.string.chat_note_to_self
-                                            ) else conversation.conversation.name,
+                                            ) else conversation.getDisplayName(),
                                             avatarModel = conversation.conversation.avatarModel,
+                                            onClick = {
+                                                onUiAction(
+                                                    ConversationListUiAction.ShowConversationSettings(
+                                                        conversation.conversation
+                                                    )
+                                                )
+                                            }
                                         )
 
                                         if (conversation.conversation.isGroupConversation) {
