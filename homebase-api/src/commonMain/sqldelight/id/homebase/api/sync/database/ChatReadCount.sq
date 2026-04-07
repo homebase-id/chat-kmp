@@ -6,16 +6,16 @@ CREATE TABLE IF NOT EXISTS ChatReadCount(
 );
 
 -- This table and these queries will benefit from this index on DriveMainIndex
-CREATE INDEX IF NOT EXISTS idx_messages_groupId_filetype_created
-  ON DriveMainIndex(groupId, fileType, created);
+CREATE INDEX IF NOT EXISTS idx_messages_groupId_filetype_userDate
+  ON DriveMainIndex(groupId, fileType, userDate);
 
 -- To make the conversation + last-message performant
-CREATE INDEX IF NOT EXISTS idx_chatmessage_convid_created ON DriveMainIndex(groupId,fileType,created DESC);
+CREATE INDEX IF NOT EXISTS idx_chatmessage_convid_userDate ON DriveMainIndex(groupId,fileType,userDate DESC);
 
 -- Speeds up message scans in selectAllConversationPlusLastMessage and selectAllUnreadCount
 -- (fileType first lets SQLite seek directly to message rows without a full table scan)
-CREATE INDEX IF NOT EXISTS idx_messages_filetype_datatype_groupid_created
-  ON DriveMainIndex(fileType, dataType, groupId, created DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_filetype_datatype_groupid_userDate
+  ON DriveMainIndex(fileType, dataType, groupId, userDate DESC);
 
 -- Get full list of conversations (8888) from the DriveMainIndex table
 -- here to not contaminate it. Can also be easily fetched with QB()
@@ -32,7 +32,7 @@ selectAllConversationPlusLastMessage:
 SELECT
   d.jsonHeader AS convJsonHeader,
   m.jsonHeader AS msgJsonHeader,
-  m.created    AS msgCreated
+  m.userDate   AS msgUserDate
 FROM DriveMainIndex AS d
 LEFT JOIN DriveMainIndex AS m
   ON m.rowId = (
@@ -42,11 +42,11 @@ LEFT JOIN DriveMainIndex AS m
       AND m2.groupId = d.uniqueId
       AND m2.fileType = 7878
       AND m2.dataType = 0
-    ORDER BY m2.created DESC
+    ORDER BY m2.userDate DESC
     LIMIT 1
   )
 WHERE d.identityId = ? AND d.fileType = 8888 -- Conversation
-ORDER BY msgCreated DESC;
+ORDER BY msgUserDate DESC;
 
 -- Return unread message count for a specific groupId
 -- probably shouldn't be needed - with good design we should only need to call selectAllReadCount
@@ -56,7 +56,7 @@ FROM DriveMainIndex d
 LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
 WHERE d.groupId = ?
   AND d.fileType = 7878 AND d.dataType = 0
-  AND (c.lastReadTime IS NULL OR d.created > c.lastReadTime);
+  AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime);
 
 -- Return list of {groupId, unreadCount} for all chat conversations (8888)
 -- Will return (groupId, unread-count) for all Chat conversations with 1 or more unread messages.
@@ -66,7 +66,7 @@ WHERE d.groupId = ?
 -- FROM DriveMainIndex AS d
 -- LEFT JOIN ChatReadCount ON d.groupId = ChatReadCount.groupId
 -- WHERE d.fileType = 7878 AND d.dataType = 0 -- Message
---   AND (ChatReadCount.lastReadTime IS NULL OR d.created > ChatReadCount.lastReadTime)
+--   AND (ChatReadCount.lastReadTime IS NULL OR d.userDate > ChatReadCount.lastReadTime)
 --   AND d.groupId IS NOT NULL
 -- GROUP BY d.groupId;
 
@@ -77,7 +77,7 @@ LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
 WHERE d.identityId = ?
   AND d.fileType = 7878  -- Message
   AND d.dataType = 0 -- Standard message
-  AND (c.lastReadTime IS NULL OR d.created > c.lastReadTime)
+  AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime)
   AND d.groupId IS NOT NULL
   AND (d.originalAuthor IS NULL OR d.originalAuthor != ?)
 GROUP BY d.groupId;

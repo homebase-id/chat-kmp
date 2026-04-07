@@ -5,10 +5,15 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.QueryBatchSortField
+import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.ArchivalStatus
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.toBase64
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessage
@@ -22,10 +27,12 @@ import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 class ConversationMapper(
-    private val credentialsManager: CredentialsManager
+    private val credentialsManager: CredentialsManager,
+    private val dbm: DatabaseManager,
 ) {
 
     private val logger = Logger.withTag("ConversationMapper")
+    private val chatDrive = chatTargetDrive.alias
 
     suspend fun mapToConversationUi(
         conversationFile: HomebaseFile,
@@ -66,16 +73,14 @@ class ConversationMapper(
 
             require(participants.isNotEmpty()) { "Conversation has no valid participants" }
 
-            val others = participants.filterNot { it == domain }
-            val isGroup = others.size > 1
-
+            val isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
             val displayNames = participants.map { it.domainName }
 
             val title =
                 if (conversationId == ChatProtocol.ConversationWithYourselfId) {
                     "" // Display name resolved via string resource at UI layer
                 } else if (isGroup) {
-                    conversationData.title ?: displayNames.joinToString(", ")
+                    conversationData.title?.takeIf { it.isNotBlank() } ?: displayNames.joinToString(", ")
                 } else {
                     val other = participants.first { it != domain }
                     other.domainName
@@ -83,11 +88,14 @@ class ConversationMapper(
 
             val admins: Set<OdinId> =
                 if (isGroup) {
-                    (conversationData.admins ?: listOf(
-                        metadata.originalAuthor
-                            ?: metadata.senderOdinId
-                            ?: domain
-                    )).toSet()
+                    queryAdmins(conversationId)
+                    // Backward compat: fall back to conversation content, then originalAuthor
+                        ?: (conversationData.adminData?.admins?.toSet())
+                        ?: setOf(
+                            metadata.originalAuthor
+                                ?: metadata.senderOdinId
+                                ?: domain
+                        )
                 } else {
                     emptySet()
                 }
@@ -101,7 +109,22 @@ class ConversationMapper(
 
             val localTags = metadata.localAppData?.tags ?: emptyList()
             val isArchivedByTag = localTags.contains(ChatProtocol.ConversationArchivedTag)
+            val isLeftByTag = localTags.contains(ChatProtocol.ConversationLeftTag)
             val isPinnedByTag = localTags.contains(ChatProtocol.ConversationPinnedTag)
+
+            val conversationState = when {
+                isLeftByTag && participants.contains(domain) -> ConversationState.RejoinPending
+                isLeftByTag -> ConversationState.Left
+                isGroup && !participants.contains(domain) -> ConversationState.Removed
+                isArchivedByTag -> ConversationState.Archived
+                else -> ConversationState.Active
+            }
+
+            val exitedAt = if (conversationState == ConversationState.Left
+                || conversationState == ConversationState.Removed
+            ) {
+                localAppData?.lastExitedAt?.toInstant()
+            } else null
 
             var ui =
                 ConversationUiModel(
@@ -119,7 +142,9 @@ class ConversationMapper(
                         ?: UnixTimeUtc(0).toInstant(),
                     avatarModel = avatarModel,
                     admins = admins,
-                    conversationState = if (isArchivedByTag) ConversationState.Archived else ConversationState.Active
+                    conversationState = conversationState,
+                    isGroup = isGroup,
+                    exitedAt = exitedAt
                 )
 
             if (lastMsg != null) {
@@ -152,7 +177,8 @@ class ConversationMapper(
                 lastRead = UnixTimeUtc(0).toInstant(),
                 avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
                 admins = emptySet(),
-                conversationState = ConversationState.Invalid
+                conversationState = ConversationState.Invalid,
+                isGroup = false
             )
         }
     }
@@ -179,7 +205,8 @@ class ConversationMapper(
             lastRead = UnixTimeUtc(0).toInstant(),
             avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
             admins = setOf(domain),
-            conversationState = ConversationState.Deleted
+            conversationState = ConversationState.Deleted,
+            isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
         )
 
         if (lastMsg != null) {
@@ -191,6 +218,36 @@ class ConversationMapper(
         }
 
         return m
+    }
+
+    private suspend fun queryAdmins(conversationId: Uuid): Set<OdinId>? {
+        val c = credentialsManager.requireActiveCredentials()
+        val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
+        val queryBatch = QueryBatch(c.getIdentityId())
+
+        val result = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = chatDrive,
+            noOfItems = 1,
+            cursor = null,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            uniqueIdAnyOf = listOf(adminUniqueId),
+            filetypesAnyOf = listOf(ChatProtocol.ConversationAdminFileType),
+        )
+
+        val file = result.records.firstOrNull() ?: return null
+        val content = file.fileMetadata.appData.content
+        if (content.isNullOrEmpty()) return null
+
+        return try {
+            val adminInfo = OdinSystemSerializer.deserialize<ConversationAdminInfo>(content)
+            adminInfo.admins?.toSet()
+        } catch (e: Exception) {
+            logger.w("Failed to deserialize admin file for $conversationId: ${e.message}")
+            null
+        }
     }
 
     private suspend fun buildConversationAvatarModel(

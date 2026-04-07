@@ -15,6 +15,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
+import kotlin.uuid.Uuid
 
 class DriveOutboxUploader(
     private val driveUploadProvider: DriveUploadProvider,
@@ -36,10 +37,11 @@ class DriveOutboxUploader(
                 UpdateLocalMetadataContent -> updateLocalMetadataContent(outboxRecord)
                 SendReadReceiptByTime -> sendReadReceiptByTime(outboxRecord)
                 ToggleReaction -> toggleReaction(outboxRecord)
+                DeleteFilesByGroupId -> deleteFilesByGroupId(outboxRecord)
             }
         } catch (e: ClientException) {
             if (e.status == 400) {
-                Logger.w("Dropping outbox item ${outboxRecord.uniqueId} — 400 Bad Request: ${e.message}")
+                Logger.w("Dropping outbox item ${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadType} — 400 Bad Request: ${e.message}")
                 return
             }
             throw e
@@ -78,9 +80,12 @@ class DriveOutboxUploader(
 
     private suspend fun updateLocalMetadataTags(outboxRecord: Outbox) {
         val request = OdinSystemSerializer.deserialize<UpdateLocalMetadataTagsOutboxRequest>(outboxRecord.json.decodeToString())
+        val versionTag = request.versionTag
+            ?: fileProvider.getFileHeader(request.file.targetDrive.alias, Uuid.parse(request.file.fileId))
+                ?.fileMetadata?.localAppData?.versionTag?.toString()
         driveUploadProvider.uploadLocalMetadataTags(
             file = request.file,
-            localAppData = LocalAppData(versionTag = request.versionTag, tags = request.tags)
+            localAppData = LocalAppData(versionTag = versionTag, tags = request.tags)
         )
     }
 
@@ -88,10 +93,12 @@ class DriveOutboxUploader(
         val request = OdinSystemSerializer.deserialize<UpdateLocalMetadataContentOutboxRequest>(outboxRecord.json.decodeToString())
         val file = fileProvider.getFileHeader(request.driveId, request.fileId)
             ?: error("File not found for local metadata content update: ${request.fileId}")
+        val versionTag = request.versionTag
+            ?: file.fileMetadata.localAppData?.versionTag?.toString()
         driveUploadProvider.uploadLocalMetadataContent(
             driveId = request.driveId,
             file = file,
-            localAppData = LocalAppData(versionTag = request.versionTag, content = request.content, iv = request.iv)
+            localAppData = LocalAppData(versionTag = versionTag, content = request.content, iv = request.iv)
         )
     }
 
@@ -116,6 +123,11 @@ class DriveOutboxUploader(
         )
     }
 
+    private suspend fun deleteFilesByGroupId(outboxRecord: Outbox) {
+        val request = OdinSystemSerializer.deserialize<DeleteFilesByGroupIdOutboxRequest>(outboxRecord.json.decodeToString())
+        fileProvider.deleteFilesByGroupId(request.driveId, request.groupIds)
+    }
+
     private fun percentOf(sent: Long, total: Long?) =
         if (total != null && total > 0) (sent.toFloat() / total.toFloat()) * 100f else 0f
 
@@ -127,5 +139,6 @@ class DriveOutboxUploader(
         const val UpdateLocalMetadataContent = 5L
         const val SendReadReceiptByTime = 6L
         const val ToggleReaction = 8L
+        const val DeleteFilesByGroupId = 9L
     }
 }

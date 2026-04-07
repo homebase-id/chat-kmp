@@ -264,7 +264,7 @@ class QueryBatch(
                     if (sortField === QueryBatchSortField.UserDate)
                         workingCursor = workingCursor.copy(
                             paging = TimeRowCursor(
-                                UnixTimeUtc(header.fileMetadata.appData.userDate!!),
+                                UnixTimeUtc(header.fileMetadata.appData.userDate ?: 0L),
                                 0L
                             )
                         )

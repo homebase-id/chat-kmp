@@ -1,6 +1,7 @@
 package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByTimeOutboxRequest
@@ -36,7 +37,8 @@ class OutboxSync(
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
     private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    @kotlin.concurrent.Volatile private var isOnline = false
+    @kotlin.concurrent.Volatile
+    private var isOnline = false
 
     fun setOnline(online: Boolean) {
         isOnline = online
@@ -163,12 +165,33 @@ class OutboxSync(
     }
 
     public suspend fun tryEnqueue(
+        request: DeleteFilesByGroupIdOutboxRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val enqueued = tryEnqueue(
+            driveId = request.driveId,
+            uniqueId = Uuid.random(),
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.DeleteFilesByGroupId,
+            json = OdinSystemSerializer.serialize(request)
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
+    }
+
+    public suspend fun tryEnqueue(
         request: DeleteLocalFilesByFileIdRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean
-    {
+    ): Boolean {
         val enqueued = tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(), //random because our request is a list of files
@@ -191,6 +214,7 @@ class OutboxSync(
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
     ): Boolean {
+        val json = OdinSystemSerializer.serialize(request)
         val enqueued = tryEnqueue(
             driveId = request.driveId,
             uniqueId = request.metadata.appData.uniqueId
@@ -198,7 +222,31 @@ class OutboxSync(
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateFile,
-            json = OdinSystemSerializer.serialize(request)
+            json = json
+        )
+
+        if (enqueued && sendNow) {
+            send()
+        }
+
+        return enqueued
+    }
+
+    public suspend fun replaceEnqueue(
+        request: UpdateFileByUniqueIdRequest,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): Boolean {
+        val json = OdinSystemSerializer.serialize(request)
+        val enqueued = replaceEnqueue(
+            driveId = request.driveId,
+            uniqueId = request.metadata.appData.uniqueId
+                ?: error("unique id required to place in outbox"),
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.UpdateFile,
+            json = json
         )
 
         if (enqueued && sendNow) {
@@ -319,6 +367,21 @@ class OutboxSync(
         }
 
         return enqueued
+    }
+
+    /** Like tryEnqueue but replaces any existing pending item with the same (driveId, uniqueId).
+     *  Use when the new request supersedes a stale pending one, e.g. a conversation file update
+     *  that was queued while offline and is now outdated. */
+    public suspend fun replaceEnqueue(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        dependencyUniqueId: Uuid? = null,
+        priority: Long,
+        uploadType: Long,
+        json: String
+    ): Boolean {
+        databaseManager.outbox.deleteBy(driveId, uniqueId)
+        return tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
     }
 
     public suspend fun tryEnqueue(

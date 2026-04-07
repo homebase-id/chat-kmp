@@ -58,15 +58,18 @@ class ChatMessageActionService(
                         (isSelfConversation || !it.isAuthoredBy(domain))
             }
 
+        Logger.d { "markAsRead: convo=$conversationId unread=${unreadRecords.size}/${batch.records.size} newReadTime=${newReadTime.milliseconds}" }
+
         if (unreadRecords.isEmpty()) {
             dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
-            conversationStream.updateUnreadCounts()
+            conversationStream.updateUnreadCounts() // TODO: We can be more performant here
             return
         }
 
         // Use server-side 'created' timestamp for the read receipt endTime.
         // The server matches against 'created', not the client-side 'userDate'.
         val endTime = unreadRecords.maxOf { it.created }
+        Logger.d { "markAsRead: convo=$conversationId endTime=${endTime.toEpochMilliseconds()}" }
 
         dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
         conversationStream.updateUnreadCounts()

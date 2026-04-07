@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -95,8 +97,15 @@ import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.StyledSearchTextField
+import id.homebase.api.client.profile.PublicProfileProvider
+import org.koin.compose.koinInject
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_not_connected_disclaimer
+import id.homebase.resources.chat_group_rejoin_accept
+import id.homebase.resources.chat_group_rejoin_decline
+import id.homebase.resources.chat_group_rejoin_pending_description
+import id.homebase.resources.chat_group_you_left
+import id.homebase.resources.chat_group_you_were_removed
 import id.homebase.resources.chat_message_forward_to
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
@@ -266,18 +275,23 @@ fun ConversationContent(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable(
+                            interactionSource = MutableInteractionSource(),
+                            indication = null
+                        ) {
+                            onUiAction(
+                                ConversationListUiAction.ShowConversationSettings(
+                                    conversation.conversation
+                                )
+                            )
+                        }
+                    ) {
                         ConversationAvatar(
                             modifier = Modifier.focusable(), // to avoid textfield focus
                             avatarModel = conversation.conversation.avatarModel,
-                            options = AvatarOptions(
-                                size = 32.dp, fontSize = 12.sp, onClick = {
-                                    onUiAction(
-                                        ConversationListUiAction.ShowConversationSettings(
-                                            conversation.conversation
-                                        )
-                                    )
-                                })
+                            options = AvatarOptions(size = 32.dp, fontSize = 12.sp)
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
@@ -507,6 +521,59 @@ fun ConversationContent(
             }
 
             Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
+                if (conversation.conversation.conversationState == ConversationState.Left) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_group_you_left),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else if (conversation.conversation.conversationState == ConversationState.Removed) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_group_you_were_removed),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else if (conversation.conversation.conversationState == ConversationState.RejoinPending) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_group_rejoin_pending_description),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            ElevatedButton(onClick = {
+                                onUiAction(ConversationListUiAction.AcceptRejoin(conversation.conversation.id))
+                            }) {
+                                Text(stringResource(MR.string.chat_group_rejoin_accept))
+                            }
+                            ElevatedButton(onClick = {
+                                onUiAction(ConversationListUiAction.DeclineRejoin(conversation.conversation.id))
+                            }) {
+                                Text(stringResource(MR.string.chat_group_rejoin_decline))
+                            }
+                        }
+                    }
+                } else {
                 Column(modifier = Modifier.animateContentSize()) {
                     uiState.replyToMessage?.let { msg ->
                         ReplyPreviewBar(
@@ -642,6 +709,7 @@ fun ConversationContent(
                         })
                     }
                 }
+                } // else (not Left)
             }
         }
     }
@@ -668,10 +736,19 @@ fun ConversationContentSheets(
                     modifier = Modifier.fillMaxWidth().padding(16.dp).verticalScroll(scrollState)
                 ) {
                     sheet.identities.forEach { odinId ->
+                        val profileProvider = koinInject<PublicProfileProvider>()
+                        var resolvedName by remember(odinId) { mutableStateOf(odinId.domainName) }
+
+                        LaunchedEffect(odinId) {
+                            try {
+                                resolvedName = profileProvider.getPublicProfile(odinId).name
+                            } catch (_: Exception) {}
+                        }
+
                         ContactItem(
-                            name = odinId.domainName,
+                            name = resolvedName,
                             odinId = odinId,
-                            avatarInitials = "",
+                            avatarInitials = resolvedName.take(2).uppercase(),
                             onContactClick = {
                                 onUiAction(ConversationListUiAction.ConnectToIdentity(odinId))
                             },

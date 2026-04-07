@@ -11,6 +11,7 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
 import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
@@ -69,8 +70,15 @@ val appModule = module {
             onPostAuthenticated = {
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
-                get<ConversationStream>().start()
+                val conversationStream = get<ConversationStream>()
+                conversationStream.start()
                 get<ContactService>().start()
+
+                // Let ChatMessageStream skip messages for left conversations
+                get<ChatMessageStream>().isConversationLeft = { conversationId ->
+                    conversationStream.getConversationById(conversationId)
+                        ?.conversationState.let { it == ConversationState.Left || it == ConversationState.Removed }
+                }
             }
         )
     }

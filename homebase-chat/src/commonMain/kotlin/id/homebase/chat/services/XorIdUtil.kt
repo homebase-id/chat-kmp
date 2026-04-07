@@ -41,7 +41,7 @@ object XorIdUtil {
             (aBytes[i].toInt() xor bBytes[i].toInt()).toByte()
         }
 
-        // enforce UUID v4 version
+        // enforce UUID v4 versionthe
         result[6] = ((result[6].toInt() and 0x0F) or 0x40).toByte()
 
         // enforce RFC-4122 variant

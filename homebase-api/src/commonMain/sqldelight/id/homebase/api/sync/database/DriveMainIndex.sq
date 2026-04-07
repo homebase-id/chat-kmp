@@ -1,6 +1,6 @@
 import kotlin.uuid.Uuid;
 
-CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 3
+CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 5
    rowId INTEGER PRIMARY KEY AUTOINCREMENT,
    identityId BLOB AS Uuid NOT NULL,
    driveId BLOB AS Uuid NOT NULL,

@@ -11,7 +11,7 @@ import org.jetbrains.compose.resources.StringResource
 
 fun RecipientTransferHistoryEntry.toChatDeliveryStatus(): ChatDeliveryStatus = when {
     TransferStatus.isFailedStatus(latestTransferStatus) -> ChatDeliveryStatus.Failed
-    isReadByRecipient -> ChatDeliveryStatus.Read
+    isRead -> ChatDeliveryStatus.Read
     latestTransferStatus == TransferStatus.Delivered -> ChatDeliveryStatus.Delivered
     isInOutbox -> ChatDeliveryStatus.Sending
     else -> ChatDeliveryStatus.Sent

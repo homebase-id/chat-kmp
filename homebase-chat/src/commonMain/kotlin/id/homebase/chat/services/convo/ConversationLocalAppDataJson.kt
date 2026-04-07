@@ -14,5 +14,6 @@ data class ConversationLocalAppDataJson(
     @Transient
     val conversationId: Uuid =
         Uuid.Companion.NIL, // TODO: Obsolete, ignore. Same as uniqueId for conversation
-    val lastReadTime: UnixTimeUtc?
+    val lastReadTime: UnixTimeUtc? = null,
+    val lastExitedAt: UnixTimeUtc? = null,
 )

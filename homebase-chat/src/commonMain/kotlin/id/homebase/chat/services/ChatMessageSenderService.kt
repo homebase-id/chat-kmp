@@ -22,12 +22,14 @@ import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.chat.ChatMessageSizer
+import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
@@ -159,7 +161,8 @@ class ChatMessageSenderService(
         conversationId: Uuid,
         statusMessage: StatusMessageData,
         previousMessageUniqueId: Uuid? = null,
-        payloadBundle: PayloadBundle? = null
+        payloadBundle: PayloadBundle? = null,
+        additionalRecipients: List<OdinId> = emptyList()
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
@@ -167,7 +170,8 @@ class ChatMessageSenderService(
         notificationText = "",
         previousMessageUniqueId = previousMessageUniqueId,
         payloadBundle = payloadBundle,
-        isStatusMessage = true
+        isStatusMessage = true,
+        additionalRecipients = additionalRecipients
     )
 
     private suspend fun sendMessageInternal(
@@ -177,11 +181,22 @@ class ChatMessageSenderService(
         notificationText: String,
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
-        isStatusMessage: Boolean = false
+        isStatusMessage: Boolean = false,
+        additionalRecipients: List<OdinId> = emptyList()
     ): SendMessageResult {
 
+        val conversation =
+            conversationStream.getConversationById(conversationId) ?: error("no conversation found")
+
+        if (!isStatusMessage && (conversation.conversationState == ConversationState.Left
+                    || conversation.conversationState == ConversationState.RejoinPending
+                    || conversation.conversationState == ConversationState.Removed)
+        ) {
+            error("Cannot send messages to a group you have left")
+        }
+
         val keyHeader = KeyHeader.newRandom16()
-        val recipients = conversationStream.getRecipients(conversationId)
+        val recipients = conversationStream.getRecipients(conversationId, additionalRecipients)
         val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
         val encryptedBundle = payloadBundleEncryptionService.encryptBundle(

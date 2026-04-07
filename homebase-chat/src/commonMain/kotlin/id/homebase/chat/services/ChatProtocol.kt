@@ -2,6 +2,7 @@ package id.homebase.chat.services
 
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.core.avatars.ConversationAvatarModel
 import kotlin.uuid.Uuid
@@ -21,9 +22,16 @@ object ChatProtocol {
     const val CHAT_CONVERSATION_LOCAL_METADATA_FILE_TYPE = 8889;
 
     const val ConversationFileType = 8888
+    const val ConversationAdminFileType = 8890
     const val ChatStatusMessageDataType = 202
 
     const val MessageFileType = 7878
+
+    /** Derives a deterministic uniqueId for the admin file from a conversationId. */
+    suspend fun getAdminFileUniqueId(conversationId: Uuid): Uuid {
+        // never change this; period - full stop
+        return ByteArrayUtil.reduceSha256Hash("admin$conversationId")
+    }
 
 
     /** Indicates a file was optimistically written and not coming from the server */
@@ -32,8 +40,14 @@ object ChatProtocol {
     /** Local metadata tag: conversation has been archived by the user */
     val ConversationArchivedTag = Uuid.parse("a569e5cd-6fd8-41e0-8ccc-b6b31dac6b73")
 
+    /** Local metadata tag: user has left this group conversation */
+    val ConversationLeftTag = Uuid.parse("f3a7c2e1-9b4d-4e8f-a1c5-7d2e3f4b5c6d")
+
     /** Local metadata tag: conversation has been pinned by the user */
     val ConversationPinnedTag = Uuid.parse("3f7e4c1d-5a2b-4f89-b3e7-9c1d2e3f4a5b")
+
+    /** Server-side appData tag: conversation was originally created as a group (never removed) */
+    val ConversationGroupTag = Uuid.parse("b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f")
 
     const val ARCHIVAL_STATUS_DELETED = 2
 
@@ -68,6 +82,7 @@ object ChatProtocol {
             ),
             admins = setOf(domain),
             isPinned = true,
+            isGroup = false,
         )
     }
 }

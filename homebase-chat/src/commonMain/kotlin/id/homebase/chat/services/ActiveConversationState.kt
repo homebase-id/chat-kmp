@@ -18,7 +18,7 @@ class ActiveConversationState {
     fun set(conversationId: Uuid, messages: List<MessageUiModel>) {
         _messages.update { current ->
             current.toMutableMap().apply {
-                this[conversationId] = messages
+                this[conversationId] = messages.sortedByDescending { it.userDate }
             }
         }
     }
@@ -38,6 +38,15 @@ class ActiveConversationState {
             current.toMutableMap().apply {
                 val existing = this[conversationId].orEmpty()
                 this[conversationId] = upsertMessages(existing, incoming)
+            }
+        }
+    }
+
+    fun removeByFileId(conversationId: Uuid, fileId: Uuid) {
+        _messages.update { current ->
+            val existing = current[conversationId] ?: return@update current
+            current.toMutableMap().apply {
+                this[conversationId] = existing.filter { it.fileId != fileId }
             }
         }
     }

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
@@ -327,20 +329,21 @@ fun MessageBubbleRaw(
                                 )
                             }
                         }
-                        Box {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (onShowMoreClick != null) Modifier.clickable(onClick = onShowMoreClick)
+                                    else Modifier
+                                )
+                        ) {
                             if (message.hasMore && onShowMoreClick != null) {
                                 Text(
                                     text = stringResource(MR.string.show_more),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = contentColor.copy(alpha = 0.85f),
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier
-                                        .padding(start = 12.dp, end = 12.dp, bottom = 6.dp)
-                                        .combinedClickable(
-                                            onClick = { onShowMoreClick() },
-                                            onLongClick = {},
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = null
-                                        )
+                                        .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
                                 )
                             }
                         }

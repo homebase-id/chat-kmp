@@ -1,10 +1,15 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this
+repository.
+
+**_NOTE:_**  At the end of every task, Codex will review your work
 
 ## Project Overview
 
-Homebase Chat — a Kotlin Multiplatform (KMP) chat application targeting Android, iOS, Desktop (macOS/Windows/Linux), and Web (partial). Built with Compose Multiplatform, using MVVM architecture with Koin DI.
+Homebase Chat — a Kotlin Multiplatform (KMP) chat application targeting Android, iOS, Desktop (
+macOS/Windows/Linux), and Web (partial). Built with Compose Multiplatform, using MVVM architecture
+with Koin DI.
 
 ## Build & Run Commands
 
@@ -54,18 +59,21 @@ androidApp / desktopApp / iosApp  — Platform entry points
 ## KMP Source Set Convention
 
 Each module follows the standard KMP layout:
+
 - `src/commonMain/kotlin/` — Shared code (bulk of logic)
 - `src/androidMain/kotlin/` — Android implementations (OkHttp, ExoPlayer, SQLCipher)
 - `src/jvmMain/kotlin/` — Desktop implementations (VLC-J, JDBC SQLite)
 - `src/nativeMain/kotlin/` — iOS implementations (Darwin networking, native SQLite)
 - `src/webMain/kotlin/` — Web implementations (partial)
 
-Use `expect`/`actual` declarations for platform-specific code. The flag `-Xexpect-actual-classes` is enabled.
+Use `expect`/`actual` declarations for platform-specific code. The flag `-Xexpect-actual-classes` is
+enabled.
 
 ## Key Technology Choices
 
 - **DI:** Koin — all modules registered in `homebase-core/.../di/AppModule.kt`
-- **Database:** SQLDelight (`OdinDatabase`) with SQLCipher encryption on Android, encrypted JDBC on Desktop
+- **Database:** SQLDelight (`OdinDatabase`) with SQLCipher encryption on Android, encrypted JDBC on
+  Desktop
 - **Networking:** Ktor client with platform-specific engines (OkHttp/Darwin/CIO)
 - **Navigation:** Compose Navigation via `AppNavHost` in homebase-core
 - **Serialization:** kotlinx.serialization (JSON)
@@ -84,7 +92,9 @@ Use `expect`/`actual` declarations for platform-specific code. The flag `-Xexpec
 
 ## iOS Framework
 
-homebase-core exports as `ComposeApp` framework, transitively exporting homebase-api and homebase-common. Other modules export individual frameworks (`homebase-commonKit`, `homebase-authKit`, `homebase-chatKit`).
+homebase-core exports as `ComposeApp` framework, transitively exporting homebase-api and
+homebase-common. Other modules export individual frameworks (`homebase-commonKit`,
+`homebase-authKit`, `homebase-chatKit`).
 
 ## Android Emulator/Device Logs (adb)
 
@@ -122,7 +132,10 @@ adb logcat -c
 ## CI/CD
 
 GitHub Actions workflows in `.github/workflows/`:
+
 - `build-check.yml` — assembleDebug + createDistributable on push/PR to main
 - `test.yml` — runs platform-specific tests (JVM, desktop, iOS simulator)
 - `lint.yml` — code linting
 - `build-android-release.yml`, `build-ios-release.yml`, `build-mobile-release.yml` — release builds
+
+Do NOT use slash (/) in Git branch names
