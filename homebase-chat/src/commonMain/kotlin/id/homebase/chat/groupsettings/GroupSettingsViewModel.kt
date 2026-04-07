@@ -220,6 +220,7 @@ class GroupSettingsViewModel(
                         contacts = contacts,
                         currentOdinId = domain,
                         isCurrentUserGroupAdmin = conversation.isCurrentUserAdmin(domain),
+                        isLegacyGroup = conversation.isLegacyGroup,
                         isLoading = false,
                     )
                 }

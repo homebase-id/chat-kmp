@@ -74,12 +74,14 @@ class ConversationMapper(
             require(participants.isNotEmpty()) { "Conversation has no valid participants" }
 
             val isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
+            val isLegacyGroup = !isGroup && participants.size > 2
+            val isAnyGroup = isGroup || isLegacyGroup
             val displayNames = participants.map { it.domainName }
 
             val title =
                 if (conversationId == ChatProtocol.ConversationWithYourselfId) {
                     "" // Display name resolved via string resource at UI layer
-                } else if (isGroup) {
+                } else if (isAnyGroup) {
                     conversationData.title?.takeIf { it.isNotBlank() } ?: displayNames.joinToString(", ")
                 } else {
                     val other = participants.first { it != domain }
@@ -87,7 +89,7 @@ class ConversationMapper(
                 }
 
             val admins: Set<OdinId> =
-                if (isGroup) {
+                if (isAnyGroup) {
                     queryAdmins(conversationId)
                     // Backward compat: fall back to conversation content, then originalAuthor
                         ?: (conversationData.adminData?.admins?.toSet())
@@ -115,7 +117,7 @@ class ConversationMapper(
             val conversationState = when {
                 isLeftByTag && participants.contains(domain) -> ConversationState.RejoinPending
                 isLeftByTag -> ConversationState.Left
-                isGroup && !participants.contains(domain) -> ConversationState.Removed
+                isAnyGroup && !participants.contains(domain) -> ConversationState.Removed
                 isArchivedByTag -> ConversationState.Archived
                 else -> ConversationState.Active
             }
@@ -144,6 +146,7 @@ class ConversationMapper(
                     admins = admins,
                     conversationState = conversationState,
                     isGroup = isGroup,
+                    isLegacyGroup = isLegacyGroup,
                     exitedAt = exitedAt
                 )
 

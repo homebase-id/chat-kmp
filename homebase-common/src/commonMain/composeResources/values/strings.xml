@@ -198,6 +198,8 @@
     <string name="chat_group_you_left">You left this group</string>
     <string name="chat_group_you_were_removed">You are no longer in this conversation</string>
     <string name="chat_group_rejoin_pending">Re-added</string>
+    <string name="chat_group_legacy">Legacy</string>
+    <string name="chat_group_legacy_banner">This is an older group. Some features like managing members and admins are not available.</string>
     <string name="chat_group_rejoin_pending_description">You were re-added to this group</string>
     <string name="chat_group_rejoin_accept">Rejoin</string>
     <string name="chat_group_rejoin_decline">Decline</string>
