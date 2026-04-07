@@ -60,4 +60,4 @@ jobs:
           echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_DEV }}' > google-play-key.json
 
       - name: "Publish to Google Play internal track"
-        run: ./gradlew publishDevBundle --artifact-dir androidApp/build/outputs/bundle/dev
+        run: ./gradlew publishDevBundle --artifact-dir androidApp/build/outputs/bundle/dev --release-status draft
