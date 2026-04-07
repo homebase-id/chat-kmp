@@ -12,6 +12,7 @@ data class GroupSettingsUiState(
     val currentOdinId: OdinId? = null,
     val conversation: ConversationUiModel? = null,
     val isCurrentUserGroupAdmin: Boolean = false,
+    val isLegacyGroup: Boolean = false,
     val contacts: List<ContactUiModel> = listOf(),
     val uiEvent: GroupSettingsUiEvent? = null,
     val uiDialog: GroupSettingsUiDialog? = null,

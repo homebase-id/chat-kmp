@@ -165,7 +165,7 @@ fun GroupSettingsUi(
                     }
                 },
                 actions = {
-                    if (uiState.isCurrentUserGroupAdmin) {
+                    if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
                         IconButton(onClick = { onUiAction(GroupSettingsUiAction.EditGroupClicked) }) {
                             Icon(
                                 Icons.Outlined.Edit,
@@ -212,7 +212,7 @@ fun GroupSettingsUi(
                             style = MaterialTheme.typography.titleLarge
                         )
                     }
-                    if (uiState.isCurrentUserGroupAdmin) {
+                    if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
                         item {
                             ListItemAction(
                                 modifier = Modifier
@@ -477,7 +477,7 @@ fun GroupSettingsSheets(
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
-                        if (uiState.isCurrentUserGroupAdmin) {
+                        if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
                             if (uiState.conversation?.isCurrentUserAdmin(contactInfo.odinId) == true) {
                                 ListItemActionNormalIcon(
                                     modifier = Modifier.fillMaxWidth(),
