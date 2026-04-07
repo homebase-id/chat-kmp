@@ -53,7 +53,6 @@ import id.homebase.resources.reactions
 import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
-import id.homebase.resources.unknown_status
 import org.jetbrains.compose.resources.stringResource
 
 @Composable

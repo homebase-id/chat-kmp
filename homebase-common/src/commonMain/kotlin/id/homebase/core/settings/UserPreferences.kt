@@ -35,6 +35,11 @@ class UserPreferences(private val settings: Settings) {
         get() = settings.getBoolean("notification_play_while_app_open", true)
         set(value) = settings.putBoolean("notification_play_while_app_open", value)
 
+    var errorCollectionEnabled: Boolean
+        get() = settings.getBoolean("error_collection_enabled", true)
+        set(value) = settings.putBoolean("error_collection_enabled", value)
+
+
     var notificationContentLevel: String
         get() = settings.getString("notification_content_level", "name_content_actions")
         set(value) = settings.putString("notification_content_level", value)
