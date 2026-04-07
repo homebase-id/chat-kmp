@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.Back
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.Error
@@ -14,14 +15,17 @@ import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowContactInfo
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowEditGroup
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.ui.navigation.Route
+import id.homebase.core.util.buildConnectToIdentityUrl
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
 class GroupSettingsViewModel(
     savedStateHandle: SavedStateHandle,
@@ -170,6 +174,14 @@ class GroupSettingsViewModel(
                 }
                 _uiState.update { it.copy(uiDialog = GroupSettingsUiDialog.RemoveFromGroup(action.contact)) }
             }
+
+            is GroupSettingsUiAction.ConnectToIdentity -> {
+                viewModelScope.launch {
+                    val currentUser = credentialsManager.requireActiveCredentials().domain
+                    val url = currentUser.buildConnectToIdentityUrl(action.odinId)
+                    _uiState.update { it.copy(uiEvent = GroupSettingsUiEvent.OpenUrl(url)) }
+                }
+            }
         }
     }
 
@@ -188,8 +200,14 @@ class GroupSettingsViewModel(
     private fun loadData(conversation: ConversationUiModel) {
         viewModelScope.launch {
             try {
-                val contacts = conversation.participants.mapNotNull { odinId ->
-                    contactService.resolveByOdinId(odinId)
+                val contacts = conversation.participants.map { odinId ->
+                    contactService.resolveByOdinId(odinId) ?: ContactUiModel(
+                        id = Uuid.random(),
+                        odinId = odinId,
+                        name = odinId.domainName,
+                        avatarInitials = odinId.domainName.take(2).uppercase(),
+                        connectionState = ContactConnectionState.NotConnected
+                    )
                 }
                 val domain = credentialsManager.requireActiveCredentials().domain
 

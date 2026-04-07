@@ -25,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -252,6 +253,7 @@ fun ContactItem(
     name: String,
     subTitle: String? = null,
     annotation: String? = null,
+    annotationColor: Color? = null,
     selectionMode: Boolean = false,
     isSelectionEnabled: Boolean= true,
     isSelected: Boolean = false,
@@ -303,6 +305,7 @@ fun ContactItem(
             Text(
                 text = annotation,
                 style = MaterialTheme.typography.labelSmall,
+                color = annotationColor ?: LocalContentColor.current,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
