@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import co.touchlab.kermit.Logger
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +23,7 @@ import kotlin.uuid.Uuid
 class NotificationMarkReadReceiver : BroadcastReceiver(), KoinComponent {
 
     private val chatMessageActionService: ChatMessageActionService by inject()
+    private val notificationService: NotificationService by inject()
 
     @OptIn(ExperimentalUuidApi::class)
     override fun onReceive(context: Context, intent: Intent) {
@@ -33,9 +35,10 @@ class NotificationMarkReadReceiver : BroadcastReceiver(), KoinComponent {
             "Marking conversation as read: $conversationId"
         }
 
-        // Dismiss notification immediately
+        // Dismiss notification and clear accumulated message count
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.cancel(notificationId)
+        notificationService.clearNotificationCount(conversationId)
 
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {

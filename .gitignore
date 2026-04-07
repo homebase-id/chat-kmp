@@ -26,3 +26,5 @@ xcuserdata/
 /desktopApp/output/
 /desktopApp/proguard-jars/
 /desktopApp/mapping.txt
+hs_err_pid*.log
+replay_pid*.log

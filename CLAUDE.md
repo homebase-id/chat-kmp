@@ -137,3 +137,5 @@ GitHub Actions workflows in `.github/workflows/`:
 - `test.yml` — runs platform-specific tests (JVM, desktop, iOS simulator)
 - `lint.yml` — code linting
 - `build-android-release.yml`, `build-ios-release.yml`, `build-mobile-release.yml` — release builds
+
+Do NOT use slash (/) in Git branch names
