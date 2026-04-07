@@ -266,7 +266,7 @@ fun GroupSettingsUi(
                                 contact.connectionState == ContactConnectionState.Unknown
                     }
 
-                    items(connectedContacts, key = { it.odinId }) { contact ->
+                    items(connectedContacts, key = { it.odinId.domainName }) { contact ->
                         ContactItem(
                             name = contact.name,
                             subTitle = contact.odinId.domainName,
@@ -291,7 +291,7 @@ fun GroupSettingsUi(
                                 style = MaterialTheme.typography.titleLarge
                             )
                         }
-                        items(notConnectedContacts, key = { it.odinId }) { contact ->
+                        items(notConnectedContacts, key = { it.odinId.domainName }) { contact ->
                             ContactItem(
                                 name = contact.name,
                                 subTitle = contact.odinId.domainName,
