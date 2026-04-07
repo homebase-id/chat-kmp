@@ -157,7 +157,7 @@ fun MessageInfoUi(
                     Text(
                         text = stringResource(
                             MR.string.label_edited,
-                            uiState.message?.modified?.let { formateDateTime(it) } ?: "",
+                            uiState.message.modified?.let { formateDateTime(it) } ?: "",
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -196,7 +196,6 @@ fun MessageInfoUi(
                             ChatDeliveryStatus.Sent -> stringResource(MR.string.uploaded)
                             ChatDeliveryStatus.Sending -> stringResource(MR.string.sending_to)
                             ChatDeliveryStatus.Failed -> stringResource(MR.string.failed)
-                            else -> stringResource(MR.string.unknown_status)
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         SectionHeader(

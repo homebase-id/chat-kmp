@@ -24,6 +24,7 @@ sealed interface GroupSettingsUiEvent {
     data class ShowContactInfo(val odinId: String) : GroupSettingsUiEvent
     data class ShowAddMembers(val conversationId: String) : GroupSettingsUiEvent
     data class ShowEditGroup(val conversationId: String) : GroupSettingsUiEvent
+    data class OpenUrl(val url: String) : GroupSettingsUiEvent
 }
 
 sealed interface GroupSettingsUiDialog {

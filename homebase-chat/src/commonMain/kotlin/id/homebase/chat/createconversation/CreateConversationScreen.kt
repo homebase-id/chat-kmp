@@ -25,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -50,6 +51,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
+import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
@@ -199,7 +201,7 @@ fun CreateConversationUi(
                                         )
                                     }
                                 }
-                                items(contactGroup.contacts) { contact ->
+                                items(contactGroup.contacts, key = { it.odinId }) { contact ->
                                     ContactItem(
                                         name = contact.name,
                                         subTitle = contact.odinId.domainName,
@@ -252,6 +254,7 @@ fun ContactItem(
     name: String,
     subTitle: String? = null,
     annotation: String? = null,
+    annotationColor: Color? = null,
     selectionMode: Boolean = false,
     isSelectionEnabled: Boolean= true,
     isSelected: Boolean = false,
@@ -283,11 +286,10 @@ fun ContactItem(
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = name,
+            ContactName(
+                odinId = odinId,
+                knownName = name,
                 style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
             subTitle?.let {
                 Spacer(modifier = Modifier.height(4.dp))
@@ -303,6 +305,7 @@ fun ContactItem(
             Text(
                 text = annotation,
                 style = MaterialTheme.typography.labelSmall,
+                color = annotationColor ?: LocalContentColor.current,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
