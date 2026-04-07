@@ -152,7 +152,11 @@ fun ConversationItem(
                     }
                 } else if (enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
                     Spacer(modifier = Modifier.width(4.dp))
-                    DeliveryStatus(isPendingSend = false, deliveryStatus = enrichedData.conversation.lastMessageDeliveryStatus)
+                    DeliveryStatus(
+                        isPendingSend = false,
+                        deliveryStatus = enrichedData.conversation.lastMessageDeliveryStatus,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 if (enrichedData.conversation.conversationState == ConversationState.Archived) {
                     Spacer(modifier = Modifier.width(12.dp))
