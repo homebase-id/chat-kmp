@@ -1,8 +1,10 @@
 package id.homebase.core.ui.screens.help
 
 import androidx.lifecycle.ViewModel
+import co.touchlab.kermit.Logger
 import id.homebase.core.logging.LogFileExporter
 import id.homebase.core.logging.LoggerConfig
+import id.homebase.core.logging.setErrorCollectionEnabled
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.help.HelpUiEvent.OpenUrl
 import id.homebase.core.ui.screens.help.HelpUiEvent.ShareFile
@@ -53,10 +55,14 @@ class HelpViewModel(
             }
 
             HelpUiAction.ToggleErrorCollection -> {
-                val isEnabled = !userPreferences.errorCollectionEnabled
-                userPreferences.errorCollectionEnabled = isEnabled
-                _uiState.update { it.copy(errorCollectionEnabled = isEnabled) }
-
+                try {
+                    val isEnabled = !userPreferences.errorCollectionEnabled
+                    userPreferences.errorCollectionEnabled = isEnabled
+                    _uiState.update { it.copy(errorCollectionEnabled = isEnabled) }
+                    setErrorCollectionEnabled(isEnabled)
+                } catch (e: Exception) {
+                    Logger.e { "Failed to toggle error collection: ${e.message}" }
+                }
             }
         }
     }

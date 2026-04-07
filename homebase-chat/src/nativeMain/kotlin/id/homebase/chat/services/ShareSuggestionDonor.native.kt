@@ -50,13 +50,13 @@ actual class ShareSuggestionDonor actual constructor() {
             val interaction = INInteraction(intent = intent, response = null)
             interaction.donateInteractionWithCompletion { error ->
                 if (error != null) {
-                    Logger.w("ShareSuggestionDonor") {
+                    Logger.w(tag = "ShareSuggestionDonor") {
                         "INInteraction donation failed: ${error.localizedDescription}"
                     }
                 }
             }
         } catch (e: Exception) {
-            Logger.w("ShareSuggestionDonor") {
+            Logger.w(tag = "ShareSuggestionDonor") {
                 "Failed to donate share suggestion: ${e.message}"
             }
         }

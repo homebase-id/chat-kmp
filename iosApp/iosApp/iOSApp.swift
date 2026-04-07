@@ -12,6 +12,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
       FirebaseApp.configure() //important
 
+      // Configure Crashlytics based on user preference
+      let userPrefs = UserPreferencesHelper.shared // You'll need to expose this from KMP
+      Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(
+          userPrefs.errorCollectionEnabled
+      )
+
       //By default showPushNotification value is true.
       //When set showPushNotification to false foreground push  notification will not be shown.
       //You can still get notification content using #onPushNotification listener method.C
@@ -114,6 +120,9 @@ struct iOSApp: App {
     init() {
         // Inject FFmpegKit bridge into the Kotlin framework
         FFmpegKitBridgeHolder.shared.setBridge(bridge: FFmpegKitBridgeImpl())
+
+        // Inject Crashlytics bridge into the Kotlin framework
+        CrashlyticsBridgeHolder.shared.setBridge(bridge: CrashlyticsBridgeImpl())
     }
     
     var body: some Scene {

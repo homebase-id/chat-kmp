@@ -29,7 +29,7 @@ actual class ShareCacheStorage {
 
     actual fun writeConversationCache(json: String) {
         val dir = containerUrl ?: run {
-            Logger.e(TAG) { "App Group container not available" }
+            Logger.e(tag = TAG) { "App Group container not available" }
             return
         }
         ensureDirectory(dir)
