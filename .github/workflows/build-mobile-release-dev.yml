@@ -1,8 +1,16 @@
 name: Build Mobile Release Dev
 
+
 on:
-  push:
-    branches: [main, automateAndroidRelease]
+    # Run on schedule (every day at 2 AM UTC)
+    schedule:
+      - cron: '0 2 * * *'  # Adjust time as needed
+
+    # Allow manual triggering from GitHub UI
+    workflow_dispatch:
+
+#  push:
+#    branches: [main]
 
 concurrency:
   group: mobile-release-dev-${{ github.ref }}
