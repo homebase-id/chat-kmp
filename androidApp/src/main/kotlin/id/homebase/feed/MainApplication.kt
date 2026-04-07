@@ -6,6 +6,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import co.touchlab.kermit.Logger
+import com.google.firebase.Firebase
+import com.google.firebase.crashlytics.crashlytics
 import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration
 import id.homebase.api.storage.SecureStorage
@@ -18,6 +20,7 @@ import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
+import id.homebase.core.settings.UserPreferences
 import id.homebase.feed.share.ShareShortcutPublisher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +59,10 @@ class MainApplication : Application(), KoinComponent {
             // Load modules
             modules(allModules)
         }
+
+        // Configure Crashlytics based on user preference
+        val userPreferences = get<UserPreferences>()
+        Firebase.crashlytics.isCrashlyticsCollectionEnabled = userPreferences.errorCollectionEnabled
 
         try {
             val logsDir = filesDir.resolve("logs")

@@ -57,6 +57,17 @@ Guide for JVM:
 Use command line from desktopApp module folder.
 <https://conveyor.hydraulic.dev/4.0/running/#common-tasks>
 
+## Release using Conveyor (dev)
+Update version, ensure you increment since previously released version
+Run scripts in desktopApp folder.
+
+```
+./gradlew createReleaseDistributable
+export CONVEYOR_GITHUB_TOKEN="<github_pat>"
+export SIGNING_KEY="<conveyor_singing_key>"
+conveyor -f ci.conveyor.conf make copied-site
+```
+
 ### Commands
 
 Build proguard jars:

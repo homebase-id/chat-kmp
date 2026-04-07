@@ -116,6 +116,7 @@
     <string name="help_support_center">Support Center</string>
     <string name="help_contact_us">Contact Us</string>
     <string name="help_submit_debug_log">Submit Debug Log</string>
+    <string name="help_enable_error_collection">Allow automatic error collection</string>
     <string name="help_debug_log_description">Debug logs can help Homebase fix issues and crashes.</string>
     <string name="help_version">Version</string>
     <string name="help_terms_privacy">Terms &amp; Privacy Policy</string>

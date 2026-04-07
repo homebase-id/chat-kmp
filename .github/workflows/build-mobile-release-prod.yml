@@ -1,14 +1,8 @@
-name: Build Mobile Release
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+name: Build Mobile Release Production
 
 on:
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Publish to TestFlight and Play Store internal track"
-        type: boolean
-        default: false
+
   push:
     tags:
       - "*"
@@ -77,20 +71,12 @@ jobs:
           name: homebase-id-app-android
           path: androidApp/build/outputs/bundle/release/homebase-id-app.aab
 
-      ## --- Play Store Internal Track Upload ---
-      ## Uncomment when GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret is configured.
-      ## Create a service account in Google Cloud Console, grant it access in
-      ## Play Console (Setup > API access), then store the JSON key as a secret.
-      #
-      # - name: Upload to Play Store (internal track)
-      #   if: inputs.publish == true || startsWith(github.ref, 'refs/tags/v')
-      #   uses: r0adkll/upload-google-play@v1
-      #   with:
-      #     serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-      #     packageName: id.homebase.feed
-      #     releaseFiles: androidApp/build/outputs/bundle/release/homebase-id-app.aab
-      #     track: internal
-      #     status: completed
+      - name: Create Google Play Service Account JSON
+        run: |
+          echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_DEV }}' > google-play-key.json
+
+      - name: "Publish to Google Play internal track"
+        run: ./gradlew publishReleaseBundle --artifact-dir androidApp/build/outputs/bundle/release
 
   build-ios:
     runs-on: macos-15

@@ -23,9 +23,9 @@
 		43296FC32F3A0C08000B3AFE /* libavdevice.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		43296FC42F3A0C08000B3AFE /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; };
 		43296FC52F3A0C08000B3AFE /* libswresample.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		4332A0A42F3B73DF00F895B5 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4332A0A32F3B73DF00F895B5 /* GoogleService-Info.plist */; };
 		4332A0A72F3B761C00F895B5 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0A62F3B761C00F895B5 /* FirebaseCore */; };
 		4332A0A92F3B761C00F895B5 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0A82F3B761C00F895B5 /* FirebaseMessaging */; };
+		4332A0AB2F3B761C00F895B5 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */; };
 		43CFC1DB2F741EF200628241 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 43CFC1D12F741EF200628241 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -82,18 +82,19 @@
 		43296FB52F3A0C08000B3AFE /* libswresample.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = libswresample.xcframework; path = "../homebase-api/libs/ffmpegkit-bundled.xcframework/libswresample.xcframework"; sourceTree = "<group>"; };
 		4332A0A32F3B73DF00F895B5 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		43CFC1D12F741EF200628241 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9F2DB399E7C2E943AFF1BA61 /* CrashlyticsBridgeImpl.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CrashlyticsBridgeImpl.swift; sourceTree = "<group>"; };
 		E036487443061F6060AA1439 /* Homebase.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Homebase.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		2D6603577744C1DE3AF9E242 /* Exceptions for "iosApp" folder in "iosApp" target */ = {
+		2D6603577744C1DE3AF9E242 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
 			target = 1B3C06D1520D2521F661776E /* iosApp */;
 		};
-		43CFC1E02F741EF300628241 /* Exceptions for "ShareExtension" folder in "ShareExtension" target */ = {
+		43CFC1E02F741EF300628241 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -106,7 +107,7 @@
 		43CFC1D22F741EF200628241 /* ShareExtension */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				43CFC1E02F741EF300628241 /* Exceptions for "ShareExtension" folder in "ShareExtension" target */,
+				43CFC1E02F741EF300628241 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
 			);
 			path = ShareExtension;
 			sourceTree = "<group>";
@@ -119,7 +120,7 @@
 		7BF4AA8D213A61C40E7100C2 /* iosApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				2D6603577744C1DE3AF9E242 /* Exceptions for "iosApp" folder in "iosApp" target */,
+				2D6603577744C1DE3AF9E242 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
 			);
 			path = iosApp;
 			sourceTree = "<group>";
@@ -147,6 +148,7 @@
 				43296FB82F3A0C08000B3AFE /* libavutil.xcframework in Frameworks */,
 				43296FC02F3A0C08000B3AFE /* libswscale.xcframework in Frameworks */,
 				4332A0A72F3B761C00F895B5 /* FirebaseCore in Frameworks */,
+				4332A0AB2F3B761C00F895B5 /* FirebaseCrashlytics in Frameworks */,
 				43296FB62F3A0C08000B3AFE /* libavformat.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -202,6 +204,7 @@
 				75264D1454C037FFA6F9EC79 /* Sources */,
 				5FA3011530A4400784B793C9 /* Frameworks */,
 				F55073FBDD5EC068F2F08801 /* Resources */,
+				F08EA0E32F7AA81F00B61D93 /* Copy GoogleServices-Info.plist */,
 				43296FC62F3A0C08000B3AFE /* Embed Frameworks */,
 				43CFC1DC2F741EF200628241 /* Embed Foundation Extensions */,
 			);
@@ -217,6 +220,7 @@
 			packageProductDependencies = (
 				4332A0A62F3B761C00F895B5 /* FirebaseCore */,
 				4332A0A82F3B761C00F895B5 /* FirebaseMessaging */,
+				4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */,
 			);
 			productName = iosApp;
 			productReference = E036487443061F6060AA1439 /* Homebase.app */;
@@ -297,7 +301,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4332A0A42F3B73DF00F895B5 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -340,6 +343,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :homebase-core:embedAndSignAppleFrameworkForXcode\n";
+		};
+		F08EA0E32F7AA81F00B61D93 /* Copy GoogleServices-Info.plist */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy GoogleServices-Info.plist";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" = \"Debug\" ]; then\n    plist=\"${PROJECT_DIR}/GoogleService-Info-Debug.plist\"\nelse\n    plist=\"${PROJECT_DIR}/GoogleService-Info-Release.plist\"\nfi\ncp \"${plist}\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -447,7 +468,9 @@
 				FFMPEG_LIBS_PATH = "$(SRCROOT)/../composeApp/libs/ffmpegkit-bundled.xcframework";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to attach picture to chat message";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow access to your microphone to record a message and send it securely over chat.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -542,7 +565,9 @@
 				FFMPEG_LIBS_PATH = "$(SRCROOT)/../composeApp/libs/ffmpegkit-bundled.xcframework";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to attach picture to chat message";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow access to your microphone to record a message and send it securely over chat.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -683,6 +708,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseMessaging;
+		};
+		4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseCore
+import FirebaseCrashlytics
 import FirebaseMessaging
 import ComposeApp
 import UserNotifications
@@ -113,6 +114,9 @@ struct iOSApp: App {
     init() {
         // Inject FFmpegKit bridge into the Kotlin framework
         FFmpegKitBridgeHolder.shared.setBridge(bridge: FFmpegKitBridgeImpl())
+
+        // Inject Crashlytics bridge into the Kotlin framework
+        CrashlyticsBridgeHolder.shared.setBridge(bridge: CrashlyticsBridgeImpl())
     }
     
     var body: some Scene {

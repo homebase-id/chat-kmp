@@ -4,6 +4,7 @@ import kotlinx.io.files.Path
 
 data class HelpUiState(
     val appVersion: String,
+    val errorCollectionEnabled: Boolean,
     val uiEvent: HelpUiEvent? = null,
 )
 
@@ -12,6 +13,7 @@ sealed interface HelpUiAction {
     data object ContactUsClicked : HelpUiAction
     data object SubmitDebugLogClicked : HelpUiAction
     data object TermsPrivacyClicked : HelpUiAction
+    data object ToggleErrorCollection : HelpUiAction
 }
 
 sealed interface HelpUiEvent {

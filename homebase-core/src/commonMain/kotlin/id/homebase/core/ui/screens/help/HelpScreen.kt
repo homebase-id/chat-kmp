@@ -32,10 +32,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.CheckboxRow
 import id.homebase.resources.MR
 import id.homebase.resources.help_contact_us
 import id.homebase.resources.help_copyright
 import id.homebase.resources.help_debug_log_description
+import id.homebase.resources.help_enable_error_collection
 import id.homebase.resources.help_submit_debug_log
 import id.homebase.resources.help_support_center
 import id.homebase.resources.help_terms_privacy
@@ -136,6 +138,13 @@ fun HelpUi(
                     onClick = { onAction(HelpUiAction.SubmitDebugLogClicked) }
                 )
             }
+            CheckboxRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                label = stringResource(MR.string.help_enable_error_collection),
+                checked = uiState.errorCollectionEnabled,
+                onCheckedChange = { onAction(HelpUiAction.ToggleErrorCollection) }
+            )
+
             Text(
                 text = stringResource(MR.string.help_debug_log_description),
                 style = MaterialTheme.typography.bodySmall,

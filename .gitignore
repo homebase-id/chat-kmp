@@ -26,5 +26,6 @@ xcuserdata/
 /desktopApp/output/
 /desktopApp/proguard-jars/
 /desktopApp/mapping.txt
+/google-play-key.json
 hs_err_pid*.log
 replay_pid*.log
