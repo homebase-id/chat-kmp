@@ -36,7 +36,9 @@ actual class RichNotificationDisplayer actual constructor() {
         val content = UNMutableNotificationContent().apply {
             setTitle(data.title)
             setBody(data.body)
-            setSound(UNNotificationSound.defaultSound)
+            if (!data.silent) {
+                setSound(UNNotificationSound.defaultSound)
+            }
 
             // Group by conversation
             if (data.conversationId != null) {

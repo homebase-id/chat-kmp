@@ -85,6 +85,11 @@ actual class RichNotificationDisplayer actual constructor() {
             .setAutoCancel(true)
         builder.setPublicVersion(publicBuilder.build())
 
+        // Suppress sound when chime cooldown is active
+        if (data.silent) {
+            builder.setSilent(true)
+        }
+
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(data.notificationId, builder.build())
 
@@ -141,13 +146,16 @@ actual class RichNotificationDisplayer actual constructor() {
         data: RichNotificationData,
     ) {
         val icon = if (smallIconResId != 0) smallIconResId else context.applicationInfo.icon
-        val summary = NotificationCompat.Builder(context, data.channelId)
+        val summaryBuilder = NotificationCompat.Builder(context, data.channelId)
             .setSmallIcon(icon)
             .setStyle(NotificationCompat.InboxStyle().setSummaryText("Homebase"))
             .setGroup(data.conversationId)
             .setGroupSummary(true)
             .setAutoCancel(true)
-            .build()
+        if (data.silent) {
+            summaryBuilder.setSilent(true)
+        }
+        val summary = summaryBuilder.build()
 
         val summaryId = SUMMARY_ID_OFFSET + (data.conversationId?.hashCode()?.and(0x7FFFFFFF) ?: 0)
         nm.notify(summaryId, summary)
