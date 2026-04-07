@@ -507,7 +507,7 @@ class OptimisticWriter(
             UpdateLocalMetadataContentOutboxRequest(
                 driveId = driveId,
                 fileId = existingFile.fileId,
-                versionTag = existingFile.fileMetadata.localAppData?.versionTag?.toString(),
+                versionTag = null,
                 content = encryptedContent,
                 iv = ivBase64
             )

@@ -404,76 +404,79 @@ class ConversationService(
     }
 
     suspend fun leaveGroup(conversationId: Uuid) {
-        error("Work in progress")
-//
-//        val conversation = requireConversation(conversationId)
-//        val domain = credentialsManager.requireActiveDomain()
-//        val leaveFile = getConversationHomebaseFile(conversationId)
-//        Logger.d { "leaveGroup START: conversationId=$conversationId isEncrypted=${leaveFile?.fileMetadata?.isEncrypted} aesKey=${leaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
-//
-//        if (!conversation.isGroupConversation) {
-//            throw IllegalStateException("Can only leave group conversations")
-//        }
-//
-//        if (conversation.admins.contains(domain) && (conversation.admins - domain).isEmpty()) {
-//            throw IllegalStateException("You are the only admin. Assign another admin before leaving.")
-//        }
-//
-//        val remaining = conversation.participants.filterNot { it == domain }
-//
-//        val messageId = Uuid.random()
-//
-//        // 1. Notify the group first so they see the leave message
-//        try {
-//            chatMessageSenderService.sendStatusMessage(
-//                messageUniqueId = messageId,
-//                conversationId = conversationId,
-//                statusMessage = StatusMessageData(
-//                    statusMessage = StatusMessage.ConversationMemberLeft,
-//                    subject = domain
-//                )
-//            )
-//        } catch (t: Throwable) {
-//            Logger.e("Failed to send leave status message", t)
-//        }
-//
-//        // 2. Remove self from participants — chained after status message.
-//        // If this fails, roll back the optimistic status message AND its outbox entry
-//        // so a ghost "X left" message is not sent to the group while the leave didn't complete.
-//        try {
-//            updateConversationInternal(
-//                conversationId = conversationId,
-//                title = conversation.name,
-//                participants = remaining,
-//                dependencyUniqueId = messageId
-//            )
-//        } catch (t: Throwable) {
-//            optimisticWriter.removeOptimisticFile(chatDrive, messageId)
-//            dbm.outbox.deleteBy(chatDrive, messageId)
-//            throw t
-//        }
-//
-//        // 3. Remove self from admins (separate file)
-//        if (conversation.admins.contains(domain)) {
-//            val updatedAdmins = conversation.admins - domain
-//            updateAdminFile(
-//                conversationId = conversationId,
-//                admins = updatedAdmins.toList(),
-//                recipients = remaining.filterNot { it == domain }
-//            )
-//        }
-//
-//        // 3. Mark as left locally — preserves history and blocks sending.
-//        // Depend on conversationId so the tags update is only sent to the server AFTER the
-//        // participant-removal file update (UpdateFileByUniqueIdRequest, uniqueId=conversationId)
-//        // has been processed. Without this ordering, the server could briefly see the LeftTag
-//        // while domain is still in participants, causing a spurious RejoinPending state.
-//        updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
-//            it + ChatProtocol.ConversationLeftTag
-//        }
-//        optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
-//            ?.let { outboxSync.tryEnqueue(it) }
+        val conversation = requireConversation(conversationId)
+        val domain = credentialsManager.requireActiveDomain()
+        val leaveFile = getConversationHomebaseFile(conversationId)
+        Logger.d { "leaveGroup START: conversationId=$conversationId isEncrypted=${leaveFile?.fileMetadata?.isEncrypted} aesKey=${leaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
 
+        if (!conversation.isGroupConversation) {
+            throw IllegalStateException("Can only leave group conversations")
+        }
+
+        if (conversation.admins.contains(domain) && (conversation.admins - domain).isEmpty()) {
+            throw IllegalStateException("You are the only admin. Assign another admin before leaving.")
+        }
+
+        val remaining = conversation.participants.filterNot { it == domain }
+
+        val messageId = Uuid.random()
+
+        // 1. Notify the group first so they see the leave message
+        try {
+            chatMessageSenderService.sendStatusMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.ConversationMemberLeft,
+                    subject = domain
+                )
+            )
+        } catch (t: Throwable) {
+            Logger.e("Failed to send leave status message", t)
+        }
+
+        // 2. Remove self from participants — chained after status message.
+        // If this fails, roll back the optimistic status message AND its outbox entry
+        // so a ghost "X left" message is not sent to the group while the leave didn't complete.
+        try {
+            updateConversationInternal(
+                conversationId = conversationId,
+                title = conversation.name,
+                participants = remaining,
+                dependencyUniqueId = messageId
+            )
+        } catch (t: Throwable) {
+            optimisticWriter.removeOptimisticFile(chatDrive, messageId)
+            dbm.outbox.deleteBy(chatDrive, messageId)
+            throw t
+        }
+
+        // 3. Remove self from admins (separate file)
+        if (conversation.admins.contains(domain)) {
+            val updatedAdmins = conversation.admins - domain
+            updateAdminFile(
+                conversationId = conversationId,
+                admins = updatedAdmins.toList(),
+                recipients = remaining.filterNot { it == domain }
+            )
+        }
+
+        // 3. Mark as left locally — preserves history and blocks sending.
+        // Depend on conversationId so the tags update is only sent to the server AFTER the
+        // participant-removal file update (UpdateFileByUniqueIdRequest, uniqueId=conversationId)
+        // has been processed. Without this ordering, the server could briefly see the LeftTag
+        // while domain is still in participants, causing a spurious RejoinPending state.
+        updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
+            it + ChatProtocol.ConversationLeftTag
+        }
+
+//        optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
+//            ?.let {
+//                outboxSync.tryEnqueue(it)
+//            }
+
+//        val postLeaveFile = getConversationHomebaseFile(conversationId)
+//        Logger.d { "leaveGroup END: conversationId=$conversationId aesKey=${postLeaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
     }
 
     suspend fun acceptRejoin(conversationId: Uuid) {
@@ -516,20 +519,11 @@ class ConversationService(
             dependencyUniqueId = messageId
         )
 
-        // 3. Remove self from admins (separate file)
-        if (conversation.admins.contains(domain)) {
-            val updatedAdmins = conversation.admins - domain
-            updateAdminFile(
-                conversationId = conversationId,
-                admins = updatedAdmins.toList(),
-                recipients = remaining.filterNot { it == domain }
-            )
-        }
-
-        // 4. Keep the left tag locally — same ordering dependency as leaveGroup
+        // 3. Keep the left tag locally — same ordering dependency as leaveGroup
         updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
             it + ChatProtocol.ConversationLeftTag
         }
+
         optimisticWriter.stampConversationExitedAt(chatDrive, conversationId)
             ?.let { outboxSync.tryEnqueue(it) }
     }
@@ -610,7 +604,7 @@ class ConversationService(
         val existingAppData = conversationFile.fileMetadata.appData
         val metadata =
             UploadFileMetadata(
-                allowDistribution = conversationFile.serverMetadata.allowDistribution,
+                allowDistribution = distribute, // conversationFile.serverMetadata.allowDistribution,
                 isEncrypted = true, // we always encrypt conversation files
                 accessControlList = conversationFile.serverMetadata.accessControlList,
                 referencedFile = conversationFile.fileMetadata.referencedFile,
@@ -657,11 +651,11 @@ class ConversationService(
         // This ensures that any code running after this call (e.g. updateConversationTags)
         // sees the updated participant list when it reads the file, preventing a false
         // RejoinPending detection caused by the outbox/localTags race.
-        optimisticWriter.writeUpdate(
-            driveId = chatDrive,
-            keyHeader = keyHeader,
-            unecryptedMetadata = metadata
-        )
+//        optimisticWriter.writeUpdate(
+//            driveId = chatDrive,
+//            keyHeader = keyHeader,
+//            unecryptedMetadata = metadata
+//        )
 
         val enqueued = outboxSync.replaceEnqueue(request, dependencyUniqueId = dependencyUniqueId)
         if (!enqueued) {

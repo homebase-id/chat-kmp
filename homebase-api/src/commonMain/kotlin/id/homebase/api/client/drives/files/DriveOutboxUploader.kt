@@ -15,6 +15,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
+import kotlin.uuid.Uuid
 
 class DriveOutboxUploader(
     private val driveUploadProvider: DriveUploadProvider,
@@ -79,9 +80,12 @@ class DriveOutboxUploader(
 
     private suspend fun updateLocalMetadataTags(outboxRecord: Outbox) {
         val request = OdinSystemSerializer.deserialize<UpdateLocalMetadataTagsOutboxRequest>(outboxRecord.json.decodeToString())
+        val versionTag = request.versionTag
+            ?: fileProvider.getFileHeader(request.file.targetDrive.alias, Uuid.parse(request.file.fileId))
+                ?.fileMetadata?.localAppData?.versionTag?.toString()
         driveUploadProvider.uploadLocalMetadataTags(
             file = request.file,
-            localAppData = LocalAppData(versionTag = request.versionTag, tags = request.tags)
+            localAppData = LocalAppData(versionTag = versionTag, tags = request.tags)
         )
     }
 
@@ -89,10 +93,12 @@ class DriveOutboxUploader(
         val request = OdinSystemSerializer.deserialize<UpdateLocalMetadataContentOutboxRequest>(outboxRecord.json.decodeToString())
         val file = fileProvider.getFileHeader(request.driveId, request.fileId)
             ?: error("File not found for local metadata content update: ${request.fileId}")
+        val versionTag = request.versionTag
+            ?: file.fileMetadata.localAppData?.versionTag?.toString()
         driveUploadProvider.uploadLocalMetadataContent(
             driveId = request.driveId,
             file = file,
-            localAppData = LocalAppData(versionTag = request.versionTag, content = request.content, iv = request.iv)
+            localAppData = LocalAppData(versionTag = versionTag, content = request.content, iv = request.iv)
         )
     }
 
