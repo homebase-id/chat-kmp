@@ -52,6 +52,7 @@ import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.connect
 import id.homebase.resources.not_connected
 import id.homebase.resources.chat_group_add_members
 import id.homebase.resources.chat_group_admin
@@ -237,31 +238,42 @@ fun GroupSettingsUi(
                             )
                         }
                     }
-                    items(uiState.contacts, key = { it.odinId }) { contact ->
-                        val isConnected = contact.connectionState == ContactConnectionState.Connected ||
+                    val (connectedContacts, notConnectedContacts) = uiState.contacts.partition { contact ->
+                        contact.connectionState == ContactConnectionState.Connected ||
                                 contact.connectionState == ContactConnectionState.Unknown
+                    }
 
-                        if (isConnected) {
-                            ContactItem(
-                                name = contact.name,
-                                subTitle = contact.odinId.domainName,
-                                annotation = if (conversation.isCurrentUserAdmin(contact.odinId)) stringResource(
-                                    MR.string.chat_group_admin
-                                ) else null,
-                                avatarInitials = contact.avatarInitials,
-                                odinId = contact.odinId,
-                                onContactClick = {
-                                    onUiAction(
-                                        GroupSettingsUiAction.ShowMemberSheet(contact)
-                                    )
-                                },
+                    items(connectedContacts, key = { it.odinId }) { contact ->
+                        ContactItem(
+                            name = contact.name,
+                            subTitle = contact.odinId.domainName,
+                            annotation = if (conversation.isCurrentUserAdmin(contact.odinId)) stringResource(
+                                MR.string.chat_group_admin
+                            ) else null,
+                            avatarInitials = contact.avatarInitials,
+                            odinId = contact.odinId,
+                            onContactClick = {
+                                onUiAction(
+                                    GroupSettingsUiAction.ShowMemberSheet(contact)
+                                )
+                            },
+                        )
+                    }
+
+                    if (notConnectedContacts.isNotEmpty()) {
+                        item {
+                            Text(
+                                modifier = Modifier.padding(horizontal = 24.dp).padding(top = 24.dp, bottom = 8.dp),
+                                text = stringResource(MR.string.not_connected),
+                                style = MaterialTheme.typography.titleLarge
                             )
-                        } else {
+                        }
+                        items(notConnectedContacts, key = { it.odinId }) { contact ->
                             ContactItem(
                                 name = contact.name,
                                 subTitle = contact.odinId.domainName,
-                                annotation = stringResource(MR.string.not_connected),
-                                annotationColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                annotation = stringResource(MR.string.connect),
+                                annotationColor = MaterialTheme.colorScheme.primary,
                                 avatarInitials = contact.avatarInitials,
                                 odinId = contact.odinId,
                                 onContactClick = {

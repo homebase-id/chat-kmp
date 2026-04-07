@@ -200,16 +200,19 @@ class GroupSettingsViewModel(
     private fun loadData(conversation: ConversationUiModel) {
         viewModelScope.launch {
             try {
-                val contacts = conversation.participants.map { odinId ->
-                    contactService.resolveByOdinId(odinId) ?: ContactUiModel(
-                        id = Uuid.random(),
-                        odinId = odinId,
-                        name = odinId.domainName,
-                        avatarInitials = odinId.domainName.take(2).uppercase(),
-                        connectionState = ContactConnectionState.NotConnected
-                    )
-                }
                 val domain = credentialsManager.requireActiveCredentials().domain
+
+                val contacts = conversation.participants
+                    .filter { it != domain }
+                    .map { odinId ->
+                        contactService.resolveByOdinId(odinId) ?: ContactUiModel(
+                            id = Uuid.random(),
+                            odinId = odinId,
+                            name = odinId.domainName,
+                            avatarInitials = odinId.domainName.take(2).uppercase(),
+                            connectionState = ContactConnectionState.NotConnected
+                        )
+                    }
 
                 _uiState.update {
                     it.copy(

@@ -97,6 +97,8 @@ import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.StyledSearchTextField
+import id.homebase.api.client.profile.PublicProfileProvider
+import org.koin.compose.koinInject
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_not_connected_disclaimer
 import id.homebase.resources.chat_group_rejoin_accept
@@ -734,10 +736,19 @@ fun ConversationContentSheets(
                     modifier = Modifier.fillMaxWidth().padding(16.dp).verticalScroll(scrollState)
                 ) {
                     sheet.identities.forEach { odinId ->
+                        val profileProvider = koinInject<PublicProfileProvider>()
+                        var resolvedName by remember(odinId) { mutableStateOf(odinId.domainName) }
+
+                        LaunchedEffect(odinId) {
+                            try {
+                                resolvedName = profileProvider.getPublicProfile(odinId).name
+                            } catch (_: Exception) {}
+                        }
+
                         ContactItem(
-                            name = odinId.domainName,
+                            name = resolvedName,
                             odinId = odinId,
-                            avatarInitials = "",
+                            avatarInitials = resolvedName.take(2).uppercase(),
                             onContactClick = {
                                 onUiAction(ConversationListUiAction.ConnectToIdentity(odinId))
                             },
