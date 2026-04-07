@@ -5,10 +5,16 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.googleServices)
+    alias(libs.plugins.playPublisherPlugin)
 }
 
 val versionProps = Properties()
 versionProps.load(rootProject.file("gradle/version.properties").inputStream())
+
+play {
+    track.set("internal")
+    serviceAccountCredentials.set(file("../google-play-key.json"))
+}
 
 android {
     namespace = "id.homebase.feed"
@@ -50,11 +56,18 @@ android {
                 keyAlias = System.getenv("SIGNING_KEY_ALIAS")
                 keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
             } else {
-                storeFile = file("debug.keystore")
+                storeFile = file("../buildsystem/debug.keystore")
                 storePassword = "android"
                 keyAlias = "androiddebugkey"
                 keyPassword = "android"
             }
+        }
+        create("dev") {
+            storeFile = file("../buildsystem/keystore-dev")
+            storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+            keyAlias = "homebase-dev"
+            keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+
         }
     }
 
@@ -75,8 +88,28 @@ android {
 
             signingConfig = signingConfigs.getByName("release")
         }
-        debug {
+
+        create("dev") {
             applicationIdSuffix = ".dev"
+
+            // Enables code shrinking, obfuscation, and optimization for only
+            // your project's release build type.
+            isMinifyEnabled = true
+
+            // Enables resource shrinking, which is performed by the
+            // Android Gradle plugin.
+            isShrinkResources = true
+
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+
+            signingConfig = signingConfigs.getByName("dev")
+        }
+
+        debug {
+            applicationIdSuffix = ".debug"
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
 

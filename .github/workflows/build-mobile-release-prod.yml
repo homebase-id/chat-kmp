@@ -1,4 +1,4 @@
-name: Build Mobile Release
+name: Build Mobile Release Production
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 

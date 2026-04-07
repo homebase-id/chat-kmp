@@ -1,0 +1,63 @@
+name: Build Mobile Release Dev
+
+on:
+  push:
+    branches: [main, automateAndroidRelease]
+
+concurrency:
+  group: mobile-release-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Read version info
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'version.name=' gradle/version.properties | cut -d'=' -f2)
+          BASE=$(grep 'version.code.base=' gradle/version.properties | cut -d'=' -f2)
+          VERSION_CODE=$((BASE + ${{ github.run_number }}))
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+
+      - name: Build Android Bundle
+        run: |
+          ./gradlew --no-daemon :androidApp:bundleDev \
+            -PVERSION_CODE=${{ steps.version.outputs.VERSION_CODE }} \
+            -PVERSION_NAME="${{ steps.version.outputs.VERSION_NAME }}"
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.HOMEBASE_KEYSTORE_PASS_DEV }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.HOMEBASE_KEYSTORE_PASS_DEV }}
+          JDK_21: ${{ env.JAVA_HOME }}
+
+      - name: Rename output
+        run: |
+          mv androidApp/build/outputs/bundle/dev/androidApp-dev.aab \
+             androidApp/build/outputs/bundle/dev/homebase-id-dev-app.aab
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebase-id-app-android
+          path: androidApp/build/outputs/bundle/dev/homebase-id-dev-app.aab
+
+      - name: Create Google Play Service Account JSON
+        run: |
+          echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_DEV }}' > google-play-key.json
+
+      - name: "Publish to Google Play internal track"
+        run: ./gradlew publishDevBundle --artifact-dir androidApp/build/outputs/bundle/dev

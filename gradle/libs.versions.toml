@@ -58,6 +58,7 @@ kmpnotifier = "1.6.1"
 firebase-messaging = "24.0.3"
 google-services = "4.4.4"
 sharetarget = "1.2.0"
+playPublisher = "4.0.0"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
@@ -177,3 +178,4 @@ kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", versio
 androidLint = { id = "com.android.lint", version.ref = "agp" }
 googleServices = { id = "com.google.gms.google-services", version.ref = "google-services" }
 conveyorPlugin = { id = "dev.hydraulic.conveyor", version.ref = "conveyor" }
+playPublisherPlugin = { id = "com.github.triplet.play", version.ref = "playPublisher" }
