@@ -6,6 +6,7 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.notifications.SubscriptionVerification
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.util.PlatformInfo
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,12 +28,30 @@ class SettingsViewModel(
 
     init {
         loadSettings()
+        verifyNotificationSubscription()
     }
 
     private fun loadSettings() {
         viewModelScope.launch {
             ownerSessionRepository.user.collect { session ->
                 _uiState.update { it.copy(ownerSession = session) }
+            }
+        }
+    }
+
+    private fun verifyNotificationSubscription() {
+        viewModelScope.launch {
+            try {
+                val result = notificationService.verifySubscription()
+                val status = if (result == SubscriptionVerification.OK)
+                    NotificationVerificationStatus.OK
+                else
+                    NotificationVerificationStatus.ERROR
+                _uiState.update { it.copy(notificationStatus = status) }
+            } catch (_: Exception) {
+                _uiState.update {
+                    it.copy(notificationStatus = NotificationVerificationStatus.ERROR)
+                }
             }
         }
     }

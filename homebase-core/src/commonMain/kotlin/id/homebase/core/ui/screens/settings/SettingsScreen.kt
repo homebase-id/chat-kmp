@@ -19,7 +19,10 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,6 +45,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.DialogButtons
@@ -194,7 +198,33 @@ fun SettingsUi(
             SettingsItemAction(
                 imageVector = Icons.Outlined.Notifications,
                 text = stringResource(MR.string.settings_notifications),
-                onClick = onNavigateToNotifications
+                onClick = onNavigateToNotifications,
+                trailingContent = {
+                    when (uiState.notificationStatus) {
+                        NotificationVerificationStatus.CHECKING -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                        NotificationVerificationStatus.OK -> {
+                            Icon(
+                                imageVector = Icons.Outlined.CheckCircle,
+                                contentDescription = "Notifications active",
+                                tint = ExtendedColors.Success,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        NotificationVerificationStatus.ERROR -> {
+                            Icon(
+                                imageVector = Icons.Outlined.Error,
+                                contentDescription = "Notifications issue",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(

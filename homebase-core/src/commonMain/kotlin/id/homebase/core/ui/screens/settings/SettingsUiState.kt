@@ -2,11 +2,14 @@ package id.homebase.core.ui.screens.settings
 
 import id.homebase.api.client.auth.OwnerSession
 
+enum class NotificationVerificationStatus { CHECKING, OK, ERROR }
+
 data class SettingsUiState(
     val isLoading: Boolean = false,
     val appName: String = "Homebase Chat",
     val appVersion: String,
     val ownerSession: OwnerSession? = null,
+    val notificationStatus: NotificationVerificationStatus = NotificationVerificationStatus.CHECKING,
 
     val uiEvent: SettingsUiEvent? = null,
     val uiDialog: SettingsUiDialog? = null,
