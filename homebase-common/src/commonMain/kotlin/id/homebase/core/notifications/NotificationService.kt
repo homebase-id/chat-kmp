@@ -470,6 +470,7 @@ class NotificationService(
             subscription.firebaseDeviceToken != localToken -> SubscriptionVerificationStatus.TOKEN_MISMATCH
             else -> SubscriptionVerificationStatus.OK
         }
+        Logger.i(tag = "NotificationService") { "Subscription verification: $status" }
         return SubscriptionVerificationDetail(
             status = status,
             serverToken = subscription?.firebaseDeviceToken,
