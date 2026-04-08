@@ -40,6 +40,16 @@ data class NotificationSettingsUiState(
     val registrationStatus: RegistrationStatus = RegistrationStatus.UNKNOWN,
     val reRegisterResult: ReRegisterResult? = null,
     val showDebugInfo: Boolean = false,
+    val isVerifyingSubscription: Boolean = false,
+    val subscriptionVerification: SubscriptionVerificationResult? = null,
+)
+
+/** Result of server-side subscription verification. */
+data class SubscriptionVerificationResult(
+    val status: String,
+    val serverToken: String? = null,
+    val friendlyName: String? = null,
+    val isOk: Boolean = false,
 )
 
 /** Actions from the notification settings UI. */

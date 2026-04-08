@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.notifications
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.notifications.SubscriptionVerificationStatus
 import id.homebase.core.settings.UserPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -122,6 +123,7 @@ class NotificationSettingsViewModel(
                     debugTapCount++
                     if (debugTapCount >= 5) {
                         _uiState.update { it.copy(showDebugInfo = true) }
+                        verifyServerSubscription()
                     }
                 }
             }
@@ -132,6 +134,42 @@ class NotificationSettingsViewModel(
 
             NotificationSettingsUiAction.OpenSystemNotificationSettings -> {
                 // Handled by the screen composable — triggers platform-specific system settings
+            }
+        }
+    }
+
+    private fun verifyServerSubscription() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isVerifyingSubscription = true, subscriptionVerification = null) }
+            try {
+                val detail = notificationService.verifySubscription()
+                val statusText = when (detail.status) {
+                    SubscriptionVerificationStatus.OK -> "OK"
+                    SubscriptionVerificationStatus.NOT_REGISTERED -> "Not Registered"
+                    SubscriptionVerificationStatus.NO_LOCAL_TOKEN -> "No Local Token"
+                    SubscriptionVerificationStatus.TOKEN_MISMATCH -> "Token Mismatch"
+                }
+                _uiState.update {
+                    it.copy(
+                        isVerifyingSubscription = false,
+                        subscriptionVerification = SubscriptionVerificationResult(
+                            status = statusText,
+                            serverToken = detail.serverToken,
+                            friendlyName = detail.friendlyName,
+                            isOk = detail.status == SubscriptionVerificationStatus.OK
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isVerifyingSubscription = false,
+                        subscriptionVerification = SubscriptionVerificationResult(
+                            status = "Error: ${e.message}",
+                            isOk = false
+                        )
+                    )
+                }
             }
         }
     }

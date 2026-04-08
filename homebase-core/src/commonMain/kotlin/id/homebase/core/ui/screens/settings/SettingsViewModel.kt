@@ -6,7 +6,7 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
-import id.homebase.core.notifications.SubscriptionVerification
+import id.homebase.core.notifications.SubscriptionVerificationStatus
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.util.PlatformInfo
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +43,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 val result = notificationService.verifySubscription()
-                val status = if (result == SubscriptionVerification.OK)
+                val status = if (result.status == SubscriptionVerificationStatus.OK)
                     NotificationVerificationStatus.OK
                 else
                     NotificationVerificationStatus.ERROR
