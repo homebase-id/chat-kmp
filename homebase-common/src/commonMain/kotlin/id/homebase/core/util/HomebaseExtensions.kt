@@ -9,3 +9,7 @@ fun OdinId.buildNotificationUrl(): String {
 fun OdinId.buildConnectToIdentityUrl(connectId: OdinId): String {
     return "https://${this.domainName}/owner/connections/${connectId.domainName}/connect"
 }
+
+fun OdinId.buildBlockUrl(targetId: OdinId): String {
+    return "https://${this.domainName}/owner/connections/${targetId.domainName}/block"
+}
