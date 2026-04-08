@@ -10,7 +10,7 @@
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.id.homebase.feed.dev</string>
+		<string>group.id.homebase.feed</string>
 	</array>
 </dict>
 </plist>
