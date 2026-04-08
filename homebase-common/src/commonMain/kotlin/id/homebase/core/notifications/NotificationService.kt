@@ -28,6 +28,16 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
+enum class SubscriptionVerificationStatus {
+    OK, NOT_REGISTERED, NO_LOCAL_TOKEN, TOKEN_MISMATCH
+}
+
+data class SubscriptionVerificationDetail(
+    val status: SubscriptionVerificationStatus,
+    val serverToken: String? = null,
+    val friendlyName: String? = null,
+)
+
 /**
  * Central notification service that wraps KMPNotifier and handles incoming push/local
  * notifications. Register as a singleton in Koin.
@@ -447,6 +457,24 @@ class NotificationService(
             title = title,
             body = body,
             payloadData = payloadData
+        )
+    }
+
+    /** Verifies the server-side push subscription against the local FCM token. */
+    suspend fun verifySubscription(): SubscriptionVerificationDetail {
+        val localToken = getToken()
+        val subscription = api.getSubscription()
+        val status = when {
+            subscription == null -> SubscriptionVerificationStatus.NOT_REGISTERED
+            localToken == null -> SubscriptionVerificationStatus.NO_LOCAL_TOKEN
+            subscription.firebaseDeviceToken != localToken -> SubscriptionVerificationStatus.TOKEN_MISMATCH
+            else -> SubscriptionVerificationStatus.OK
+        }
+        Logger.i(tag = "NotificationService") { "Subscription verification: $status" }
+        return SubscriptionVerificationDetail(
+            status = status,
+            serverToken = subscription?.firebaseDeviceToken,
+            friendlyName = subscription?.friendlyName,
         )
     }
 

@@ -24,6 +24,7 @@ fun SettingsItemAction(
     imageVector: ImageVector,
     text: String,
     onClick: () -> Unit,
+    trailingContent: @Composable (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -47,5 +48,8 @@ fun SettingsItemAction(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
+        if (trailingContent != null) {
+            trailingContent()
+        }
     }
 }

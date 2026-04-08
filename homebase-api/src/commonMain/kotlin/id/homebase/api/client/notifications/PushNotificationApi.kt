@@ -16,6 +16,15 @@ data class PushSubscriptionRequest(
     @SerialName("FriendlyName") val friendlyName: String
 )
 
+@Serializable
+data class PushSubscriptionResponse(
+    val accessRegistrationId: String,
+    val friendlyName: String,
+    val expirationTime: Long,
+    val subscriptionStartedDate: Long,
+    val firebaseDeviceToken: String? = null
+)
+
 class PushNotificationApi(httpClient: HttpClient, credentialsManager: CredentialsManager) :
     OdinApiProviderBase(httpClient, credentialsManager) {
 
@@ -39,6 +48,18 @@ class PushNotificationApi(httpClient: HttpClient, credentialsManager: Credential
             )
 
         throwForFailure(response)
+    }
+
+    suspend fun getSubscription(): PushSubscriptionResponse? {
+        val creds = requireCreds()
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "/notify/push/subscription"),
+            token = creds.accessToken,
+            secret = creds.secret
+        )
+        if (response.status == 404) return null
+        throwForFailure(response)
+        return deserialize(response.body)
     }
 
     suspend fun unsubscribe() {
