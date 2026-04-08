@@ -583,10 +583,10 @@ fun ConversationListMenu(
         expanded = showMenu,
         onDismissRequest = dismissMenu
     ) {
-        DropdownMenuItem(
-            onClick = onMarkAllAsRead,
-            text = { Text(text = stringResource(MR.string.chat_mark_all_as_read)) },
-        )
+//        DropdownMenuItem(
+//            onClick = onMarkAllAsRead,
+//            text = { Text(text = stringResource(MR.string.chat_mark_all_as_read)) },
+//        )
         if (isFilteringUnread) {
             DropdownMenuItem(
                 onClick = onClearFilterUnread,

@@ -84,7 +84,7 @@ import kotlin.uuid.Uuid
  * - Long-press animation with spring physics on mobile devices
  * - Gradient overlay on media-only messages for timestamp readability
  * - Different styling for sent vs received messages
- *
+ *m
  * @param modifier Modifier to be applied to the message bubble surface.
  * @param message The message content
  * @param sentByYou Whether this message was sent by the current user (affects styling).
@@ -251,7 +251,11 @@ fun MessageBubbleRaw(
                             )
                             if (sentByYou) {
                                 Spacer(modifier = Modifier.width(4.dp))
-                                DeliveryStatus(isPendingSend = isPendingSend, deliveryStatus = message.messageAppData.deliveryStatus)
+                                DeliveryStatus(
+                                    isPendingSend = isPendingSend,
+                                    deliveryStatus = message.messageAppData.deliveryStatus,
+                                    contentColor = contentColor.copy(alpha = 0.7f),
+                                )
                             }
                         }
                     }
@@ -360,7 +364,11 @@ fun MessageBubbleRaw(
                             )
                             if (sentByYou && !message.isDeleted) {
                                 Spacer(modifier = Modifier.width(4.dp))
-                                DeliveryStatus(isPendingSend = isPendingSend, deliveryStatus = message.messageAppData.deliveryStatus)
+                                DeliveryStatus(
+                                    isPendingSend = isPendingSend,
+                                    deliveryStatus = message.messageAppData.deliveryStatus,
+                                    contentColor = contentColor.copy(alpha = 0.7f),
+                                )
                             }
                         }
                     }
@@ -468,7 +476,7 @@ fun MessageBubbleRaw(
                             )
                             val lastLineBottom = layoutResult.getLineBottom(lastLineIndex)
                             infoY =
-                                placeables.sumOf { it.height } + replyHeight + lastLineBottom.toInt() + 8.dp.roundToPx() - infoPlaceable.height
+                                placeables.sumOf { it.height } + replyHeight + lastLineBottom.toInt() + 16.dp.roundToPx() - infoPlaceable.height
                             infoX = finalWidth - infoPlaceable.width - textRowPadding
                             finalHeight =
                                 placeables.sumOf { it.height } +
@@ -478,7 +486,7 @@ fun MessageBubbleRaw(
                         } else {
                             finalWidth = maxOf(mediaWidth, replyWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
                             infoY = placeables.sumOf { it.height } + replyHeight + textPlaceable.height
-                            infoX = finalWidth - infoPlaceable.width - 8.dp.roundToPx()
+                            infoX = finalWidth - infoPlaceable.width - textRowPadding
                             finalHeight =
                                 placeables.sumOf { it.height } +
                                         replyHeight +

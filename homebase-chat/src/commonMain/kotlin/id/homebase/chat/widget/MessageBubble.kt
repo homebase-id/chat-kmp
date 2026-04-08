@@ -618,12 +618,17 @@ fun ReceivedMessageBubbleDisplayOnly(
 val DELIVERY_ICON_SIZE = 12.dp
 
 @Composable
-fun DeliveryStatus(isPendingSend: Boolean, deliveryStatus: Int) {
+fun DeliveryStatus(
+    isPendingSend: Boolean,
+    deliveryStatus: Int,
+    contentColor: Color,
+) {
     if (isPendingSend) {
         Icon(
             Icons.Default.Alarm,
             contentDescription = null,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(16.dp),
+            tint = contentColor,
         )
     } else {
         when (deliveryStatus) {
@@ -631,7 +636,8 @@ fun DeliveryStatus(isPendingSend: Boolean, deliveryStatus: Int) {
                 Icon(
                     HomebaseIcons.MessageSentAndRead,
                     contentDescription = null,
-                    modifier = Modifier.height(DELIVERY_ICON_SIZE)
+                    modifier = Modifier.height(DELIVERY_ICON_SIZE),
+                    tint = contentColor,
                 )
             }
 
@@ -639,15 +645,16 @@ fun DeliveryStatus(isPendingSend: Boolean, deliveryStatus: Int) {
                 Icon(
                     HomebaseIcons.MessageSentAndDelivered,
                     contentDescription = null,
-                    modifier = Modifier.height(DELIVERY_ICON_SIZE)
-                )
+                    modifier = Modifier.height(DELIVERY_ICON_SIZE),
+                    tint = contentColor,)
             }
 
             ChatDeliveryStatus.Sent.value -> {
                 Icon(
                     HomebaseIcons.MessageSent,
                     contentDescription = null,
-                    modifier = Modifier.height(DELIVERY_ICON_SIZE)
+                    modifier = Modifier.height(DELIVERY_ICON_SIZE),
+                    tint = contentColor,
                 )
             }
         }
