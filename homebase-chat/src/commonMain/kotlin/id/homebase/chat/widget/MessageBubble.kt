@@ -27,11 +27,13 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.AddReaction
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,9 +76,16 @@ import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.core.widget.ReactionList
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
+import id.homebase.resources.chat_message_block
+import id.homebase.resources.chat_message_block_confirm_body
+import id.homebase.resources.chat_message_block_confirm_title
 import id.homebase.resources.chat_message_options
 import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_message_reply
+import id.homebase.resources.chat_message_report
+import id.homebase.resources.chat_message_report_confirm_body
+import id.homebase.resources.chat_message_report_confirm_title
 import id.homebase.resources.media
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.ImmutableMap
@@ -346,9 +355,13 @@ fun ReceivedMessageBubble(
     downloadingFiles: Set<String>,
     onShowMore: (() -> Unit)? = null,
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
+    onBlock: (() -> Unit)? = null,
+    onReport: (() -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
+    var showBlockConfirm by remember { mutableStateOf(false) }
+    var showReportConfirm by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     val filteredPayloads = message.payloads?.filter {
@@ -503,6 +516,14 @@ fun ReceivedMessageBubble(
                             popupMode = MessagePopupMode.None
                             onDelete()
                         },
+                        onBlock = {
+                            popupMode = MessagePopupMode.None
+                            showBlockConfirm = true
+                        },
+                        onReport = {
+                            popupMode = MessagePopupMode.None
+                            showReportConfirm = true
+                        },
                         )
                 }
             }
@@ -514,6 +535,48 @@ fun ReceivedMessageBubble(
             }
         }
         Spacer(modifier = Modifier.width(16.dp))
+    }
+
+    if (showBlockConfirm) {
+        AlertDialog(
+            onDismissRequest = { showBlockConfirm = false },
+            title = { Text(stringResource(MR.string.chat_message_block_confirm_title)) },
+            text = { Text(stringResource(MR.string.chat_message_block_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBlockConfirm = false
+                    onBlock?.invoke()
+                }) {
+                    Text(stringResource(MR.string.chat_message_block))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBlockConfirm = false }) {
+                    Text(stringResource(MR.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showReportConfirm) {
+        AlertDialog(
+            onDismissRequest = { showReportConfirm = false },
+            title = { Text(stringResource(MR.string.chat_message_report_confirm_title)) },
+            text = { Text(stringResource(MR.string.chat_message_report_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showReportConfirm = false
+                    onReport?.invoke()
+                }) {
+                    Text(stringResource(MR.string.chat_message_report))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReportConfirm = false }) {
+                    Text(stringResource(MR.string.cancel))
+                }
+            }
+        )
     }
 }
 
@@ -555,12 +618,17 @@ fun ReceivedMessageBubbleDisplayOnly(
 val DELIVERY_ICON_SIZE = 12.dp
 
 @Composable
-fun DeliveryStatus(isPendingSend: Boolean, deliveryStatus: Int) {
+fun DeliveryStatus(
+    isPendingSend: Boolean,
+    deliveryStatus: Int,
+    contentColor: Color,
+) {
     if (isPendingSend) {
         Icon(
             Icons.Default.Alarm,
             contentDescription = null,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(16.dp),
+            tint = contentColor,
         )
     } else {
         when (deliveryStatus) {
@@ -568,7 +636,8 @@ fun DeliveryStatus(isPendingSend: Boolean, deliveryStatus: Int) {
                 Icon(
                     HomebaseIcons.MessageSentAndRead,
                     contentDescription = null,
-                    modifier = Modifier.height(DELIVERY_ICON_SIZE)
+                    modifier = Modifier.height(DELIVERY_ICON_SIZE),
+                    tint = contentColor,
                 )
             }
 
@@ -576,15 +645,16 @@ fun DeliveryStatus(isPendingSend: Boolean, deliveryStatus: Int) {
                 Icon(
                     HomebaseIcons.MessageSentAndDelivered,
                     contentDescription = null,
-                    modifier = Modifier.height(DELIVERY_ICON_SIZE)
-                )
+                    modifier = Modifier.height(DELIVERY_ICON_SIZE),
+                    tint = contentColor,)
             }
 
             ChatDeliveryStatus.Sent.value -> {
                 Icon(
                     HomebaseIcons.MessageSent,
                     contentDescription = null,
-                    modifier = Modifier.height(DELIVERY_ICON_SIZE)
+                    modifier = Modifier.height(DELIVERY_ICON_SIZE),
+                    tint = contentColor,
                 )
             }
         }

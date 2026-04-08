@@ -56,8 +56,11 @@ kotlinStdlib = "2.3.10"
 googleAccompanist = "0.37.3"
 kmpnotifier = "1.6.1"
 firebase-messaging = "24.0.3"
+firebase-crashlytics = "19.4.4"
+firebase-crashlytics-plugin = "3.0.3"
 google-services = "4.4.4"
 sharetarget = "1.2.0"
+playPublisher = "4.0.0"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
@@ -160,6 +163,7 @@ accompanist-permissions = { module = "com.google.accompanist:accompanist-permiss
 accompanist-systemuicontroller = { module = "com.google.accompanist:accompanist-systemuicontroller", version.ref = "googleAccompanist" }
 kmpnotifier = { module = "io.github.mirzemehdi:kmpnotifier", version.ref = "kmpnotifier" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
+firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics", version.ref = "firebase-crashlytics" }
 kache-file = { module = "com.mayakapps.kache:file-kache", version.ref = "kache" }
 kache = { module = "com.mayakapps.kache:kache", version.ref = "kache" }
 composenativetray = { module = "io.github.kdroidfilter:composenativetray", version.ref = "composenativetray" }
@@ -176,4 +180,6 @@ kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 androidLint = { id = "com.android.lint", version.ref = "agp" }
 googleServices = { id = "com.google.gms.google-services", version.ref = "google-services" }
+firebaseCrashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-plugin" }
 conveyorPlugin = { id = "dev.hydraulic.conveyor", version.ref = "conveyor" }
+playPublisherPlugin = { id = "com.github.triplet.play", version.ref = "playPublisher" }

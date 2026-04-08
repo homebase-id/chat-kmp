@@ -33,22 +33,23 @@ data class ConversationUiModel(
     val admins: Set<OdinId>,
     val conversationState: ConversationState = ConversationState.Active,
     val isGroup: Boolean = false,
+    val isLegacyGroup: Boolean = false,
     val exitedAt: Instant? = null,
 ) {
     fun isCurrentUserAdmin(odinId: OdinId): Boolean {
         return admins.contains(odinId)
     }
 
-    /** True when this conversation was created as a group (tag-authoritative). */
+    /** True when this conversation is a group — either tagged or legacy (>2 participants). */
     val isGroupConversation: Boolean
-        get() = isGroup
+        get() = isGroup || isLegacyGroup
 
     val isWithSelf: Boolean
         get() = id == ChatProtocol.ConversationWithYourselfId
 
 
     fun getDisplayName(): String {
-        if (isGroup) return name
+        if (isGroupConversation) return name
 
         if (name.isEmpty() || name.isBlank()) {
             return participants.firstOrNull()?.domainName ?: ""

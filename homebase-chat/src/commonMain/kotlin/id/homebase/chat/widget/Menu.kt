@@ -18,11 +18,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MarkChatRead
@@ -65,11 +67,13 @@ import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_group_introduce_everyone
 import id.homebase.resources.chat_group_settings
 import id.homebase.resources.chat_mark_all_as_read
+import id.homebase.resources.chat_message_block
 import id.homebase.resources.chat_message_copy
 import id.homebase.resources.chat_message_edit
 import id.homebase.resources.chat_message_forward
 import id.homebase.resources.chat_message_info
 import id.homebase.resources.chat_message_reply
+import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_pin
 import id.homebase.resources.chat_settings
 import id.homebase.resources.chat_unarchive
@@ -93,7 +97,8 @@ fun ConversationMenu(
     onTogglePin: () -> Unit,
     onArchive: () -> Unit,
     onClear: () -> Unit,
-    onIntroduceEveryone: () -> Unit
+    onIntroduceEveryone: () -> Unit,
+    onBlock: (() -> Unit)? = null,
 ) {
     DropdownMenu(
         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
@@ -157,6 +162,20 @@ fun ConversationMenu(
                 }
             )
         }
+
+        if (onBlock != null) {
+            HorizontalDivider()
+            DropdownMenuItem(
+                onClick = onBlock,
+                text = { Text(text = stringResource(MR.string.chat_message_block)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.Block,
+                        contentDescription = null
+                    )
+                }
+            )
+        }
     }
 }
 
@@ -173,6 +192,8 @@ fun ReceivedMessagePopup(
     onForward: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
+    onBlock: () -> Unit,
+    onReport: () -> Unit,
 ) {
     val actionMenu = remember {
         movableContentOf<Unit> {
@@ -216,6 +237,19 @@ fun ReceivedMessagePopup(
                         onClick = onDelete,
                         text = stringResource(MR.string.delete),
                         imageVector = Icons.Filled.Delete,
+                    )
+                    HorizontalDivider()
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onBlock,
+                        text = stringResource(MR.string.chat_message_block),
+                        imageVector = Icons.Filled.Block,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onReport,
+                        text = stringResource(MR.string.chat_message_report),
+                        imageVector = Icons.Filled.Flag,
                     )
                 }
             }
@@ -549,10 +583,10 @@ fun ConversationListMenu(
         expanded = showMenu,
         onDismissRequest = dismissMenu
     ) {
-        DropdownMenuItem(
-            onClick = onMarkAllAsRead,
-            text = { Text(text = stringResource(MR.string.chat_mark_all_as_read)) },
-        )
+//        DropdownMenuItem(
+//            onClick = onMarkAllAsRead,
+//            text = { Text(text = stringResource(MR.string.chat_mark_all_as_read)) },
+//        )
         if (isFilteringUnread) {
             DropdownMenuItem(
                 onClick = onClearFilterUnread,

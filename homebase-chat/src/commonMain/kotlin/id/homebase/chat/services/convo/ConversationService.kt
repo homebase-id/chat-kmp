@@ -198,6 +198,12 @@ class ConversationService(
     }
 
     suspend fun getConversation(conversationId: Uuid): ConversationUiModel? {
+
+        if(conversationId == ChatProtocol.ConversationWithYourselfId)
+        {
+            return ChatProtocol.buildSelfConversation(credentialsManager.requireActiveDomain())
+        }
+
         val file = getConversationHomebaseFile(conversationId) ?: return null
         return mapper.mapToConversationUi(file, null)
     }
@@ -209,6 +215,10 @@ class ConversationService(
     ) {
         val conversation = requireConversation(conversationId)
         val domain = credentialsManager.requireActiveDomain()
+
+        if (conversation.isLegacyGroup) {
+            throw IllegalStateException("Admin management is not available for legacy groups")
+        }
 
         Logger.d { "updateAdmins: conversationId=$conversationId add=$add remove=$remove currentAdmins=${conversation.admins} participants=${conversation.participants}" }
 
@@ -280,6 +290,11 @@ class ConversationService(
         remove: List<OdinId> = emptyList()
     ) {
         val conversation = requireConversation(conversationId)
+
+        if (conversation.isLegacyGroup) {
+            throw IllegalStateException("Member management is not available for legacy groups")
+        }
+
         requireCallerIsGroupAdmin(conversation)
 
         val domain = credentialsManager.requireActiveDomain()
@@ -413,6 +428,14 @@ class ConversationService(
             throw IllegalStateException("Can only leave group conversations")
         }
 
+        if (conversation.isLegacyGroup) {
+            // Legacy groups don't support the full leave protocol — just mark locally
+            updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
+                it + ChatProtocol.ConversationLeftTag
+            }
+            return
+        }
+
         if (conversation.admins.contains(domain) && (conversation.admins - domain).isEmpty()) {
             throw IllegalStateException("You are the only admin. Assign another admin before leaving.")
         }
@@ -461,7 +484,7 @@ class ConversationService(
             )
         }
 
-        // 3. Mark as left locally — preserves history and blocks sending.
+        // 4. Mark as left locally — preserves history and blocks sending.
         // Depend on conversationId so the tags update is only sent to the server AFTER the
         // participant-removal file update (UpdateFileByUniqueIdRequest, uniqueId=conversationId)
         // has been processed. Without this ordering, the server could briefly see the LeftTag

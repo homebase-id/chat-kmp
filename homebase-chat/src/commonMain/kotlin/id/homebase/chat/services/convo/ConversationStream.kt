@@ -325,6 +325,7 @@ class ConversationStream(
         val updatedConvo = existing.copy(
             name = incoming.name,
             isGroup = incoming.isGroup,
+            isLegacyGroup = incoming.isLegacyGroup,
             admins = incoming.admins,
             avatarModel = incoming.avatarModel,
             avatarTiny = incoming.avatarTiny,

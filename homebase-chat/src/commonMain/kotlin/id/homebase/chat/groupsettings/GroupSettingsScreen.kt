@@ -1,11 +1,13 @@
 package id.homebase.chat.groupsettings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -55,6 +57,7 @@ import id.homebase.resources.cancel
 import id.homebase.resources.connect
 import id.homebase.resources.not_connected
 import id.homebase.resources.chat_group_add_members
+import id.homebase.resources.chat_group_legacy_banner
 import id.homebase.resources.chat_group_admin
 import id.homebase.resources.chat_group_choose_new_admin
 import id.homebase.resources.chat_group_choose_new_admin_disclaimer
@@ -165,7 +168,7 @@ fun GroupSettingsUi(
                     }
                 },
                 actions = {
-                    if (uiState.isCurrentUserGroupAdmin) {
+                    if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
                         IconButton(onClick = { onUiAction(GroupSettingsUiAction.EditGroupClicked) }) {
                             Icon(
                                 Icons.Outlined.Edit,
@@ -201,6 +204,26 @@ fun GroupSettingsUi(
                             avatarModel = conversation.avatarModel,
                         )
                         Spacer(modifier = Modifier.height(32.dp))
+                    }
+                    if (uiState.isLegacyGroup) {
+                        item {
+                            Text(
+                                text = stringResource(MR.string.chat_group_legacy_banner),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(12.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                    }
+                    item {
                         HorizontalDivider()
                         Text(
                             modifier = Modifier.padding(horizontal = 24.dp).padding(top = 32.dp),
@@ -212,7 +235,7 @@ fun GroupSettingsUi(
                             style = MaterialTheme.typography.titleLarge
                         )
                     }
-                    if (uiState.isCurrentUserGroupAdmin) {
+                    if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
                         item {
                             ListItemAction(
                                 modifier = Modifier
@@ -243,7 +266,7 @@ fun GroupSettingsUi(
                                 contact.connectionState == ContactConnectionState.Unknown
                     }
 
-                    items(connectedContacts, key = { it.odinId }) { contact ->
+                    items(connectedContacts, key = { it.odinId.domainName }) { contact ->
                         ContactItem(
                             name = contact.name,
                             subTitle = contact.odinId.domainName,
@@ -268,7 +291,7 @@ fun GroupSettingsUi(
                                 style = MaterialTheme.typography.titleLarge
                             )
                         }
-                        items(notConnectedContacts, key = { it.odinId }) { contact ->
+                        items(notConnectedContacts, key = { it.odinId.domainName }) { contact ->
                             ContactItem(
                                 name = contact.name,
                                 subTitle = contact.odinId.domainName,
@@ -477,7 +500,7 @@ fun GroupSettingsSheets(
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
-                        if (uiState.isCurrentUserGroupAdmin) {
+                        if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
                             if (uiState.conversation?.isCurrentUserAdmin(contactInfo.odinId) == true) {
                                 ListItemActionNormalIcon(
                                     modifier = Modifier.fillMaxWidth(),

@@ -23,9 +23,9 @@
 		43296FC32F3A0C08000B3AFE /* libavdevice.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB42F3A0C08000B3AFE /* libavdevice.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		43296FC42F3A0C08000B3AFE /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; };
 		43296FC52F3A0C08000B3AFE /* libswresample.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43296FB52F3A0C08000B3AFE /* libswresample.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		4332A0A42F3B73DF00F895B5 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4332A0A32F3B73DF00F895B5 /* GoogleService-Info.plist */; };
 		4332A0A72F3B761C00F895B5 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0A62F3B761C00F895B5 /* FirebaseCore */; };
 		4332A0A92F3B761C00F895B5 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0A82F3B761C00F895B5 /* FirebaseMessaging */; };
+		4332A0AB2F3B761C00F895B5 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */; };
 		43CFC1DB2F741EF200628241 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 43CFC1D12F741EF200628241 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -147,6 +147,7 @@
 				43296FB82F3A0C08000B3AFE /* libavutil.xcframework in Frameworks */,
 				43296FC02F3A0C08000B3AFE /* libswscale.xcframework in Frameworks */,
 				4332A0A72F3B761C00F895B5 /* FirebaseCore in Frameworks */,
+				4332A0AB2F3B761C00F895B5 /* FirebaseCrashlytics in Frameworks */,
 				43296FB62F3A0C08000B3AFE /* libavformat.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -202,6 +203,7 @@
 				75264D1454C037FFA6F9EC79 /* Sources */,
 				5FA3011530A4400784B793C9 /* Frameworks */,
 				F55073FBDD5EC068F2F08801 /* Resources */,
+				F08EA0E32F7AA81F00B61D93 /* Copy GoogleServices-Info.plist */,
 				43296FC62F3A0C08000B3AFE /* Embed Frameworks */,
 				43CFC1DC2F741EF200628241 /* Embed Foundation Extensions */,
 			);
@@ -217,6 +219,7 @@
 			packageProductDependencies = (
 				4332A0A62F3B761C00F895B5 /* FirebaseCore */,
 				4332A0A82F3B761C00F895B5 /* FirebaseMessaging */,
+				4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */,
 			);
 			productName = iosApp;
 			productReference = E036487443061F6060AA1439 /* Homebase.app */;
@@ -297,7 +300,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4332A0A42F3B73DF00F895B5 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -341,6 +343,24 @@
 			shellPath = /bin/sh;
 			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :homebase-core:embedAndSignAppleFrameworkForXcode\n";
 		};
+		F08EA0E32F7AA81F00B61D93 /* Copy GoogleServices-Info.plist */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy GoogleServices-Info.plist";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" = \"Debug\" ] || [ \"${CONFIGURATION}\" = \"Dev\" ]; then\n    plist=\"${PROJECT_DIR}/GoogleService-Info-Debug.plist\"\nelse\n    plist=\"${PROJECT_DIR}/GoogleService-Info-Release.plist\"\nfi\ncp \"${plist}\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -372,7 +392,7 @@
 		43CFC1DD2F741EF200628241 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtensionDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -389,7 +409,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.HomebaseFeedShare;
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.dev.HomebaseFeedShare;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -408,7 +428,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = JNJ85M8JM6;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
@@ -438,7 +458,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
+				CODE_SIGN_ENTITLEMENTS = iosApp/iosAppRelease.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
@@ -447,7 +467,9 @@
 				FFMPEG_LIBS_PATH = "$(SRCROOT)/../composeApp/libs/ffmpegkit-bundled.xcframework";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to attach picture to chat message";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow access to your microphone to record a message and send it securely over chat.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -520,6 +542,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed;
 				PRODUCT_NAME = Homebase;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -531,7 +554,7 @@
 		BA4D2ED2858C0F0D5D879E06 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIconDebug;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -542,7 +565,9 @@
 				FFMPEG_LIBS_PATH = "$(SRCROOT)/../composeApp/libs/ffmpegkit-bundled.xcframework";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to attach picture to chat message";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow access to your microphone to record a message and send it securely over chat.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -553,7 +578,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed;
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.dev;
 				PRODUCT_NAME = Homebase;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -565,7 +590,7 @@
 		E5891FC7F7CAA4EE0F6A66CF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = 77B4216A23B10141C86A920D /* Configuration */;
-			baseConfigurationReferenceRelativePath = Config.xcconfig;
+			baseConfigurationReferenceRelativePath = Dev.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -622,6 +647,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.dev;
 				PRODUCT_NAME = Homebase;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -629,6 +655,139 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
+		};
+		F02D52362F867B61008C30F8 /* Dev */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 77B4216A23B10141C86A920D /* Configuration */;
+			baseConfigurationReferenceRelativePath = Dev.xcconfig;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 6XA84UWS5Q;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = Homebase;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Dev;
+		};
+		F02D52372F867B61008C30F8 /* Dev */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 77B4216A23B10141C86A920D /* Configuration */;
+			baseConfigurationReferenceRelativePath = Dev.xcconfig;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIconDev;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
+				DEVELOPMENT_TEAM = JNJ85M8JM6;
+				ENABLE_PREVIEWS = YES;
+				FFMPEG_LIBS_PATH = "$(SRCROOT)/../composeApp/libs/ffmpegkit-bundled.xcframework";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = iosApp/Info.plist;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to attach picture to chat message";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Allow access to your microphone to record a message and send it securely over chat.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photo library to attach image to chat message";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.dev;
+				PRODUCT_NAME = Homebase;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Dev;
+		};
+		F02D52382F867B61008C30F8 /* Dev */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = 77B4216A23B10141C86A920D /* Configuration */;
+			baseConfigurationReferenceRelativePath = Dev.xcconfig;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtensionDev.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JNJ85M8JM6;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShareExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = id.homebase.feed.dev.HomebaseFeedShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Dev;
 		};
 /* End XCBuildConfiguration section */
 
@@ -638,6 +797,7 @@
 			buildConfigurations = (
 				43CFC1DD2F741EF200628241 /* Debug */,
 				43CFC1DE2F741EF200628241 /* Release */,
+				F02D52382F867B61008C30F8 /* Dev */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -647,6 +807,7 @@
 			buildConfigurations = (
 				BA4D2ED2858C0F0D5D879E06 /* Debug */,
 				96D6A996719FA87C66118036 /* Release */,
+				F02D52372F867B61008C30F8 /* Dev */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -656,6 +817,7 @@
 			buildConfigurations = (
 				E5891FC7F7CAA4EE0F6A66CF /* Debug */,
 				A49522CD4E5891027BBD24AE /* Release */,
+				F02D52362F867B61008C30F8 /* Dev */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -683,6 +845,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseMessaging;
+		};
+		4332A0AA2F3B761C00F895B5 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4332A0A52F3B761C00F895B5 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

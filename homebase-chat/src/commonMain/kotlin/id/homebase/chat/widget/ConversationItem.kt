@@ -44,6 +44,7 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived
+import id.homebase.resources.chat_group_legacy
 import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
@@ -151,7 +152,11 @@ fun ConversationItem(
                     }
                 } else if (enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
                     Spacer(modifier = Modifier.width(4.dp))
-                    DeliveryStatus(isPendingSend = false, deliveryStatus = enrichedData.conversation.lastMessageDeliveryStatus)
+                    DeliveryStatus(
+                        isPendingSend = false,
+                        deliveryStatus = enrichedData.conversation.lastMessageDeliveryStatus,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 if (enrichedData.conversation.conversationState == ConversationState.Archived) {
                     Spacer(modifier = Modifier.width(12.dp))
@@ -169,6 +174,15 @@ fun ConversationItem(
                             .background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(4.dp))
                             .padding(horizontal = 4.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+                if (enrichedData.conversation.isLegacyGroup) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(stringResource(MR.string.chat_group_legacy),
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

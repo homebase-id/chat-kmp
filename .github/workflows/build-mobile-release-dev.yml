@@ -1,0 +1,173 @@
+name: Build Mobile Release Dev
+
+
+on:
+    # Run on schedule (every day at 2 AM UTC)
+    schedule:
+      - cron: '0 2 * * *'  # Adjust time as needed
+
+    # Allow manual triggering from GitHub UI
+    workflow_dispatch:
+
+#  push:
+#    branches: [main]
+
+concurrency:
+  group: mobile-release-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Read version info
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'version.name=' gradle/version.properties | cut -d'=' -f2)
+          BASE=$(grep 'version.code.base=' gradle/version.properties | cut -d'=' -f2)
+          VERSION_CODE=$((BASE + ${{ github.run_number }}))
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
+
+      - name: Build Android Bundle
+        run: |
+          ./gradlew --no-daemon :androidApp:bundleDev \
+            -PVERSION_CODE=${{ steps.version.outputs.VERSION_CODE }} \
+            -PVERSION_NAME="${{ steps.version.outputs.VERSION_NAME }}"
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.HOMEBASE_KEYSTORE_PASS_DEV }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.HOMEBASE_KEYSTORE_PASS_DEV }}
+          JDK_21: ${{ env.JAVA_HOME }}
+
+      - name: Rename output
+        run: |
+          mv androidApp/build/outputs/bundle/dev/androidApp-dev.aab \
+             androidApp/build/outputs/bundle/dev/homebase-id-dev-app.aab
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebase-id-app-android
+          path: androidApp/build/outputs/bundle/dev/homebase-id-dev-app.aab
+
+      - name: Create Google Play Service Account JSON
+        run: |
+          echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_DEV }}' > google-play-key.json
+
+      - name: "Publish to Google Play internal track"
+        run: ./gradlew publishDevBundle --artifact-dir androidApp/build/outputs/bundle/dev
+
+  build-ios:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Cache Gradle (KMP)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Cache Kotlin/Native
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('**/gradle.properties') }}
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26"
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cocoapods
+            iosApp/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('**/Podfile.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
+
+      - name: Set iOS version
+        run: |
+          VERSION_NAME=$(grep 'version.name=' gradle/version.properties | cut -d'=' -f2)
+          BASE=$(grep 'version.code.base=' gradle/version.properties | cut -d'=' -f2)
+          VERSION_CODE=$((BASE + ${{ github.run_number }}))
+
+          echo "Setting iOS version to $VERSION_NAME ($VERSION_CODE)"
+
+          # Update Config.xcconfig — this is what Xcode actually reads for CFBundleVersion
+          sed -i '' "s/CURRENT_PROJECT_VERSION=.*/CURRENT_PROJECT_VERSION=$VERSION_CODE/" iosApp/Configuration/Config.xcconfig
+          sed -i '' "s/MARKETING_VERSION=.*/MARKETING_VERSION=$VERSION_NAME/" iosApp/Configuration/Config.xcconfig
+
+          # Also update Info.plist as a fallback
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION_NAME" iosApp/iosApp/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION_NAME" iosApp/iosApp/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION_CODE" iosApp/iosApp/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VERSION_CODE" iosApp/iosApp/Info.plist
+
+      - name: Build iOS
+        uses: yukiarrr/ios-build-action@v1.12.0
+        with:
+          project-path: iosApp/iosApp.xcodeproj
+          workspace-path: iosApp/iosApp.xcodeproj/project.xcworkspace
+          scheme: iosApp Dev
+          configuration: Dev
+          export-options: iosApp/options-dev.plist
+          p12-base64: ${{ secrets.IOS_FEED_P12_BASE64 }}
+          mobileprovision-base64: |
+            ${{ secrets.FEED_DEV_IOS_MOBILE_PROVISION_BASE64 }}
+            ${{ secrets.FEED_DEV_APP_GROUP_IOS_MOBILE_PROVISION_BASE64 }}
+          code-signing-identity: "Apple Distribution"
+          team-id: ${{ secrets.IOS_TEAM_ID }}
+          certificate-password: ${{ secrets.IOS_FEED_CERTIFICATE_PASSWORD }}
+
+      - name: Rename IPA
+        run: mv output.ipa iosApp.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: iosApp.ipa
+
+      - name: Setup App Store Connect API key
+        run: |
+          mkdir -p "${{ runner.temp }}/private_keys"
+          echo "${{ secrets.APPSTORE_API_PRIVATE_KEY }}" > \
+            "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8"
+
+      - name: Upload to TestFlight
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file iosApp.ipa \
+            --apiKey "${{ secrets.APPSTORE_API_KEY_ID }}" \
+            --apiIssuer "${{ secrets.APPSTORE_API_ISSUER_ID }}"
+        env:
+          API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/private_keys

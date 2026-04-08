@@ -9,9 +9,9 @@
     <key>provisioningProfiles</key>
     <dict>
         <key>id.homebase.feed</key>
-        <string>Homebase Feed - App Store Distribution</string>
+        <string>Homebase Feed - Full Distribution</string>
         <key>id.homebase.feed.HomebaseFeedShare</key>
-        <string>Homebase Feed App Group - App Store Distribution</string>
+        <string>Homebase Feed App Group - Full Distribution</string>
     </dict>
 </dict>
 </plist>

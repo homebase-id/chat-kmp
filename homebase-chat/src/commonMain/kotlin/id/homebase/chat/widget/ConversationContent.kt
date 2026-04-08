@@ -39,6 +39,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,6 +52,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -100,7 +102,11 @@ import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.api.client.profile.PublicProfileProvider
 import org.koin.compose.koinInject
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.chat_group_not_connected_disclaimer
+import id.homebase.resources.chat_message_block
+import id.homebase.resources.chat_message_block_confirm_body
+import id.homebase.resources.chat_message_block_confirm_title
 import id.homebase.resources.chat_group_rejoin_accept
 import id.homebase.resources.chat_group_rejoin_decline
 import id.homebase.resources.chat_group_rejoin_pending_description
@@ -155,6 +161,7 @@ fun ConversationContent(
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showConversationMenu by remember { mutableStateOf(false) }
+    var showBlockConfirmDialog by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val isKeyboardVisible by keyboardAsState()
     var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
@@ -270,6 +277,29 @@ fun ConversationContent(
         EmojiSummary(it, onDismiss = { onUiAction(ConversationListUiAction.HideReactionDetails) })
     }
 
+    if (showBlockConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showBlockConfirmDialog = false },
+            title = { Text(stringResource(MR.string.chat_message_block_confirm_title)) },
+            text = { Text(stringResource(MR.string.chat_message_block_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBlockConfirmDialog = false
+                    conversation.conversation.participants.firstOrNull()?.let { participant ->
+                        onUiAction(ConversationListUiAction.BlockUser(participant))
+                    }
+                }) {
+                    Text(stringResource(MR.string.chat_message_block))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBlockConfirmDialog = false }) {
+                    Text(stringResource(MR.string.cancel))
+                }
+            }
+        )
+    }
+
     Scaffold(
         modifier = Modifier,
         topBar = {
@@ -297,7 +327,7 @@ fun ConversationContent(
                         Column {
                             Text(
                                 text = if (conversation.conversation.isWithSelf) stringResource(MR.string.chat_note_to_self)
-                                else conversation.conversation.name,
+                                else conversation.getDisplayName(),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -376,7 +406,14 @@ fun ConversationContent(
                                     conversation.conversation.id
                                 )
                             )
-                        })
+                        },
+                        onBlock = if (!conversation.conversation.isGroupConversation && !conversation.conversation.isWithSelf) {
+                            {
+                                showConversationMenu = false
+                                showBlockConfirmDialog = true
+                            }
+                        } else null,
+                    )
                 }, colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                 )
@@ -432,8 +469,15 @@ fun ConversationContent(
                                                 .padding(bottom = 16.dp),
                                             displayName = if (conversation.conversation.isWithSelf) stringResource(
                                                 MR.string.chat_note_to_self
-                                            ) else conversation.conversation.name,
+                                            ) else conversation.getDisplayName(),
                                             avatarModel = conversation.conversation.avatarModel,
+                                            onClick = {
+                                                onUiAction(
+                                                    ConversationListUiAction.ShowConversationSettings(
+                                                        conversation.conversation
+                                                    )
+                                                )
+                                            }
                                         )
 
                                         if (conversation.conversation.isGroupConversation) {
@@ -469,6 +513,7 @@ fun ConversationContent(
                                         currentOdinId = uiState.ownerSession?.odinId?.domainName
                                             ?: "",
                                         renderAuthorName = conversation.conversation.isGroupConversation,
+                                        isGroupConversation = conversation.conversation.isGroupConversation,
                                         animatedVisibilityScope = animatedVisibilityScope,
                                         sharedTransitionScope = sharedTransitionScope,
                                         onUiAction = onUiAction,

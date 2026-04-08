@@ -99,6 +99,7 @@ kotlin {
             implementation(libs.androidx.browser)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.accompanist.permissions)
+            implementation(libs.firebase.crashlytics)
             api(libs.coil3.video)
         }
         appleMain.dependencies {

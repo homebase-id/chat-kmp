@@ -10,8 +10,6 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.PushNotificationOptions
@@ -28,14 +26,16 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.chat.services.chat.ChatMessageSizer
 import id.homebase.chat.data.ConversationState
+import id.homebase.chat.services.chat.ChatMessageSizer
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
     private val outboxSync: OutboxSync,
