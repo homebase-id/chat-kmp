@@ -21,6 +21,8 @@ object AppConfig {
     // Deep link scheme for returning from permission extension
     const val DEEP_LINK_SCHEME = "homebase-fchat"
     const val RETURN_URL = "$DEEP_LINK_SCHEME://permission-callback"
+
+    const val REPORT_CONTENT_URL = "https://ravenhosting.cloud/report/content"
 }
 
 // Circle IDs for connected identities

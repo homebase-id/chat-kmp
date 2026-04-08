@@ -54,12 +54,14 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.clipboard.platformFileFromPath
+import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
+import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.buildConnectToIdentityUrl
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.resources.MR
@@ -1523,6 +1525,17 @@ class ConversationListViewModel(
                     }
                     _messagesUiState.update { it.copy(recordingData = null) }
                 }
+            }
+
+            is ConversationListUiAction.BlockUser -> {
+                uiState.value.ownerSession?.odinId?.let { currentUser ->
+                    val url = currentUser.buildBlockUrl(action.authorOdinId)
+                    sendEvent(ConversationListUiEvent.OpenUrl(url))
+                }
+            }
+
+            is ConversationListUiAction.ReportContent -> {
+                sendEvent(ConversationListUiEvent.OpenUrl(AppConfig.REPORT_CONTENT_URL))
             }
         }
     }

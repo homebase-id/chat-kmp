@@ -23,6 +23,7 @@ fun MessageItem(
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     currentOdinId: String,
     renderAuthorName: Boolean = false,
+    isGroupConversation: Boolean = false,
     animatedVisibilityScope: AnimatedVisibilityScope,
     sharedTransitionScope: SharedTransitionScope,
     onUiAction: (ConversationListUiAction) -> Unit,
@@ -77,7 +78,15 @@ fun MessageItem(
     }
     val onShowMore =
         remember(message.id) { { onUiAction(ConversationListUiAction.ShowMoreClicked(message.conversationId, message.id)) } }
-
+    val onBlock = if (isGroupConversation) {
+        remember(message.id) {
+            message.originalAuthor?.let { author ->
+                { onUiAction(ConversationListUiAction.BlockUser(author)) }
+            }
+        }
+    } else null
+    val onReport =
+        remember(message.id) { { onUiAction(ConversationListUiAction.ReportContent) } }
 
     if (message.isAuthoredBy(odinId)) {
         val onEdit = remember(message.id) {
@@ -149,6 +158,8 @@ fun MessageItem(
                 downloadingFiles = downloadingFiles,
                 onShowMore = onShowMore,
                 replyMessages = replyMessages,
+                onBlock = onBlock,
+                onReport = onReport,
             )
         }
     }

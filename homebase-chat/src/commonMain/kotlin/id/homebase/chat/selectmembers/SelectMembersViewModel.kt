@@ -88,7 +88,7 @@ fun List<ContactUiModel>.filterAndGroup(query: String): List<ContactGroup> {
         }
     }
     return contacts.groupBy {
-        it.name.first().uppercase()
+        it.name.firstOrNull()?.uppercase() ?: "#"
     }.map { (initial, contacts) ->
         ContactGroup(
             initial = initial,

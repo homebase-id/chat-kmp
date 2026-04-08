@@ -198,6 +198,12 @@ class ConversationService(
     }
 
     suspend fun getConversation(conversationId: Uuid): ConversationUiModel? {
+
+        if(conversationId == ChatProtocol.ConversationWithYourselfId)
+        {
+            return ChatProtocol.buildSelfConversation(credentialsManager.requireActiveDomain())
+        }
+
         val file = getConversationHomebaseFile(conversationId) ?: return null
         return mapper.mapToConversationUi(file, null)
     }

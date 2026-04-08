@@ -146,7 +146,7 @@ jobs:
           project-path: iosApp/iosApp.xcodeproj
           workspace-path: iosApp/iosApp.xcodeproj/project.xcworkspace
           scheme: iosApp
-          export-options: iosApp/options.plist
+          export-options: iosApp/options-appstore.plist
           p12-base64: ${{ secrets.IOS_FEED_P12_BASE64 }}
           mobileprovision-base64: |
             ${{ secrets.FEED_IOS_MOBILE_PROVISION_BASE64 }}
@@ -174,24 +174,22 @@ jobs:
       ## You will also need an App Store distribution provisioning profile stored
       ## as FEED_IOS_APPSTORE_PROVISION_BASE64, and change export-options above
       ## to iosApp/options-appstore.plist when publishing.
-      #
-      # - name: Setup App Store Connect API key
-      #   if: inputs.publish == true || startsWith(github.ref, 'refs/tags/v')
-      #   run: |
-      #     mkdir -p "${{ runner.temp }}/private_keys"
-      #     echo "${{ secrets.APPSTORE_API_PRIVATE_KEY }}" > \
-      #       "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8"
-      #
-      # - name: Upload to TestFlight
-      #   if: inputs.publish == true || startsWith(github.ref, 'refs/tags/v')
-      #   run: |
-      #     xcrun altool --upload-app \
-      #       --type ios \
-      #       --file iosApp.ipa \
-      #       --apiKey "${{ secrets.APPSTORE_API_KEY_ID }}" \
-      #       --apiIssuer "${{ secrets.APPSTORE_API_ISSUER_ID }}"
-      #   env:
-      #     API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/private_keys
+
+      - name: Setup App Store Connect API key
+        run: |
+          mkdir -p "${{ runner.temp }}/private_keys"
+          echo "${{ secrets.APPSTORE_API_PRIVATE_KEY }}" > \
+            "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8"
+
+      - name: Upload to TestFlight
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file iosApp.ipa \
+            --apiKey "${{ secrets.APPSTORE_API_KEY_ID }}" \
+            --apiIssuer "${{ secrets.APPSTORE_API_ISSUER_ID }}"
+        env:
+          API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/private_keys
 
   create-release:
     runs-on: ubuntu-latest

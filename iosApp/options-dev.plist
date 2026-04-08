@@ -8,10 +8,10 @@
     <string>JNJ85M8JM6</string>
     <key>provisioningProfiles</key>
     <dict>
-        <key>id.homebase.feed</key>
-        <string>Homebase Feed - Full Distribution</string>
-        <key>id.homebase.feed.HomebaseFeedShare</key>
-        <string>Homebase Feed App Group - Full Distribution</string>
+        <key>id.homebase.feed.dev</key>
+        <string>Homebase Feed Dev - Full Distribution</string>
+        <key>id.homebase.feed.dev.HomebaseFeedShare</key>
+        <string>Homebase Feed Dev App Group - Full Distribution</string>
     </dict>
 </dict>
 </plist>
