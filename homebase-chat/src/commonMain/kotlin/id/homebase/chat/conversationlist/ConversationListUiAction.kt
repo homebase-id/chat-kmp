@@ -125,4 +125,7 @@ sealed interface ConversationListUiAction {
         val conversationId: Uuid,
         val imageBytes: ByteArray,
     ) : ConversationListUiAction
+
+    data class BlockUser(val authorOdinId: OdinId) : ConversationListUiAction
+    data object ReportContent : ConversationListUiAction
 }

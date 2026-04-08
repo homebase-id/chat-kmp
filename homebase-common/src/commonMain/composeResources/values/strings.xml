@@ -265,6 +265,14 @@
 
     <string name="chat_message_forward_to">Forward to</string>
 
+    <!-- Block / Report -->
+    <string name="chat_message_block">Block</string>
+    <string name="chat_message_report">Report</string>
+    <string name="chat_message_block_confirm_title">Block user?</string>
+    <string name="chat_message_block_confirm_body">Are you sure you want to block this user? You will no longer receive messages from them.</string>
+    <string name="chat_message_report_confirm_title">Report content?</string>
+    <string name="chat_message_report_confirm_body">Are you sure you want to report this content?</string>
+
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Search emoji</string>
     <string name="emoji_none_found">No emojis found</string>
