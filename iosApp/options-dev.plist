@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store</string>
+    <key>teamID</key>
+    <string>JNJ85M8JM6</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>id.homebase.feed.dev</key>
+        <string>Homebase Feed Dev - Full Distribution</string>
+        <key>id.homebase.feed.dev.HomebaseFeedShare</key>
+        <string>Homebase Feed Dev App Group - Full Distribution</string>
+    </dict>
+</dict>
+</plist>
