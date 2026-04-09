@@ -116,6 +116,10 @@ class ChatMessageStream(
     // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     suspend fun loadConversation(conversationId: Uuid) {
+        if (conversationState.messages.value.containsKey(conversationId)) {
+            Logger.d("ChatMessageStream: loadConversation($conversationId) — cached, skipping DB")
+            return
+        }
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
         val result = fetchMessages(conversationId)
         Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages")

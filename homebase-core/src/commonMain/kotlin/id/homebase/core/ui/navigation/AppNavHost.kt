@@ -13,9 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.foundation.background
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
@@ -74,7 +72,6 @@ import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import org.koin.compose.viewmodel.koinViewModel
@@ -163,18 +160,10 @@ fun AppNavHost(
         viewModel.navigationEvents.collect { event ->
             when (event) {
                 is NotificationNavigationEvent.OpenConversation -> {
-                    try {
-                        Uuid.parseOrNull(event.conversationId)?.let {
-                            navController.selectConversationOnChatList(it, scrollToBottom = true)
-                        }
-                        navController.popBackStack(Route.ChatList, inclusive = false)
-                    } catch (e: Exception) {
-                        // On cold start, ChatList may not be on the back stack yet —
-                        // the pending state was already consumed in onNavigateToMainScreen
-                        Logger.d(tag = "AppNavHost") {
-                            "Notification navigation deferred to cold start path: ${e.message}"
-                        }
+                    Uuid.parseOrNull(event.conversationId)?.let {
+                        navController.selectConversationOnChatList(it, scrollToBottom = true)
                     }
+                    navController.popBackStack(Route.ChatList, inclusive = false)
                     viewModel.pendingNotificationConversationId.value = null
                 }
                 is NotificationNavigationEvent.OpenUrl -> {
@@ -558,15 +547,6 @@ fun AppNavHost(
                     }
                 }
             }
-        }
-
-        // Notification navigation overlay — hides the current screen while navigating
-        // from a notification tap so the user doesn't see a flash of the wrong screen
-        if (pendingNavId != null && currentDestination?.hasRoute(Route.AppLoading::class) != true) {
-            Box(
-                modifier = Modifier.fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface)
-            )
         }
 
         // In-app notification banner overlay
