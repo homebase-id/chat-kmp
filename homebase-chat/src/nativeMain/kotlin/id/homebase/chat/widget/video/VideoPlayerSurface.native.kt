@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
@@ -30,14 +31,13 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import co.touchlab.kermit.Logger
-import kotlin.time.measureTimedValue
 import org.koin.compose.koinInject
 import platform.AVFoundation.AVAssetResourceLoader
-import platform.AVFoundation.AVAssetResourceLoadingRequest
 import platform.AVFoundation.AVAssetResourceLoaderDelegateProtocol
+import platform.AVFoundation.AVAssetResourceLoadingRequest
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVURLAsset
@@ -48,13 +48,14 @@ import platform.AVKit.AVPlayerViewController
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSURL
 import platform.Foundation.NSTemporaryDirectory
+import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
 import platform.Foundation.create
 import platform.Foundation.writeToURL
 import platform.darwin.NSObject
 import platform.darwin.dispatch_queue_create
+import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
 private sealed interface VpsState {
