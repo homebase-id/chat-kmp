@@ -110,7 +110,8 @@ fun MediaMessage(
                     shape = shape,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
-                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}")
+                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}"),
+                    messageId = messageId,
                 )
             }
 

@@ -2,6 +2,7 @@ package id.homebase.chat.widget
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -35,12 +36,14 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.image.toImageBitmap
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -97,6 +100,7 @@ fun MediaItem(
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     isDownloading: Boolean = false,
+    messageId: Uuid? = null,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
@@ -300,7 +304,28 @@ fun MediaItem(
                     }
                 }
             } else {
-                MediaPlaceholder(emoji = "📹", label = "Video", modifier = baseModifier)
+                // Check for local video context (available during upload)
+                val localVideoContextStore = koinInject<LocalVideoContextStore>()
+                val localContext = messageId?.let { localVideoContextStore.get(it) }
+                if (localContext != null) {
+                    val imageBitmap = remember(localContext.thumbnailBytes) {
+                        localContext.thumbnailBytes.toImageBitmap()
+                    }
+                    if (imageBitmap != null) {
+                        Box(modifier = finalModifier) {
+                            Image(
+                                bitmap = imageBitmap,
+                                contentDescription = "Video thumbnail",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        }
+                    } else {
+                        MediaPlaceholder(emoji = "📹", label = "Video", modifier = baseModifier)
+                    }
+                } else {
+                    MediaPlaceholder(emoji = "📹", label = "Video", modifier = baseModifier)
+                }
             }
         }
 
