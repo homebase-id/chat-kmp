@@ -126,7 +126,6 @@ class OptimisticWriter(
 
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Optimistic insert failed for uniqueId=${unecryptedMetadata.appData.uniqueId} groupId=${unecryptedMetadata.appData.groupId}" }
-            throw e
         }
     }
 
@@ -216,7 +215,6 @@ class OptimisticWriter(
 
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Optimistic update failed for uniqueId=${unecryptedMetadata.appData.uniqueId}" }
-            throw e
         }
     }
 
