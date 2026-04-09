@@ -28,6 +28,7 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.contact.DriveContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.syncLabeledDrives
 import id.homebase.core.image.HomebaseImageLoader
@@ -102,6 +103,7 @@ val appModule = module {
     singleOf(::ChatMessageActionService)
     singleOf(::NotificationService)
     singleOf(::ConnectionRequestService)
+    singleOf(::NotificationActionBridge)
 
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)

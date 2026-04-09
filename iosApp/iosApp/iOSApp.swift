@@ -70,25 +70,60 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       withCompletionHandler completionHandler: @escaping () -> Void
   ) {
       let userInfo = response.notification.request.content.userInfo
+      let conversationId = extractConversationId(from: userInfo)
 
       switch response.actionIdentifier {
       case "REPLY_ACTION":
-          if let textResponse = response as? UNTextInputNotificationResponse {
+          if let textResponse = response as? UNTextInputNotificationResponse,
+             let convoId = conversationId {
               let replyText = textResponse.userText
-              // TODO: Send reply via ChatMessageSenderService
-              // Access through ComposeApp framework when KMP bridge is available
-              print("Notification reply: \(replyText), userInfo: \(userInfo)")
+              let notificationId = response.notification.request.identifier
+              let bridge = NotificationActionBridge.companion.fromKoin()
+              bridge.sendReply(conversationId: convoId, text: replyText) { success in
+                  if success.boolValue {
+                      UNUserNotificationCenter.current().removeDeliveredNotifications(
+                          withIdentifiers: [notificationId]
+                      )
+                  } else {
+                      print("Failed to send notification reply")
+                  }
+                  completionHandler()
+              }
+              return
           }
       case "MARK_READ_ACTION":
-          // TODO: Mark as read via ChatMessageActionService
-          // Access through ComposeApp framework when KMP bridge is available
-          print("Mark as read, userInfo: \(userInfo)")
+          if let convoId = conversationId {
+              let notificationId = response.notification.request.identifier
+              UNUserNotificationCenter.current().removeDeliveredNotifications(
+                  withIdentifiers: [notificationId]
+              )
+              let bridge = NotificationActionBridge.companion.fromKoin()
+              bridge.markAsRead(conversationId: convoId) { success in
+                  if !success.boolValue {
+                      print("Failed to mark as read from notification")
+                  }
+                  completionHandler()
+              }
+              return
+          }
       default:
           // Default tap — handled by NotifierManager.onNotificationClicked
           NotifierManager.shared.onApplicationDidReceiveRemoteNotification(userInfo: userInfo)
       }
 
       completionHandler()
+  }
+
+  /// Extracts the conversation ID (typeId) from the push payload's data JSON.
+  private func extractConversationId(from userInfo: [AnyHashable: Any]) -> String? {
+      guard let dataString = userInfo["data"] as? String,
+            let jsonData = dataString.data(using: .utf8),
+            let payload = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+            let options = payload["options"] as? [String: Any],
+            let typeId = options["typeId"] as? String,
+            !typeId.isEmpty
+      else { return nil }
+      return typeId
   }
 
   func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
