@@ -126,6 +126,10 @@ class ConversationListViewModel(
     private val localVideoContextStore: LocalVideoContextStore,
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "ConversationListViewModel"
+    }
+
     private val enricher = ConversationEnricher()
     val ownerSession = ownerSessionRepository.user
 
@@ -1839,6 +1843,7 @@ class ConversationListViewModel(
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
+                Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
 
                 // Write placeholder first — message appears instantly before encryption/network
                 chatMessageSenderService.writePlaceholderMessage(
@@ -1855,7 +1860,9 @@ class ConversationListViewModel(
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle,
                 )
+                Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "addMessage failed for conversation=$conversationId" }
                 sendEvent(ShowErrorMessage("Failed to send message: ${e.message}"))
             }
         }
@@ -1881,6 +1888,7 @@ class ConversationListViewModel(
                 )
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
+                Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
 
                 // Write placeholder first — reply appears instantly with quote context
                 chatMessageSenderService.writePlaceholderMessage(
@@ -1899,7 +1907,9 @@ class ConversationListViewModel(
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle
                 )
+                Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "replyToMessage failed for conversation=$conversationId" }
                 sendEvent(ShowErrorMessage("Failed to send reply: ${e.message}"))
             }
         }
@@ -2001,6 +2011,7 @@ class ConversationListViewModel(
             }
 
             val newMessageId = Uuid.random()
+            Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
 
             // Write a placeholder entry to the DB immediately so the message appears in the
             // list during the build+encrypt phase, before the real optimistic write fires.
@@ -2075,7 +2086,7 @@ class ConversationListViewModel(
                     payloadBundle = bundle,
                 )
             } catch (e: Exception) {
-                Logger.e("Failed to send file(s)", e)
+                Logger.e(throwable = e, tag = TAG) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
                 _messagesUiState.update { state ->
                     state.copy(uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap())
                 }

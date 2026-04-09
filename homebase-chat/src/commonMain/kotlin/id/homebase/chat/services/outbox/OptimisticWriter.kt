@@ -40,6 +40,10 @@ class OptimisticWriter(
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
 ) {
+    companion object {
+        private const val TAG = "OptimisticWriter"
+    }
+
     private val fileProcessor: MainIndexMetaHelpers.HomebaseFileProcessor =
         MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
 
@@ -121,7 +125,8 @@ class OptimisticWriter(
             )
 
         } catch (e: Exception) {
-            Logger.e("Optimistic insert failed: ${e.message}")
+            Logger.e(throwable = e, tag = TAG) { "Optimistic insert failed for uniqueId=${unecryptedMetadata.appData.uniqueId} groupId=${unecryptedMetadata.appData.groupId}" }
+            throw e
         }
     }
 
@@ -210,7 +215,8 @@ class OptimisticWriter(
             )
 
         } catch (e: Exception) {
-            Logger.e("Optimistic update failed: ${e.message}")
+            Logger.e(throwable = e, tag = TAG) { "Optimistic update failed for uniqueId=${unecryptedMetadata.appData.uniqueId}" }
+            throw e
         }
     }
 
@@ -252,7 +258,7 @@ class OptimisticWriter(
                 )
             )
         } catch (e: Exception) {
-            Logger.e("Optimistic remove failed: ${e.message}")
+            Logger.e(throwable = e, tag = TAG) { "Optimistic remove failed for uniqueId=$uniqueId" }
         }
     }
 
@@ -310,7 +316,7 @@ class OptimisticWriter(
                 )
             )
         } catch (e: Exception) {
-            Logger.e("Optimistic delete failed: ${e.message}")
+            Logger.e(throwable = e, tag = TAG) { "Optimistic delete failed for uniqueId=$uniqueId" }
             return null
         }
 
@@ -340,7 +346,7 @@ class OptimisticWriter(
                 )
             )
         } catch (e: Exception) {
-            Logger.e("Optimistic delete rollback failed: ${e.message}")
+            Logger.e(throwable = e, tag = TAG) { "Optimistic delete rollback failed for fileId=${original.fileId}" }
         }
     }
 
@@ -423,7 +429,7 @@ class OptimisticWriter(
                 )
             )
         } catch (e: Exception) {
-            Logger.e("Optimistic reaction toggle failed: ${e.message}")
+            Logger.e(throwable = e, tag = TAG) { "Optimistic reaction toggle failed for uniqueId=$uniqueId" }
             return Pair(ToggleReactionResultType.None, null)
         }
 
@@ -512,7 +518,7 @@ class OptimisticWriter(
                 iv = ivBase64
             )
         } catch (e: Exception) {
-            Logger.e("stampConversationExitedAt failed: ${e.message}")
+            Logger.e(throwable = e, tag = TAG) { "stampConversationExitedAt failed for conversationId=$conversationId" }
             null
         }
     }
@@ -573,7 +579,7 @@ class OptimisticWriter(
                 )
             )
         } catch (e: Exception) {
-            Logger.e("Optimistic tag update failed: ${e.message}")
+            Logger.e(throwable = e, tag = TAG) { "Optimistic tag update failed for uniqueId=$uniqueId" }
         }
     }
 }

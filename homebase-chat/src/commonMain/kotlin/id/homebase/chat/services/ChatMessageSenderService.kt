@@ -48,6 +48,10 @@ class ChatMessageSenderService(
     private val driveFileProvider: DriveFileProvider,
     private val shareSuggestionDonor: ShareSuggestionDonor = ShareSuggestionDonor(),
 ) {
+    companion object {
+        private const val TAG = "ChatMessageSenderService"
+    }
+
     private val chatDrive = chatTargetDrive.alias
 
     suspend fun writePlaceholderMessage(
@@ -57,6 +61,8 @@ class ChatMessageSenderService(
         payloadDescriptors: List<PayloadDescriptor>?,
         replyPreview: ReplyPreview? = null,
     ) {
+        Logger.d(tag = TAG) { "writePlaceholderMessage: starting message=$messageUniqueId conversation=$conversationId" }
+
         val keyHeader = KeyHeader.newRandom16()
         val recipients = conversationStream.getRecipients(conversationId)
         val isLocalOnly = recipients.isEmpty()
@@ -92,6 +98,8 @@ class ChatMessageSenderService(
             fileSystemType = FileSystemType.Standard,
             payloadDescriptors = payloadDescriptors,
         )
+
+        Logger.d(tag = TAG) { "writePlaceholderMessage: optimistic write complete message=$messageUniqueId" }
     }
 
     suspend fun sendNewMessage(
@@ -184,6 +192,7 @@ class ChatMessageSenderService(
         isStatusMessage: Boolean = false,
         additionalRecipients: List<OdinId> = emptyList()
     ): SendMessageResult {
+        Logger.d(tag = TAG) { "sendMessageInternal: starting message=$messageUniqueId conversation=$conversationId" }
 
         val conversation =
             conversationStream.getConversationById(conversationId) ?: error("no conversation found")
@@ -199,6 +208,7 @@ class ChatMessageSenderService(
         val recipients = conversationStream.getRecipients(conversationId, additionalRecipients)
         val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
+        Logger.d(tag = TAG) { "sendMessageInternal: encrypting message=$messageUniqueId recipients=${recipients.size}" }
         val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
             messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
         )
@@ -265,6 +275,7 @@ class ChatMessageSenderService(
                 fileSystemType = FileSystemType.Standard,
                 payloadDescriptors = payloadDescriptors,
             )
+            Logger.d(tag = TAG) { "sendMessageInternal: optimistic write complete message=$messageUniqueId" }
 
             val enqueued = outboxSync.tryEnqueue(
                 request,
@@ -275,6 +286,7 @@ class ChatMessageSenderService(
             if (!enqueued) {
                 error("Failed to send chat message")
             }
+            Logger.d(tag = TAG) { "sendMessageInternal: outbox enqueued message=$messageUniqueId" }
 
             // Donate share suggestion so this conversation appears in OS share sheet
             try {
@@ -293,11 +305,12 @@ class ChatMessageSenderService(
 
             return SendMessageResult(uniqueId = messageUniqueId)
         } catch (t: Throwable) {
-            Logger.e("ChatMessageSenderService", t)
+            Logger.e(throwable = t, tag = TAG) { "sendMessageInternal failed for message=$messageUniqueId conversation=$conversationId" }
             try {
+                Logger.w(tag = TAG) { "Rolling back optimistic file for message=$messageUniqueId" }
                 optimisticWriter.removeOptimisticFile(chatDrive, messageUniqueId)
-            } catch (_: Exception) {
-                // best-effort rollback
+            } catch (re: Exception) {
+                Logger.e(throwable = re, tag = TAG) { "Rollback failed for message=$messageUniqueId" }
             }
         }
 
