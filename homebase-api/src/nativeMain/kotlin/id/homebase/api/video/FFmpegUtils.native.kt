@@ -98,6 +98,9 @@ actual object FFmpegUtils {
                 }
             }
 
+    private val MAX_BITRATE = 3_000_000L
+    private val MAX_WIDTH = 1280
+
     actual suspend fun compressVideo(inputPath: String, onProgress: ((Float) -> Unit)?): String? =
             withContext(Dispatchers.IO) {
                 val fileManager = NSFileManager.defaultManager
@@ -108,6 +111,22 @@ actual object FFmpegUtils {
                     return@withContext null
                 }
 
+                // Check if compression is needed
+                val mediaInfo = bridge.getMediaInformation(inputPath)
+                val videoStream = mediaInfo?.streams?.firstOrNull { it.type == "video" }
+                val codec = videoStream?.codec?.lowercase()
+                val bitrate = videoStream?.bitrate
+                val width = videoStream?.width
+
+                val isH264 = codec == "h264"
+                val bitrateOk = bitrate != null && bitrate <= MAX_BITRATE
+                val widthOk = width != null && width <= MAX_WIDTH
+
+                if (isH264 && bitrateOk && widthOk) {
+                    println("Docs: Video already optimal (h264, ${bitrate}bps, ${width}px) — skipping compression")
+                    return@withContext null // null means "use original"
+                }
+
                 val cacheDir = getCacheDirectory()
                 val outputPath = "$cacheDir/compressed_${getUniqueId(inputPath)}.mp4"
 
@@ -116,18 +135,21 @@ actual object FFmpegUtils {
                     fileManager.removeItemAtPath(outputPath, null)
                 }
 
-                // Use libx264 with same settings as Android/Desktop for consistency
-                // Note: FFmpegKit parses the command string, so we avoid single quotes in filters
+                // Use hardware encoder (VideoToolbox) for speed, fall back to libx264
                 val command =
-                        "-y -i \"$inputPath\" -c:v libx264 -b:v 3000k -vf scale=min(1280\\,iw):-2 -preset fast \"$outputPath\""
+                        "-y -i \"$inputPath\" -c:v h264_videotoolbox -b:v 3000k -vf scale=min(1280\\,iw):-2 \"$outputPath\""
 
                 val result = bridge.executeFFmpeg(command)
 
                 if (result.isSuccess) {
                     outputPath
                 } else {
-                    println("Docs: Error compressing video: ${result.failStackTrace}")
-                    null
+                    // Fall back to software encoder if hardware fails
+                    println("Docs: Hardware encoder failed, falling back to libx264: ${result.failStackTrace}")
+                    val fallbackCommand =
+                            "-y -i \"$inputPath\" -c:v libx264 -b:v 3000k -vf scale=min(1280\\,iw):-2 -preset fast \"$outputPath\""
+                    val fallbackResult = bridge.executeFFmpeg(fallbackCommand)
+                    if (fallbackResult.isSuccess) outputPath else null
                 }
             }
 
@@ -234,16 +256,7 @@ actual object FFmpegUtils {
                         }
 
                 val command =
-                        """
-            $baseCommand
-            -hls_time 6
-            -hls_list_size 0
-            -hls_flags single_file
-            -hls_key_info_file "$keyInfoFilePath"
-            -f hls
-            -hls_segment_filename "$segmentPath"
-            "$indexPath"
-            """.trimIndent()
+                        "$baseCommand -hls_time 6 -hls_list_size 0 -hls_flags single_file -hls_key_info_file \"$keyInfoFilePath\" -f hls -hls_segment_filename \"$segmentPath\" \"$indexPath\""
 
                 val result = bridge.executeFFmpeg(command)
 

@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.drives.files.ReactionSummary
@@ -119,7 +120,7 @@ fun ReactionMenu(
             }
             IconButton(
                 onClick = onShowAllEmojis,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(40.dp).testTag("emoji_options_button")
             ) {
                 Icon(
                     Icons.Default.MoreHoriz,

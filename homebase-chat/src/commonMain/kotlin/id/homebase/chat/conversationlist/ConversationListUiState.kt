@@ -3,6 +3,7 @@ package id.homebase.chat.conversationlist
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
@@ -71,7 +72,7 @@ sealed interface MessageListUiSheet {
 
 sealed interface UploadStatus {
     data object Preparing : UploadStatus
-    data class Processing(val progress: Float) : UploadStatus
+    data class Processing(val progress: Float, val phase: VideoProcessingPhase = VideoProcessingPhase.COMPRESSING) : UploadStatus
     data class Uploading(val progress: Float) : UploadStatus
     data object Completed : UploadStatus
 }
@@ -155,6 +156,8 @@ sealed interface FullScreenOverlay {
         val payloadKey: String,
         val keyHeader: KeyHeader,
         val payload: PayloadDescriptor,
+        val localFilePath: String? = null,
+        val uploadMessageId: Uuid? = null,
     ) : FullScreenOverlay
 }
 

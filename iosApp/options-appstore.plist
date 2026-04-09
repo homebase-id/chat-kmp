@@ -12,6 +12,8 @@
         <string>Homebase Feed - Full Distribution</string>
         <key>id.homebase.feed.HomebaseFeedShare</key>
         <string>Homebase Feed App Group - Full Distribution</string>
+        <key>id.homebase.feed.NotificationServiceExtension</key>
+        <string>Homebase Feed Notification - Full Distribution</string>
     </dict>
 </dict>
 </plist>

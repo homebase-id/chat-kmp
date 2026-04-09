@@ -29,3 +29,5 @@ xcuserdata/
 /google-play-key.json
 hs_err_pid*.log
 replay_pid*.log
+/.agent
+/.superpowers

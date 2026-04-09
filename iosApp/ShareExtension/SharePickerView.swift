@@ -208,7 +208,7 @@ struct ShareAvatarView: View {
     let initials: String
     let isGroup: Bool
 
-    private static let appGroupId = "group.id.homebase.feed"
+    private static let appGroupId = Bundle.main.infoDictionary?["AppGroupIdentifier"] as? String ?? "group.id.homebase.feed"
 
     @State private var loadedImage: UIImage?
     @State private var loadFailed = false

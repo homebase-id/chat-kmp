@@ -21,10 +21,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: zulu
           java-version: "21"
@@ -58,7 +58,7 @@ jobs:
           mv androidApp/build/outputs/bundle/dev/androidApp-dev.aab \
              androidApp/build/outputs/bundle/dev/homebase-id-dev-app.aab
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: homebase-id-app-android
           path: androidApp/build/outputs/bundle/dev/homebase-id-dev-app.aab
@@ -74,10 +74,10 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: zulu
           java-version: "17"
@@ -86,7 +86,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Cache Gradle (KMP)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -96,7 +96,7 @@ jobs:
             gradle-${{ runner.os }}-
 
       - name: Cache Kotlin/Native
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ hashFiles('**/gradle.properties') }}
@@ -107,7 +107,7 @@ jobs:
           xcode-version: "26"
 
       - name: Cache CocoaPods
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cocoapods
@@ -144,6 +144,7 @@ jobs:
           mobileprovision-base64: |
             ${{ secrets.FEED_DEV_IOS_MOBILE_PROVISION_BASE64 }}
             ${{ secrets.FEED_DEV_APP_GROUP_IOS_MOBILE_PROVISION_BASE64 }}
+            ${{ secrets.FEED_DEV_NOTIFICATIONS_IOS_MOBILE_PROVISION_BASE64 }}
           code-signing-identity: "Apple Distribution"
           team-id: ${{ secrets.IOS_TEAM_ID }}
           certificate-password: ${{ secrets.IOS_FEED_CERTIFICATE_PASSWORD }}
@@ -151,7 +152,7 @@ jobs:
       - name: Rename IPA
         run: mv output.ipa iosApp.ipa
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ios-app
           path: iosApp.ipa

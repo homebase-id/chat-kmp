@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -33,13 +34,21 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.conversationlist.UploadStatus
+import id.homebase.chat.widget.video.LocalVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.api.image.toImageBitmap
 import id.homebase.resources.MR
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
+import id.homebase.resources.upload_preparing
+import id.homebase.resources.upload_compressing
+import id.homebase.resources.upload_uploading
+import id.homebase.resources.upload_done
+import id.homebase.chat.services.LocalVideoContextStore
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 
@@ -51,6 +60,7 @@ fun FullScreenVideoPlayer(
     onSave: () -> Unit,
     isDownloading: Boolean = false,
     modifier: Modifier = Modifier,
+    uploadStatus: UploadStatus? = null,
 ) {
     var isPlaying by remember(data) { mutableStateOf(true) }
     var progress by remember(data) { mutableFloatStateOf(0f) }
@@ -59,20 +69,29 @@ fun FullScreenVideoPlayer(
     val payloadIv = remember(data.payload.iv) {
         data.payload.iv?.let { Base64.decode(it) }
     }
+    val isLocalPlayback = data.localFilePath != null
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // Always composed so loading/buffering starts immediately on open
-        VideoPlayerSurface(
-            data = data,
-            modifier = Modifier.fillMaxSize(),
-            onProgress = { progress = it },
-        )
+        // Video player surface - prefer local file when available
+        if (isLocalPlayback) {
+            LocalVideoPlayerSurface(
+                filePath = data.localFilePath,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            VideoPlayerSurface(
+                data = data,
+                modifier = Modifier.fillMaxSize(),
+                onProgress = { progress = it },
+            )
+        }
 
-        if (progress < 1f) {
+        // Download/playback progress (only for server-based playback)
+        if (!isLocalPlayback && progress < 1f) {
             androidx.compose.foundation.layout.Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -98,7 +117,12 @@ fun FullScreenVideoPlayer(
         // Thumbnail + play button overlay, hidden once user taps play
         if (!isPlaying) {
             if (payloadIv != null) {
-                val imageData = remember(data.driveId, data.fileId, data.payloadKey, data.payload.lastModified) {
+                val imageData = remember(
+                    data.driveId,
+                    data.fileId,
+                    data.payloadKey,
+                    data.payload.lastModified
+                ) {
                     HomebaseImageData(
                         driveId = data.driveId,
                         fileId = data.fileId,
@@ -116,6 +140,21 @@ fun FullScreenVideoPlayer(
                     contentScale = ContentScale.Fit,
                     contentDescription = "Video thumbnail",
                 )
+            } else if (isLocalPlayback) {
+                // Show local thumbnail when paused during local playback
+                val localVideoContextStore = org.koin.compose.koinInject<LocalVideoContextStore>()
+                val localContext = data.uploadMessageId?.let { localVideoContextStore.get(it) }
+                val localBitmap = localContext?.thumbnailBytes?.let { bytes ->
+                    remember(bytes) { bytes.toImageBitmap() }
+                }
+                if (localBitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = localBitmap,
+                        contentDescription = "Video thumbnail",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
             }
 
             Icon(
@@ -149,22 +188,38 @@ fun FullScreenVideoPlayer(
                 }
             },
             actions = {
-                Box {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = stringResource(MR.string.chat_options),
-                            tint = Color.White
+                if (uploadStatus != null) {
+                    val statusText = when (uploadStatus) {
+                        UploadStatus.Preparing -> stringResource(MR.string.upload_preparing)
+                        is UploadStatus.Processing -> "${stringResource(MR.string.upload_compressing)} ${(uploadStatus.progress * 100).toInt()}%"
+                        is UploadStatus.Uploading -> "${stringResource(MR.string.upload_uploading)} ${(uploadStatus.progress * 100).toInt()}%"
+                        UploadStatus.Completed -> stringResource(MR.string.upload_done)
+                    }
+                    Text(
+                        text = statusText,
+                        color = Color.White.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
+                if (!isLocalPlayback) {
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(MR.string.chat_options),
+                                tint = Color.White
+                            )
+                        }
+                        FullScreenMediaMenu(
+                            showMenu = showMenu,
+                            dismissMenu = { showMenu = false },
+                            onSave = {
+                                showMenu = false
+                                onSave()
+                            },
                         )
                     }
-                    FullScreenMediaMenu(
-                        showMenu = showMenu,
-                        dismissMenu = { showMenu = false },
-                        onSave = {
-                            showMenu = false
-                            onSave()
-                        },
-                    )
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)

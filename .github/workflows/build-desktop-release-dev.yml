@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: zulu
           java-version: "21"
@@ -31,7 +31,7 @@ jobs:
 
       - name: Cache Conveyor installation
         id: cache-conveyor
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .conveyor/install
           key: conveyor-22.0-linux-amd64
@@ -45,7 +45,7 @@ jobs:
           tar xzvf conveyor-22.0-linux-amd64.tar.gz -C .conveyor/install
 
       - name: Cache Conveyor data
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           key: conveyor-data-${{ github.run_id }}
           path: .conveyor/cache

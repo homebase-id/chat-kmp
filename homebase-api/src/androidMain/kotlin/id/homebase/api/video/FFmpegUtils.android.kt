@@ -106,6 +106,9 @@ actual object FFmpegUtils {
             }
         }
 
+    private const val MAX_BITRATE = 3_000_000L
+    private const val MAX_WIDTH = 1280
+
     actual suspend fun compressVideo(inputPath: String, onProgress: ((Float) -> Unit)?): String? =
         withContext(Dispatchers.IO) {
             val context = ActivityProvider.requireActivity().applicationContext
@@ -115,33 +118,71 @@ actual object FFmpegUtils {
                 return@withContext null
             }
 
+            // Check if compression is needed via ffprobe
+            val needsCompression = run {
+                try {
+                    val session = FFprobeKit.getMediaInformation(inputPath)
+                    val info = session?.mediaInformation ?: return@run true
+                    val streams = info.streams ?: return@run true
+                    val videoStream = streams.firstOrNull { it.type == "video" }
+                        ?: return@run true
+
+                    val codec = videoStream.codec?.lowercase()
+                    val bitrate = videoStream.bitrate?.toLongOrNull()
+                    val width = videoStream.width?.toInt()
+
+                    val isH264 = codec == "h264"
+                    val bitrateOk = bitrate != null && bitrate <= MAX_BITRATE
+                    val widthOk = width != null && width <= MAX_WIDTH
+
+                    Log.d(TAG, "Video info: codec=$codec, bitrate=$bitrate, width=$width, needsCompression=${!(isH264 && bitrateOk && widthOk)}")
+                    !(isH264 && bitrateOk && widthOk)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to probe video, assuming compression needed", e)
+                    true
+                }
+            }
+
+            if (!needsCompression) {
+                Log.d(TAG, "Video already optimal — skipping compression")
+                return@withContext null
+            }
+
             val outputDir = context.cacheDir
             val outputPath = File(outputDir, "compressed_${file.name}").absolutePath
 
-            // distinct inputs for robust handling
-            val arguments =
-                mutableListOf(
-                    "-y",
-                    "-i",
-                    inputPath,
-                    "-c:v",
-                    "libx264",
-                    "-b:v",
-                    "3000k",
-                    "-vf",
-                    "scale='min(1280,iw)':-2",
-                    "-preset",
-                    "fast",
-                    outputPath
-                )
+            // Try hardware encoder first, fall back to software
+            val hwArguments = mutableListOf(
+                "-y", "-i", inputPath,
+                "-c:v", "h264_mediacodec",
+                "-b:v", "3000k",
+                "-vf", "scale='min(1280,iw)':-2",
+                outputPath
+            )
 
-            Log.d(TAG, "Compression arguments: $arguments")
+            Log.d(TAG, "Compression with hardware encoder: $hwArguments")
+            val hwSession = FFmpegKit.executeWithArguments(hwArguments.toTypedArray())
 
-            val session = FFmpegKit.executeWithArguments(arguments.toTypedArray())
-            if (ReturnCode.isSuccess(session.returnCode)) {
+            if (ReturnCode.isSuccess(hwSession.returnCode)) {
+                return@withContext outputPath
+            }
+
+            // Fall back to software encoder
+            Log.w(TAG, "Hardware encoder failed, falling back to libx264")
+            val swArguments = mutableListOf(
+                "-y", "-i", inputPath,
+                "-c:v", "libx264",
+                "-b:v", "3000k",
+                "-vf", "scale='min(1280,iw)':-2",
+                "-preset", "fast",
+                outputPath
+            )
+
+            val swSession = FFmpegKit.executeWithArguments(swArguments.toTypedArray())
+            if (ReturnCode.isSuccess(swSession.returnCode)) {
                 return@withContext outputPath
             } else {
-                Log.e(TAG, "Compression failed: ${session.failStackTrace}")
+                Log.e(TAG, "Compression failed: ${swSession.failStackTrace}")
                 return@withContext null
             }
         }

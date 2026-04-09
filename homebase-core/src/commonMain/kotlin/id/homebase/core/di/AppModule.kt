@@ -17,6 +17,7 @@ import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.PayloadBundleEncryptionService
@@ -28,6 +29,7 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.contact.DriveContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.syncLabeledDrives
 import id.homebase.core.image.HomebaseImageLoader
@@ -89,6 +91,7 @@ val appModule = module {
 
     singleOf(::ShareConversationCacheWriter)
     singleOf(::ShareContentProcessor)
+    singleOf(::LocalVideoContextStore)
 
     singleOf(::ConnectionService)
     singleOf(::DriveContactService)
@@ -102,6 +105,7 @@ val appModule = module {
     singleOf(::ChatMessageActionService)
     singleOf(::NotificationService)
     singleOf(::ConnectionRequestService)
+    singleOf(::NotificationActionBridge)
 
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)

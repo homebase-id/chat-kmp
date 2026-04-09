@@ -7,6 +7,49 @@ on:
     branches: [main]
 
 jobs:
+  test:
+    name: Run unittests
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Gradle Cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Run JVM unit tests
+        run: ./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()  # Run even if tests fail
+        with:
+          files: |
+            homebase-api/build/test-results/jvmTest/TEST-*.xml
+            homebase-chat/build/test-results/jvmTest/TEST-*.xml
+            homebase-auth/build/test-results/jvmTest/TEST-*.xml
+            homebase-common/build/test-results/jvmTest/TEST-*.xml
+          check_name: JVM Test Results
+
   build:
     strategy:
       matrix:
@@ -25,16 +68,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: "temurin"
 
       - name: Gradle Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -57,7 +100,7 @@ jobs:
 
       - name: Upload Android artifact
         if: ${{ matrix.name == 'Android & Desktop' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-apk
           path: androidApp/build/outputs/apk/debug/*.apk
@@ -68,7 +111,7 @@ jobs:
 
       - name: Upload Desktop artifact
         if: ${{ matrix.name == 'Android & Desktop' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop-dist
           path: desktopApp/build/compose/binaries/main/app/
@@ -79,7 +122,7 @@ jobs:
 
       - name: Upload iOS artifact
         if: ${{ matrix.name == 'iOS' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-framework
           path: homebase-common/build/bin/iosArm64/debugFramework/*.framework

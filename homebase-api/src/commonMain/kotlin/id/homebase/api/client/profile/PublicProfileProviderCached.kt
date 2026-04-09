@@ -190,13 +190,15 @@ class PublicProfileProviderCached(
 
     internal fun extractTtlMillis(cacheControl: String?): Long {
         val oneWeekSeconds = 7 * 24 * 60 * 60L
-        if (cacheControl == null) return oneWeekSeconds * 1000
+        val oneWeekMs = oneWeekSeconds * 1000
+        if (cacheControl == null) return oneWeekMs
         val maxAge = Regex("max-age=(\\d+)")
             .find(cacheControl)
             ?.groupValues
             ?.get(1)
             ?.toLongOrNull()
-        return (maxAge ?: oneWeekSeconds) * 1000
+        val ttlMs = (maxAge ?: oneWeekSeconds) * 1000
+        return maxOf(ttlMs, oneWeekMs)
     }
 
     private fun now(): Long =
