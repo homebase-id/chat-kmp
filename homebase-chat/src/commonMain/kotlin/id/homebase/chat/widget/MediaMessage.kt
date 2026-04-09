@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.conversationlist.DecryptedFileKey
@@ -147,75 +148,88 @@ fun MediaMessage(
 @Composable
 private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.background(Color.Black.copy(alpha = 0.5f)),
+        modifier = modifier.background(Color.Black.copy(alpha = 0.35f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             when (status) {
                 UploadStatus.Preparing -> {
                     CircularProgressIndicator(
                         modifier = Modifier.size(40.dp),
                         color = Color.White,
-                        trackColor = Color.White.copy(alpha = 0.3f),
+                        trackColor = Color.White.copy(alpha = 0.2f),
                     )
                     Text(
                         text = "Preparing…",
-                        color = Color.White,
+                        color = Color.White.copy(alpha = 0.8f),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
+
                 is UploadStatus.Processing -> {
-                    CircularProgressIndicator(
-                        progress = { status.progress },
-                        modifier = Modifier.size(40.dp),
-                        color = Color.White,
-                        trackColor = Color.White.copy(alpha = 0.3f),
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            progress = { status.progress },
+                            modifier = Modifier.size(40.dp),
+                            color = Color.White,
+                            trackColor = Color.White.copy(alpha = 0.2f),
+                        )
+                        Text(
+                            text = "${(status.progress * 100).toInt()}%",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
                     Text(
-                        text = "${(status.progress * 100).toInt()}%",
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    Text(
-                        text = "Processing…",
-                        color = Color.White,
+                        text = when (status.phase) {
+                            VideoProcessingPhase.THUMBNAIL -> "Preparing…"
+                            VideoProcessingPhase.COMPRESSING -> "Compressing…"
+                            VideoProcessingPhase.SEGMENTING -> "Segmenting…"
+                            VideoProcessingPhase.ENCRYPTING -> "Encrypting…"
+                            VideoProcessingPhase.COMPLETE -> "Done"
+                        },
+                        color = Color.White.copy(alpha = 0.8f),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
+
                 is UploadStatus.Uploading -> {
                     if (status.progress >= 1f) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(40.dp),
                             color = Color.White,
-                            trackColor = Color.White.copy(alpha = 0.3f),
+                            trackColor = Color.White.copy(alpha = 0.2f),
                         )
                         Text(
                             text = "Finalizing…",
-                            color = Color.White,
+                            color = Color.White.copy(alpha = 0.8f),
                             style = MaterialTheme.typography.labelSmall,
                         )
                     } else {
-                        CircularProgressIndicator(
-                            progress = { status.progress },
-                            modifier = Modifier.size(40.dp),
-                            color = Color.White,
-                            trackColor = Color.White.copy(alpha = 0.3f),
-                        )
-                        Text(
-                            text = "${(status.progress * 100).toInt()}%",
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = { status.progress },
+                                modifier = Modifier.size(40.dp),
+                                color = Color.White,
+                                trackColor = Color.White.copy(alpha = 0.2f),
+                            )
+                            Text(
+                                text = "${(status.progress * 100).toInt()}%",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
                         Text(
                             text = "Uploading…",
-                            color = Color.White,
+                            color = Color.White.copy(alpha = 0.8f),
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
                 }
+
                 UploadStatus.Completed -> {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
