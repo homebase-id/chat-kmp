@@ -19,6 +19,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -46,7 +47,7 @@ fun MinimalTextField(
         },
         leadingIcon = if (!showBackButton) null else {
             {
-                IconButton(onClick = onBackButtonClick) {
+                IconButton(onClick = onBackButtonClick, modifier = Modifier.testTag("back_button")) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(MR.string.menu_back)
@@ -57,7 +58,7 @@ fun MinimalTextField(
         },
         trailingIcon = {
             if (state.text.isNotEmpty()) {
-                IconButton(onClick = { state.clearText() }) {
+                IconButton(onClick = { state.clearText() }, modifier = Modifier.testTag("clear_input_button")) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = stringResource(MR.string.clear_input)

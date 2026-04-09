@@ -31,8 +31,8 @@ with Koin DI.
 ## Testing
 
 ```bash
-# JVM tests (common + api modules)
-./gradlew homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
+# JVM tests (common + auth + chat + api modules)
+./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
 
 # Platform-specific
 ./gradlew androidApp:testDebugUnitTest

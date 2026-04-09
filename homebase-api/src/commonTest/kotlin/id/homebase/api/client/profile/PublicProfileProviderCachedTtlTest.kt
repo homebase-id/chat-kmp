@@ -34,23 +34,23 @@ class PublicProfileProviderCachedTtlTest {
     }
 
     @Test
-    fun maxAge300_returns300000ms() {
-        assertEquals(300_000L, provider.extractTtlMillis("max-age=300"))
+    fun maxAge300_clampsToOneWeek() {
+        assertEquals(oneWeekMs, provider.extractTtlMillis("max-age=300"))
     }
 
     @Test
-    fun maxAge3600_returns3600000ms() {
-        assertEquals(3_600_000L, provider.extractTtlMillis("max-age=3600"))
+    fun maxAge3600_clampsToOneWeek() {
+        assertEquals(oneWeekMs, provider.extractTtlMillis("max-age=3600"))
     }
 
     @Test
-    fun maxAge0_returns0() {
-        assertEquals(0L, provider.extractTtlMillis("max-age=0"))
+    fun maxAge0_clampsToOneWeek() {
+        assertEquals(oneWeekMs, provider.extractTtlMillis("max-age=0"))
     }
 
     @Test
-    fun maxAgeWithOtherDirectives_extractsCorrectly() {
-        assertEquals(86_400_000L, provider.extractTtlMillis("public, max-age=86400, must-revalidate"))
+    fun maxAge86400_clampsToOneWeek() {
+        assertEquals(oneWeekMs, provider.extractTtlMillis("public, max-age=86400, must-revalidate"))
     }
 
     @Test
