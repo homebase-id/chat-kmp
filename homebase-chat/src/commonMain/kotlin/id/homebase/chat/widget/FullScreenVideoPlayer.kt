@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -33,6 +34,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.widget.video.LocalVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -59,20 +61,29 @@ fun FullScreenVideoPlayer(
     val payloadIv = remember(data.payload.iv) {
         data.payload.iv?.let { Base64.decode(it) }
     }
+    val isLocalPlayback = data.localFilePath != null
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // Always composed so loading/buffering starts immediately on open
-        VideoPlayerSurface(
-            data = data,
-            modifier = Modifier.fillMaxSize(),
-            onProgress = { progress = it },
-        )
+        // Video player surface - prefer local file when available
+        if (isLocalPlayback) {
+            LocalVideoPlayerSurface(
+                filePath = data.localFilePath!!,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            VideoPlayerSurface(
+                data = data,
+                modifier = Modifier.fillMaxSize(),
+                onProgress = { progress = it },
+            )
+        }
 
-        if (progress < 1f) {
+        // Download/playback progress (only for server-based playback)
+        if (!isLocalPlayback && progress < 1f) {
             androidx.compose.foundation.layout.Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -149,6 +160,14 @@ fun FullScreenVideoPlayer(
                 }
             },
             actions = {
+                if (data.uploadStatusText != null) {
+                    Text(
+                        text = data.uploadStatusText,
+                        color = Color.White.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
                 Box {
                     IconButton(onClick = { showMenu = true }) {
                         Icon(
