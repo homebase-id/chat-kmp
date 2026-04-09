@@ -6,7 +6,7 @@ import Security
 struct SharedKeychainHelper {
 
     static let service = "id.homebase.share.auth"
-    static let accessGroup = "group.id.homebase.feed"
+    static let accessGroup = Bundle.main.infoDictionary?["AppGroupIdentifier"] as? String ?? "group.id.homebase.feed"
 
     static func getString(key: String) -> String? {
         let query: [String: Any] = [

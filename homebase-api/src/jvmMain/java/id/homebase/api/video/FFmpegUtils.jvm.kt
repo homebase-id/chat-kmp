@@ -83,12 +83,45 @@ actual object FFmpegUtils {
             output.trim().toIntOrNull() ?: 0
         }
 
+    private const val MAX_BITRATE = 3_000_000L
+    private const val MAX_WIDTH = 1280
+
     actual suspend fun compressVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)?
     ): String? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) return@withContext null
+
+            // Check if compression is needed via ffprobe
+            val needsCompression = run {
+                val probeCommand = listOf(
+                    FFmpegBinaryManager.ffprobePath(),
+                    "-v", "quiet",
+                    "-select_streams", "v:0",
+                    "-show_entries", "stream=codec_name,bit_rate,width",
+                    "-of", "csv=p=0",
+                    inputPath
+                )
+                val output = runProcessWithOutput(probeCommand)
+                val parts = output.trim().split(",")
+                if (parts.size >= 3) {
+                    val codec = parts[0].lowercase()
+                    val bitrate = parts[1].toLongOrNull()
+                    val width = parts[2].toIntOrNull()
+                    val isH264 = codec == "h264"
+                    val bitrateOk = bitrate != null && bitrate <= MAX_BITRATE
+                    val widthOk = width != null && width <= MAX_WIDTH
+                    !(isH264 && bitrateOk && widthOk)
+                } else {
+                    true // assume compression needed if probe fails
+                }
+            }
+
+            if (!needsCompression) {
+                println("Video already optimal — skipping compression")
+                return@withContext null
+            }
 
             val inputFile = File(inputPath)
             val outputPath =

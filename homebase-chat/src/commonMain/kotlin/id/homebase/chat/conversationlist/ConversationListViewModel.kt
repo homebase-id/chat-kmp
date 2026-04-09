@@ -37,6 +37,8 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.LocalVideoContext
+import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
@@ -121,6 +123,7 @@ class ConversationListViewModel(
     private val contactService: ContactService,
     private val driveFileProvider: DriveFileProvider,
     private val shareContentProcessor: ShareContentProcessor,
+    private val localVideoContextStore: LocalVideoContextStore,
 ) : ViewModel() {
 
     private val enricher = ConversationEnricher()
@@ -204,7 +207,8 @@ class ConversationListViewModel(
                     _messagesUiState.update { state ->
                         state.copy(
                             uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Processing(
-                                event.progress
+                                progress = event.progress,
+                                phase = event.phase
                             ))).toPersistentMap()
                         )
                     }
@@ -241,6 +245,7 @@ class ConversationListViewModel(
                                 uploadProgress = (state.uploadProgress - event.uniqueId).toPersistentMap()
                             )
                         }
+                        localVideoContextStore.remove(event.uniqueId)
                     }
                 }
         }
@@ -254,6 +259,7 @@ class ConversationListViewModel(
                             uploadProgress = (state.uploadProgress - event.uniqueId).toPersistentMap()
                         )
                     }
+                    localVideoContextStore.remove(event.uniqueId)
                 }
         }
 
@@ -1047,19 +1053,26 @@ class ConversationListViewModel(
                             }
 
                             contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
-                                _messagesUiState.update {
-                                    it.copy(
-                                        fullScreenOverlay = FullScreenOverlay.VideoPlayerData(
-                                            fileId = action.message.fileId,
-                                            driveId = chatTargetDrive.alias,
-                                            payloadKey = action.payloadKey,
-                                            keyHeader = KeyHeader(
-                                                iv = Base64.decode(selectedPayload.iv!!),
-                                                aesKey = action.message.keyHeader.aesKey
-                                            ),
-                                            payload = selectedPayload,
+                                val localContext = localVideoContextStore.get(action.message.id)
+                                val ivBytes = selectedPayload.iv?.let { Base64.decode(it) }
+
+                                if (ivBytes != null || localContext != null) {
+                                    _messagesUiState.update {
+                                        it.copy(
+                                            fullScreenOverlay = FullScreenOverlay.VideoPlayerData(
+                                                fileId = action.message.fileId,
+                                                driveId = chatTargetDrive.alias,
+                                                payloadKey = action.payloadKey,
+                                                keyHeader = KeyHeader(
+                                                    iv = ivBytes ?: ByteArray(16),
+                                                    aesKey = action.message.keyHeader.aesKey
+                                                ),
+                                                payload = selectedPayload,
+                                                localFilePath = localContext?.localFilePath,
+                                                uploadMessageId = if (localContext != null) action.message.id else null,
+                                            )
                                         )
-                                    )
+                                    }
                                 }
                             }
 
@@ -2028,6 +2041,21 @@ class ConversationListViewModel(
                     uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
                 )
             }
+
+            // Store local video context for thumbnail preview during upload
+            files.filterIsInstance<AttachmentPendingFile.FileVideo>()
+                .firstOrNull()?.let { videoFile ->
+                    val thumbBytes = videoFile.thumbnailBytes
+                    if (thumbBytes != null) {
+                        localVideoContextStore.put(
+                            newMessageId,
+                            LocalVideoContext(
+                                thumbnailBytes = thumbBytes,
+                                localFilePath = videoFile.file.toString(),
+                            )
+                        )
+                    }
+                }
 
             pendingMessageId = newMessageId
 

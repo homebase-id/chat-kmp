@@ -6,4 +6,6 @@ PRODUCT_BUNDLE_IDENTIFIER=id.homebase.feed.chat-kmp$(TEAM_ID)
 CURRENT_PROJECT_VERSION=804
 MARKETING_VERSION=1.2.0
 
+APP_GROUP_IDENTIFIER = group.id.homebase.feed
+
 OTHER_LDFLAGS = $(inherited) -lsqlite3 -lz -lbz2 -liconv

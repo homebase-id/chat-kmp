@@ -71,6 +71,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -92,6 +93,9 @@ import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isNativeMobile
+import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
@@ -196,20 +200,31 @@ fun ConversationContent(
         }
     }
 
+    // On iOS, UITextView can auto-become first responder during initial
+    // composition, briefly flashing the keyboard and shifting the layout.
+    // Block focus until the first frame has been laid out.  On Android/Desktop
+    // the flag starts true so behaviour is unchanged.
+    val needsFocusGuard = !isDesktop() && !isWeb()   // only mobile (iOS + Android)
+    var inputFocusable by remember(conversation.conversation.id) {
+        mutableStateOf(!needsFocusGuard)
+    }
+
+    if (needsFocusGuard) {
+        LaunchedEffect(conversation.conversation.id) {
+            // One frame is enough for Compose to finish layout; 150 ms covers
+            // the iOS first-responder race without a noticeable typing delay.
+            kotlinx.coroutines.delay(150)
+            inputFocusable = true
+        }
+    }
+
     DisposableEffect(conversation.conversation.id) {
         focusManager.clearFocus()
-        keyboardController?.hide()
 
         onDispose {
             focusManager.clearFocus()
             keyboardController?.hide()
         }
-    }
-
-    LaunchedEffect(conversation.conversation.id) {
-        kotlinx.coroutines.delay(50) // Small delay to ensure composition is complete
-        focusManager.clearFocus()
-        keyboardController?.hide()
     }
 
     // Build a lookup map of reply target ID -> MessageUiModel for reply image thumbnails.
@@ -619,7 +634,8 @@ fun ConversationContent(
                         }
                     }
                 } else {
-                Column(modifier = Modifier.animateContentSize()) {
+                Column(modifier = Modifier.animateContentSize()
+                    .focusProperties { canFocus = inputFocusable }) {
                     uiState.replyToMessage?.let { msg ->
                         ReplyPreviewBar(
                             message = msg, onDismiss = {

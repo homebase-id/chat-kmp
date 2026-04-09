@@ -181,19 +181,26 @@ private class HomebaseResourceLoaderDelegate(
         shouldWaitForLoadingOfRequestedResource: AVAssetResourceLoadingRequest,
     ): Boolean {
         val loadingRequest = shouldWaitForLoadingOfRequestedResource
-        val path = loadingRequest.request.URL?.path?.trimStart('/') ?: return false
+        val url = loadingRequest.request.URL
+        val path = url?.path?.trimStart('/') ?: run {
+            Logger.e(tag = "VideoHLS") { "resourceLoader: URL or path is null" }
+            return false
+        }
 
-        scope?.launch(Dispatchers.Main) {
+        Logger.d(tag = "VideoHLS") { "resourceLoader request: url=${url}, path=$path" }
+
+        scope?.launch(Dispatchers.IO) {
             try {
                 if (path.endsWith(".m3u8")) {
+                    Logger.d(tag = "VideoHLS") { "Serving playlist (${strippedPlaylist.length} chars)" }
                     val bytes = strippedPlaylist.encodeToByteArray()
                     loadingRequest.contentInformationRequest?.let {
-                        it.contentType = "public.m3u-playlist"
+                        it.contentType = "public.m3u8-playlist"
                         it.contentLength = bytes.size.toLong()
                         it.byteRangeAccessSupported = true
                     }
                     loadingRequest.dataRequest?.respondWithData(bytes.toNSData())
-                    loadingRequest.finishLoading()
+                    withContext(Dispatchers.Main) { loadingRequest.finishLoading() }
                 } else {
                     // .ts segment — serve content info and/or byte-range data on demand
                     loadingRequest.contentInformationRequest?.let {
@@ -209,6 +216,7 @@ private class HomebaseResourceLoaderDelegate(
                         } else {
                             dataRequest.requestedLength
                         }
+                        Logger.d(tag = "VideoHLS") { "Fetching .ts chunk: start=$start, length=$length, totalFileSize=$totalFileSize" }
                         val bytes = driveFileProvider!!.getPayloadBytesDecrypted(
                             driveId = driveId!!,
                             fileId = fileId!!,
@@ -216,15 +224,19 @@ private class HomebaseResourceLoaderDelegate(
                             keyHeader = keyHeader!!,
                             chunkStart = start,
                             chunkLength = length,
-                        )?.bytes ?: throw Exception("Failed to fetch chunk at $start")
+                        )?.bytes ?: throw Exception("Failed to fetch chunk at $start (length=$length)")
+                        Logger.d(tag = "VideoHLS") { "Got ${bytes.size} bytes for chunk at $start" }
                         dataRequest.respondWithData(bytes.toNSData())
                     }
-                    loadingRequest.finishLoading()
+                    withContext(Dispatchers.Main) { loadingRequest.finishLoading() }
                 }
             } catch (e: Exception) {
-                loadingRequest.finishLoadingWithError(
-                    NSError.errorWithDomain("HomebaseVideo", 500, null)
-                )
+                Logger.e(tag = "VideoHLS") { "resourceLoader error: ${e.message}" }
+                withContext(Dispatchers.Main) {
+                    loadingRequest.finishLoadingWithError(
+                        NSError.errorWithDomain("HomebaseVideo", 500, null)
+                    )
+                }
             }
         }
         return true
