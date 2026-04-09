@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.foundation.background
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
@@ -72,6 +74,7 @@ import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import org.koin.compose.viewmodel.koinViewModel
@@ -91,6 +94,9 @@ fun AppNavHost(
     val currentDestination = navBackStackEntry?.destination
     val topLevelRoutes = remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Home) }
     val uriHandler = getUriHandler()
+
+    // Pending notification navigation — used to skip animations and show overlay
+    val pendingNavId by viewModel.pendingNotificationConversationId.collectAsState()
 
     var hasNotificationPermission by remember { mutableStateOf(false) }
     val permissionManager = createPermissionsManager { type, status, _ ->
@@ -157,13 +163,24 @@ fun AppNavHost(
         viewModel.navigationEvents.collect { event ->
             when (event) {
                 is NotificationNavigationEvent.OpenConversation -> {
-                    Uuid.parseOrNull(event.conversationId)?.let {
-                        navController.selectConversationOnChatList(it, scrollToBottom = true)
+                    try {
+                        Uuid.parseOrNull(event.conversationId)?.let {
+                            navController.selectConversationOnChatList(it, scrollToBottom = true)
+                        }
+                        navController.popBackStack(Route.ChatList, inclusive = false)
+                    } catch (e: Exception) {
+                        // On cold start, ChatList may not be on the back stack yet —
+                        // the pending state was already consumed in onNavigateToMainScreen
+                        Logger.d(tag = "AppNavHost") {
+                            "Notification navigation deferred to cold start path: ${e.message}"
+                        }
                     }
-                    navController.popBackStack(Route.ChatList, inclusive = false)
+                    viewModel.pendingNotificationConversationId.value = null
                 }
-                is NotificationNavigationEvent.OpenUrl ->
+                is NotificationNavigationEvent.OpenUrl -> {
+                    viewModel.pendingNotificationConversationId.value = null
                     uriHandler.openUrl(event.url)
+                }
             }
         }
     }
@@ -238,6 +255,9 @@ fun AppNavHost(
                     }
                 }
 
+                // Skip slide animations during notification navigation (saves ~500ms)
+                val navAnimDuration = if (pendingNavId != null) 0 else 500
+
                 NavHost(
                     navController = navController,
                     startDestination = Route.AppLoading,
@@ -245,25 +265,25 @@ fun AppNavHost(
                     enterTransition = {
                         slideInHorizontally(
                             initialOffsetX = { 1000 },
-                            animationSpec = tween(500)
+                            animationSpec = tween(navAnimDuration)
                         )
                     },
                     exitTransition = {
                         slideOutHorizontally(
                             targetOffsetX = { -1000 },
-                            animationSpec = tween(500)
+                            animationSpec = tween(navAnimDuration)
                         )
                     },
                     popEnterTransition = {
                         slideInHorizontally(
                             initialOffsetX = { -1000 },
-                            animationSpec = tween(500)
+                            animationSpec = tween(navAnimDuration)
                         )
                     },
                     popExitTransition = {
                         slideOutHorizontally(
                             targetOffsetX = { 1000 },
-                            animationSpec = tween(500)
+                            animationSpec = tween(navAnimDuration)
                         )
                     }
                 ) {
@@ -271,8 +291,14 @@ fun AppNavHost(
                         AppLoadingScreen(
                             viewModel = koinViewModel(),
                             onNavigateToMainScreen = {
+                                val pendingId = viewModel.consumePendingNotificationConversationId()
                                 navController.navigate(Route.ChatList) {
                                     popUpTo(Route.AppLoading) { inclusive = true }
+                                }
+                                if (pendingId != null) {
+                                    Uuid.parseOrNull(pendingId)?.let {
+                                        navController.selectConversationOnChatList(it, scrollToBottom = true)
+                                    }
                                 }
                             },
                             onNavigateToLogin = {
@@ -532,6 +558,15 @@ fun AppNavHost(
                     }
                 }
             }
+        }
+
+        // Notification navigation overlay — hides the current screen while navigating
+        // from a notification tap so the user doesn't see a flash of the wrong screen
+        if (pendingNavId != null && currentDestination?.hasRoute(Route.AppLoading::class) != true) {
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
+            )
         }
 
         // In-app notification banner overlay

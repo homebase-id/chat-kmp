@@ -19,8 +19,10 @@ import id.homebase.core.util.Platform
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.random.Random
@@ -62,6 +64,15 @@ class NotificationService(
 
     private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 5)
     val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
+
+    /** Synchronous pending state for notification navigation — set before the async SharedFlow
+     *  so the UI can show an overlay immediately and consume the target on cold start. */
+    val pendingNotificationConversationId = MutableStateFlow<String?>(null)
+
+    /** Atomically reads and clears the pending conversation ID. */
+    fun consumePendingNotificationConversationId(): String? {
+        return pendingNotificationConversationId.getAndUpdate { null }
+    }
 
     private val _inAppNotificationEvents =
         MutableSharedFlow<RichNotificationData>(extraBufferCapacity = 1)
@@ -417,6 +428,9 @@ class NotificationService(
             }
 
             if (event != null) {
+                if (event is NotificationNavigationEvent.OpenConversation) {
+                    pendingNotificationConversationId.value = event.conversationId
+                }
                 _navigationEvents.tryEmit(event)
             }
         } catch (e: Exception) {
@@ -428,6 +442,7 @@ class NotificationService(
 
     /** Navigate to a specific conversation (used for deep links and share shortcuts). */
     fun navigateToConversation(conversationId: String) {
+        pendingNotificationConversationId.value = conversationId
         _navigationEvents.tryEmit(NotificationNavigationEvent.OpenConversation(conversationId))
     }
 

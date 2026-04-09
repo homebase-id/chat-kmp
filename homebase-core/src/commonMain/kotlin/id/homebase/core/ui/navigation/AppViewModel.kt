@@ -92,6 +92,12 @@ class AppViewModel(
         }
     }
 
+    val pendingNotificationConversationId = notificationService.pendingNotificationConversationId
+
+    fun consumePendingNotificationConversationId(): String? {
+        return notificationService.consumePendingNotificationConversationId()
+    }
+
     fun dismissInAppBanner() {
         _uiState.update { it.copy(inAppNotification = null) }
     }
