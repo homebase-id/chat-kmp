@@ -17,6 +17,7 @@ import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.PayloadBundleEncryptionService
@@ -90,6 +91,7 @@ val appModule = module {
 
     singleOf(::ShareConversationCacheWriter)
     singleOf(::ShareContentProcessor)
+    singleOf(::LocalVideoContextStore)
 
     singleOf(::ConnectionService)
     singleOf(::DriveContactService)
