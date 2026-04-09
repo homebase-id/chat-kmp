@@ -10,6 +10,9 @@ jobs:
   test:
     name: Run unittests
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
 
     steps:
       - name: Checkout
@@ -41,7 +44,11 @@ jobs:
         if: always()  # Run even if tests fail
         with:
           files: |
-            **/build/test-results/**/*.xml          
+            homebase-api/build/test-results/jvmTest/TEST-*.xml
+            homebase-chat/build/test-results/jvmTest/TEST-*.xml
+            homebase-auth/build/test-results/jvmTest/TEST-*.xml
+            homebase-common/build/test-results/jvmTest/TEST-*.xml
+          check_name: JVM Test Results
 
   build:
     strategy:
