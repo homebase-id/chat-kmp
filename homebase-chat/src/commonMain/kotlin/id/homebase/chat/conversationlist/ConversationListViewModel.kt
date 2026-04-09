@@ -204,7 +204,8 @@ class ConversationListViewModel(
                     _messagesUiState.update { state ->
                         state.copy(
                             uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Processing(
-                                event.progress
+                                progress = event.progress,
+                                phase = event.phase
                             ))).toPersistentMap()
                         )
                     }
