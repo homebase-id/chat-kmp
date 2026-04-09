@@ -30,7 +30,7 @@ Update version information in `gradle/version.properties`.
 
 ### Production Build (`id.homebase.feed`)
 
-**Distribution:** App Store Connect & Google Play
+**Distribution:** TestFlight (iOS) & Google Play Internal Testing (Android)
 
 **Deployment Schedule:** Manual trigger only
 

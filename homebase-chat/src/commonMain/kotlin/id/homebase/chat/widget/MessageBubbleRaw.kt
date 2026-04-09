@@ -345,7 +345,7 @@ fun MessageBubbleRaw(
                                 Text(
                                     text = stringResource(MR.string.show_more),
                                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = contentColor,
                                     modifier = Modifier
                                         .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
                                 )
