@@ -66,10 +66,39 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
                 }
             }
             
+            // Get codec name
+            let codecName = stream.getCodecName()
+
+            // Get bitrate
+            let bitrateValue: KotlinLong? = {
+                if let bitrateStr = stream.getBitrate(), let br = Int64(bitrateStr) {
+                    return KotlinLong(value: br)
+                }
+                return nil
+            }()
+
+            // Get width/height
+            let width: KotlinInt? = {
+                if let w = stream.getWidth() as? NSNumber {
+                    return KotlinInt(value: w.int32Value)
+                }
+                return nil
+            }()
+            let height: KotlinInt? = {
+                if let h = stream.getHeight() as? NSNumber {
+                    return KotlinInt(value: h.int32Value)
+                }
+                return nil
+            }()
+
             let streamInfo = StreamInfo(
                 type: streamType,
                 tags: tagsDict,
-                rotation: rotation.map { KotlinInt(value: $0) }
+                rotation: rotation.map { KotlinInt(value: $0) },
+                codec: codecName,
+                bitrate: bitrateValue,
+                width: width,
+                height: height
             )
             streamInfoList.append(streamInfo)
         }

@@ -27,4 +27,12 @@ data class FFmpegResult(val isSuccess: Boolean, val failStackTrace: String?)
 data class MediaInfo(val streams: List<StreamInfo>)
 
 /** Stream information within a media file. */
-data class StreamInfo(val type: String?, val tags: Map<String, String>?, val rotation: Int?)
+data class StreamInfo(
+    val type: String?,
+    val tags: Map<String, String>?,
+    val rotation: Int?,
+    val codec: String? = null,
+    val bitrate: Long? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+)
