@@ -28,8 +28,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
@@ -40,6 +40,7 @@ import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
+import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
@@ -54,6 +55,8 @@ import id.homebase.resources.chat_message_delete_dialog_title
 import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_message_discard_draft
+import id.homebase.resources.chat_select_a_conversation
+import id.homebase.resources.chat_select_a_conversation_subtitle
 import id.homebase.resources.discard
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
@@ -400,13 +403,13 @@ fun ConversationListUi(
                             )
                         }
                     } else {
-//                        EmptyDetailPane(
-//                            title = stringResource(
-//                                MR.string.chat_select_a_conversation
-//                            ), subtitle = stringResource(
-//                                MR.string.chat_select_a_conversation_subtitle
-//                            )
-//                        )
+                        EmptyDetailPane(
+                            title = stringResource(
+                                MR.string.chat_select_a_conversation
+                            ), subtitle = stringResource(
+                                MR.string.chat_select_a_conversation_subtitle
+                            )
+                        )
                     }
                 }
             },

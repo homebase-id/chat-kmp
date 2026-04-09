@@ -100,7 +100,7 @@ jobs:
 
       - name: Upload Android artifact
         if: ${{ matrix.name == 'Android & Desktop' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-apk
           path: androidApp/build/outputs/apk/debug/*.apk
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload Desktop artifact
         if: ${{ matrix.name == 'Android & Desktop' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: desktop-dist
           path: desktopApp/build/compose/binaries/main/app/
@@ -122,7 +122,7 @@ jobs:
 
       - name: Upload iOS artifact
         if: ${{ matrix.name == 'iOS' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-framework
           path: homebase-common/build/bin/iosArm64/debugFramework/*.framework

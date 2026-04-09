@@ -1,6 +1,8 @@
 package id.homebase.core.share
 
 import co.touchlab.kermit.Logger
+import id.homebase.core.share.ShareHandlerBridge.handleIncomingShare
+import id.homebase.core.share.ShareHandlerBridge.setHandler
 
 /**
  * Bridge between Swift (iOSApp.swift onOpenURL) and KMP (AppViewModel).
@@ -17,7 +19,7 @@ object ShareHandlerBridge {
 
     /** Called from Swift when the app opens via homebase-share:// URL scheme. */
     fun handleIncomingShare(conversationId: String) {
-        Logger.i("ShareHandlerBridge") { "Incoming share for conversation: $conversationId" }
+        Logger.i(tag = "ShareHandlerBridge") { "Incoming share for conversation: $conversationId" }
         handler?.invoke(conversationId)
             ?: Logger.w("ShareHandlerBridge") { "No handler registered for share intent" }
     }

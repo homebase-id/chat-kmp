@@ -47,7 +47,7 @@ Configure signing and user in Xcode.
 ## Test
 
 **Run all tests (JVM)**
-Currently only tests found in common and api module.
+Currently only tests found in chat, common and api module.
 ```
 ./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
 ```

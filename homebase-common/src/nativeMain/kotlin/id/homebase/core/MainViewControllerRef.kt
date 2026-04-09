@@ -7,12 +7,12 @@ import platform.UIKit.UIWindow
 import platform.darwin.NSObject
 
 object MainViewControllerRef {
-    lateinit var instance: UIViewController
+    var instance: UIViewController? = null
 }
 
 class AuthPresentationContextProvider : NSObject(),
     ASWebAuthenticationPresentationContextProvidingProtocol {
     override fun presentationAnchorForWebAuthenticationSession(session: ASWebAuthenticationSession): UIWindow? {
-        return MainViewControllerRef.instance.view.window
+        return MainViewControllerRef.instance?.view?.window
     }
 }
