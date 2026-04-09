@@ -7,6 +7,7 @@ import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
+import platform.Foundation.NSBundle
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSString
@@ -102,7 +103,8 @@ actual class ShareCacheStorage {
 
     companion object {
         private const val TAG = "ShareCacheStorage"
-        private const val APP_GROUP_ID = "group.id.homebase.feed"
+        private val APP_GROUP_ID: String = NSBundle.mainBundle.infoDictionary
+            ?.get("AppGroupIdentifier") as? String ?: "group.id.homebase.feed"
         private const val CONVERSATION_CACHE_FILE = "share_conversation_cache.json"
         private const val SHARED_CONTENT_FILE = "shared_content.json"
         private const val SHARED_FILES_SUBDIR = "shared_files"
