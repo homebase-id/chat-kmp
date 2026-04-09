@@ -129,7 +129,7 @@ actual object FFmpegUtils {
 
                     val codec = videoStream.codec?.lowercase()
                     val bitrate = videoStream.bitrate?.toLongOrNull()
-                    val width = videoStream.width?.toIntOrNull()
+                    val width = videoStream.width?.toInt()
 
                     val isH264 = codec == "h264"
                     val bitrateOk = bitrate != null && bitrate <= MAX_BITRATE
