@@ -103,6 +103,10 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.kotlinx.datetime)
             implementation(libs.ktor.client.mock)
+            implementation(libs.jetbrains.compose.ui.test)
+        }
+        jvmTest.dependencies {
+            implementation(compose.desktop.currentOs)
         }
         iosTest.dependencies {
             implementation(libs.sqldelight.native.driver)
