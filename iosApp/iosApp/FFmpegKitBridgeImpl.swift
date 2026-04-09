@@ -67,7 +67,7 @@ class FFmpegKitBridgeImpl: FFmpegKitBridge {
             }
             
             // Get codec name
-            let codecName = stream.getCodecName()
+            let codecName = stream.getCodec()
 
             // Get bitrate
             let bitrateValue: KotlinLong? = {
