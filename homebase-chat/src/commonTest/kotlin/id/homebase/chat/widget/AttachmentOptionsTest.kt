@@ -2,7 +2,7 @@ package id.homebase.chat.widget
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
@@ -23,8 +23,8 @@ class AttachmentOptionsTest {
                 )
             }
         }
-        onNodeWithText("Gallery").assertExists()
-        onNodeWithText("File").assertExists()
+        onNodeWithTag("attachment_gallery").assertExists()
+        onNodeWithTag("attachment_file").assertExists()
     }
 
     @Test
@@ -40,7 +40,7 @@ class AttachmentOptionsTest {
                 )
             }
         }
-        onNodeWithText("Gallery").performClick()
+        onNodeWithTag("attachment_gallery").performClick()
         assertTrue(clicked)
     }
 
@@ -57,7 +57,7 @@ class AttachmentOptionsTest {
                 )
             }
         }
-        onNodeWithText("File").performClick()
+        onNodeWithTag("attachment_file").performClick()
         assertTrue(clicked)
     }
 }

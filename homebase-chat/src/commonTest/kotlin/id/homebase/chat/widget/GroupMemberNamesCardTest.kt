@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
+import id.homebase.core.test.setTestLocale
 import kotlinx.collections.immutable.persistentListOf
 import kotlin.test.Test
 
@@ -12,6 +13,7 @@ class GroupMemberNamesCardTest {
 
     @Test
     fun showsAllNames_whenFourOrFewer() = runComposeUiTest {
+        setTestLocale("en-US")
         setContent {
             MaterialTheme {
                 GroupMemberNamesCard(
@@ -25,6 +27,7 @@ class GroupMemberNamesCardTest {
 
     @Test
     fun showsTruncatedNames_whenMoreThanFour() = runComposeUiTest {
+        setTestLocale("en-US")
         setContent {
             MaterialTheme {
                 GroupMemberNamesCard(
@@ -38,6 +41,7 @@ class GroupMemberNamesCardTest {
 
     @Test
     fun showsSingleParticipant() = runComposeUiTest {
+        setTestLocale("en-US")
         setContent {
             MaterialTheme {
                 GroupMemberNamesCard(

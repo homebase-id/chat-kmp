@@ -42,13 +42,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -76,8 +77,8 @@ import id.homebase.resources.login_successful
 import id.homebase.resources.login_title
 import id.homebase.resources.login_try_again_button
 import kotlinx.collections.immutable.ImmutableList
-import kotlinx.coroutines.delay
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -204,7 +205,8 @@ private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>, isPingin
         Text(
             text = stringResource(MR.string.loading),
             style = MaterialTheme.typography.headlineLarge,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.testTag("loading_text"),
         )
         Spacer(modifier = Modifier.height(16.dp))
         if (driveProgresses.isEmpty()) {
@@ -213,7 +215,8 @@ private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>, isPingin
             Text(
                 text = stringResource(MR.string.login_authenticating),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("authenticating_text"),
             )
             if (isPinging) {
                 var secondsLeft by remember { mutableIntStateOf(15) }
@@ -257,6 +260,7 @@ private fun DriveProgressRow(
                 text = drive.name,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.testTag("drive_name_${drive.driveId}"),
             )
             Spacer(modifier = Modifier.weight(1f))
             if (drive.count > 0 && !drive.completed) {
@@ -335,7 +339,8 @@ private fun LoginSuccess() {
     Text(
         text = stringResource(MR.string.login_successful),
         style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.primary
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.testTag("success_text"),
     )
 }
 
@@ -359,14 +364,16 @@ private fun LoginForm(
         Text(
             text = stringResource(MR.string.login_title),
             style = MaterialTheme.typography.headlineLarge,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.testTag("title_text"),
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = stringResource(MR.string.login_sub_title),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier.testTag("subtitle_text"),
         )
         Spacer(modifier = Modifier.height(48.dp))
         errorMessage?.let {
@@ -374,7 +381,8 @@ private fun LoginForm(
                 text = it,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier.testTag("error_message"),
             )
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -387,12 +395,16 @@ private fun LoginForm(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Button(onClick = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) }, modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) },
+            modifier = Modifier.fillMaxWidth().testTag(if (errorMessage != null) "try_again_button" else "login_button"),
+        ) {
             if (errorMessage != null) Text(stringResource(MR.string.login_try_again_button)) else Text(stringResource(MR.string.login_sign_in_button))
         }
         Spacer(modifier = Modifier.height(16.dp))
         TextButton(
-            onClick = onCreateAccountClick
+            onClick = onCreateAccountClick,
+            modifier = Modifier.testTag("create_account_button"),
         ) {
             Text(stringResource(MR.string.login_create_account_button))
         }

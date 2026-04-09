@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
@@ -235,6 +236,7 @@ fun AttachmentOptions(
         ) {
             item {
                 AttachmentOption(
+                    modifier = Modifier.testTag("attachment_gallery"),
                     icon = Icons.Default.Image,
                     label = stringResource(MR.string.chat_message_attachment_gallery),
                     onClick = onGalleryClick
@@ -242,6 +244,7 @@ fun AttachmentOptions(
             }
             item {
                 AttachmentOption(
+                    modifier = Modifier.testTag("attachment_file"),
                     icon = Icons.Default.UploadFile,
                     label = stringResource(MR.string.chat_message_attachment_file),
                     onClick = onFileClick
@@ -269,12 +272,13 @@ fun AttachmentOptions(
 
 @Composable
 private fun AttachmentOption(
+    modifier: Modifier = Modifier,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     onClick: () -> Unit
 ) {
     Column(
-        modifier = Modifier.width(72.dp).noRippleClickable { onClick() },
+        modifier = modifier.width(72.dp).noRippleClickable { onClick() },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         IconButton(

@@ -3,7 +3,7 @@ package id.homebase.core.widget
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -36,7 +36,7 @@ class StyledSearchTextFieldTest {
                 )
             }
         }
-        onNodeWithContentDescription("Search").assertExists()
+        onNodeWithTag("search_icon", useUnmergedTree = true).assertExists()
     }
 
     @Test
@@ -52,7 +52,7 @@ class StyledSearchTextFieldTest {
                 )
             }
         }
-        onNodeWithContentDescription("Back").performClick()
+        onNodeWithTag("back_button").performClick()
         assertTrue(backClicked)
     }
 
@@ -66,7 +66,7 @@ class StyledSearchTextFieldTest {
                 )
             }
         }
-        onNodeWithContentDescription("Clear input").assertDoesNotExist()
+        onNodeWithTag("clear_input_button").assertDoesNotExist()
     }
 
     @Test
@@ -79,6 +79,6 @@ class StyledSearchTextFieldTest {
                 )
             }
         }
-        onNodeWithContentDescription("Clear input").assertExists()
+        onNodeWithTag("clear_input_button").assertExists()
     }
 }

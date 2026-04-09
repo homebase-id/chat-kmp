@@ -20,6 +20,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -48,7 +49,7 @@ fun StyledSearchTextField(
         leadingIcon = if (!showBackButton && !showSearchIcon) null else {
             {
                 if (showBackButton) {
-                    IconButton(onClick = onBackButtonClick) {
+                    IconButton(onClick = onBackButtonClick, modifier = Modifier.testTag("back_button")) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.menu_back)
@@ -57,14 +58,15 @@ fun StyledSearchTextField(
                 } else if (showSearchIcon) {
                     Icon(
                         imageVector = Icons.Default.Search,
-                        contentDescription = stringResource(MR.string.search)
+                        contentDescription = stringResource(MR.string.search),
+                        modifier = Modifier.testTag("search_icon")
                     )
                 }
             }
         },
         trailingIcon = {
             if (textFieldState.text.isNotEmpty()) {
-                IconButton(onClick = { textFieldState.clearText() }) {
+                IconButton(onClick = { textFieldState.clearText() }, modifier = Modifier.testTag("clear_input_button")) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = stringResource(MR.string.clear_input)

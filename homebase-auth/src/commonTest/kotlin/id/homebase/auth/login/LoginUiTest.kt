@@ -2,6 +2,7 @@ package id.homebase.auth.login
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -27,10 +28,10 @@ class LoginUiTest {
                 )
             }
         }
-        onNodeWithText("Welcome to Homebase").assertExists()
-        onNodeWithText("Sign in with your Homebase ID").assertExists()
-        onNodeWithText("Sign in").assertExists()
-        onNodeWithText("Create account").assertExists()
+        onNodeWithTag("title_text").assertExists()
+        onNodeWithTag("subtitle_text").assertExists()
+        onNodeWithTag("login_button").assertExists()
+        onNodeWithTag("create_account_button").assertExists()
     }
 
     @Test
@@ -48,10 +49,10 @@ class LoginUiTest {
                 )
             }
         }
-        onNodeWithText("Loading...").assertExists()
-        onNodeWithText("Authenticating\u2026").assertExists()
+        onNodeWithTag("loading_text").assertExists()
+        onNodeWithTag("authenticating_text").assertExists()
         // Form should not be visible
-        onNodeWithText("Sign in").assertDoesNotExist()
+        onNodeWithTag("login_button").assertDoesNotExist()
     }
 
     @Test
@@ -69,8 +70,8 @@ class LoginUiTest {
                 )
             }
         }
-        onNodeWithText("Login successful").assertExists()
-        onNodeWithText("Sign in").assertDoesNotExist()
+        onNodeWithTag("success_text").assertExists()
+        onNodeWithTag("login_button").assertDoesNotExist()
     }
 
     @Test
@@ -88,10 +89,10 @@ class LoginUiTest {
                 )
             }
         }
-        onNodeWithText("Invalid identity").assertExists()
-        onNodeWithText("Try again").assertExists()
+        onNodeWithTag("error_message").assertExists()
+        onNodeWithTag("try_again_button").assertExists()
         // "Sign in" should be replaced by "Try again"
-        onNodeWithText("Sign in").assertDoesNotExist()
+        onNodeWithTag("login_button").assertDoesNotExist()
     }
 
     @Test
@@ -114,7 +115,7 @@ class LoginUiTest {
                 )
             }
         }
-        onNodeWithText("Create account").performClick()
+        onNodeWithTag("create_account_button").performClick()
         assertTrue(actionFired)
     }
 

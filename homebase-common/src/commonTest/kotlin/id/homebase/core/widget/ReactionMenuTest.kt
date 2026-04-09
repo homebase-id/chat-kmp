@@ -2,7 +2,7 @@ package id.homebase.core.widget
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -55,7 +55,7 @@ class ReactionMenuTest {
                 )
             }
         }
-        onNodeWithContentDescription("Emoji options").assertExists()
+        onNodeWithTag("emoji_options_button").assertExists()
     }
 
     @Test
@@ -69,7 +69,7 @@ class ReactionMenuTest {
                 )
             }
         }
-        onNodeWithContentDescription("Emoji options").performClick()
+        onNodeWithTag("emoji_options_button").performClick()
         assertTrue(showAll)
     }
 

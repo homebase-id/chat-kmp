@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
@@ -36,7 +37,7 @@ class ConversationMessagePreviewTest {
                 )
             }
         }
-        onNodeWithText("No messages yet").assertExists()
+        onNodeWithTag("no_messages_text").assertExists()
     }
 
     @Test
@@ -51,7 +52,7 @@ class ConversationMessagePreviewTest {
             }
         }
         // Should NOT show fallback when there's an icon
-        onNodeWithText("No messages yet").assertDoesNotExist()
+        onNodeWithTag("no_messages_text").assertDoesNotExist()
     }
 
     @Test
