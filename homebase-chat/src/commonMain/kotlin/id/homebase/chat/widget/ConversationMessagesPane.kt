@@ -273,6 +273,7 @@ fun ConversationMessagesPane(
                             isDownloading = "${data.fileId}_${data.payloadKey}" in uiState.downloadingFiles,
                             onDismiss = { onUiAction(CloseFullScreenOverlay) },
                             onSave = { onUiAction(DownloadVideoMedia(data.fileId, data.payloadKey, data.keyHeader, data.payload)) },
+                            uploadStatus = data.uploadMessageId?.let { uiState.uploadProgress[it] },
                         )
                     }
 

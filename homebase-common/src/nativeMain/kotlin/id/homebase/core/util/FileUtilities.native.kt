@@ -12,7 +12,11 @@ actual fun getUriHandler(): FileSystemHandler {
     return object : FileSystemHandler {
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
             val nsUrl = NSURL.URLWithString(url) ?: return
-            UIApplication.sharedApplication.openURL(nsUrl)
+            UIApplication.sharedApplication.openURL(nsUrl, emptyMap<Any?, String>()) { success ->
+                if (!success) {
+                    onError(Exception("Failed to open URL: $url"))
+                }
+            }
         }
 
         override fun editFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit) {

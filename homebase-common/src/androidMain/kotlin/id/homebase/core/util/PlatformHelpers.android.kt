@@ -15,3 +15,7 @@ actual fun isWeb(): Boolean {
 actual fun isDesktopOrWeb(): Boolean {
     return false
 }
+
+actual fun isNativeMobile(): Boolean {
+    return false
+}

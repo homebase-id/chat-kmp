@@ -1,5 +1,8 @@
 package id.homebase.core.ui.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -34,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -211,7 +216,7 @@ fun AppNavHost(
                 .padding(paddingValues)
         ) {
         Row(modifier = Modifier.fillMaxSize()) {
-            if (showNavigationRail && isAuthenticated) {
+            if (showNavigationRail && isAuthenticated && isOnTopLevelScreen) {
                 NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationRailItem(
@@ -252,25 +257,29 @@ fun AppNavHost(
                     startDestination = Route.AppLoading,
                     modifier = Modifier.weight(1f),
                     enterTransition = {
-                        slideInHorizontally(
+                        if (isBetweenTopLevelRoutes()) EnterTransition.None
+                        else slideInHorizontally(
                             initialOffsetX = { 1000 },
                             animationSpec = tween(navAnimDuration)
                         )
                     },
                     exitTransition = {
-                        slideOutHorizontally(
+                        if (isBetweenTopLevelRoutes()) ExitTransition.None
+                        else slideOutHorizontally(
                             targetOffsetX = { -1000 },
                             animationSpec = tween(navAnimDuration)
                         )
                     },
                     popEnterTransition = {
-                        slideInHorizontally(
+                        if (isBetweenTopLevelRoutes()) EnterTransition.None
+                        else slideInHorizontally(
                             initialOffsetX = { -1000 },
                             animationSpec = tween(navAnimDuration)
                         )
                     },
                     popExitTransition = {
-                        slideOutHorizontally(
+                        if (isBetweenTopLevelRoutes()) ExitTransition.None
+                        else slideOutHorizontally(
                             targetOffsetX = { 1000 },
                             animationSpec = tween(navAnimDuration)
                         )
@@ -565,6 +574,18 @@ fun AppNavHost(
 private fun NavHostController.selectConversationOnChatList(conversationId: Uuid, scrollToBottom: Boolean = false) {
     getBackStackEntry<Route.ChatList>().savedStateHandle["pendingConversationId"] = conversationId.toString()
     getBackStackEntry<Route.ChatList>().savedStateHandle["pendingScrollToBottom"] = scrollToBottom
+}
+
+// Helper to check if a destination is a top-level route
+private fun NavDestination?.isTopLevelRoute(): Boolean {
+    return this?.hasRoute(Route.ChatList::class) == true ||
+            this?.hasRoute(Route.Home::class) == true
+}
+
+// Helper to check if we're navigating between top-level routes
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
+    return initialState.destination.isTopLevelRoute() &&
+            targetState.destination.isTopLevelRoute()
 }
 
 sealed class TopLevelRoute(

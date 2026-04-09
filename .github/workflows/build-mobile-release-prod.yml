@@ -66,7 +66,7 @@ jobs:
           mv androidApp/build/outputs/bundle/release/androidApp-release.aab \
              androidApp/build/outputs/bundle/release/homebase-id-app.aab
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: homebase-id-app-android
           path: androidApp/build/outputs/bundle/release/homebase-id-app.aab
@@ -151,6 +151,7 @@ jobs:
           mobileprovision-base64: |
             ${{ secrets.FEED_IOS_MOBILE_PROVISION_BASE64 }}
             ${{ secrets.FEED_APP_GROUP_IOS_MOBILE_PROVISION_BASE64 }}
+            ${{ secrets.FEED_NOTIFICATIONS_IOS_MOBILE_PROVISION_BASE64 }}
           code-signing-identity: "Apple Distribution"
           team-id: ${{ secrets.IOS_TEAM_ID }}
           certificate-password: ${{ secrets.IOS_FEED_CERTIFICATE_PASSWORD }}
@@ -158,7 +159,7 @@ jobs:
       - name: Rename IPA
         run: mv output.ipa iosApp.ipa
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ios-app
           path: iosApp.ipa

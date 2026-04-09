@@ -13,6 +13,7 @@ import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.CFBridgingRetain
+import platform.Foundation.NSBundle
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
@@ -37,7 +38,8 @@ import platform.Security.kSecValueData
 actual object ShareAuthBridge {
 
     private const val SERVICE = "id.homebase.share.auth"
-    private const val ACCESS_GROUP = "group.id.homebase.feed"
+    private val ACCESS_GROUP: String = NSBundle.mainBundle.infoDictionary
+        ?.get("AppGroupIdentifier") as? String ?: "group.id.homebase.feed"
     private const val KEY_AUTH_ACTIVE = "share_auth_active"
     private const val KEY_USER_DOMAIN = "share_user_domain"
 

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material.icons.Icons
@@ -153,12 +154,16 @@ fun ConversationListPane(
                                         Spacer(modifier = Modifier.width(16.dp))
 
                                         Text(
-                                            text = stringResource(
-                                                MR.string.app_name
-                                            ),
+                                            text = stringResource(MR.string.app_name),
                                             style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            autoSize = TextAutoSize.StepBased(
+                                                minFontSize = 14.sp,
+                                                maxFontSize = 22.sp,
+                                            )
                                         )
+                                        Spacer(modifier = Modifier.width(16.dp))
                                     }
                                 }
                             }
@@ -440,8 +445,13 @@ fun ConversationLisContentItem(
         is ConversationListContentModel.Header -> {
             Text(
                 text = stringResource(listItem.resource),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                maxLines = 2,
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = 12.sp,
+                    maxFontSize = 16.sp,
+                ),
             )
         }
 

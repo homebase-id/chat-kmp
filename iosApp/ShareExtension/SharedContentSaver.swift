@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// for the main app to pick up and send.
 struct SharedContentSaver {
 
-    static let appGroupId = "group.id.homebase.feed"
+    static let appGroupId = Bundle.main.infoDictionary?["AppGroupIdentifier"] as? String ?? "group.id.homebase.feed"
     static let sharedContentFile = "shared_content.json"
     static let sharedFilesDir = "shared_files"
 

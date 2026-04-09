@@ -25,13 +25,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.resources.MR
+import id.homebase.resources.upload_preparing
+import id.homebase.resources.upload_compressing
+import id.homebase.resources.upload_segmenting
+import id.homebase.resources.upload_encrypting
+import id.homebase.resources.upload_uploading
+import id.homebase.resources.upload_finalizing
+import id.homebase.resources.upload_done
 import kotlinx.collections.immutable.ImmutableMap
+import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
 /**
@@ -110,7 +120,8 @@ fun MediaMessage(
                     shape = shape,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
-                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}")
+                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}"),
+                    messageId = messageId,
                 )
             }
 
@@ -146,75 +157,96 @@ fun MediaMessage(
 @Composable
 private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.background(Color.Black.copy(alpha = 0.5f)),
+        modifier = modifier.background(Color.Black.copy(alpha = 0.35f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             when (status) {
                 UploadStatus.Preparing -> {
                     CircularProgressIndicator(
                         modifier = Modifier.size(40.dp),
                         color = Color.White,
-                        trackColor = Color.White.copy(alpha = 0.3f),
+                        trackColor = Color.White.copy(alpha = 0.2f),
                     )
                     Text(
-                        text = "Preparing…",
-                        color = Color.White,
+                        text = stringResource(MR.string.upload_preparing),
+                        color = Color.White.copy(alpha = 0.8f),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
+
                 is UploadStatus.Processing -> {
-                    CircularProgressIndicator(
-                        progress = { status.progress },
-                        modifier = Modifier.size(40.dp),
-                        color = Color.White,
-                        trackColor = Color.White.copy(alpha = 0.3f),
-                    )
+                    if (status.progress > 0f) {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = { status.progress },
+                                modifier = Modifier.size(40.dp),
+                                color = Color.White,
+                                trackColor = Color.White.copy(alpha = 0.2f),
+                            )
+                            Text(
+                                text = "${(status.progress * 100).toInt()}%",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    } else {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(40.dp),
+                            color = Color.White,
+                            trackColor = Color.White.copy(alpha = 0.2f),
+                        )
+                    }
                     Text(
-                        text = "${(status.progress * 100).toInt()}%",
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    Text(
-                        text = "Processing…",
-                        color = Color.White,
+                        text = when (status.phase) {
+                            VideoProcessingPhase.THUMBNAIL -> stringResource(MR.string.upload_preparing)
+                            VideoProcessingPhase.COMPRESSING -> stringResource(MR.string.upload_compressing)
+                            VideoProcessingPhase.SEGMENTING -> stringResource(MR.string.upload_segmenting)
+                            VideoProcessingPhase.ENCRYPTING -> stringResource(MR.string.upload_encrypting)
+                            VideoProcessingPhase.COMPLETE -> stringResource(MR.string.upload_done)
+                        },
+                        color = Color.White.copy(alpha = 0.8f),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
+
                 is UploadStatus.Uploading -> {
                     if (status.progress >= 1f) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(40.dp),
                             color = Color.White,
-                            trackColor = Color.White.copy(alpha = 0.3f),
+                            trackColor = Color.White.copy(alpha = 0.2f),
                         )
                         Text(
-                            text = "Finalizing…",
-                            color = Color.White,
+                            text = stringResource(MR.string.upload_finalizing),
+                            color = Color.White.copy(alpha = 0.8f),
                             style = MaterialTheme.typography.labelSmall,
                         )
                     } else {
-                        CircularProgressIndicator(
-                            progress = { status.progress },
-                            modifier = Modifier.size(40.dp),
-                            color = Color.White,
-                            trackColor = Color.White.copy(alpha = 0.3f),
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = { status.progress },
+                                modifier = Modifier.size(40.dp),
+                                color = Color.White,
+                                trackColor = Color.White.copy(alpha = 0.2f),
+                            )
+                            Text(
+                                text = "${(status.progress * 100).toInt()}%",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
                         Text(
-                            text = "${(status.progress * 100).toInt()}%",
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                        Text(
-                            text = "Uploading…",
-                            color = Color.White,
+                            text = stringResource(MR.string.upload_uploading),
+                            color = Color.White.copy(alpha = 0.8f),
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
                 }
+
                 UploadStatus.Completed -> {
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
@@ -223,7 +255,7 @@ private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mod
                         modifier = Modifier.size(40.dp),
                     )
                     Text(
-                        text = "Done",
+                        text = stringResource(MR.string.upload_done),
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall,
                     )

@@ -91,6 +91,16 @@ kotlin {
             implementation(compose.desktop.currentOs)
         }
     }
+
+    targets.all {
+        compilations.all {
+            compileTaskProvider.configure {
+                compilerOptions {
+                    freeCompilerArgs.add("-Xexpect-actual-classes")
+                }
+            }
+        }
+    }
 }
 
 // Create platform-specific JARs that only include native libs for that platform

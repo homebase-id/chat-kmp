@@ -22,7 +22,7 @@ struct ShareConversationCacheSwift: Codable {
 /// The main app writes this via KMP ShareConversationCacheWriter.
 struct ShareConversationCacheReader {
 
-    static let appGroupId = "group.id.homebase.feed"
+    static let appGroupId = Bundle.main.infoDictionary?["AppGroupIdentifier"] as? String ?? "group.id.homebase.feed"
     static let cacheFileName = "share_conversation_cache.json"
 
     static func load() -> (conversations: [ShareableConversationSwift], updatedAt: Date?) {

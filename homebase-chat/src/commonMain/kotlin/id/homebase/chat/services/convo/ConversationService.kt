@@ -15,10 +15,10 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.FileIdFileIdentifier
-import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
@@ -42,9 +42,8 @@ import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
-import kotlin.collections.plus
+import kotlin.uuid.Uuid
 
 class ConversationService(
     private val credentialsManager: CredentialsManager,
@@ -73,13 +72,15 @@ class ConversationService(
         val domain = credentialsManager.requireActiveDomain()
 
         // I know, this is illogical but somehow a null made it in so #paranoid
-        require(recipients.none { it == null }) {
+        require(recipients.none {
+            @Suppress("SENSELESS_COMPARISON")
+            it == null
+        }) {
             "Conversation recipients contained null"
         }
 
         val normalizedRecipients =
             recipients
-                .filterNotNull()
                 .filterNot { it == domain }
                 .distinct()
 
