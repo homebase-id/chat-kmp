@@ -79,7 +79,7 @@ fun FullScreenVideoPlayer(
         // Video player surface - prefer local file when available
         if (isLocalPlayback) {
             LocalVideoPlayerSurface(
-                filePath = data.localFilePath!!,
+                filePath = data.localFilePath,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -117,7 +117,12 @@ fun FullScreenVideoPlayer(
         // Thumbnail + play button overlay, hidden once user taps play
         if (!isPlaying) {
             if (payloadIv != null) {
-                val imageData = remember(data.driveId, data.fileId, data.payloadKey, data.payload.lastModified) {
+                val imageData = remember(
+                    data.driveId,
+                    data.fileId,
+                    data.payloadKey,
+                    data.payload.lastModified
+                ) {
                     HomebaseImageData(
                         driveId = data.driveId,
                         fileId = data.fileId,
