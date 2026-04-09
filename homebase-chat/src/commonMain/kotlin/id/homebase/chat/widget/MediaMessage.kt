@@ -32,7 +32,16 @@ import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.resources.MR
+import id.homebase.resources.upload_preparing
+import id.homebase.resources.upload_compressing
+import id.homebase.resources.upload_segmenting
+import id.homebase.resources.upload_encrypting
+import id.homebase.resources.upload_uploading
+import id.homebase.resources.upload_finalizing
+import id.homebase.resources.upload_done
 import kotlinx.collections.immutable.ImmutableMap
+import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
 /**
@@ -163,7 +172,7 @@ private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mod
                         trackColor = Color.White.copy(alpha = 0.2f),
                     )
                     Text(
-                        text = "Preparing…",
+                        text = stringResource(MR.string.upload_preparing),
                         color = Color.White.copy(alpha = 0.8f),
                         style = MaterialTheme.typography.labelSmall,
                     )
@@ -193,11 +202,11 @@ private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mod
                     }
                     Text(
                         text = when (status.phase) {
-                            VideoProcessingPhase.THUMBNAIL -> "Preparing…"
-                            VideoProcessingPhase.COMPRESSING -> "Compressing…"
-                            VideoProcessingPhase.SEGMENTING -> "Segmenting…"
-                            VideoProcessingPhase.ENCRYPTING -> "Encrypting…"
-                            VideoProcessingPhase.COMPLETE -> "Done"
+                            VideoProcessingPhase.THUMBNAIL -> stringResource(MR.string.upload_preparing)
+                            VideoProcessingPhase.COMPRESSING -> stringResource(MR.string.upload_compressing)
+                            VideoProcessingPhase.SEGMENTING -> stringResource(MR.string.upload_segmenting)
+                            VideoProcessingPhase.ENCRYPTING -> stringResource(MR.string.upload_encrypting)
+                            VideoProcessingPhase.COMPLETE -> stringResource(MR.string.upload_done)
                         },
                         color = Color.White.copy(alpha = 0.8f),
                         style = MaterialTheme.typography.labelSmall,
@@ -212,7 +221,7 @@ private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mod
                             trackColor = Color.White.copy(alpha = 0.2f),
                         )
                         Text(
-                            text = "Finalizing…",
+                            text = stringResource(MR.string.upload_finalizing),
                             color = Color.White.copy(alpha = 0.8f),
                             style = MaterialTheme.typography.labelSmall,
                         )
@@ -231,7 +240,7 @@ private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mod
                             )
                         }
                         Text(
-                            text = "Uploading…",
+                            text = stringResource(MR.string.upload_uploading),
                             color = Color.White.copy(alpha = 0.8f),
                             style = MaterialTheme.typography.labelSmall,
                         )
@@ -246,7 +255,7 @@ private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mod
                         modifier = Modifier.size(40.dp),
                     )
                     Text(
-                        text = "Done",
+                        text = stringResource(MR.string.upload_done),
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall,
                     )
