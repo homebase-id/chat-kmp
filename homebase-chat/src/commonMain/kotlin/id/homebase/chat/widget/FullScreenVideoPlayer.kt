@@ -176,22 +176,24 @@ fun FullScreenVideoPlayer(
                         modifier = Modifier.padding(end = 8.dp),
                     )
                 }
-                Box {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = stringResource(MR.string.chat_options),
-                            tint = Color.White
+                if (!isLocalPlayback) {
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(MR.string.chat_options),
+                                tint = Color.White
+                            )
+                        }
+                        FullScreenMediaMenu(
+                            showMenu = showMenu,
+                            dismissMenu = { showMenu = false },
+                            onSave = {
+                                showMenu = false
+                                onSave()
+                            },
                         )
                     }
-                    FullScreenMediaMenu(
-                        showMenu = showMenu,
-                        dismissMenu = { showMenu = false },
-                        onSave = {
-                            showMenu = false
-                            onSave()
-                        },
-                    )
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)

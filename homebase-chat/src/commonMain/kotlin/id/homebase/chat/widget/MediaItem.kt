@@ -104,6 +104,7 @@ fun MediaItem(
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
+    val localVideoContextStore = koinInject<LocalVideoContextStore>()
 
     // Calculate aspect ratio if available
     val aspectRatioThumbnail = payload.thumbnails?.lastOrNull() ?: payload.previewThumbnail
@@ -305,7 +306,6 @@ fun MediaItem(
                 }
             } else {
                 // Check for local video context (available during upload)
-                val localVideoContextStore = koinInject<LocalVideoContextStore>()
                 val localContext = messageId?.let { localVideoContextStore.get(it) }
                 if (localContext != null) {
                     val imageBitmap = remember(localContext.thumbnailBytes) {
