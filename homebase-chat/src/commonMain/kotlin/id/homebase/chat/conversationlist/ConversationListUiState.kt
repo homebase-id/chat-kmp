@@ -157,7 +157,7 @@ sealed interface FullScreenOverlay {
         val keyHeader: KeyHeader,
         val payload: PayloadDescriptor,
         val localFilePath: String? = null,
-        val uploadStatusText: String? = null,
+        val uploadMessageId: Uuid? = null,
     ) : FullScreenOverlay
 }
 

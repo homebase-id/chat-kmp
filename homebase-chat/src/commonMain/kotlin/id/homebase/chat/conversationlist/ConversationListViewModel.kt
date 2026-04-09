@@ -1069,15 +1069,7 @@ class ConversationListViewModel(
                                                 ),
                                                 payload = selectedPayload,
                                                 localFilePath = localContext?.localFilePath,
-                                                uploadStatusText = if (localContext != null) {
-                                                    val status = _messagesUiState.value.uploadProgress[action.message.id]
-                                                    when (status) {
-                                                        is UploadStatus.Processing -> "Processing ${(status.progress * 100).toInt()}%"
-                                                        is UploadStatus.Uploading -> "Uploading ${(status.progress * 100).toInt()}%"
-                                                        UploadStatus.Preparing -> "Preparing…"
-                                                        else -> null
-                                                    }
-                                                } else null,
+                                                uploadMessageId = if (localContext != null) action.message.id else null,
                                             )
                                         )
                                     }

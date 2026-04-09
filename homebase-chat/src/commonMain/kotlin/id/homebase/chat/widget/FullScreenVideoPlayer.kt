@@ -34,6 +34,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.widget.video.LocalVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.image.HomebaseImage
@@ -53,6 +54,7 @@ fun FullScreenVideoPlayer(
     onSave: () -> Unit,
     isDownloading: Boolean = false,
     modifier: Modifier = Modifier,
+    uploadStatus: UploadStatus? = null,
 ) {
     var isPlaying by remember(data) { mutableStateOf(true) }
     var progress by remember(data) { mutableFloatStateOf(0f) }
@@ -160,9 +162,15 @@ fun FullScreenVideoPlayer(
                 }
             },
             actions = {
-                if (data.uploadStatusText != null) {
+                if (uploadStatus != null) {
+                    val statusText = when (uploadStatus) {
+                        UploadStatus.Preparing -> "Preparing…"
+                        is UploadStatus.Processing -> "Processing ${(uploadStatus.progress * 100).toInt()}%"
+                        is UploadStatus.Uploading -> "Uploading ${(uploadStatus.progress * 100).toInt()}%"
+                        UploadStatus.Completed -> "Done"
+                    }
                     Text(
-                        text = data.uploadStatusText,
+                        text = statusText,
                         color = Color.White.copy(alpha = 0.7f),
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(end = 8.dp),

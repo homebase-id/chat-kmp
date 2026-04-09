@@ -170,17 +170,25 @@ private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mod
                 }
 
                 is UploadStatus.Processing -> {
-                    Box(contentAlignment = Alignment.Center) {
+                    if (status.progress > 0f) {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = { status.progress },
+                                modifier = Modifier.size(40.dp),
+                                color = Color.White,
+                                trackColor = Color.White.copy(alpha = 0.2f),
+                            )
+                            Text(
+                                text = "${(status.progress * 100).toInt()}%",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    } else {
                         CircularProgressIndicator(
-                            progress = { status.progress },
                             modifier = Modifier.size(40.dp),
                             color = Color.White,
                             trackColor = Color.White.copy(alpha = 0.2f),
-                        )
-                        Text(
-                            text = "${(status.progress * 100).toInt()}%",
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelSmall,
                         )
                     }
                     Text(
