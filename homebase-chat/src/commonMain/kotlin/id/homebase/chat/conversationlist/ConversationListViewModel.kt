@@ -37,6 +37,8 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.LocalVideoContext
+import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.ReplyPreview
@@ -121,6 +123,7 @@ class ConversationListViewModel(
     private val contactService: ContactService,
     private val driveFileProvider: DriveFileProvider,
     private val shareContentProcessor: ShareContentProcessor,
+    private val localVideoContextStore: LocalVideoContextStore,
 ) : ViewModel() {
 
     private val enricher = ConversationEnricher()
@@ -242,6 +245,7 @@ class ConversationListViewModel(
                                 uploadProgress = (state.uploadProgress - event.uniqueId).toPersistentMap()
                             )
                         }
+                        localVideoContextStore.remove(event.uniqueId)
                     }
                 }
         }
@@ -255,6 +259,7 @@ class ConversationListViewModel(
                             uploadProgress = (state.uploadProgress - event.uniqueId).toPersistentMap()
                         )
                     }
+                    localVideoContextStore.remove(event.uniqueId)
                 }
         }
 
@@ -2029,6 +2034,21 @@ class ConversationListViewModel(
                     uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
                 )
             }
+
+            // Store local video context for thumbnail preview during upload
+            files.filterIsInstance<AttachmentPendingFile.FileVideo>()
+                .firstOrNull()?.let { videoFile ->
+                    val thumbBytes = videoFile.thumbnailBytes
+                    if (thumbBytes != null) {
+                        localVideoContextStore.put(
+                            newMessageId,
+                            LocalVideoContext(
+                                thumbnailBytes = thumbBytes,
+                                localFilePath = videoFile.file.toString(),
+                            )
+                        )
+                    }
+                }
 
             pendingMessageId = newMessageId
 
