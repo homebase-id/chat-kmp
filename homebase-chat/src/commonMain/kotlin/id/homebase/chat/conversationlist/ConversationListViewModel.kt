@@ -2027,7 +2027,8 @@ class ConversationListViewModel(
                                 ),
                                 displayName = attachment.file.name,
                             )
-                        }
+                        )
+                    }
 
                     is AttachmentPendingFile.FileImage -> {
                         var filePath = attachment.file.toString()
@@ -2046,14 +2047,15 @@ class ConversationListViewModel(
                                 )
                                 contentType = "image/jpeg"
                             }
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = filePath,
-                                    contentType = contentType,
-                                    displayName = attachment.file.name,
-                                )
-                            )
                         }
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = filePath,
+                                contentType = contentType,
+                                displayName = attachment.file.name,
+                            )
+                        )
+                    }
 
                     is AttachmentPendingFile.FileVideo -> {
                         attachments.add(
@@ -2065,7 +2067,8 @@ class ConversationListViewModel(
                                 ),
                                 displayName = attachment.file.name,
                             )
-                        }
+                        )
+                    }
 
                     is AttachmentPendingFile.Gallery -> {
                         var filePath = attachment.image.file.toString()
@@ -2083,14 +2086,15 @@ class ConversationListViewModel(
                                 )
                                 contentType = "image/jpeg"
                             }
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = filePath,
-                                    contentType = contentType,
-                                    displayName = attachment.image.fileName,
-                                )
-                            )
                         }
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = filePath,
+                                contentType = contentType,
+                                displayName = attachment.image.fileName,
+                            )
+                        )
+                    }
 
                     is AttachmentPendingFile.Audio -> {
                         attachments.add(
@@ -2104,36 +2108,38 @@ class ConversationListViewModel(
                                 waveformFile = attachment.waveformFile?.toString(),
                                 audioLengthSeconds = attachment.lengthSeconds,
                             )
-                        }
+                        )
                     }
                 }
+            }
 
-                newMessageId = Uuid.random()
-                Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
+            val newMessageId = Uuid.random()
+            Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
 
-                _messagesUiState.update { state ->
-                    state.copy(
-                        uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
-                    )
-                }
+            _messagesUiState.update { state ->
+                state.copy(
+                    uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
+                )
+            }
 
-                // Store local video context for thumbnail preview during upload
-                files.filterIsInstance<AttachmentPendingFile.FileVideo>()
-                    .firstOrNull()?.let { videoFile ->
-                        val thumbBytes = videoFile.thumbnailBytes
-                        if (thumbBytes != null) {
-                            localVideoContextStore.put(
-                                newMessageId,
-                                LocalVideoContext(
-                                    thumbnailBytes = thumbBytes,
-                                    localFilePath = videoFile.file.toString(),
-                                )
+            // Store local video context for thumbnail preview during upload
+            files.filterIsInstance<AttachmentPendingFile.FileVideo>()
+                .firstOrNull()?.let { videoFile ->
+                    val thumbBytes = videoFile.thumbnailBytes
+                    if (thumbBytes != null) {
+                        localVideoContextStore.put(
+                            newMessageId,
+                            LocalVideoContext(
+                                thumbnailBytes = thumbBytes,
+                                localFilePath = videoFile.file.toString(),
                             )
-                        }
+                        )
                     }
+                }
 
-                pendingMessageId = newMessageId
+            pendingMessageId = newMessageId
 
+            try {
                 val bundle = MessageAttachmentBuilder.build(
                     attachments = attachments,
                     fileOperationsProvider = fileOperationsProvider,
@@ -2153,11 +2159,9 @@ class ConversationListViewModel(
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
                 _messagesUiState.update { state ->
-                    val progress = if (newMessageId != null)
-                        (state.uploadProgress - newMessageId).toPersistentMap()
-                    else
-                        state.uploadProgress
-                    state.copy(uploadProgress = progress)
+                    state.copy(
+                        uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap()
+                    )
                 }
                 sendEvent(
                     ShowErrorMessage(
