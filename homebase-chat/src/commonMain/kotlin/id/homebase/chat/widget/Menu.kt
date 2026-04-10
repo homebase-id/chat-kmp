@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -80,6 +81,7 @@ import id.homebase.resources.chat_unarchive
 import id.homebase.resources.chat_unpin
 import id.homebase.resources.delete
 import id.homebase.resources.save
+import id.homebase.resources.search
 import id.homebase.resources.settings
 import id.homebase.resources.share
 import kotlinx.collections.immutable.ImmutableList
@@ -93,6 +95,7 @@ fun ConversationMenu(
     isArchived: Boolean,
     isPinned: Boolean,
     onConversationInfo: () -> Unit,
+    onSearch: () -> Unit,
     onDelete: () -> Unit,
     onTogglePin: () -> Unit,
     onArchive: () -> Unit,
@@ -121,6 +124,12 @@ fun ConversationMenu(
                 )
             }
         )
+        HorizontalDivider()
+
+        DropdownMenuItem(
+            onClick = onSearch,
+            text = { Text(text = stringResource(MR.string.search)) },
+            leadingIcon = { Icon(imageVector = Icons.Filled.Search, contentDescription = null) })
 
         HorizontalDivider()
 

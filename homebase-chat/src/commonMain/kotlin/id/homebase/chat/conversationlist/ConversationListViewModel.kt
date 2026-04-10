@@ -37,10 +37,10 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
-import id.homebase.chat.services.LocalVideoContext
-import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.LocalVideoContext
+import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
@@ -144,6 +144,8 @@ class ConversationListViewModel(
     val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
 
     val conversationSearchTextState = TextFieldState()
+
+    val messagesSearchTextState = TextFieldState()
     val messageInputTextState = RichTextState().applyDefaultStyling()
     private var currentConversationJob: Job? = null
     private var pendingMessageId: Uuid? = null
@@ -343,6 +345,14 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SearchBackClicked -> {
                 _uiState.update { it.copy(isSearchActive = false) }
+            }
+
+            is ConversationListUiAction.SearchMessagesClicked -> {
+                _messagesUiState.update { it.copy(isSearchActive = true) }
+            }
+
+            is ConversationListUiAction.SearchMessagesBackClicked -> {
+                _messagesUiState.update { it.copy(isSearchActive = false) }
             }
 
             is ConversationListUiAction.NewConversationClicked -> {

@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +50,7 @@ fun ConversationMessagesPane(
     conversation: EnrichedConversationUiModel,
     uiState: MessageListUiState,
     textFieldState: RichTextState,
+    searchTextState: TextFieldState,
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
@@ -242,6 +244,7 @@ fun ConversationMessagesPane(
                     conversation = conversation,
                     uiState = uiState,
                     textFieldState = textFieldState,
+                    searchTextState = searchTextState,
                     recordingData = uiState.recordingData,
                     listState = listState,
                     showBackButton = showBackButton,
