@@ -648,6 +648,7 @@ fun ConversationContent(
                         focusRequester = focusRequester,
                         editExistingMode = uiState.isEditingMessageId != null,
                         showingEmojiSheet = showEmojiSheet,
+                        isSendingMessage = uiState.isSendingMessage,
                         onSendMessage = { text, linkPreview ->
                             if (text.isNotBlank()) {
                                 if (uiState.isEditingMessageId != null) {
