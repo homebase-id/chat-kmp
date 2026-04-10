@@ -19,6 +19,8 @@ sealed interface ConversationListUiAction {
     data object SearchBackClicked : ConversationListUiAction
     data object SearchMessagesClicked : ConversationListUiAction
     data object SearchMessagesBackClicked : ConversationListUiAction
+    data object SearchMessagesNavigateNext : ConversationListUiAction
+    data object SearchMessagesNavigatePrevious : ConversationListUiAction
     data object NewConversationClicked : ConversationListUiAction
     data object ClearSelection : ConversationListUiAction
     data object FilterByUnreadClicked : ConversationListUiAction

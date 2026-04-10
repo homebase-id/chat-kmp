@@ -30,6 +30,8 @@ fun MessageItem(
     downloadingFiles: Set<String>,
     uploadStatus: UploadStatus? = null,
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
+    searchQuery: String = "",
+    isCurrentSearchResult: Boolean = false,
 ) {
     // TODO: currentOdinId is "" - is that supposed to be the case??
     val odinId: OdinId? = try {
@@ -127,6 +129,8 @@ fun MessageItem(
                 onShowMore = onShowMore,
                 uploadStatus = uploadStatus,
                 replyMessages = replyMessages,
+                searchQuery = searchQuery,
+                isCurrentSearchResult = isCurrentSearchResult,
             )
         }
     } else {
@@ -160,6 +164,8 @@ fun MessageItem(
                 replyMessages = replyMessages,
                 onBlock = onBlock,
                 onReport = onReport,
+                searchQuery = searchQuery,
+                isCurrentSearchResult = isCurrentSearchResult,
             )
         }
     }

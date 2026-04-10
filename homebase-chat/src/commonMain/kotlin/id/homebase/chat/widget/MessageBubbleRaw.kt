@@ -39,7 +39,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -112,6 +114,8 @@ fun MessageBubbleRaw(
     isPendingSend: Boolean = false,
     uploadStatus: UploadStatus? = null,
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
+    searchQuery: String = "",
+    isCurrentSearchResult: Boolean = false,
 ) {
 
     val filteredPayloads = message.payloads?.filter {
@@ -176,10 +180,31 @@ fun MessageBubbleRaw(
         else MaterialTheme.colorScheme.onSurface
 
     val deletedText = stringResource(MR.string.chat_message_deleted)
-    val textState = remember(message.isDeleted, message.content) {
+    val textState = remember(message.isDeleted, message.content, searchQuery, isCurrentSearchResult) {
         RichTextState()
             .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
             .applyMarkDownContent(if (message.isDeleted) deletedText else message.content)
+            .also { state ->
+                if (searchQuery.isNotEmpty()) {
+                    val plainText = state.annotatedString.text
+                    val lowerQuery = searchQuery.lowercase()
+                    val lowerText = plainText.lowercase()
+                    var startIndex = 0
+                    while (true) {
+                        val idx = lowerText.indexOf(lowerQuery, startIndex)
+                        if (idx == -1) break
+                        val highlightColor = if (isCurrentSearchResult)
+                            Color(0xFFFF8C00).copy(alpha = 0.6f)
+                        else
+                            Color(0xFFFFEB3B).copy(alpha = 0.5f)
+                        state.addSpanStyle(
+                            spanStyle = SpanStyle(background = highlightColor),
+                            TextRange(idx, idx + lowerQuery.length)
+                        )
+                        startIndex = idx + lowerQuery.length
+                    }
+                }
+            }
     }
 
     val shape = remember {
