@@ -582,11 +582,9 @@ class ConversationListViewModel(
                             )
                         )
 
-                        val originalName = payload.filename()
-                        val (baseName, extension) = resolveFileNameAndExtension(
-                            originalName, payload.key, payload.contentType
+                        val fullName = resolveDownloadFileName(
+                            payload.filename(), payload.key, payload.contentType
                         )
-                        val fullName = "$baseName.$extension"
                         val filePath =
                             "${fileOperationsProvider.getCacheDirectory()}/$fullName"
 
@@ -626,11 +624,9 @@ class ConversationListViewModel(
 
                 viewModelScope.launch {
                     try {
-                        val originalName = action.payload.filename()
-                        val (baseName, extension) = resolveFileNameAndExtension(
-                            originalName, action.payloadKey, action.payload.contentType
+                        val fullName = resolveDownloadFileName(
+                            action.payload.filename(), action.payloadKey, action.payload.contentType
                         )
-                        val fullName = "$baseName.$extension"
                         val filePath =
                             "${fileOperationsProvider.getCacheDirectory()}/$fullName"
 
@@ -1906,27 +1902,30 @@ class ConversationListViewModel(
     }
 
     /**
-     * Resolves a safe (baseName, extension) pair for saving a downloaded file.
-     * Prefers the original filename's extension over contentType-derived extension.
+     * Returns a safe filename for saving a downloaded file.
+     * If the original filename (from descriptorContent) has an extension, uses it as-is.
+     * Only derives an extension from contentType when there's no original filename or no extension.
      */
-    private fun resolveFileNameAndExtension(
+    private fun resolveDownloadFileName(
         originalName: String?,
         fallbackKey: String,
         contentType: String?,
-    ): Pair<String, String> {
+    ): String {
         val safeName = originalName
             ?.replace('/', '_')
             ?.replace('\\', '_')
             ?.replace('\u0000', '_')
-        if (safeName != null && safeName.contains('.')) {
-            return safeName.substringBeforeLast('.') to safeName.substringAfterLast('.')
-        }
+
+        // If the original filename has an extension, trust it completely
+        if (safeName != null && safeName.contains('.')) return safeName
+
+        // No extension in name — derive one from contentType
         val name = safeName ?: fallbackKey
         val ext = contentType?.let { extensionForMimeType(it) }
             ?: contentType?.substringAfter("/")
                 ?.takeIf { it != "octet-stream" && !it.contains('.') && !it.contains('+') }
             ?: "bin"
-        return name to ext
+        return "$name.$ext"
     }
 
     private fun addMessageWithFiles(
