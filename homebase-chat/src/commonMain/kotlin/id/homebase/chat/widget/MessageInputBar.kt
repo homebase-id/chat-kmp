@@ -138,6 +138,7 @@ fun MessageInputBar(
     focusRequester: FocusRequester,
     editExistingMode: Boolean,
     showingEmojiSheet: Boolean,
+    isSendingMessage: Boolean = false,
     onEmojiClick: () -> Unit,
     onKeyboardClick: () -> Unit,
     onFocused: () -> Unit,
@@ -197,10 +198,10 @@ fun MessageInputBar(
     }
 
     fun sendMessage() {
-        if (textFieldState.annotatedString.isNotBlank()) {
+        if (!isSendingMessage && textFieldState.annotatedString.isNotBlank()) {
             onSendMessage(textFieldState.toMarkdown(), linkPreviewData)
-            linkPreviewData = null
-            textFieldState.clear()
+            // Don't clear here — the ViewModel clears after the send is queued,
+            // so the text stays in the edit box if the send fails.
         }
     }
 
@@ -276,6 +277,7 @@ fun MessageInputBar(
                 onRecordingCancelled = onRecordingCancelled,
                 onRecordingHelp = onRecordingHelp,
                 onPasteImage = onPasteImage,
+                isSendingMessage = isSendingMessage,
                 onSendMessage = { sendMessage() },
                 onCancelEdit = onCancelEdit
             )
@@ -410,7 +412,8 @@ fun MessageTextFieldExpanded(
                 }
             }
             IconButton(
-                onClick = { sendMessage() }, colors = IconButtonDefaults.iconButtonColors(
+                onClick = { sendMessage() },
+                colors = IconButtonDefaults.iconButtonColors(
                     containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                     contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                 )
@@ -444,6 +447,7 @@ fun MessageTextFieldCompact(
     onRecordingHelp: () -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
     onFocused: () -> Unit = {},
+    isSendingMessage: Boolean = false,
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
@@ -771,6 +775,7 @@ fun MessageTextFieldCompact(
                     }
                     BlueBackgroundIconButton(
                         onClick = onSendMessage,
+                        enabled = !isSendingMessage,
                         imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
                         contentDescription = stringResource(MR.string.chat_send_message_button),
                     )
@@ -855,9 +860,11 @@ fun BlueBackgroundIconButton(
     onClick: () -> Unit,
     imageVector: ImageVector,
     contentDescription: String?,
+    enabled: Boolean = true,
 ) {
     IconButton(
         onClick = onClick,
+        enabled = enabled,
         colors = IconButtonDefaults.iconButtonColors(
             containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
             contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,

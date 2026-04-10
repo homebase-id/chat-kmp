@@ -37,10 +37,10 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
-import id.homebase.chat.services.LocalVideoContext
-import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.LocalVideoContext
+import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
@@ -128,6 +128,10 @@ class ConversationListViewModel(
     private val localVideoContextStore: LocalVideoContextStore,
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "ConversationListViewModel"
+    }
+
     private val enricher = ConversationEnricher()
     val ownerSession = ownerSessionRepository.user
 
@@ -142,6 +146,8 @@ class ConversationListViewModel(
     val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
 
     val conversationSearchTextState = TextFieldState()
+
+    val messagesSearchTextState = TextFieldState()
     val messageInputTextState = RichTextState().applyDefaultStyling()
     private var currentConversationJob: Job? = null
     private var pendingMessageId: Uuid? = null
@@ -198,6 +204,14 @@ class ConversationListViewModel(
                         || uiState.value.conversationsContent is ConversationListContentState.EmptySearch) {
                         updateListContent()
                     }
+                }
+        }
+
+        // Listen for message search query changes
+        viewModelScope.launch {
+            snapshotFlow { messagesSearchTextState.text.toString() }.debounce(200)
+                .collectLatest { query ->
+                    updateMessageSearchResults(query)
                 }
         }
 
@@ -343,6 +357,40 @@ class ConversationListViewModel(
                 _uiState.update { it.copy(isSearchActive = false) }
             }
 
+            is ConversationListUiAction.SearchMessagesClicked -> {
+                _messagesUiState.update { it.copy(isSearchActive = true) }
+            }
+
+            is ConversationListUiAction.SearchMessagesBackClicked -> {
+                _messagesUiState.update {
+                    it.copy(
+                        isSearchActive = false,
+                        searchQuery = "",
+                        searchResultMessageIds = emptyList(),
+                        currentSearchResultIndex = -1,
+                    )
+                }
+            }
+
+            is ConversationListUiAction.SearchMessagesNavigateNext -> {
+                val state = _messagesUiState.value
+                val size = state.searchResultMessageIds.size
+                if (size > 0 && state.currentSearchResultIndex < size - 1) {
+                    _messagesUiState.update {
+                        it.copy(currentSearchResultIndex = it.currentSearchResultIndex + 1)
+                    }
+                }
+            }
+
+            is ConversationListUiAction.SearchMessagesNavigatePrevious -> {
+                val state = _messagesUiState.value
+                if (state.currentSearchResultIndex > 0) {
+                    _messagesUiState.update {
+                        it.copy(currentSearchResultIndex = it.currentSearchResultIndex - 1)
+                    }
+                }
+            }
+
             is ConversationListUiAction.NewConversationClicked -> {
                 _uiState.value = _uiState.value.copy(
                     uiEvent = NavigateToNewConversation
@@ -374,7 +422,8 @@ class ConversationListViewModel(
             is ConversationListUiAction.SendMessage -> {
                 val hasMessage = !messageInputTextState.annotatedString.isBlank()
                 if (hasMessage) {
-                    val content = messageInputTextState.toMarkdown()
+                    _messagesUiState.update { it.copy(isSendingMessage = true) }
+                    val content = messageInputTextState.toMarkdown().trimEnd()
                     val replyTo = _messagesUiState.value.replyToMessage
                     if (replyTo != null) {
                         replyToMessage(
@@ -383,7 +432,6 @@ class ConversationListViewModel(
                             content = content,
                             linkPreview = action.linkPreview
                         )
-                        _messagesUiState.update { it.copy(replyToMessage = null) }
                     } else {
                         addMessage(
                             conversationId = action.conversationId,
@@ -391,7 +439,8 @@ class ConversationListViewModel(
                             linkPreview = action.linkPreview
                         )
                     }
-                    messageInputTextState.clear()
+                    // Input is cleared inside addMessage/replyToMessage after
+                    // the send is successfully queued.
                 }
             }
 
@@ -456,7 +505,7 @@ class ConversationListViewModel(
                     editMessage(
                         messageId = messageId,
                         versionTag = _messagesUiState.value.isEditingVersionTag ?: Uuid.NIL,
-                        content = messageInputTextState.toMarkdown(),
+                        content = messageInputTextState.toMarkdown().trimEnd(),
                     )
                 }
             }
@@ -852,14 +901,15 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.SendFile -> {
-                _messagesUiState.update { it.copy(scrollPosition = null, fullScreenOverlay = null) }
+                _messagesUiState.update { it.copy(scrollPosition = null, isSendingMessage = true) }
 
                 addMessageWithFiles(
                     conversationId = action.conversationId,
-                    content = action.message,
+                    content = action.message.trimEnd(),
                     files = action.attachments,
                 )
-                messageInputTextState.clear()
+                // Input is cleared inside addMessageWithFiles after
+                // the send is successfully queued.
             }
 
             is ConversationListUiAction.AttachPlatformFile -> {
@@ -1558,6 +1608,33 @@ class ConversationListViewModel(
         }
     }
 
+    private fun updateMessageSearchResults(query: String) {
+        val messages = _messagesUiState.value.messages
+        if (query.isBlank()) {
+            _messagesUiState.update {
+                it.copy(
+                    searchQuery = "",
+                    searchResultMessageIds = emptyList(),
+                    currentSearchResultIndex = -1,
+                )
+            }
+            return
+        }
+        val lowerQuery = query.lowercase()
+        val matchingIds = messages
+            .filterIsInstance<MessageListContentModel.Message>()
+            .filter { it.message.content.lowercase().contains(lowerQuery) }
+            .map { it.message.id }
+        val startIndex = if (matchingIds.isNotEmpty()) matchingIds.size - 1 else -1
+        _messagesUiState.update {
+            it.copy(
+                searchQuery = query,
+                searchResultMessageIds = matchingIds,
+                currentSearchResultIndex = startIndex,
+            )
+        }
+    }
+
     private fun updateListContent() {
         viewModelScope.launch {
             try {
@@ -1665,8 +1742,13 @@ class ConversationListViewModel(
         messageIdForScroll: Uuid?,
         scrollToBottom: Boolean = false
     ) {
-        _messagesUiState.update { it.copy(scrollPosition = null, isLoadingMessages = true) }
+        val hasCachedMessages =
+            conversationId == _uiState.value.selectedConversationId &&
+                    chatMessageStream.hasCachedMessages(conversationId)
 
+        _messagesUiState.update {
+            it.copy(scrollPosition = null, isLoadingMessages = !hasCachedMessages)
+        }
 
         // When loading message for newly selected conversation, cancel any previous job to
         // avoid observing multiple messageStreams
@@ -1676,7 +1758,9 @@ class ConversationListViewModel(
                 var messageIdForScrollNullable = messageIdForScroll
                 var setInitialScroll = true
 
-                chatMessageStream.loadConversation(conversationId)
+                if (!hasCachedMessages) {
+                    chatMessageStream.loadConversation(conversationId)
+                }
                 chatMessageStream.observeMessages(conversationId).collect { messageState ->
                     when (messageState) {
                         is ChatMessagesData.Initializing -> {
@@ -1835,14 +1919,7 @@ class ConversationListViewModel(
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
-
-                // Write placeholder first — message appears instantly before encryption/network
-                chatMessageSenderService.writePlaceholderMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    messageText = content,
-                    payloadDescriptors = null,
-                )
+                Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
 
                 chatMessageSenderService.sendNewMessage(
                     messageUniqueId = newMessageId,
@@ -1851,8 +1928,13 @@ class ConversationListViewModel(
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle,
                 )
+                messageInputTextState.clear()
+                Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "addMessage failed for conversation=$conversationId" }
                 sendEvent(ShowErrorMessage("Failed to send message: ${e.message}"))
+            } finally {
+                _messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }
     }
@@ -1877,15 +1959,7 @@ class ConversationListViewModel(
                 )
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
-
-                // Write placeholder first — reply appears instantly with quote context
-                chatMessageSenderService.writePlaceholderMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    messageText = content,
-                    payloadDescriptors = null,
-                    replyPreview = replyPreview,
-                )
+                Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
 
                 chatMessageSenderService.replyToMessage(
                     messageUniqueId = newMessageId,
@@ -1895,8 +1969,14 @@ class ConversationListViewModel(
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle
                 )
+                messageInputTextState.clear()
+                _messagesUiState.update { it.copy(replyToMessage = null) }
+                Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "replyToMessage failed for conversation=$conversationId" }
                 sendEvent(ShowErrorMessage("Failed to send reply: ${e.message}"))
+            } finally {
+                _messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }
     }
@@ -1947,8 +2027,7 @@ class ConversationListViewModel(
                                 ),
                                 displayName = attachment.file.name,
                             )
-                        )
-                    }
+                        }
 
                     is AttachmentPendingFile.FileImage -> {
                         var filePath = attachment.file.toString()
@@ -1967,15 +2046,14 @@ class ConversationListViewModel(
                                 )
                                 contentType = "image/jpeg"
                             }
-                        }
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = filePath,
-                                contentType = contentType,
-                                displayName = attachment.file.name,
+                            attachments.add(
+                                AttachmentInput(
+                                    filePath = filePath,
+                                    contentType = contentType,
+                                    displayName = attachment.file.name,
+                                )
                             )
-                        )
-                    }
+                        }
 
                     is AttachmentPendingFile.FileVideo -> {
                         attachments.add(
@@ -1987,8 +2065,7 @@ class ConversationListViewModel(
                                 ),
                                 displayName = attachment.file.name,
                             )
-                        )
-                    }
+                        }
 
                     is AttachmentPendingFile.Gallery -> {
                         var filePath = attachment.image.file.toString()
@@ -2006,15 +2083,14 @@ class ConversationListViewModel(
                                 )
                                 contentType = "image/jpeg"
                             }
-                        }
-                        attachments.add(
-                            AttachmentInput(
-                                filePath = filePath,
-                                contentType = contentType,
-                                displayName = attachment.image.fileName,
+                            attachments.add(
+                                AttachmentInput(
+                                    filePath = filePath,
+                                    contentType = contentType,
+                                    displayName = attachment.image.fileName,
+                                )
                             )
-                        )
-                    }
+                        }
 
                     is AttachmentPendingFile.Audio -> {
                         attachments.add(
@@ -2028,71 +2104,36 @@ class ConversationListViewModel(
                                 waveformFile = attachment.waveformFile?.toString(),
                                 audioLengthSeconds = attachment.lengthSeconds,
                             )
-                        )
+                        }
                     }
                 }
-            }
 
-            val newMessageId = Uuid.random()
+                newMessageId = Uuid.random()
+                Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
 
-            // Write a placeholder entry to the DB immediately so the message appears in the
-            // list during the build+encrypt phase, before the real optimistic write fires.
-            // For images, read pixel dimensions now so the aspect ratio — and therefore the
-            // bubble size — is stable from the very first frame.
-            val placeholderPayloads = attachments.mapIndexed { index, attachment ->
-                val previewThumbnail = if (attachment.contentType.startsWith("image/")) {
-                    try {
-                        val bytes = fileOperationsProvider.readFileBytes(attachment.filePath)
-                        val naturalSize = ImageUtils.getNaturalSize(bytes)
-                        ThumbnailDescriptor(
-                            pixelWidth = naturalSize.pixelWidth,
-                            pixelHeight = naturalSize.pixelHeight,
-                            contentType = attachment.contentType,
-                        )
-                    } catch (_: Exception) {
-                        null
-                    }
-                } else null
-                PayloadDescriptor(
-                    key = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index",
-                    contentType = attachment.contentType,
-                    iv = null,
-                    descriptorContent = null,
-                    previewThumbnail = previewThumbnail,
-                )
-            }.ifEmpty { null }
+                _messagesUiState.update { state ->
+                    state.copy(
+                        uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
+                    )
+                }
 
-            chatMessageSenderService.writePlaceholderMessage(
-                messageUniqueId = newMessageId,
-                conversationId = conversationId,
-                messageText = content,
-                payloadDescriptors = placeholderPayloads,
-            )
-
-            _messagesUiState.update { state ->
-                state.copy(
-                    uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
-                )
-            }
-
-            // Store local video context for thumbnail preview during upload
-            files.filterIsInstance<AttachmentPendingFile.FileVideo>()
-                .firstOrNull()?.let { videoFile ->
-                    val thumbBytes = videoFile.thumbnailBytes
-                    if (thumbBytes != null) {
-                        localVideoContextStore.put(
-                            newMessageId,
-                            LocalVideoContext(
-                                thumbnailBytes = thumbBytes,
-                                localFilePath = videoFile.file.toString(),
+                // Store local video context for thumbnail preview during upload
+                files.filterIsInstance<AttachmentPendingFile.FileVideo>()
+                    .firstOrNull()?.let { videoFile ->
+                        val thumbBytes = videoFile.thumbnailBytes
+                        if (thumbBytes != null) {
+                            localVideoContextStore.put(
+                                newMessageId,
+                                LocalVideoContext(
+                                    thumbnailBytes = thumbBytes,
+                                    localFilePath = videoFile.file.toString(),
+                                )
                             )
-                        )
+                        }
                     }
-                }
 
-            pendingMessageId = newMessageId
+                pendingMessageId = newMessageId
 
-            try {
                 val bundle = MessageAttachmentBuilder.build(
                     attachments = attachments,
                     fileOperationsProvider = fileOperationsProvider,
@@ -2107,16 +2148,24 @@ class ConversationListViewModel(
                     previousMessageUniqueId = null,
                     payloadBundle = bundle,
                 )
+                messageInputTextState.clear()
+                _messagesUiState.update { it.copy(fullScreenOverlay = null) }
             } catch (e: Exception) {
-                Logger.e("Failed to send file(s)", e)
+                Logger.e(throwable = e, tag = TAG) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
                 _messagesUiState.update { state ->
-                    state.copy(uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap())
+                    val progress = if (newMessageId != null)
+                        (state.uploadProgress - newMessageId).toPersistentMap()
+                    else
+                        state.uploadProgress
+                    state.copy(uploadProgress = progress)
                 }
                 sendEvent(
                     ShowErrorMessage(
                         "Failed to send file(s): ${e.message}"
                     )
                 )
+            } finally {
+                _messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }
     }

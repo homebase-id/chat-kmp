@@ -12,6 +12,7 @@ plugins {
     alias(libs.plugins.androidLint) apply false
     alias(libs.plugins.googleServices) apply false
     alias(libs.plugins.firebaseCrashlytics) apply false
+    alias(libs.plugins.buildConfigPlugin) apply false
 }
 
 subprojects {

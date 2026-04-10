@@ -137,6 +137,8 @@ fun SentMessageBubble(
     onShowMore: (() -> Unit)? = null,
     uploadStatus: UploadStatus? = null,
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
+    searchQuery: String = "",
+    isCurrentSearchResult: Boolean = false,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -268,6 +270,8 @@ fun SentMessageBubble(
                     isPendingSend = message.isPendingSend,
                     uploadStatus = uploadStatus,
                     replyMessages = replyMessages,
+                    searchQuery = searchQuery,
+                    isCurrentSearchResult = isCurrentSearchResult,
                 )
                 message.reactionPreview?.let { reactionSummary ->
                     ReactionList(
@@ -357,6 +361,8 @@ fun ReceivedMessageBubble(
     replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
     onBlock: (() -> Unit)? = null,
     onReport: (() -> Unit)? = null,
+    searchQuery: String = "",
+    isCurrentSearchResult: Boolean = false,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -428,6 +434,8 @@ fun ReceivedMessageBubble(
                         downloadingFiles = downloadingFiles,
                         onShowMoreClick = onShowMore,
                         replyMessages = replyMessages,
+                        searchQuery = searchQuery,
+                        isCurrentSearchResult = isCurrentSearchResult,
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(

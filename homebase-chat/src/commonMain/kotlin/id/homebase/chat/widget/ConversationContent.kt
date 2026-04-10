@@ -4,14 +4,19 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,11 +38,14 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -72,6 +80,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -79,6 +88,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
@@ -94,7 +104,6 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.util.isDesktop
-import id.homebase.core.util.isNativeMobile
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
@@ -102,24 +111,26 @@ import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
+import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.core.widget.StyledSearchTextField
-import id.homebase.api.client.profile.PublicProfileProvider
-import org.koin.compose.koinInject
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_group_not_connected_disclaimer
-import id.homebase.resources.chat_message_block
-import id.homebase.resources.chat_message_block_confirm_body
-import id.homebase.resources.chat_message_block_confirm_title
 import id.homebase.resources.chat_group_rejoin_accept
 import id.homebase.resources.chat_group_rejoin_decline
 import id.homebase.resources.chat_group_rejoin_pending_description
 import id.homebase.resources.chat_group_you_left
 import id.homebase.resources.chat_group_you_were_removed
+import id.homebase.resources.chat_message_block
+import id.homebase.resources.chat_message_block_confirm_body
+import id.homebase.resources.chat_message_block_confirm_title
 import id.homebase.resources.chat_message_forward_to
+import id.homebase.resources.chat_message_search_no_results
+import id.homebase.resources.chat_message_search_result_count
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
+import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.connect
 import id.homebase.resources.contacts
@@ -144,6 +155,7 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import kotlin.time.Clock
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
@@ -152,6 +164,7 @@ fun ConversationContent(
     conversation: EnrichedConversationUiModel,
     uiState: MessageListUiState,
     textFieldState: RichTextState,
+    searchTextState: TextFieldState,
     recordingData: RecordingData?,
     listState: LazyListState,
     showBackButton: Boolean,
@@ -161,6 +174,7 @@ fun ConversationContent(
     animatedVisibilityScope: AnimatedVisibilityScope,
 ) {
     val focusRequester = remember { FocusRequester() }
+    val focusRequesterSearch = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     var showAttachmentSheet by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
@@ -171,6 +185,24 @@ fun ConversationContent(
     var wasKeyboardVisible by remember { mutableStateOf(isKeyboardVisible) }
     val coroutineScope = rememberCoroutineScope()
     var showScrollToBottom by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.isSearchActive) {
+        if (uiState.isSearchActive) {
+            focusRequesterSearch.requestFocus()
+        }
+    }
+
+    LaunchedEffect(uiState.currentSearchResultIndex, uiState.searchResultMessageIds) {
+        val focusedId = uiState.searchResultMessageIds.getOrNull(uiState.currentSearchResultIndex)
+            ?: return@LaunchedEffect
+        val idx = uiState.messages.indexOfFirst {
+            it is MessageListContentModel.Message && it.message.id == focusedId
+        }
+        if (idx >= 0) {
+            listState.animateScrollToItem(idx)
+        }
+    }
+
     LaunchedEffect(listState) {
         snapshotFlow {
             val totalItems = listState.layoutInfo.totalItemsCount
@@ -320,36 +352,72 @@ fun ConversationContent(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable(
-                            interactionSource = MutableInteractionSource(),
-                            indication = null
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        AnimatedVisibility(
+                            visible = !uiState.isSearchActive,
+                            enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
+                            exit = fadeOut(animationSpec = tween(150))
                         ) {
-                            onUiAction(
-                                ConversationListUiAction.ShowConversationSettings(
-                                    conversation.conversation
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable(
+                                    interactionSource = MutableInteractionSource(),
+                                    indication = null
+                                ) {
+                                    onUiAction(
+                                        ConversationListUiAction.ShowConversationSettings(
+                                            conversation.conversation
+                                        )
+                                    )
+                                }
+                            ) {
+                                ConversationAvatar(
+                                    modifier = Modifier.focusable(), // to avoid textfield focus
+                                    avatarModel = conversation.conversation.avatarModel,
+                                    options = AvatarOptions(size = 32.dp, fontSize = 12.sp)
                                 )
-                            )
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column {
+                                    Text(
+                                        text = if (conversation.conversation.isWithSelf) stringResource(
+                                            MR.string.chat_note_to_self
+                                        )
+                                        else conversation.getDisplayName(),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                         }
-                    ) {
-                        ConversationAvatar(
-                            modifier = Modifier.focusable(), // to avoid textfield focus
-                            avatarModel = conversation.conversation.avatarModel,
-                            options = AvatarOptions(size = 32.dp, fontSize = 12.sp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                text = if (conversation.conversation.isWithSelf) stringResource(MR.string.chat_note_to_self)
-                                else conversation.getDisplayName(),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
+                        AnimatedVisibility(
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxWidth()
+                                .padding(end = 16.dp),
+                            visible = uiState.isSearchActive,
+                            enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(
+                                animationSpec = tween(300), expandFrom = Alignment.End
+                            ),
+                            exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally(
+                                animationSpec = tween(250), shrinkTowards = Alignment.End
                             )
+                        ) {
+                            MinimalSearchTextField(
+                                textFieldState = searchTextState,
+                                modifier = Modifier.fillMaxWidth()
+                                    .focusRequester(focusRequesterSearch),
+                                placeHolderText = stringResource(
+                                    MR.string.chat_search_placeholder
+                                ),
+                                showBackButton = true,
+                                onBackButtonClick = {
+                                    onUiAction(
+                                        ConversationListUiAction.SearchMessagesBackClicked
+                                    )
+                                    searchTextState.clearText()
+                                })
                         }
                     }
                 }, navigationIcon = {
-                    if (showBackButton) {
+                    if (showBackButton && !uiState.isSearchActive) {
                         IconButton(onClick = onBackClick) {
                             Icon(
                                 imageVector = Icons.Default.ChevronLeft,
@@ -358,77 +426,87 @@ fun ConversationContent(
                         }
                     }
                 }, actions = {
-                    IconButton(onClick = { showConversationMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = stringResource(MR.string.chat_options)
-                        )
-                    }
-                    ConversationMenu(
-                        showMenu = showConversationMenu,
-                        dismissMenu = { showConversationMenu = false },
-                        isGroup = conversation.conversation.isGroupConversation,
-                        isArchived = conversation.conversation.conversationState == ConversationState.Archived,
-                        isPinned = conversation.conversation.isPinned,
-                        onConversationInfo = {
-                            showConversationMenu = false
-                            onUiAction(
-                                ConversationListUiAction.ShowConversationSettings(
-                                    conversation.conversation
-                                )
+                    if (!uiState.isSearchActive) {
+                        IconButton(onClick = { showConversationMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(MR.string.chat_options)
                             )
-                        },
-                        onDelete = {
-                            showConversationMenu = false
-                            onUiAction(
-                                ConversationListUiAction.DeleteConversation(
-                                    conversation.conversation.id
-                                )
-                            )
-                        },
-                        onTogglePin = {
-                            showConversationMenu = false
-                            onUiAction(
-                                ConversationListUiAction.TogglePinConversation(
-                                    conversation.conversation.id
-                                )
-                            )
-                        },
-                        onArchive = {
-                            showConversationMenu = false
-                            if (conversation.conversation.conversationState == ConversationState.Archived) {
+                        }
+                        ConversationMenu(
+                            showMenu = showConversationMenu,
+                            dismissMenu = { showConversationMenu = false },
+                            isGroup = conversation.conversation.isGroupConversation,
+                            isArchived = conversation.conversation.conversationState == ConversationState.Archived,
+                            isPinned = conversation.conversation.isPinned,
+                            onConversationInfo = {
+                                showConversationMenu = false
                                 onUiAction(
-                                    ConversationListUiAction.UnarchiveConversation(
+                                    ConversationListUiAction.ShowConversationSettings(
+                                        conversation.conversation
+                                    )
+                                )
+                            },
+                            onSearch = {
+                                showConversationMenu = false
+                                onUiAction(ConversationListUiAction.SearchMessagesClicked)
+                            },
+                            onDelete = {
+                                showConversationMenu = false
+                                onUiAction(
+                                    ConversationListUiAction.DeleteConversation(
                                         conversation.conversation.id
                                     )
                                 )
-                            } else {
-                                onUiAction(ConversationListUiAction.ArchiveConversation(conversation.conversation.id))
-                            }
-                        },
-                        onClear = {
-                            showConversationMenu = false
-                            onUiAction(
-                                ConversationListUiAction.ClearConversation(
-                                    conversation.conversation.id
-                                )
-                            )
-                        },
-                        onIntroduceEveryone = {
-                            showConversationMenu = false
-                            onUiAction(
-                                ConversationListUiAction.IntroduceEveryone(
-                                    conversation.conversation.id
-                                )
-                            )
-                        },
-                        onBlock = if (!conversation.conversation.isGroupConversation && !conversation.conversation.isWithSelf) {
-                            {
+                            },
+                            onTogglePin = {
                                 showConversationMenu = false
-                                showBlockConfirmDialog = true
-                            }
-                        } else null,
-                    )
+                                onUiAction(
+                                    ConversationListUiAction.TogglePinConversation(
+                                        conversation.conversation.id
+                                    )
+                                )
+                            },
+                            onArchive = {
+                                showConversationMenu = false
+                                if (conversation.conversation.conversationState == ConversationState.Archived) {
+                                    onUiAction(
+                                        ConversationListUiAction.UnarchiveConversation(
+                                            conversation.conversation.id
+                                        )
+                                    )
+                                } else {
+                                    onUiAction(
+                                        ConversationListUiAction.ArchiveConversation(
+                                            conversation.conversation.id
+                                        )
+                                    )
+                                }
+                            },
+                            onClear = {
+                                showConversationMenu = false
+                                onUiAction(
+                                    ConversationListUiAction.ClearConversation(
+                                        conversation.conversation.id
+                                    )
+                                )
+                            },
+                            onIntroduceEveryone = {
+                                showConversationMenu = false
+                                onUiAction(
+                                    ConversationListUiAction.IntroduceEveryone(
+                                        conversation.conversation.id
+                                    )
+                                )
+                            },
+                            onBlock = if (!conversation.conversation.isGroupConversation && !conversation.conversation.isWithSelf) {
+                                {
+                                    showConversationMenu = false
+                                    showBlockConfirmDialog = true
+                                }
+                            } else null,
+                        )
+                    }
                 }, colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                 )
@@ -521,6 +599,9 @@ fun ConversationContent(
                                 }
 
                                 is MessageListContentModel.Message -> {
+                                    val isFocused = uiState.searchResultMessageIds.getOrNull(
+                                        uiState.currentSearchResultIndex
+                                    ) == messageItem.message.id
                                     MessageItem(
                                         message = messageItem.message,
                                         userDefaultReactions = uiState.userDefaultReactions,
@@ -535,6 +616,8 @@ fun ConversationContent(
                                         downloadingFiles = uiState.downloadingFiles,
                                         uploadStatus = uiState.uploadProgress[messageItem.message.id],
                                         replyMessages = replyMessages,
+                                        searchQuery = uiState.searchQuery,
+                                        isCurrentSearchResult = isFocused,
                                     )
                                 }
                             }
@@ -577,6 +660,59 @@ fun ConversationContent(
 
                 } else {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
+            }
+
+            AnimatedVisibility(
+                visible = uiState.isSearchActive,
+                enter = fadeIn() + expandVertically(animationSpec = tween(200)),
+                exit = fadeOut() + shrinkVertically(animationSpec = tween(150)),
+            ) {
+                Surface(
+                    shadowElevation = 4.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val resultCount = uiState.searchResultMessageIds.size
+                        Text(
+                            text = if (uiState.searchQuery.isEmpty()) {
+                                ""
+                            } else if (resultCount == 0) {
+                                stringResource(MR.string.chat_message_search_no_results)
+                            } else {
+                                stringResource(
+                                    MR.string.chat_message_search_result_count,
+                                    resultCount - uiState.currentSearchResultIndex,
+                                    resultCount,
+                                )
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            onClick = { onUiAction(ConversationListUiAction.SearchMessagesNavigatePrevious) },
+                            enabled = uiState.currentSearchResultIndex > 0,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Previous result",
+                            )
+                        }
+                        IconButton(
+                            onClick = { onUiAction(ConversationListUiAction.SearchMessagesNavigateNext) },
+                            enabled = uiState.currentSearchResultIndex < uiState.searchResultMessageIds.size - 1,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Next result",
+                            )
+                        }
+                    }
                 }
             }
 
@@ -633,143 +769,145 @@ fun ConversationContent(
                             }
                         }
                     }
-                } else {
-                Column(modifier = Modifier.animateContentSize()
-                    .focusProperties { canFocus = inputFocusable }) {
-                    uiState.replyToMessage?.let { msg ->
-                        ReplyPreviewBar(
-                            message = msg, onDismiss = {
-                                onUiAction(ConversationListUiAction.CancelReplyToMessage)
-                            })
-                    }
-                    MessageInputBar(
-                        textFieldState = textFieldState,
-                        recordingData = recordingData,
-                        focusRequester = focusRequester,
-                        editExistingMode = uiState.isEditingMessageId != null,
-                        showingEmojiSheet = showEmojiSheet,
-                        onSendMessage = { text, linkPreview ->
-                            if (text.isNotBlank()) {
-                                if (uiState.isEditingMessageId != null) {
-                                    onUiAction(
-                                        ConversationListUiAction.EditMessageSave
-                                    )
+                } else if (!uiState.isSearchActive) {
+                    Column(
+                        modifier = Modifier.animateContentSize()
+                            .focusProperties { canFocus = inputFocusable }) {
+                        uiState.replyToMessage?.let { msg ->
+                            ReplyPreviewBar(
+                                message = msg, onDismiss = {
+                                    onUiAction(ConversationListUiAction.CancelReplyToMessage)
+                                })
+                        }
+                        MessageInputBar(
+                            textFieldState = textFieldState,
+                            recordingData = recordingData,
+                            focusRequester = focusRequester,
+                            editExistingMode = uiState.isEditingMessageId != null,
+                            showingEmojiSheet = showEmojiSheet,
+                            isSendingMessage = uiState.isSendingMessage,
+                            onSendMessage = { text, linkPreview ->
+                                if (text.isNotBlank()) {
+                                    if (uiState.isEditingMessageId != null) {
+                                        onUiAction(
+                                            ConversationListUiAction.EditMessageSave
+                                        )
+                                    } else {
+                                        onUiAction(
+                                            ConversationListUiAction.SendMessage(
+                                                conversationId = conversation.conversation.id,
+                                                linkPreview = linkPreview,
+                                            )
+                                        )
+                                    }
+                                }
+                            },
+                            onEmojiClick = {
+                                showAttachmentSheet = false
+                                if (showEmojiSheet && !isKeyboardVisible) {
+                                    showEmojiSheet = false
+                                    if (wasKeyboardVisible) {
+                                        focusRequester.requestFocus()
+                                        keyboardController?.show()
+                                    }
                                 } else {
+                                    if (isKeyboardVisible) {
+                                        wasKeyboardVisible = true
+                                        focusManager.clearFocus()
+                                        keyboardController?.hide()
+                                    } else {
+                                        wasKeyboardVisible = false
+                                    }
+                                    showEmojiSheet = true
+                                }
+                            },
+                            onKeyboardClick = {
+                                showEmojiSheet = false
+                                showAttachmentSheet = false
+                                focusRequester.requestFocus()
+                                keyboardController?.show()
+                            },
+                            onFocused = {
+                                showEmojiSheet = false
+                                showAttachmentSheet = false
+                            },
+                            onAddAttachmentClick = {
+                                showEmojiSheet = false
+                                if (showAttachmentSheet && !isKeyboardVisible) {
+                                    showAttachmentSheet = false
+                                    if (wasKeyboardVisible) {
+                                        focusRequester.requestFocus()
+                                        keyboardController?.show()
+                                    }
+                                } else {
+                                    if (isKeyboardVisible) {
+                                        wasKeyboardVisible = true
+                                        focusManager.clearFocus()
+                                        keyboardController?.hide()
+                                    } else {
+                                        wasKeyboardVisible = false
+                                    }
+                                    showAttachmentSheet = true
+                                }
+                            },
+                            onCameraClick = { cameraLauncher.launch() },
+                            onRecordingStarted = {
+                                onUiAction(
+                                    ConversationListUiAction.StartRecording(
+                                        conversation.conversation.id
+                                    )
+                                )
+                            },
+                            onRecordingStopped = { onUiAction(ConversationListUiAction.StopRecording) },
+                            onRecordingCancelled = { onUiAction(ConversationListUiAction.CancelRecording) },
+                            onRecordingHelp = { onUiAction(ConversationListUiAction.ShowRecordingHelp) },
+                            onPasteImage = { imageBytes ->
+                                onUiAction(
+                                    ConversationListUiAction.AttachClipboardImage(
+                                        conversationId = conversation.conversation.id,
+                                        imageBytes = imageBytes,
+                                    )
+                                )
+                            },
+                            onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) })
+
+                        EmojiSelectorSheet(
+                            modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
+                            visible = showEmojiSheet,
+                            onBackSpace = { textFieldState.programmaticBackspace() },
+                            onEmojiSelected = { textFieldState.addTextAfterSelection(it) })
+
+                        AttachmentOptionsDisplay(
+                            modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
+                            visible = showAttachmentSheet && !isKeyboardVisible,
+                        ) {
+                            AttachmentGallery(
+                                onImageSelected = {
+                                    showAttachmentSheet = false
                                     onUiAction(
-                                        ConversationListUiAction.SendMessage(
+                                        ConversationListUiAction.AttachGalleryItem(
                                             conversationId = conversation.conversation.id,
-                                            linkPreview = linkPreview,
+                                            files = listOf(it)
                                         )
                                     )
-                                }
-                            }
-                        },
-                        onEmojiClick = {
-                            showAttachmentSheet = false
-                            if (showEmojiSheet && !isKeyboardVisible) {
-                                showEmojiSheet = false
-                                if (wasKeyboardVisible) {
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                }
-                            } else {
-                                if (isKeyboardVisible) {
-                                    wasKeyboardVisible = true
-                                    focusManager.clearFocus()
-                                    keyboardController?.hide()
-                                } else {
-                                    wasKeyboardVisible = false
-                                }
-                                showEmojiSheet = true
-                            }
-                        },
-                        onKeyboardClick = {
-                            showEmojiSheet = false
-                            showAttachmentSheet = false
-                            focusRequester.requestFocus()
-                            keyboardController?.show()
-                        },
-                        onFocused = {
-                            showEmojiSheet = false
-                            showAttachmentSheet = false
-                        },
-                        onAddAttachmentClick = {
-                            showEmojiSheet = false
-                            if (showAttachmentSheet && !isKeyboardVisible) {
-                                showAttachmentSheet = false
-                                if (wasKeyboardVisible) {
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                }
-                            } else {
-                                if (isKeyboardVisible) {
-                                    wasKeyboardVisible = true
-                                    focusManager.clearFocus()
-                                    keyboardController?.hide()
-                                } else {
-                                    wasKeyboardVisible = false
-                                }
-                                showAttachmentSheet = true
-                            }
-                        },
-                        onCameraClick = { cameraLauncher.launch() },
-                        onRecordingStarted = {
-                            onUiAction(
-                                ConversationListUiAction.StartRecording(
-                                    conversation.conversation.id
-                                )
+                                    // Handle image selection
+                                },
                             )
-                        },
-                        onRecordingStopped = { onUiAction(ConversationListUiAction.StopRecording) },
-                        onRecordingCancelled = { onUiAction(ConversationListUiAction.CancelRecording) },
-                        onRecordingHelp = { onUiAction(ConversationListUiAction.ShowRecordingHelp) },
-                        onPasteImage = { imageBytes ->
-                            onUiAction(
-                                ConversationListUiAction.AttachClipboardImage(
-                                    conversationId = conversation.conversation.id,
-                                    imageBytes = imageBytes,
-                                )
-                            )
-                        },
-                        onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) })
-
-                    EmojiSelectorSheet(
-                        modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
-                        visible = showEmojiSheet,
-                        onBackSpace = { textFieldState.programmaticBackspace() },
-                        onEmojiSelected = { textFieldState.addTextAfterSelection(it) })
-
-                    AttachmentOptionsDisplay(
-                        modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
-                        visible = showAttachmentSheet && !isKeyboardVisible,
-                    ) {
-                        AttachmentGallery(
-                            onImageSelected = {
+                            AttachmentOptions(onGalleryClick = {
                                 showAttachmentSheet = false
-                                onUiAction(
-                                    ConversationListUiAction.AttachGalleryItem(
-                                        conversationId = conversation.conversation.id,
-                                        files = listOf(it)
-                                    )
-                                )
-                                // Handle image selection
-                            },
-                        )
-                        AttachmentOptions(onGalleryClick = {
-                            showAttachmentSheet = false
-                            galleryLauncher.launch()
-                        }, onFileClick = {
-                            showAttachmentSheet = false
-                            fileLauncher.launch()
-                        }, onContactClick = {
-                            showAttachmentSheet = false
-                            // Handle camera
-                        }, onLocationClick = {
-                            showAttachmentSheet = false
-                            // Handle location
-                        })
+                                galleryLauncher.launch()
+                            }, onFileClick = {
+                                showAttachmentSheet = false
+                                fileLauncher.launch()
+                            }, onContactClick = {
+                                showAttachmentSheet = false
+                                // Handle camera
+                            }, onLocationClick = {
+                                showAttachmentSheet = false
+                                // Handle location
+                            })
+                        }
                     }
-                }
                 } // else (not Left)
             }
         }
@@ -803,7 +941,8 @@ fun ConversationContentSheets(
                         LaunchedEffect(odinId) {
                             try {
                                 resolvedName = profileProvider.getPublicProfile(odinId).name
-                            } catch (_: Exception) {}
+                            } catch (_: Exception) {
+                            }
                         }
 
                         ContactItem(

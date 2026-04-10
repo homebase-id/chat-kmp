@@ -48,51 +48,11 @@ class ChatMessageSenderService(
     private val driveFileProvider: DriveFileProvider,
     private val shareSuggestionDonor: ShareSuggestionDonor = ShareSuggestionDonor(),
 ) {
-    private val chatDrive = chatTargetDrive.alias
-
-    suspend fun writePlaceholderMessage(
-        messageUniqueId: Uuid,
-        conversationId: Uuid,
-        messageText: String,
-        payloadDescriptors: List<PayloadDescriptor>?,
-        replyPreview: ReplyPreview? = null,
-    ) {
-        val keyHeader = KeyHeader.newRandom16()
-        val recipients = conversationStream.getRecipients(conversationId)
-        val isLocalOnly = recipients.isEmpty()
-
-        val messageData = MessageAppData(
-            replyId = null,
-            replyPreview = replyPreview,
-            message = JsonPrimitive(messageText),
-            deliveryStatus = ChatDeliveryStatus.Sent.value,
-        ).copy(version = ChatProtocol.MessageVersionNumberOne)
-
-        val content = OdinSystemSerializer.serialize(messageData)
-
-        val unencryptedMetadata = UploadFileMetadata(
-            allowDistribution = !isLocalOnly,
-            isEncrypted = true,
-            appData = UploadAppFileMetaData(
-                uniqueId = messageUniqueId,
-                groupId = conversationId,
-                fileType = ChatProtocol.MessageFileType,
-                dataType = 0,
-                userDate = UnixTimeUtc.now().milliseconds,
-                content = content,
-                previewThumbnail = null,
-            )
-        )
-
-        optimisticWriter.writeNewFile(
-            driveId = chatDrive,
-            keyHeader = keyHeader,
-            unecryptedMetadata = unencryptedMetadata,
-            originalRecipientCount = recipients.size,
-            fileSystemType = FileSystemType.Standard,
-            payloadDescriptors = payloadDescriptors,
-        )
+    companion object {
+        private const val TAG = "ChatMessageSenderService"
     }
+
+    private val chatDrive = chatTargetDrive.alias
 
     suspend fun sendNewMessage(
         messageUniqueId: Uuid,
@@ -184,6 +144,7 @@ class ChatMessageSenderService(
         isStatusMessage: Boolean = false,
         additionalRecipients: List<OdinId> = emptyList()
     ): SendMessageResult {
+        Logger.d(tag = TAG) { "sendMessageInternal: starting message=$messageUniqueId conversation=$conversationId" }
 
         val conversation =
             conversationStream.getConversationById(conversationId) ?: error("no conversation found")
@@ -199,6 +160,7 @@ class ChatMessageSenderService(
         val recipients = conversationStream.getRecipients(conversationId, additionalRecipients)
         val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
+        Logger.d(tag = TAG) { "sendMessageInternal: encrypting message=$messageUniqueId recipients=${recipients.size}" }
         val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
             messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
         )
@@ -237,26 +199,40 @@ class ChatMessageSenderService(
             payloads = encryptedBundle.payloads,
             thumbnails = encryptedBundle.thumbnails
         )
-        try {
+        // Outbox enqueue is the success gate — once accepted, the message
+        // will be delivered regardless of what happens after.
+        val enqueued = outboxSync.tryEnqueue(
+            request,
+            priority = 1,
+            dependencyUniqueId = previousMessageUniqueId,
+        )
 
-            // optimistic write first — message appears in UI before any network work
-            @OptIn(ExperimentalEncodingApi::class)
-            val payloadDescriptors = encryptedBundle.payloads.map { payload ->
-                PayloadDescriptor(
-                    key = payload.key,
-                    contentType = payload.contentType.ifEmpty { null },
-                    iv = payload.iv?.let { Base64.encode(it) },
-                    descriptorContent = payload.descriptorContent,
-                    previewThumbnail = payload.previewThumbnail?.let {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = it.content,
-                        )
-                    },
-                )
-            }.ifEmpty { null }
+        if (!enqueued) {
+            error("Failed to send chat message")
+        }
+        Logger.d(tag = TAG) { "sendMessageInternal: outbox enqueued message=$messageUniqueId" }
+
+        // Best-effort optimistic write — makes the message appear in the chat
+        // stream immediately. If it fails, the outbox delivery + sync will
+        // bring the message back.
+        @OptIn(ExperimentalEncodingApi::class)
+        val payloadDescriptors = encryptedBundle.payloads.map { payload ->
+            PayloadDescriptor(
+                key = payload.key,
+                contentType = payload.contentType.ifEmpty { null },
+                iv = payload.iv?.let { Base64.encode(it) },
+                descriptorContent = payload.descriptorContent,
+                previewThumbnail = payload.previewThumbnail?.let {
+                    ThumbnailDescriptor(
+                        pixelWidth = it.pixelWidth,
+                        pixelHeight = it.pixelHeight,
+                        contentType = it.contentType,
+                        content = it.content,
+                    )
+                },
+            )
+        }.ifEmpty { null }
+        try {
             optimisticWriter.writeNewFile(
                 driveId = chatDrive,
                 keyHeader = keyHeader,
@@ -265,43 +241,27 @@ class ChatMessageSenderService(
                 fileSystemType = FileSystemType.Standard,
                 payloadDescriptors = payloadDescriptors,
             )
-
-            val enqueued = outboxSync.tryEnqueue(
-                request,
-                priority = 1,
-                dependencyUniqueId = previousMessageUniqueId,
-            )
-
-            if (!enqueued) {
-                error("Failed to send chat message")
-            }
-
-            // Donate share suggestion so this conversation appears in OS share sheet
-            try {
-                val conversation = conversationStream.getConversationById(conversationId)
-                if (conversation != null) {
-                    shareSuggestionDonor.donateAfterSend(
-                        conversationId = conversationId,
-                        conversationName = conversation.getDisplayName(),
-                        isGroup = conversation.isGroupConversation,
-                        participantNames = recipients.map { it.domainName },
-                    )
-                }
-            } catch (_: Exception) {
-                // Non-critical — don't fail the send
-            }
-
-            return SendMessageResult(uniqueId = messageUniqueId)
-        } catch (t: Throwable) {
-            Logger.e("ChatMessageSenderService", t)
-            try {
-                optimisticWriter.removeOptimisticFile(chatDrive, messageUniqueId)
-            } catch (_: Exception) {
-                // best-effort rollback
-            }
+            Logger.d(tag = TAG) { "sendMessageInternal: optimistic write complete message=$messageUniqueId" }
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) { "sendMessageInternal: optimistic write failed (non-fatal) message=$messageUniqueId" }
         }
 
-        error("Failed to send chat message")
+        // Best-effort share suggestion
+        try {
+            val conversation = conversationStream.getConversationById(conversationId)
+            if (conversation != null) {
+                shareSuggestionDonor.donateAfterSend(
+                    conversationId = conversationId,
+                    conversationName = conversation.getDisplayName(),
+                    isGroup = conversation.isGroupConversation,
+                    participantNames = recipients.map { it.domainName },
+                )
+            }
+        } catch (_: Exception) {
+            // Non-critical
+        }
+
+        return SendMessageResult(uniqueId = messageUniqueId)
     }
 
     suspend fun updateMessage(
