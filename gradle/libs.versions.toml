@@ -61,6 +61,7 @@ firebase-crashlytics-plugin = "3.0.3"
 google-services = "4.4.4"
 sharetarget = "1.2.0"
 playPublisher = "4.0.0"
+buildconfig = "6.0.9"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
@@ -183,3 +184,4 @@ googleServices = { id = "com.google.gms.google-services", version.ref = "google-
 firebaseCrashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-plugin" }
 conveyorPlugin = { id = "dev.hydraulic.conveyor", version.ref = "conveyor" }
 playPublisherPlugin = { id = "com.github.triplet.play", version.ref = "playPublisher" }
+buildConfigPlugin = { id = "com.github.gmazzo.buildconfig", version.ref = "buildconfig" }

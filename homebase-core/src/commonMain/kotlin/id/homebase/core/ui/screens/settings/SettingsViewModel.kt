@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import chat_kmp.homebase_common.BuildConfig
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.LoggerConfig
@@ -23,7 +24,11 @@ class SettingsViewModel(
     platformInfo: PlatformInfo,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState(appVersion = platformInfo.versionName))
+    private val _uiState = MutableStateFlow(SettingsUiState(
+        appVersion = platformInfo.versionName,
+        appBuild = platformInfo.versionCode.toString(),
+        appBuildDate = BuildConfig.APP_BUILD_TIME,
+    ))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
