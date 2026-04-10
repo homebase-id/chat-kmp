@@ -30,7 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -78,6 +78,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -85,6 +86,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
@@ -523,11 +525,16 @@ fun ConversationContent(
             )
         },
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier.fillMaxSize().padding(innerPadding)
-                .consumeWindowInsets(innerPadding).imePadding()
-                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                .consumeWindowInsets(innerPadding)
+                .clipToBounds()
         ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+                    .offset { IntOffset(0, -imeInsets.getBottom(this)) }
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            ) {
             if (conversation.missingConnections.isNotEmpty()) {
                 Row(
                     modifier = Modifier.fillMaxWidth()
@@ -981,7 +988,8 @@ fun ConversationContent(
                     }
                 } // else (not Left)
             }
-        }
+            }
+        } // Box (clipToBounds)
     }
 }
 
