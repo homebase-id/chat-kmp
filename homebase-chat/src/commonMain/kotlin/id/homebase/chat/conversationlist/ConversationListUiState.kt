@@ -58,6 +58,7 @@ data class MessageListUiState(
     val downloadingFiles: Set<String> = emptySet(),
     val recordingData: RecordingData? = null,
     val uiSheet: MessageListUiSheet? = null,
+    val isSendingMessage: Boolean = false,
 )
 
 sealed interface MessageListUiSheet {
