@@ -360,7 +360,7 @@ fun FullScreenAttachmentEditor(
             onSendMessage = {
                 onSendMessage(
                     data.conversationId,
-                    textFieldState.toMarkdown(),
+                    textFieldState.toMarkdown().trimEnd(),
                     data.attachments
                 )
             }
