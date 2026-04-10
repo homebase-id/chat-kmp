@@ -14,12 +14,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.Brightness6
-import androidx.compose.material.icons.automirrored.outlined.HelpOutline
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,9 +62,9 @@ import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_delete_account
 import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
+import id.homebase.resources.settings_help
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_notifications
-import id.homebase.resources.settings_help
 import id.homebase.resources.settings_open_owner_console
 import org.jetbrains.compose.resources.stringResource
 
@@ -261,8 +261,17 @@ fun SettingsUi(
                     modifier = Modifier.size(72.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(uiState.appName)
-                Text("Version ${uiState.appVersion}")
+                Text(text = uiState.appName)
+                Text(text = "Version ${uiState.appVersion}")
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Build ${uiState.appBuild}",
+                    style = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)),
+                )
+                Text(
+                    text = uiState.appBuildDate,
+                    style = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)),
+                )
             }
         }
     }
@@ -273,7 +282,7 @@ fun SettingsUi(
 fun SettingsUiPreview() {
     HomebaseTheme {
         SettingsUi(
-            uiState = SettingsUiState(appVersion = "1.0.0"),
+            uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
             onAction = {},
             onBackClick = {},
             onNavigateToNotifications = {},

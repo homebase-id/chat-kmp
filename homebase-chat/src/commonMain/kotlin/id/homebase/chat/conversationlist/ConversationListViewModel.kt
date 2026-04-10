@@ -37,10 +37,10 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
-import id.homebase.chat.services.LocalVideoContext
-import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.LocalVideoContext
+import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
@@ -144,6 +144,8 @@ class ConversationListViewModel(
     val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
 
     val conversationSearchTextState = TextFieldState()
+
+    val messagesSearchTextState = TextFieldState()
     val messageInputTextState = RichTextState().applyDefaultStyling()
     private var currentConversationJob: Job? = null
     private var pendingMessageId: Uuid? = null
@@ -200,6 +202,14 @@ class ConversationListViewModel(
                         || uiState.value.conversationsContent is ConversationListContentState.EmptySearch) {
                         updateListContent()
                     }
+                }
+        }
+
+        // Listen for message search query changes
+        viewModelScope.launch {
+            snapshotFlow { messagesSearchTextState.text.toString() }.debounce(200)
+                .collectLatest { query ->
+                    updateMessageSearchResults(query)
                 }
         }
 
@@ -343,6 +353,40 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SearchBackClicked -> {
                 _uiState.update { it.copy(isSearchActive = false) }
+            }
+
+            is ConversationListUiAction.SearchMessagesClicked -> {
+                _messagesUiState.update { it.copy(isSearchActive = true) }
+            }
+
+            is ConversationListUiAction.SearchMessagesBackClicked -> {
+                _messagesUiState.update {
+                    it.copy(
+                        isSearchActive = false,
+                        searchQuery = "",
+                        searchResultMessageIds = emptyList(),
+                        currentSearchResultIndex = -1,
+                    )
+                }
+            }
+
+            is ConversationListUiAction.SearchMessagesNavigateNext -> {
+                val state = _messagesUiState.value
+                val size = state.searchResultMessageIds.size
+                if (size > 0 && state.currentSearchResultIndex < size - 1) {
+                    _messagesUiState.update {
+                        it.copy(currentSearchResultIndex = it.currentSearchResultIndex + 1)
+                    }
+                }
+            }
+
+            is ConversationListUiAction.SearchMessagesNavigatePrevious -> {
+                val state = _messagesUiState.value
+                if (state.currentSearchResultIndex > 0) {
+                    _messagesUiState.update {
+                        it.copy(currentSearchResultIndex = it.currentSearchResultIndex - 1)
+                    }
+                }
             }
 
             is ConversationListUiAction.NewConversationClicked -> {
@@ -1565,6 +1609,33 @@ class ConversationListViewModel(
                 "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
             conversationService.introduceEveryone(conversationId, defaultMessage)
             sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+        }
+    }
+
+    private fun updateMessageSearchResults(query: String) {
+        val messages = _messagesUiState.value.messages
+        if (query.isBlank()) {
+            _messagesUiState.update {
+                it.copy(
+                    searchQuery = "",
+                    searchResultMessageIds = emptyList(),
+                    currentSearchResultIndex = -1,
+                )
+            }
+            return
+        }
+        val lowerQuery = query.lowercase()
+        val matchingIds = messages
+            .filterIsInstance<MessageListContentModel.Message>()
+            .filter { it.message.content.lowercase().contains(lowerQuery) }
+            .map { it.message.id }
+        val startIndex = if (matchingIds.isNotEmpty()) matchingIds.size - 1 else -1
+        _messagesUiState.update {
+            it.copy(
+                searchQuery = query,
+                searchResultMessageIds = matchingIds,
+                currentSearchResultIndex = startIndex,
+            )
         }
     }
 

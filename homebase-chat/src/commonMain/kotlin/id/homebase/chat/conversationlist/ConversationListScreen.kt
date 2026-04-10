@@ -247,6 +247,7 @@ fun ConversationListScreen(
         messagesUiState = messagesUiState,
         conversationSearchTextFieldState = viewModel.conversationSearchTextState,
         messageInputTextFieldState = viewModel.messageInputTextState,
+        messagesSearchTextState = viewModel.messagesSearchTextState,
         onUiAction = viewModel::onAction,
         onNavigateToSettingsScreen = onNavigateToSettingsScreen,
         onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
@@ -261,6 +262,7 @@ fun ConversationListUi(
     messagesUiState: MessageListUiState,
     conversationSearchTextFieldState: TextFieldState,
     messageInputTextFieldState: RichTextState,
+    messagesSearchTextState: TextFieldState,
     onUiAction: (ConversationListUiAction) -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
@@ -390,6 +392,7 @@ fun ConversationListUi(
                                 conversation = conversation,
                                 uiState = messagesUiState,
                                 textFieldState = messageInputTextFieldState,
+                                searchTextState = messagesSearchTextState,
                                 showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
                                 onBackClick = {
                                     onUiAction(ConversationListUiAction.ClearSelection)
@@ -445,6 +448,7 @@ fun ConversationListUiPreview() {
             uiState = ConversationListUiState(),
             messagesUiState = MessageListUiState(),
             conversationSearchTextFieldState = TextFieldState(),
+            messagesSearchTextState = TextFieldState(),
             messageInputTextFieldState = RichTextState(),
             onUiAction = {},
             onNavigateToSettingsScreen = {},

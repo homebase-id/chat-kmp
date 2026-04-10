@@ -3,10 +3,10 @@ package id.homebase.chat.conversationlist
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
+import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
@@ -51,6 +51,10 @@ data class MessageListUiState(
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
+    val isSearchActive: Boolean = false,
+    val searchQuery: String = "",
+    val searchResultMessageIds: List<Uuid> = emptyList(),
+    val currentSearchResultIndex: Int = -1,
     val isEditingMessageId: Uuid? = null,
     val isEditingVersionTag: Uuid? = null,
     val ownerSession: OwnerSession? = null,
