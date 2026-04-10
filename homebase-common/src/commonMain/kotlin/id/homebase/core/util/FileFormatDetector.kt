@@ -87,7 +87,7 @@ object FileFormatDetector {
             b.size >= 4 && b[0] == 0x00.toByte() && b[1] == 0x61.toByte() &&
                     b[2] == 0x73.toByte() && b[3] == 0x6D.toByte() -> "application/wasm"
 
-            // Text: check if all bytes are printable UTF-8 / whitespace
+            // Text: check if all bytes are printable ASCII or common whitespace
             isLikelyText(b) -> "text/plain"
 
             else -> null

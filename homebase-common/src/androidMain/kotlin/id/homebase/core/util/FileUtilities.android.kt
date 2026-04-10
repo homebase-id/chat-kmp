@@ -96,83 +96,97 @@ actual fun getUriHandler(): FileSystemHandler {
                 onSuccess: (String) -> Unit,
                 onError: (Throwable) -> Unit,
             ) {
-                try {
-                    val sourceFile = File(file.toString())
-                    val mimeType = detectContentTypeFromExtensionOrHint(suggestedName)
+                val safeName = suggestedName
+                    .replace('/', '_')
+                    .replace('\\', '_')
+                    .replace('\u0000', '_')
 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        // API 29+ — use MediaStore (no permission needed)
-                        val (collection, directory) = when {
-                            mimeType.startsWith("image/") ->
-                                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to
-                                        Environment.DIRECTORY_PICTURES
+                Thread {
+                    try {
+                        val sourceFile = File(file.toString())
+                        val mimeType = detectContentTypeFromExtensionOrHint(safeName)
 
-                            mimeType.startsWith("video/") ->
-                                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to
-                                        Environment.DIRECTORY_MOVIES
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            // API 29+ — use MediaStore (no permission needed)
+                            val (collection, directory) = when {
+                                mimeType.startsWith("image/") ->
+                                    MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to
+                                            Environment.DIRECTORY_PICTURES
 
-                            else ->
-                                MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to
-                                        Environment.DIRECTORY_DOWNLOADS
+                                mimeType.startsWith("video/") ->
+                                    MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to
+                                            Environment.DIRECTORY_MOVIES
+
+                                else ->
+                                    MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) to
+                                            Environment.DIRECTORY_DOWNLOADS
+                            }
+
+                            val values = ContentValues().apply {
+                                put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
+                                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                                put(MediaStore.MediaColumns.RELATIVE_PATH, directory)
+                                put(MediaStore.MediaColumns.IS_PENDING, 1)
+                            }
+
+                            val resolver = context.contentResolver
+                            val uri = resolver.insert(collection, values)
+                                ?: throw Exception("Failed to create MediaStore entry")
+
+                            try {
+                                resolver.openOutputStream(uri)?.use { outputStream ->
+                                    sourceFile.inputStream().use { it.copyTo(outputStream) }
+                                } ?: throw Exception("Failed to open output stream")
+
+                                values.clear()
+                                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                                resolver.update(uri, values, null, null)
+                            } catch (e: Exception) {
+                                // Clean up orphaned MediaStore entry on failure
+                                resolver.delete(uri, null, null)
+                                throw e
+                            }
+
+                            onSuccess(directory)
+                        } else {
+                            // API 27-28 — legacy external storage
+                            val hasPermission = ContextCompat.checkSelfPermission(
+                                context,
+                                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                            if (!hasPermission) {
+                                // Fall back to share sheet if no write permission
+                                shareFile(file, onError)
+                                return@Thread
+                            }
+
+                            val directory = when {
+                                mimeType.startsWith("image/") -> Environment.DIRECTORY_PICTURES
+                                mimeType.startsWith("video/") -> Environment.DIRECTORY_MOVIES
+                                else -> Environment.DIRECTORY_DOWNLOADS
+                            }
+
+                            @Suppress("DEPRECATION")
+                            val destDir = Environment.getExternalStoragePublicDirectory(directory)
+                            destDir.mkdirs()
+                            val destFile = File(destDir, safeName)
+                            sourceFile.copyTo(destFile, overwrite = true)
+
+                            MediaScannerConnection.scanFile(
+                                context,
+                                arrayOf(destFile.absolutePath),
+                                arrayOf(mimeType),
+                                null,
+                            )
+
+                            onSuccess(directory)
                         }
-
-                        val values = ContentValues().apply {
-                            put(MediaStore.MediaColumns.DISPLAY_NAME, suggestedName)
-                            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                            put(MediaStore.MediaColumns.RELATIVE_PATH, directory)
-                            put(MediaStore.MediaColumns.IS_PENDING, 1)
-                        }
-
-                        val resolver = context.contentResolver
-                        val uri = resolver.insert(collection, values)
-                            ?: throw Exception("Failed to create MediaStore entry")
-
-                        resolver.openOutputStream(uri)?.use { outputStream ->
-                            sourceFile.inputStream().use { it.copyTo(outputStream) }
-                        } ?: throw Exception("Failed to open output stream")
-
-                        values.clear()
-                        values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                        resolver.update(uri, values, null, null)
-
-                        onSuccess(directory)
-                    } else {
-                        // API 27-28 — legacy external storage
-                        val hasPermission = ContextCompat.checkSelfPermission(
-                            context,
-                            android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-
-                        if (!hasPermission) {
-                            onError(Exception("Storage permission required to save files"))
-                            return
-                        }
-
-                        val directory = when {
-                            mimeType.startsWith("image/") -> Environment.DIRECTORY_PICTURES
-                            mimeType.startsWith("video/") -> Environment.DIRECTORY_MOVIES
-                            else -> Environment.DIRECTORY_DOWNLOADS
-                        }
-
-                        @Suppress("DEPRECATION")
-                        val destDir = Environment.getExternalStoragePublicDirectory(directory)
-                        destDir.mkdirs()
-                        val destFile = File(destDir, suggestedName)
-                        sourceFile.copyTo(destFile, overwrite = true)
-
-                        MediaScannerConnection.scanFile(
-                            context,
-                            arrayOf(destFile.absolutePath),
-                            arrayOf(mimeType),
-                            null,
-                        )
-
-                        onSuccess(directory)
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = TAG) { "Failed to save file: ${e.message}" }
+                        onError(e)
                     }
-                } catch (e: Exception) {
-                    Logger.e(throwable = e, tag = TAG) { "Failed to save file: ${e.message}" }
-                    onError(e)
-                }
+                }.start()
             }
 
             override fun shareText(text: String, onError: (Throwable) -> Unit) {

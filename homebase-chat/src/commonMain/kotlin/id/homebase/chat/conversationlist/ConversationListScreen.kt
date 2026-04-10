@@ -162,7 +162,9 @@ fun ConversationListScreen(
                     },
                     onError = { error ->
                         scope.launch {
-                            snackbarHostState.showSnackbar("Failed to save: ${error.message}")
+                            snackbarHostState.showSnackbar(
+                                "Failed to save: ${error.message ?: "Unknown error"}"
+                            )
                         }
                     },
                 )

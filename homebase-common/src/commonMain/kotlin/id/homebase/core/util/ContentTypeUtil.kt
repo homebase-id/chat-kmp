@@ -10,9 +10,10 @@ fun extensionForMimeType(mimeType: String): String? = commonMimeToExt[mimeType]
 
 /**
  * Resolves the best content type for a file using a three-tier strategy:
- * 1. Extension-based lookup from the filename
- * 2. Magic byte detection from the file header (only first 16 bytes)
- * 3. Falls back to "application/octet-stream"
+ * 1. Platform-provided MIME type (if specific, i.e. not octet-stream)
+ * 2. Extension-based lookup from the filename
+ * 3. Magic byte detection from the file header (only first 16 bytes)
+ * Falls back to "application/octet-stream" if all tiers fail.
  *
  * [platformMimeType] is the optional result from PlatformFile.mimeType().
  * [headerBytes] should be the first 16 bytes of the file (pass null to skip magic byte detection).
@@ -66,7 +67,7 @@ private val commonExtToMime: Map<String, String> = mapOf(
     "3gp" to "video/3gpp",
     "flv" to "video/x-flv",
     "wmv" to "video/x-ms-wmv",
-    "ts" to "text/typescript",
+    // "ts" intentionally omitted — ambiguous between TypeScript and MPEG transport stream
 
     // Audio
     "mp3" to "audio/mpeg",

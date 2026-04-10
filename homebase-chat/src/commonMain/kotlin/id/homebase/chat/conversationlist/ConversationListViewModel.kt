@@ -1914,12 +1914,17 @@ class ConversationListViewModel(
         fallbackKey: String,
         contentType: String?,
     ): Pair<String, String> {
-        if (originalName != null && originalName.contains('.')) {
-            return originalName.substringBeforeLast('.') to originalName.substringAfterLast('.')
+        val safeName = originalName
+            ?.replace('/', '_')
+            ?.replace('\\', '_')
+            ?.replace('\u0000', '_')
+        if (safeName != null && safeName.contains('.')) {
+            return safeName.substringBeforeLast('.') to safeName.substringAfterLast('.')
         }
-        val name = originalName ?: fallbackKey
+        val name = safeName ?: fallbackKey
         val ext = contentType?.let { extensionForMimeType(it) }
-            ?: contentType?.substringAfter("/")?.takeIf { it != "octet-stream" }
+            ?: contentType?.substringAfter("/")
+                ?.takeIf { it != "octet-stream" && !it.contains('.') && !it.contains('+') }
             ?: "bin"
         return name to ext
     }

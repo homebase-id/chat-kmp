@@ -104,6 +104,10 @@ actual fun getUriHandler(): FileSystemHandler {
             } else {
                 // Save other files to Documents directory
                 try {
+                    val safeName = suggestedName
+                        .replace('/', '_')
+                        .replace('\\', '_')
+                        .replace('\u0000', '_')
                     val fileManager = NSFileManager.defaultManager
                     val paths = NSSearchPathForDirectoriesInDomains(
                         NSDocumentDirectory,
@@ -112,7 +116,7 @@ actual fun getUriHandler(): FileSystemHandler {
                     )
                     val documentsDir = paths.firstOrNull() as? String
                         ?: throw Exception("Could not find Documents directory")
-                    val destPath = "$documentsDir/$suggestedName"
+                    val destPath = "$documentsDir/$safeName"
 
                     // Remove existing file if present
                     if (fileManager.fileExistsAtPath(destPath)) {
@@ -123,7 +127,7 @@ actual fun getUriHandler(): FileSystemHandler {
                     if (!fileManager.copyItemAtPath(file.toString(), destPath, null)) {
                         throw Exception("Failed to copy file to $destPath")
                     }
-                    onSuccess("Files")
+                    onSuccess("Documents")
                 } catch (e: Exception) {
                     onError(e)
                 }
