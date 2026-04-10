@@ -75,7 +75,12 @@ actual fun getUriHandler(): FileSystemHandler {
             // No-op on desktop - share not supported
         }
 
-        override fun saveFile(file: Path, suggestedName: String, onError: (Throwable) -> Unit) {
+        override fun saveFile(
+            file: Path,
+            suggestedName: String,
+            onSuccess: (String) -> Unit,
+            onError: (Throwable) -> Unit,
+        ) {
             try {
                 var chosenDir: String? = null
                 var chosenName: String? = null
@@ -99,6 +104,7 @@ actual fun getUriHandler(): FileSystemHandler {
                 val name = chosenName ?: return
                 val dest = java.io.File(dir, name)
                 java.io.File(file.toString()).copyTo(dest, overwrite = true)
+                onSuccess(dest.absolutePath)
                 if (Desktop.isDesktopSupported()) {
                     val desktop = Desktop.getDesktop()
                     if (desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {

@@ -154,7 +154,18 @@ fun ConversationListScreen(
 
             is ConversationListUiEvent.SaveFileToDevice -> {
                 viewModel.eventConsumed()
-                fileSystemHandler.saveFile(Path(event.filePath), event.suggestedName)
+                fileSystemHandler.saveFile(
+                    file = Path(event.filePath),
+                    suggestedName = event.suggestedName,
+                    onSuccess = { location ->
+                        scope.launch { snackbarHostState.showSnackbar("Saved to $location") }
+                    },
+                    onError = { error ->
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Failed to save: ${error.message}")
+                        }
+                    },
+                )
             }
 
             is ConversationListUiEvent.OpenUrl -> {

@@ -66,6 +66,8 @@ import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.buildConnectToIdentityUrl
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.core.util.extensionForMimeType
+import id.homebase.core.util.resolveContentType
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_message_audio_recording_help
@@ -580,14 +582,13 @@ class ConversationListViewModel(
                             )
                         )
 
-                        val fileName = payload.filename() ?: payload.key
-                        var extension = payload.contentType?.substringAfter("/") ?: "bin"
-                        extension = when (extension) {
-                            "jpeg" -> "jpg"
-                            else -> extension
-                        }
+                        val originalName = payload.filename()
+                        val (baseName, extension) = resolveFileNameAndExtension(
+                            originalName, payload.key, payload.contentType
+                        )
+                        val fullName = "$baseName.$extension"
                         val filePath =
-                            "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
+                            "${fileOperationsProvider.getCacheDirectory()}/$fullName"
 
                         val success = withContext(Dispatchers.IO) {
                             driveFileProvider.streamPayloadDecryptedToPath(
@@ -601,7 +602,7 @@ class ConversationListViewModel(
                         }
 
                         if (success) {
-                            sendEvent(SaveFileToDevice(filePath, "$fileName.$extension"))
+                            sendEvent(SaveFileToDevice(filePath, fullName))
                         } else {
                             sendEvent(ShowErrorMessage("Could not download file"))
                         }
@@ -625,14 +626,13 @@ class ConversationListViewModel(
 
                 viewModelScope.launch {
                     try {
-                        val fileName = action.payload.filename() ?: action.payloadKey
-                        var extension = action.payload.contentType?.substringAfter("/") ?: "bin"
-                        extension = when (extension) {
-                            "jpeg" -> "jpg"
-                            else -> extension
-                        }
+                        val originalName = action.payload.filename()
+                        val (baseName, extension) = resolveFileNameAndExtension(
+                            originalName, action.payloadKey, action.payload.contentType
+                        )
+                        val fullName = "$baseName.$extension"
                         val filePath =
-                            "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
+                            "${fileOperationsProvider.getCacheDirectory()}/$fullName"
 
                         val success = withContext(Dispatchers.IO) {
                             driveFileProvider.streamPayloadDecryptedToPath(
@@ -646,7 +646,7 @@ class ConversationListViewModel(
                         }
 
                         if (success) {
-                            sendEvent(SaveFileToDevice(filePath, "$fileName.$extension"))
+                            sendEvent(SaveFileToDevice(filePath, fullName))
                         } else {
                             sendEvent(ShowErrorMessage("Could not download file"))
                         }
@@ -1905,6 +1905,25 @@ class ConversationListViewModel(
         }
     }
 
+    /**
+     * Resolves a safe (baseName, extension) pair for saving a downloaded file.
+     * Prefers the original filename's extension over contentType-derived extension.
+     */
+    private fun resolveFileNameAndExtension(
+        originalName: String?,
+        fallbackKey: String,
+        contentType: String?,
+    ): Pair<String, String> {
+        if (originalName != null && originalName.contains('.')) {
+            return originalName.substringBeforeLast('.') to originalName.substringAfterLast('.')
+        }
+        val name = originalName ?: fallbackKey
+        val ext = contentType?.let { extensionForMimeType(it) }
+            ?: contentType?.substringAfter("/")?.takeIf { it != "octet-stream" }
+            ?: "bin"
+        return name to ext
+    }
+
     private fun addMessageWithFiles(
         conversationId: Uuid,
         content: String,
@@ -1915,11 +1934,16 @@ class ConversationListViewModel(
             files.forEach { attachment ->
                 when (attachment) {
                     is AttachmentPendingFile.File -> {
+                        val filePath = attachment.file.toString()
+                        val headerBytes = fileOperationsProvider.readFileHeaderBytes(filePath, 16)
                         attachments.add(
                             AttachmentInput(
-                                filePath = attachment.file.toString(),
-                                contentType = attachment.file.mimeType()?.toString()
-                                    ?: detectContentTypeFromExtensionOrHint(attachment.file.name),
+                                filePath = filePath,
+                                contentType = resolveContentType(
+                                    fileName = attachment.file.name,
+                                    platformMimeType = attachment.file.mimeType()?.toString(),
+                                    headerBytes = headerBytes,
+                                ),
                                 displayName = attachment.file.name,
                             )
                         )
@@ -1927,7 +1951,10 @@ class ConversationListViewModel(
 
                     is AttachmentPendingFile.FileImage -> {
                         var filePath = attachment.file.toString()
-                        var contentType = detectContentTypeFromExtensionOrHint(attachment.file.name)
+                        var contentType = resolveContentType(
+                            fileName = attachment.file.name,
+                            platformMimeType = attachment.file.mimeType()?.toString(),
+                        )
                         if (contentType == "image/heic" || contentType == "image/heif") {
                             val heicBytes = fileOperationsProvider.readFileBytes(filePath)
                             val jpegBytes = convertHeicToJpeg(heicBytes)
@@ -1953,8 +1980,10 @@ class ConversationListViewModel(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.file.toString(),
-                                contentType = attachment.file.mimeType()?.toString()
-                                    ?: detectContentTypeFromExtensionOrHint(attachment.file.name),
+                                contentType = resolveContentType(
+                                    fileName = attachment.file.name,
+                                    platformMimeType = attachment.file.mimeType()?.toString(),
+                                ),
                                 displayName = attachment.file.name,
                             )
                         )
@@ -1962,8 +1991,9 @@ class ConversationListViewModel(
 
                     is AttachmentPendingFile.Gallery -> {
                         var filePath = attachment.image.file.toString()
-                        var contentType =
-                            detectContentTypeFromExtensionOrHint(attachment.image.fileName)
+                        var contentType = resolveContentType(
+                            fileName = attachment.image.fileName,
+                        )
                         if (contentType == "image/heic" || contentType == "image/heif") {
                             val heicBytes = fileOperationsProvider.readFileBytes(filePath)
                             val jpegBytes = convertHeicToJpeg(heicBytes)
@@ -1989,8 +2019,10 @@ class ConversationListViewModel(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.audioFile.toString(),
-                                contentType = attachment.audioFile.mimeType()?.toString()
-                                    ?: detectContentTypeFromExtensionOrHint(attachment.audioFile.name),
+                                contentType = resolveContentType(
+                                    fileName = attachment.audioFile.name,
+                                    platformMimeType = attachment.audioFile.mimeType()?.toString(),
+                                ),
                                 displayName = attachment.audioFile.name,
                                 waveformFile = attachment.waveformFile?.toString(),
                                 audioLengthSeconds = attachment.lengthSeconds,

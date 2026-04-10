@@ -52,6 +52,16 @@ class JvmFileOperationsProvider : FileOperationsProvider {
             file.absolutePath
         }
 
+    override fun readFileHeaderBytes(path: String, count: Int): ByteArray {
+        val file = File(path)
+        if (!file.exists()) return ByteArray(0)
+        return file.inputStream().use { input ->
+            val buf = ByteArray(count)
+            val read = input.read(buf, 0, count)
+            if (read <= 0) ByteArray(0) else buf.copyOf(read)
+        }
+    }
+
     override suspend fun writeStream(
         path: String,
         data: Flow<ByteArray>
