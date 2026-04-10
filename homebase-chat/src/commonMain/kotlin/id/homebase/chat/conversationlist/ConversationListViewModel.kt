@@ -377,7 +377,7 @@ class ConversationListViewModel(
                 val hasMessage = !messageInputTextState.annotatedString.isBlank()
                 if (hasMessage) {
                     _messagesUiState.update { it.copy(isSendingMessage = true) }
-                    val content = messageInputTextState.toMarkdown()
+                    val content = messageInputTextState.toMarkdown().trimEnd()
                     val replyTo = _messagesUiState.value.replyToMessage
                     if (replyTo != null) {
                         replyToMessage(
@@ -459,7 +459,7 @@ class ConversationListViewModel(
                     editMessage(
                         messageId = messageId,
                         versionTag = _messagesUiState.value.isEditingVersionTag ?: Uuid.NIL,
-                        content = messageInputTextState.toMarkdown(),
+                        content = messageInputTextState.toMarkdown().trimEnd(),
                     )
                 }
             }
@@ -865,7 +865,7 @@ class ConversationListViewModel(
 
                 addMessageWithFiles(
                     conversationId = action.conversationId,
-                    content = action.message,
+                    content = action.message.trimEnd(),
                     files = action.attachments,
                 )
                 // Input is cleared inside addMessageWithFiles after
