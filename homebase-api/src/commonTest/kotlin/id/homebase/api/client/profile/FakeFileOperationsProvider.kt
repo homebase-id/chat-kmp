@@ -12,5 +12,4 @@ class FakeFileOperationsProvider : FileOperationsProvider {
     override fun getFileSize(path: String): Long = 0L
     override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = throw UnsupportedOperationException()
     override suspend fun writeStream(path: String, data: Flow<ByteArray>) = throw UnsupportedOperationException()
-    override fun readFileHeaderBytes(path: String, count: Int): ByteArray = ByteArray(0)
 }

@@ -24,12 +24,6 @@ interface FileOperationsProvider {
     )
 
     /**
-     * Reads the first [count] bytes from the file at [path].
-     * Used for lightweight file format detection via magic bytes.
-     */
-    fun readFileHeaderBytes(path: String, count: Int): ByteArray
-
-    /**
      * Resolves a path that may be a content URI (Android) to a real filesystem path
      * by copying it to a temp file. On platforms without content URIs, returns [path] unchanged.
      */

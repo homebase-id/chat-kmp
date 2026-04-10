@@ -1938,15 +1938,12 @@ class ConversationListViewModel(
             files.forEach { attachment ->
                 when (attachment) {
                     is AttachmentPendingFile.File -> {
-                        val filePath = attachment.file.toString()
-                        val headerBytes = fileOperationsProvider.readFileHeaderBytes(filePath, 16)
                         attachments.add(
                             AttachmentInput(
-                                filePath = filePath,
+                                filePath = attachment.file.toString(),
                                 contentType = resolveContentType(
                                     fileName = attachment.file.name,
                                     platformMimeType = attachment.file.mimeType()?.toString(),
-                                    headerBytes = headerBytes,
                                 ),
                                 displayName = attachment.file.name,
                             )

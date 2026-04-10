@@ -9,19 +9,16 @@ fun detectContentTypeFromExtensionOrHint(nameOrPath: String?): String {
 fun extensionForMimeType(mimeType: String): String? = commonMimeToExt[mimeType]
 
 /**
- * Resolves the best content type for a file using a three-tier strategy:
+ * Resolves the best content type for a file:
  * 1. Platform-provided MIME type (if specific, i.e. not octet-stream)
- * 2. Extension-based lookup from the filename
- * 3. Magic byte detection from the file header (only first 16 bytes)
- * Falls back to "application/octet-stream" if all tiers fail.
+ * 2. Extension-based lookup from the filename (140+ extensions)
+ * Falls back to "application/octet-stream" if both fail.
  *
  * [platformMimeType] is the optional result from PlatformFile.mimeType().
- * [headerBytes] should be the first 16 bytes of the file (pass null to skip magic byte detection).
  */
 fun resolveContentType(
     fileName: String?,
     platformMimeType: String? = null,
-    headerBytes: ByteArray? = null,
 ): String {
     // 1. Trust platform MIME type if it's specific
     if (platformMimeType != null && platformMimeType != "application/octet-stream") {
@@ -29,16 +26,7 @@ fun resolveContentType(
     }
 
     // 2. Extension-based lookup
-    val fromExt = detectContentTypeFromExtensionOrHint(fileName)
-    if (fromExt != "application/octet-stream") return fromExt
-
-    // 3. Magic byte detection
-    if (headerBytes != null && headerBytes.isNotEmpty()) {
-        val fromMagic = FileFormatDetector.detectFromHeader(headerBytes)
-        if (fromMagic != null) return fromMagic
-    }
-
-    return "application/octet-stream"
+    return detectContentTypeFromExtensionOrHint(fileName)
 }
 
 private val commonExtToMime: Map<String, String> = mapOf(

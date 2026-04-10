@@ -153,19 +153,6 @@ class IOSFileOperationsProvider : FileOperationsProvider {
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-    override fun readFileHeaderBytes(path: String, count: Int): ByteArray {
-        val fileManager = NSFileManager.defaultManager
-        if (!fileManager.fileExistsAtPath(path)) return ByteArray(0)
-        // Only read header bytes — acceptable for small count values (e.g. 16)
-        val data = NSData.dataWithContentsOfFile(path) ?: return ByteArray(0)
-        val readCount = minOf(count, data.length.toInt())
-        if (readCount == 0) return ByteArray(0)
-        val bytes = ByteArray(readCount)
-        bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, readCount.toULong()) }
-        return bytes
-    }
-
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun resolveToFilePath(path: String): String {
         if (!path.startsWith("ph://") && !path.contains("/L0/")) return path
         val bytes = readPhotoLibraryAsset(path)
