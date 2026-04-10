@@ -300,9 +300,14 @@ class NotificationService(
                 if (isAppInForeground) {
                     // Show in-app banner instead of system notification
                     _inAppNotificationEvents.tryEmit(richData)
-                } else {
+                } else if (Platform.osName == "Android") {
+                    // Android: display rich notification from app code (no service extension)
                     if (shouldAlert) lastAlertMark = TimeSource.Monotonic.markNow()
                     showRichNotification(richData)
+                    BadgeManager.increment()
+                } else {
+                    // iOS: Notification Service Extension handles background display;
+                    // posting here would create a duplicate notification.
                     BadgeManager.increment()
                 }
             } catch (e: Exception) {
