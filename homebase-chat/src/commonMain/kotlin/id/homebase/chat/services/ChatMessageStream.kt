@@ -112,6 +112,9 @@ class ChatMessageStream(
             .map { ChatMessagesData.Messages(it[conversationId].orEmpty()) }
             .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ChatMessagesData.Initializing)
 
+    fun hasCachedMessages(conversationId: Uuid): Boolean =
+        conversationState.messages.value.containsKey(conversationId)
+
     // Full message load from local DB for a single conversation.
     // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
