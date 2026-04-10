@@ -1675,8 +1675,13 @@ class ConversationListViewModel(
         messageIdForScroll: Uuid?,
         scrollToBottom: Boolean = false
     ) {
-        _messagesUiState.update { it.copy(scrollPosition = null, isLoadingMessages = true) }
+        val hasCachedMessages =
+            conversationId == _uiState.value.selectedConversationId &&
+                    chatMessageStream.hasCachedMessages(conversationId)
 
+        _messagesUiState.update {
+            it.copy(scrollPosition = null, isLoadingMessages = !hasCachedMessages)
+        }
 
         // When loading message for newly selected conversation, cancel any previous job to
         // avoid observing multiple messageStreams
@@ -1686,7 +1691,9 @@ class ConversationListViewModel(
                 var messageIdForScrollNullable = messageIdForScroll
                 var setInitialScroll = true
 
-                chatMessageStream.loadConversation(conversationId)
+                if (!hasCachedMessages) {
+                    chatMessageStream.loadConversation(conversationId)
+                }
                 chatMessageStream.observeMessages(conversationId).collect { messageState ->
                     when (messageState) {
                         is ChatMessagesData.Initializing -> {
