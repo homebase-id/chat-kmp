@@ -865,7 +865,7 @@ class ConversationListViewModel(
 
                 addMessageWithFiles(
                     conversationId = action.conversationId,
-                    content = action.message,
+                    content = action.message.trimEnd(),
                     files = action.attachments,
                 )
                 // Input is cleared inside addMessageWithFiles after
