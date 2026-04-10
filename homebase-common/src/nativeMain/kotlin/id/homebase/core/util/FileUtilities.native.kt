@@ -3,7 +3,16 @@ package id.homebase.core.util
 import androidx.compose.runtime.Composable
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.io.files.Path
+import platform.Foundation.NSDocumentDirectory
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
+import platform.Foundation.NSUserDomainMask
+import platform.Photos.PHAccessLevelAddOnly
+import platform.Photos.PHAssetChangeRequest
+import platform.Photos.PHAuthorizationStatusAuthorized
+import platform.Photos.PHAuthorizationStatusLimited
+import platform.Photos.PHPhotoLibrary
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 
@@ -64,6 +73,89 @@ actual fun getUriHandler(): FileSystemHandler {
             } catch (e: Exception) {
                 onError(e)
             }
+        }
+
+        @OptIn(ExperimentalForeignApi::class)
+        override fun saveFile(
+            file: Path,
+            suggestedName: String,
+            onSuccess: (String) -> Unit,
+            onError: (Throwable) -> Unit,
+        ) {
+            val fileUrl = NSURL.fileURLWithPath(file.toString())
+            val extension = suggestedName.substringAfterLast('.', "").lowercase()
+            val isImage = extension in setOf("jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "bmp", "tiff")
+            val isVideo = extension in setOf("mp4", "mov", "m4v", "avi", "mkv", "webm", "3gp")
+
+            if (isImage || isVideo) {
+                // Save to Photos library (add-only access)
+                val status = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelAddOnly)
+                if (status != PHAuthorizationStatusAuthorized && status != PHAuthorizationStatusLimited) {
+                    PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelAddOnly) { newStatus ->
+                        if (newStatus == PHAuthorizationStatusAuthorized || newStatus == PHAuthorizationStatusLimited) {
+                            saveToPhotoLibrary(fileUrl, isVideo, onSuccess, onError)
+                        } else {
+                            onError(Exception("Photo library access denied. Please enable in Settings."))
+                        }
+                    }
+                } else {
+                    saveToPhotoLibrary(fileUrl, isVideo, onSuccess, onError)
+                }
+            } else {
+                // Save other files to Documents directory
+                try {
+                    val safeName = suggestedName
+                        .replace('/', '_')
+                        .replace('\\', '_')
+                        .replace('\u0000', '_')
+                    val fileManager = NSFileManager.defaultManager
+                    val paths = NSSearchPathForDirectoriesInDomains(
+                        NSDocumentDirectory,
+                        NSUserDomainMask,
+                        true,
+                    )
+                    val documentsDir = paths.firstOrNull() as? String
+                        ?: throw Exception("Could not find Documents directory")
+                    val destPath = "$documentsDir/$safeName"
+
+                    // Remove existing file if present
+                    if (fileManager.fileExistsAtPath(destPath)) {
+                        if (!fileManager.removeItemAtPath(destPath, null)) {
+                            throw Exception("Failed to remove existing file at $destPath")
+                        }
+                    }
+                    if (!fileManager.copyItemAtPath(file.toString(), destPath, null)) {
+                        throw Exception("Failed to copy file to $destPath")
+                    }
+                    onSuccess("Documents")
+                } catch (e: Exception) {
+                    onError(e)
+                }
+            }
+        }
+
+        private fun saveToPhotoLibrary(
+            fileUrl: NSURL,
+            isVideo: Boolean,
+            onSuccess: (String) -> Unit,
+            onError: (Throwable) -> Unit,
+        ) {
+            PHPhotoLibrary.sharedPhotoLibrary().performChanges(
+                changeBlock = {
+                    if (isVideo) {
+                        PHAssetChangeRequest.creationRequestForAssetFromVideoAtFileURL(fileUrl)
+                    } else {
+                        PHAssetChangeRequest.creationRequestForAssetFromImageAtFileURL(fileUrl)
+                    }
+                },
+                completionHandler = { success, error ->
+                    if (success) {
+                        onSuccess("Photos")
+                    } else {
+                        onError(Exception(error?.localizedDescription ?: "Failed to save to Photos"))
+                    }
+                },
+            )
         }
 
         override fun shareText(text: String, onError: (Throwable) -> Unit) {

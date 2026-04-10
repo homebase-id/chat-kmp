@@ -66,6 +66,8 @@ import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.buildConnectToIdentityUrl
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
+import id.homebase.core.util.extensionForMimeType
+import id.homebase.core.util.resolveContentType
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_message_audio_recording_help
@@ -629,14 +631,11 @@ class ConversationListViewModel(
                             )
                         )
 
-                        val fileName = payload.filename() ?: payload.key
-                        var extension = payload.contentType?.substringAfter("/") ?: "bin"
-                        extension = when (extension) {
-                            "jpeg" -> "jpg"
-                            else -> extension
-                        }
+                        val fullName = resolveDownloadFileName(
+                            payload.filename(), payload.key, payload.contentType
+                        )
                         val filePath =
-                            "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
+                            "${fileOperationsProvider.getCacheDirectory()}/$fullName"
 
                         val success = withContext(Dispatchers.IO) {
                             driveFileProvider.streamPayloadDecryptedToPath(
@@ -650,7 +649,7 @@ class ConversationListViewModel(
                         }
 
                         if (success) {
-                            sendEvent(SaveFileToDevice(filePath, "$fileName.$extension"))
+                            sendEvent(SaveFileToDevice(filePath, fullName))
                         } else {
                             sendEvent(ShowErrorMessage("Could not download file"))
                         }
@@ -674,14 +673,11 @@ class ConversationListViewModel(
 
                 viewModelScope.launch {
                     try {
-                        val fileName = action.payload.filename() ?: action.payloadKey
-                        var extension = action.payload.contentType?.substringAfter("/") ?: "bin"
-                        extension = when (extension) {
-                            "jpeg" -> "jpg"
-                            else -> extension
-                        }
+                        val fullName = resolveDownloadFileName(
+                            action.payload.filename(), action.payloadKey, action.payload.contentType
+                        )
                         val filePath =
-                            "${fileOperationsProvider.getCacheDirectory()}/$fileName.$extension"
+                            "${fileOperationsProvider.getCacheDirectory()}/$fullName"
 
                         val success = withContext(Dispatchers.IO) {
                             driveFileProvider.streamPayloadDecryptedToPath(
@@ -695,7 +691,7 @@ class ConversationListViewModel(
                         }
 
                         if (success) {
-                            sendEvent(SaveFileToDevice(filePath, "$fileName.$extension"))
+                            sendEvent(SaveFileToDevice(filePath, fullName))
                         } else {
                             sendEvent(ShowErrorMessage("Could not download file"))
                         }
@@ -1985,129 +1981,165 @@ class ConversationListViewModel(
         }
     }
 
+    /**
+     * Returns a safe filename for saving a downloaded file.
+     * If the original filename (from descriptorContent) has an extension, uses it as-is.
+     * Only derives an extension from contentType when there's no original filename or no extension.
+     */
+    private fun resolveDownloadFileName(
+        originalName: String?,
+        fallbackKey: String,
+        contentType: String?,
+    ): String {
+        val safeName = originalName
+            ?.replace('/', '_')
+            ?.replace('\\', '_')
+            ?.replace('\u0000', '_')
+
+        // If the original filename has an extension, trust it completely
+        if (safeName != null && safeName.contains('.')) return safeName
+
+        // No extension in name — derive one from contentType
+        val name = safeName ?: fallbackKey
+        val ext = contentType?.let { extensionForMimeType(it) }
+            ?: contentType?.substringAfter("/")
+                ?.takeIf { it != "octet-stream" && !it.contains('.') && !it.contains('+') }
+            ?: "bin"
+        return "$name.$ext"
+    }
+
     private fun addMessageWithFiles(
         conversationId: Uuid,
         content: String,
         files: List<AttachmentPendingFile>
     ) {
         viewModelScope.launch {
-            var newMessageId: Uuid? = null
+            val attachments = mutableListOf<AttachmentInput>()
+            files.forEach { attachment ->
+                when (attachment) {
+                    is AttachmentPendingFile.File -> {
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = attachment.file.toString(),
+                                contentType = resolveContentType(
+                                    fileName = attachment.file.name,
+                                    platformMimeType = attachment.file.mimeType()?.toString(),
+                                ),
+                                displayName = attachment.file.name,
+                            )
+                        )
+                    }
+
+                    is AttachmentPendingFile.FileImage -> {
+                        var filePath = attachment.file.toString()
+                        var contentType = resolveContentType(
+                            fileName = attachment.file.name,
+                            platformMimeType = attachment.file.mimeType()?.toString(),
+                        )
+                        if (contentType == "image/heic" || contentType == "image/heif") {
+                            val heicBytes = fileOperationsProvider.readFileBytes(filePath)
+                            val jpegBytes = convertHeicToJpeg(heicBytes)
+                            if (jpegBytes != null) {
+                                filePath = fileOperationsProvider.writeBytesToTempFile(
+                                    jpegBytes,
+                                    "heic_converted_",
+                                    ".jpg"
+                                )
+                                contentType = "image/jpeg"
+                            }
+                        }
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = filePath,
+                                contentType = contentType,
+                                displayName = attachment.file.name,
+                            )
+                        )
+                    }
+
+                    is AttachmentPendingFile.FileVideo -> {
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = attachment.file.toString(),
+                                contentType = resolveContentType(
+                                    fileName = attachment.file.name,
+                                    platformMimeType = attachment.file.mimeType()?.toString(),
+                                ),
+                                displayName = attachment.file.name,
+                            )
+                        )
+                    }
+
+                    is AttachmentPendingFile.Gallery -> {
+                        var filePath = attachment.image.file.toString()
+                        var contentType = resolveContentType(
+                            fileName = attachment.image.fileName,
+                        )
+                        if (contentType == "image/heic" || contentType == "image/heif") {
+                            val heicBytes = fileOperationsProvider.readFileBytes(filePath)
+                            val jpegBytes = convertHeicToJpeg(heicBytes)
+                            if (jpegBytes != null) {
+                                filePath = fileOperationsProvider.writeBytesToTempFile(
+                                    jpegBytes,
+                                    "heic_converted_",
+                                    ".jpg"
+                                )
+                                contentType = "image/jpeg"
+                            }
+                        }
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = filePath,
+                                contentType = contentType,
+                                displayName = attachment.image.fileName,
+                            )
+                        )
+                    }
+
+                    is AttachmentPendingFile.Audio -> {
+                        attachments.add(
+                            AttachmentInput(
+                                filePath = attachment.audioFile.toString(),
+                                contentType = resolveContentType(
+                                    fileName = attachment.audioFile.name,
+                                    platformMimeType = attachment.audioFile.mimeType()?.toString(),
+                                ),
+                                displayName = attachment.audioFile.name,
+                                waveformFile = attachment.waveformFile?.toString(),
+                                audioLengthSeconds = attachment.lengthSeconds,
+                            )
+                        )
+                    }
+                }
+            }
+
+            val newMessageId = Uuid.random()
+            Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
+
+            _messagesUiState.update { state ->
+                state.copy(
+                    uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
+                )
+            }
+
+            // Store local video context for thumbnail preview during upload
+            files.filterIsInstance<AttachmentPendingFile.FileVideo>()
+                .firstOrNull()?.let { videoFile ->
+                    val thumbBytes = videoFile.thumbnailBytes
+                    if (thumbBytes != null) {
+                        localVideoContextStore.put(
+                            newMessageId,
+                            LocalVideoContext(
+                                thumbnailBytes = thumbBytes,
+                                localFilePath = videoFile.file.toString(),
+                            )
+                        )
+                    }
+                }
+
+            pendingMessageId = newMessageId
+
             try {
-                val attachments = mutableListOf<AttachmentInput>()
-                for (attachment in files) {
-                    when (attachment) {
-                        is AttachmentPendingFile.File -> {
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = attachment.file.toString(),
-                                    contentType = attachment.file.mimeType()?.toString()
-                                        ?: detectContentTypeFromExtensionOrHint(attachment.file.name),
-                                    displayName = attachment.file.name,
-                                )
-                            )
-                        }
-
-                        is AttachmentPendingFile.FileImage -> {
-                            var filePath = attachment.file.toString()
-                            var contentType = detectContentTypeFromExtensionOrHint(attachment.file.name)
-                            if (contentType == "image/heic" || contentType == "image/heif") {
-                                val heicBytes = fileOperationsProvider.readFileBytes(filePath)
-                                val jpegBytes = convertHeicToJpeg(heicBytes)
-                                if (jpegBytes != null) {
-                                    filePath = fileOperationsProvider.writeBytesToTempFile(
-                                        jpegBytes,
-                                        "heic_converted_",
-                                        ".jpg"
-                                    )
-                                    contentType = "image/jpeg"
-                                }
-                            }
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = filePath,
-                                    contentType = contentType,
-                                    displayName = attachment.file.name,
-                                )
-                            )
-                        }
-
-                        is AttachmentPendingFile.FileVideo -> {
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = attachment.file.toString(),
-                                    contentType = attachment.file.mimeType()?.toString()
-                                        ?: detectContentTypeFromExtensionOrHint(attachment.file.name),
-                                    displayName = attachment.file.name,
-                                )
-                            )
-                        }
-
-                        is AttachmentPendingFile.Gallery -> {
-                            var filePath = attachment.image.file.toString()
-                            var contentType =
-                                detectContentTypeFromExtensionOrHint(attachment.image.fileName)
-                            if (contentType == "image/heic" || contentType == "image/heif") {
-                                val heicBytes = fileOperationsProvider.readFileBytes(filePath)
-                                val jpegBytes = convertHeicToJpeg(heicBytes)
-                                if (jpegBytes != null) {
-                                    filePath = fileOperationsProvider.writeBytesToTempFile(
-                                        jpegBytes,
-                                        "heic_converted_",
-                                        ".jpg"
-                                    )
-                                    contentType = "image/jpeg"
-                                }
-                            }
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = filePath,
-                                    contentType = contentType,
-                                    displayName = attachment.image.fileName,
-                                )
-                            )
-                        }
-
-                        is AttachmentPendingFile.Audio -> {
-                            attachments.add(
-                                AttachmentInput(
-                                    filePath = attachment.audioFile.toString(),
-                                    contentType = attachment.audioFile.mimeType()?.toString()
-                                        ?: detectContentTypeFromExtensionOrHint(attachment.audioFile.name),
-                                    displayName = attachment.audioFile.name,
-                                    waveformFile = attachment.waveformFile?.toString(),
-                                    audioLengthSeconds = attachment.lengthSeconds,
-                                )
-                            )
-                        }
-                    }
-                }
-
-                newMessageId = Uuid.random()
-                Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
-
-                _messagesUiState.update { state ->
-                    state.copy(
-                        uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
-                    )
-                }
-
-                // Store local video context for thumbnail preview during upload
-                files.filterIsInstance<AttachmentPendingFile.FileVideo>()
-                    .firstOrNull()?.let { videoFile ->
-                        val thumbBytes = videoFile.thumbnailBytes
-                        if (thumbBytes != null) {
-                            localVideoContextStore.put(
-                                newMessageId,
-                                LocalVideoContext(
-                                    thumbnailBytes = thumbBytes,
-                                    localFilePath = videoFile.file.toString(),
-                                )
-                            )
-                        }
-                    }
-
-                pendingMessageId = newMessageId
-
                 val bundle = MessageAttachmentBuilder.build(
                     attachments = attachments,
                     fileOperationsProvider = fileOperationsProvider,
@@ -2127,11 +2159,9 @@ class ConversationListViewModel(
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
                 _messagesUiState.update { state ->
-                    val progress = if (newMessageId != null)
-                        (state.uploadProgress - newMessageId).toPersistentMap()
-                    else
-                        state.uploadProgress
-                    state.copy(uploadProgress = progress)
+                    state.copy(
+                        uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap()
+                    )
                 }
                 sendEvent(
                     ShowErrorMessage(

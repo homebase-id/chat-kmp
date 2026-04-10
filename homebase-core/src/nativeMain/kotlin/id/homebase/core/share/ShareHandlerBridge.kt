@@ -20,8 +20,8 @@ object ShareHandlerBridge {
     /** Called from Swift when the app opens via homebase-share:// URL scheme. */
     fun handleIncomingShare(conversationId: String) {
         Logger.i(tag = "ShareHandlerBridge") { "Incoming share for conversation: $conversationId" }
-        handler?.invoke(conversationId)
-            ?: Logger.w("ShareHandlerBridge") { "No handler registered for share intent" }
+        this.handler?.invoke(conversationId)
+            ?: Logger.w(tag = "ShareHandlerBridge") { "No handler registered for share intent" }
     }
 
     /** Clear handler when AppViewModel is cleared. */
