@@ -53,21 +53,27 @@ class DriveFileProviderCached(
     @Volatile private var notFoundCache: Set<String> = emptySet()
     private val notFoundCacheMutex = Mutex()
 
-    private val payloadDiskKache by lazy {
-        kotlinx.coroutines.runBlocking {
-            FileKache(
+    private var _payloadDiskKache: FileKache? = null
+    private var _thumbDiskKache: FileKache? = null
+    private val kacheMutex = Mutex()
+
+    private suspend fun payloadDiskKache(): FileKache {
+        _payloadDiskKache?.let { return it }
+        return kacheMutex.withLock {
+            _payloadDiskKache ?: FileKache(
                     directory = "$directory/homebase-payloads",
                     maxSize = 200L * 1024L * 1024L // 200MB
-            )
+            ).also { _payloadDiskKache = it }
         }
     }
 
-    private val thumbDiskKache by lazy {
-        kotlinx.coroutines.runBlocking {
-            FileKache(
+    private suspend fun thumbDiskKache(): FileKache {
+        _thumbDiskKache?.let { return it }
+        return kacheMutex.withLock {
+            _thumbDiskKache ?: FileKache(
                     directory = "$directory/homebase-thumbs",
                     maxSize = 300L * 1024L * 1024L // 300MB
-            )
+            ).also { _thumbDiskKache = it }
         }
     }
 
@@ -91,7 +97,7 @@ class DriveFileProviderCached(
         }
 
         // 2️⃣ Peek in disk cache and return result if it's there
-        payloadDiskKache.get(cacheKey)?.let { filePath ->
+        payloadDiskKache().get(cacheKey)?.let { filePath ->
             val (result, elapsed) = measureTimedValue { readBytesResponse(filePath) }
             Logger.d(tag = "VideoIO") { "payload cache-hit: read ${result.bytes.size} bytes in $elapsed" }
             return result
@@ -107,7 +113,7 @@ class DriveFileProviderCached(
             if (cacheKey in notFoundCache) {
                 return@withLock ByteApiResponse.EMPTY_404
             }
-            payloadDiskKache.get(cacheKey)?.let { filePath ->
+            payloadDiskKache().get(cacheKey)?.let { filePath ->
                 val (result, elapsed) = measureTimedValue { readBytesResponse(filePath) }
                 Logger.d(tag = "VideoIO") { "payload cache-hit (post-lock): read ${result.bytes.size} bytes in $elapsed" }
                 return@withLock result
@@ -129,7 +135,7 @@ class DriveFileProviderCached(
                     } else {
                         // 3️⃣ Store to disk
                         val (_, cacheWriteElapsed) = measureTimedValue {
-                            payloadDiskKache.put(cacheKey) { filePath ->
+                            payloadDiskKache().put(cacheKey) { filePath ->
                                 writeBytesResponse(filePath, result)
                             }
                         }
@@ -212,7 +218,7 @@ class DriveFileProviderCached(
             fileOps: FileOperationsProvider
     ): Boolean {
         val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
-        val cachedFilePath = payloadDiskKache.get(cacheKey)
+        val cachedFilePath = payloadDiskKache().get(cacheKey)
                 ?: return delegate.streamPayloadDecryptedToPath(driveId, fileId, key, keyHeader, outputPath, fileOps)
 
         val encryptedFlow = channelFlow<ByteArray> {
@@ -258,7 +264,7 @@ class DriveFileProviderCached(
         }
 
         // 2️⃣ Peek in disk cache and return result if it's there
-        thumbDiskKache.get(cacheKey)?.let { filePath ->
+        thumbDiskKache().get(cacheKey)?.let { filePath ->
             return readBytesResponse(filePath)
         }
 
@@ -272,7 +278,7 @@ class DriveFileProviderCached(
             if (cacheKey in notFoundCache) {
                 return@withLock ByteApiResponse.EMPTY_404
             }
-            thumbDiskKache.get(cacheKey)?.let { filePath ->
+            thumbDiskKache().get(cacheKey)?.let { filePath ->
                 return@withLock readBytesResponse(filePath)
             }
 
@@ -297,7 +303,7 @@ class DriveFileProviderCached(
                         // 3️⃣ Store to disk; only allow one writer per GPT indicating
                         // many writers can corrupt the journal file
                         thumbnailKacheWriteMutex.withLock {
-                            thumbDiskKache.put(cacheKey) { filePath ->
+                            thumbDiskKache().put(cacheKey) { filePath ->
                                 writeBytesResponse(filePath, result)
                             }
                         }
@@ -417,14 +423,20 @@ class DriveFileProviderCached(
         val preloadDir = "$directory/hbvid_preload".toPath()
 
         try {
-            payloadDiskKache.clear()
-            thumbDiskKache.clear()
+            _payloadDiskKache?.clear()
+            _thumbDiskKache?.clear()
         } catch (e: Exception) {
             Logger.w("Kache.clear() failed, falling back to manual delete", e)
-
-            fileSystem.delete(payloadDir, mustExist = false)
-            fileSystem.delete(thumbDir, mustExist = false)
+            try {
+                fileSystem.delete(payloadDir, mustExist = false)
+                fileSystem.delete(thumbDir, mustExist = false)
+            } catch (deleteEx: Exception) {
+                Logger.w("Manual cache delete also failed", deleteEx)
+            }
         }
+
+        _payloadDiskKache = null
+        _thumbDiskKache = null
 
         try {
             fileSystem.deleteRecursively(preloadDir)
