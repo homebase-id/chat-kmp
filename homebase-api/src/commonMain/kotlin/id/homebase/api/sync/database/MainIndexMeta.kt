@@ -133,7 +133,11 @@ object MainIndexMetaHelpers {
         fun convertDriveMainIndexRecordToFileHeader(
             driveMainIndex: DriveMainIndex
         ): HomebaseFile {
-            return OdinSystemSerializer.deserialize<HomebaseFile>(driveMainIndex.jsonHeader)
+            try {
+                return OdinSystemSerializer.deserialize<HomebaseFile>(driveMainIndex.jsonHeader)
+            } catch (e: Exception) {
+                throw IllegalStateException("Corrupt DB row: fileId=${driveMainIndex.fileId}, json=${driveMainIndex.jsonHeader.take(200)}", e)
+            }
         }
 
         /**

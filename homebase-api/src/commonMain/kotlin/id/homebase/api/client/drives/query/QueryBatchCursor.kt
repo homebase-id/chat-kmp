@@ -20,7 +20,11 @@ data class TimeRowCursor(
 
     companion object {
         fun fromJson(jsonString: String): TimeRowCursor {
-            return Json.decodeFromString(jsonString)
+            try {
+                return Json.decodeFromString(jsonString)
+            } catch (e: Exception) {
+                throw IllegalArgumentException("Invalid TimeRowCursor JSON: ${jsonString.take(100)}", e)
+            }
         }
     }
 }
@@ -36,12 +40,6 @@ data class QueryBatchCursor(
     val stop: TimeRowCursor? = null,
     val next: TimeRowCursor? = null
 ) {
-    constructor(jsonString: String) : this() {
-        val decoded = Json.decodeFromString<QueryBatchCursor>(jsonString)
-        // Note: In Kotlin, we can't reassign val properties after construction
-        // The decoded object would need to be used directly or this pattern refactored
-    }
-
     fun clone(): QueryBatchCursor {
         return QueryBatchCursor(
             paging = paging?.copy(),
@@ -65,7 +63,11 @@ data class QueryBatchCursor(
         }
 
         fun fromJson(jsonString: String): QueryBatchCursor {
-            return Json.decodeFromString(jsonString)
+            try {
+                return Json.decodeFromString(jsonString)
+            } catch (e: Exception) {
+                throw IllegalArgumentException("Invalid QueryBatchCursor JSON: ${jsonString.take(100)}", e)
+            }
         }
     }
 }

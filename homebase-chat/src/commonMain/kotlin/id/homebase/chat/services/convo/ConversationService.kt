@@ -863,9 +863,13 @@ class ConversationService(
         if (adminFile != null) {
             val content = adminFile.fileMetadata.appData.content
             if (!content.isNullOrEmpty()) {
-                val adminInfo = OdinSystemSerializer.deserialize<ConversationAdminInfo>(content)
-                if (!adminInfo.admins.isNullOrEmpty()) {
-                    return adminInfo.admins.toSet()
+                try {
+                    val adminInfo = OdinSystemSerializer.deserialize<ConversationAdminInfo>(content)
+                    if (!adminInfo.admins.isNullOrEmpty()) {
+                        return adminInfo.admins.toSet()
+                    }
+                } catch (e: Exception) {
+                    Logger.e(e) { "Failed to deserialize admin info for conversation=$conversationId: ${content.take(200)}" }
                 }
             }
         }

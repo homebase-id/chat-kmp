@@ -111,7 +111,12 @@ class DriveContactService(
         }
 
         val content = appData.content ?: ""
-        val parsedContact = OdinSystemSerializer.deserialize<ContactServerFile>(content)
+        val parsedContact = try {
+            OdinSystemSerializer.deserialize<ContactServerFile>(content)
+        } catch (e: Exception) {
+            Logger.e(e) { "Failed to deserialize contact content for uid=$uid: ${content.take(200)}" }
+            return null
+        }
 
         return ContactUiModel(
             id = uid,

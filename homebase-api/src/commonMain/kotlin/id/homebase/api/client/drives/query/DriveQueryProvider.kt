@@ -77,7 +77,11 @@ class DriveQueryProvider(
 
     private suspend fun createServerFileWithSafeMetadata(serverFileJson: JsonObject, secret: SecureByteArray): HomebaseFile {
         // First deserialize ServerFile with FileMetadata as JsonObject
-        val serverFileWithRawMetadata = OdinSystemSerializer.json.decodeFromString<ServerFileWithRawMetadata>(serverFileJson.toString())
+        val serverFileWithRawMetadata = try {
+            OdinSystemSerializer.json.decodeFromString<ServerFileWithRawMetadata>(serverFileJson.toString())
+        } catch (e: Throwable) {
+            throw IllegalStateException("Failed to deserialize ServerFileWithRawMetadata: ${serverFileJson.toString().take(200)}", e)
+        }
         
         // Try to deserialize FileMetadata separately, fallback to bad metadata if it fails
         val fileMetadata = try {

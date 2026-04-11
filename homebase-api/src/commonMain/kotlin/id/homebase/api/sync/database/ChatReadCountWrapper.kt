@@ -41,7 +41,14 @@ class ChatReadCountWrapper(
      */
     fun selectAllConversations(): List<HomebaseFile> {
         val list = delegate.selectAllCoversations().executeAsList()
-        return list.map { OdinSystemSerializer.deserialize<HomebaseFile>(it) }
+        return list.mapNotNull {
+            try {
+                OdinSystemSerializer.deserialize<HomebaseFile>(it)
+            } catch (e: Exception) {
+                logger.e(e) { "Skipping corrupt conversation row: ${it.take(200)}" }
+                null
+            }
+        }
     }
 
     private val logger = Logger.withTag("ConversationQueries")
