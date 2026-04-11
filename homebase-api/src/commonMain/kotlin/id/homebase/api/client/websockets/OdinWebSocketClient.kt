@@ -215,8 +215,13 @@ class OdinWebSocketClient(
             val text = frame.readText()
 
             val decryptedJson = decryptData(text)
-            val notification = OdinSystemSerializer
+            val notification: ClientNotificationPayload? = OdinSystemSerializer
                 .deserialize<ClientNotificationPayload>(decryptedJson)
+
+            if (notification == null) {
+                Logger.e { "Received null WebSocket notification payload, ignoring" }
+                return
+            }
 
             handleNotification(notification)
 
