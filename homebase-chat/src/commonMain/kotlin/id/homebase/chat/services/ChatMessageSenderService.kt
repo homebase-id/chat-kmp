@@ -385,7 +385,11 @@ class ChatMessageSenderService(
         val content = sourceFile.fileMetadata.appData.content
             ?: throw IllegalArgumentException("source message has no content")
 
-        val messageAppData = OdinSystemSerializer.deserialize<MessageAppData>(content)
+        val messageAppData = try {
+            OdinSystemSerializer.deserialize<MessageAppData>(content)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Failed to deserialize source message content for $sourceMessageUniqueId: ${content.take(200)}", e)
+        }
 
         val fullText = chatMessageStream.loadFullMessage(
             conversationId = sourceFile.fileMetadata.appData.groupId!!,

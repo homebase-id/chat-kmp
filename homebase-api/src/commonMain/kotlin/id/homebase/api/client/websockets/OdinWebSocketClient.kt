@@ -243,7 +243,11 @@ class OdinWebSocketClient(
             notificationBuffer.clear()
 
             for (n in batch) {
-                dispatchNotification(n)
+                try {
+                    dispatchNotification(n)
+                } catch (e: Exception) {
+                    Logger.e(e) { "Failed to dispatch notification type=${n.notificationType}, data=${n.data.take(200)}" }
+                }
             }
         }
     }

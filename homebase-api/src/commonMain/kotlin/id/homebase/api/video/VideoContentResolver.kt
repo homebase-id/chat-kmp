@@ -27,7 +27,11 @@ suspend fun resolveVideoContent(
                 key = stubMetadata.key,
                 keyHeader = data.keyHeader,
             )?.bytes?.decodeToString() ?: error("Failed to fetch video metadata")
-            OdinSystemSerializer.deserialize<VideoMetadata>(json)
+            try {
+                OdinSystemSerializer.deserialize<VideoMetadata>(json)
+            } catch (e: Exception) {
+                error("Failed to deserialize video metadata for ${data.fileId}/${data.payloadKey}: ${json.take(200)}, cause=${e.message}")
+            }
         } else {
             stubMetadata
         }

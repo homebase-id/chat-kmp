@@ -134,7 +134,11 @@ suspend fun publicKeyToJwkBase64Url(publicKey: EccPublicKey): String {
  * @return Public key
  */
 suspend fun publicKeyFromJwk(jwk: String, expirationHours: Int = 1): EccPublicKey {
-    val jwkMap = Json.decodeFromString<Map<String, String>>(jwk)
+    val jwkMap = try {
+        Json.decodeFromString<Map<String, String>>(jwk)
+    } catch (e: Exception) {
+        throw IllegalArgumentException("Invalid JWK JSON: ${jwk.take(200)}", e)
+    }
 
     require(jwkMap["kty"] == "EC") { "Invalid key type, kty must be EC" }
 

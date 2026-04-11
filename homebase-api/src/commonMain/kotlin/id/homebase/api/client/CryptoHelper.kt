@@ -31,8 +31,10 @@ object CryptoHelper {
      * Deserializes JSON string to type T
      */
     inline fun <reified T> deserialize(json: String): T {
-        return OdinSystemSerializer.deserialize<T>(json)
-            ?: throw Exception("Error deserializing $json")
+        val result: Any? = OdinSystemSerializer.deserialize<T>(json)
+        if (result == null) throw Exception("Deserialization returned null for: ${json.take(200)}")
+        @Suppress("UNCHECKED_CAST")
+        return result as T
     }
 
     /**
