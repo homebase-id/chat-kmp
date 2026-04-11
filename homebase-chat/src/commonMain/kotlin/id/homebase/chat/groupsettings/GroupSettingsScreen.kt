@@ -261,10 +261,12 @@ fun GroupSettingsUi(
                             )
                         }
                     }
-                    val (connectedContacts, notConnectedContacts) = uiState.contacts.partition { contact ->
-                        contact.connectionState == ContactConnectionState.Connected ||
-                                contact.connectionState == ContactConnectionState.Unknown
-                    }
+                    val (connectedContacts, notConnectedContacts) = uiState.contacts
+                        .distinctBy { it.odinId }
+                        .partition { contact ->
+                            contact.connectionState == ContactConnectionState.Connected ||
+                                    contact.connectionState == ContactConnectionState.Unknown
+                        }
 
                     items(connectedContacts, key = { it.odinId.domainName }) { contact ->
                         ContactItem(

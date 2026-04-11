@@ -114,7 +114,7 @@ class CreateConversationViewModel(
                     ignoreCase = true
                 )
             }
-        }
+        }.distinctBy { it.odinId }
         val groups = contacts.groupBy {
             it.name.firstOrNull()?.uppercase() ?: "#"
         }.map { (initial, contacts) ->
