@@ -185,16 +185,14 @@ jobs:
           
           echo "Uploading to project: $PROJECT_ID, app: $GOOGLE_APP_ID"
                     
-          # Find and upload dSYMs
-          DSYM_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.dSYM" -type d)
-          if [ -n "$DSYM_PATH" ]; then
+          # Find and upload dSYMs - only from ArchiveIntermediates (actual build artifacts)
+          find ~/Library/Developer/Xcode/DerivedData -path "*/ArchiveIntermediates/*/BuildProductsPath/*/*.dSYM" -type d | while read DSYM_PATH; do
+            echo "Uploading dSYM: $DSYM_PATH"
             firebase crashlytics:symbols:upload \
               --project="$PROJECT_ID" \
               --app="$GOOGLE_APP_ID" \
               "$DSYM_PATH"
-          else
-              echo "No dSYM files found"
-          fi
+          done
 
       - name: Rename IPA
         run: mv output.ipa iosApp.ipa
