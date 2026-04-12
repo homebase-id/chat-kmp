@@ -106,6 +106,8 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.encoding.Base64
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
 @OptIn(FlowPreview::class)
@@ -1784,6 +1786,8 @@ class ConversationListViewModel(
         messageIdForScroll: Uuid?,
         scrollToBottom: Boolean = false
     ) {
+        val loadStart = TimeSource.Monotonic.markNow()
+
         val hasCachedMessages =
             conversationId == _uiState.value.selectedConversationId &&
                     chatMessageStream.hasCachedMessages(conversationId)
@@ -1803,6 +1807,8 @@ class ConversationListViewModel(
                 if (!hasCachedMessages) {
                     chatMessageStream.loadConversation(conversationId)
                 }
+                val dbFetchElapsed = loadStart.elapsedNow()
+
                 chatMessageStream.observeMessages(conversationId).collect { messageState ->
                     when (messageState) {
                         is ChatMessagesData.Initializing -> {
@@ -1897,6 +1903,18 @@ class ConversationListViewModel(
                                         ?: it.scrollPosition?.takeIf { pos -> pos.triggerScroll },
                                 )
                             }
+
+                            val totalElapsed = loadStart.elapsedNow()
+                            if (totalElapsed > 200.milliseconds) {
+                                Logger.w("SlowConversationLoad") {
+                                    "conversationId=$conversationId " +
+                                            "messageCount=${messages.size} " +
+                                            "cached=$hasCachedMessages " +
+                                            "dbFetch=$dbFetchElapsed " +
+                                            "total=$totalElapsed"
+                                }
+                            }
+
                             setInitialScroll = false
                         }
                     }

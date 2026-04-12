@@ -19,6 +19,8 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
+import kotlin.time.TimeSource
+import kotlin.time.Duration.Companion.milliseconds
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.chatTargetDrive
@@ -119,9 +121,11 @@ class ChatMessageStream(
     // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
     suspend fun loadConversation(conversationId: Uuid) {
+        val start = TimeSource.Monotonic.markNow()
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
         val result = fetchMessages(conversationId)
-        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages")
+        val elapsed = start.elapsedNow()
+        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed")
         conversationState.set(conversationId, result.records)
     }
 
@@ -193,6 +197,7 @@ class ChatMessageStream(
         val c = credentialsManager.requireActiveCredentials()
         val queryBatch = QueryBatch(c.getIdentityId())
 
+        val queryStart = TimeSource.Monotonic.markNow()
         val result =
             queryBatch.queryBatchAsync(
                 dbm = dbm,
@@ -205,12 +210,26 @@ class ChatMessageStream(
                 filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
                 groupIdAnyOf = listOf(conversationId)
             )
+        val queryElapsed = queryStart.elapsedNow()
+
+        val mapStart = TimeSource.Monotonic.markNow()
+        val records = result.records.mapNotNull { header ->
+            mapToMessageData(header, credentialsManager, ::resolveDisplayName)
+        }
+        val mapElapsed = mapStart.elapsedNow()
+
+        if (queryElapsed + mapElapsed > 200.milliseconds) {
+            Logger.w("SlowMessageFetch") {
+                "conversationId=$conversationId " +
+                        "rawRecords=${result.records.size} " +
+                        "mappedRecords=${records.size} " +
+                        "dbQuery=$queryElapsed " +
+                        "mapping=$mapElapsed"
+            }
+        }
 
         return BatchResult(
-            records =
-                result.records.mapNotNull { header ->
-                    mapToMessageData(header, credentialsManager, ::resolveDisplayName)
-                },
+            records = records,
             hasMoreRows = result.hasMoreRows,
             cursor = result.cursor
         )
