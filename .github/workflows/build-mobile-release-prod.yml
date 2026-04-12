@@ -28,7 +28,7 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Read version info
+      - name: Set Android version
         id: version
         run: |
           VERSION_NAME=$(grep 'version.name=' gradle/version.properties | cut -d'=' -f2)
@@ -192,14 +192,34 @@ jobs:
           
           echo "Uploading to project: $PROJECT_ID, app: $GOOGLE_APP_ID"
           
-          # Find and upload dSYMs - only from ArchiveIntermediates (actual build artifacts)
-          find ~/Library/Developer/Xcode/DerivedData -path "*/ArchiveIntermediates/*/BuildProductsPath/*/*.dSYM" -type d | while read DSYM_PATH; do
-            echo "Uploading dSYM: $DSYM_PATH"
-            firebase crashlytics:symbols:upload \
-              --project="$PROJECT_ID" \
-              --app="$GOOGLE_APP_ID" \
-              "$DSYM_PATH"
-          done      
+          # Find the xcarchive - this is where dSYMs are actually stored
+          ARCHIVE_PATH=$(find ~/Library/Developer/Xcode/Archives -name "*.xcarchive" -type d | head -n 1)
+          
+          if [ -z "$ARCHIVE_PATH" ]; then
+            echo "No xcarchive found, checking DerivedData..."
+            ARCHIVE_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcarchive" -type d | head -n 1)
+          fi
+          
+          if [ -n "$ARCHIVE_PATH" ]; then
+            echo "Found archive: $ARCHIVE_PATH"
+            DSYM_DIR="$ARCHIVE_PATH/dSYMs"
+          
+            if [ -d "$DSYM_DIR" ]; then
+              echo "Uploading dSYMs from: $DSYM_DIR"
+              find "$DSYM_DIR" -name "*.dSYM" -type d | while read DSYM_PATH; do
+                echo "Uploading: $(basename $DSYM_PATH)"
+                firebase crashlytics:symbols:upload \
+                  --project="$PROJECT_ID" \
+                  --app="$GOOGLE_APP_ID" \
+                  "$DSYM_PATH"
+              done
+            else
+              echo "No dSYMs directory found in archive"
+            fi
+          else
+            echo "No xcarchive found"
+            exit 1
+          fi  
 
       - name: Rename IPA
         run: mv output.ipa iosApp.ipa
