@@ -179,7 +179,7 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
           
           curl -sL https://firebase.tools | bash
-
+          
           PROJECT_ID=$(plutil -extract PROJECT_ID raw iosApp/GoogleService-Info-Debug.plist)
           GOOGLE_APP_ID=$(plutil -extract GOOGLE_APP_ID raw iosApp/GoogleService-Info-Debug.plist)
           
@@ -189,28 +189,49 @@ jobs:
           ARCHIVE_PATH=$(find ~/Library/Developer/Xcode/Archives -name "*.xcarchive" -type d | head -n 1)
           
           if [ -z "$ARCHIVE_PATH" ]; then
-            echo "No xcarchive found, checking DerivedData..."
+            echo "No xcarchive found in Archives, checking DerivedData..."
             ARCHIVE_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcarchive" -type d | head -n 1)
           fi
           
           if [ -n "$ARCHIVE_PATH" ]; then
             echo "Found archive: $ARCHIVE_PATH"
             DSYM_DIR="$ARCHIVE_PATH/dSYMs"
-            
+          
             if [ -d "$DSYM_DIR" ]; then
-              echo "Uploading dSYMs from: $DSYM_DIR"
-              find "$DSYM_DIR" -name "*.dSYM" -type d | while read DSYM_PATH; do
-                echo "Uploading: $(basename $DSYM_PATH)"
-                firebase crashlytics:symbols:upload \
-                  --project="$PROJECT_ID" \
-                  --app="$GOOGLE_APP_ID" \
-                  "$DSYM_PATH"
-              done
+              echo "dSYMs directory contents:"
+              ls -la "$DSYM_DIR"
+          
+              # Use IFS and process substitution to handle spaces in paths
+              while IFS= read -r -d '' DSYM_PATH; do
+                echo ""
+                echo "Processing dSYM: $(basename "$DSYM_PATH")"
+          
+                # Check if dSYM contains actual binaries
+                if find "$DSYM_PATH/Contents/Resources/DWARF" -type f 2>/dev/null | grep -q .; then
+                  echo "✓ Found DWARF binary in $(basename "$DSYM_PATH")"
+                  echo "Uploading to Crashlytics..."
+          
+                  firebase crashlytics:symbols:upload \
+                    --project="$PROJECT_ID" \
+                    --app="$GOOGLE_APP_ID" \
+                    "$DSYM_PATH" || echo "⚠ Upload failed for $(basename "$DSYM_PATH")"
+                else
+                  echo "⚠ No DWARF binary found in $(basename "$DSYM_PATH"), skipping"
+                fi
+              done < <(find "$DSYM_DIR" -name "*.dSYM" -type d -print0)
+          
+              echo ""
+              echo "✓ dSYM upload complete"
             else
-              echo "No dSYMs directory found in archive"
+              echo "⚠ No dSYMs directory found in archive at: $DSYM_DIR"
+              echo "Archive structure:"
+              ls -la "$ARCHIVE_PATH"
+              exit 1
             fi
           else
-            echo "No xcarchive found"
+            echo "✗ No xcarchive found in ~/Library/Developer/Xcode/Archives or DerivedData"
+            echo "Searching all of DerivedData:"
+            find ~/Library/Developer/Xcode/DerivedData -name "*.xcarchive" -o -name "*.dSYM" 2>/dev/null | head -20
             exit 1
           fi
 
