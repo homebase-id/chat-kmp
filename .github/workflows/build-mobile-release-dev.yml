@@ -149,6 +149,30 @@ jobs:
           team-id: ${{ secrets.IOS_TEAM_ID }}
           certificate-password: ${{ secrets.IOS_FEED_CERTIFICATE_PASSWORD }}
 
+      - name: Upload dSYM to Crashlytics
+        run: |
+          # Create service account file
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/firebase-sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          
+          curl -sL https://firebase.tools | bash
+
+          PROJECT_ID=$(plutil -extract PROJECT_ID raw iosApp/GoogleService-Info-Debug.plist)
+          GOOGLE_APP_ID=$(plutil -extract GOOGLE_APP_ID raw iosApp/GoogleService-Info-Debug.plist)
+          
+          echo "Uploading to project: $PROJECT_ID, app: $GOOGLE_APP_ID"
+                    
+          # Find and upload dSYMs
+          DSYM_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.dSYM" -type d)
+          if [ -n "$DSYM_PATH" ]; then
+            firebase crashlytics:symbols:upload \
+              --project="$PROJECT_ID" \
+              --app="$GOOGLE_APP_ID" \
+              "$DSYM_PATH"
+          else
+              echo "No dSYM files found"
+          fi
+
       - name: Rename IPA
         run: mv output.ipa iosApp.ipa
 
