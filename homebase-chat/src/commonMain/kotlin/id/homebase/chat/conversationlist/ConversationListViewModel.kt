@@ -1413,13 +1413,27 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ArchiveConversation -> {
                 viewModelScope.launch {
-                    conversationService.archiveConversation(action.conversationId)
+                    try {
+                        conversationService.archiveConversation(action.conversationId)
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                            "Failed to archive conversation: ${e.message}"
+                        }
+                        sendEvent(ShowErrorMessage("Failed to archive conversation: ${e.message}"))
+                    }
                 }
             }
 
             is ConversationListUiAction.UnarchiveConversation -> {
                 viewModelScope.launch {
-                    conversationService.unarchiveConversation(action.conversationId)
+                    try {
+                        conversationService.unarchiveConversation(action.conversationId)
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                            "Failed to unarchive conversation: ${e.message}"
+                        }
+                        sendEvent(ShowErrorMessage("Failed to unarchive conversation: ${e.message}"))
+                    }
                 }
             }
 
@@ -1429,26 +1443,54 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ClearConversation -> {
                 viewModelScope.launch {
-                    conversationService.clearConversation(action.conversationId)
+                    try {
+                        conversationService.clearConversation(action.conversationId)
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                            "Failed to clear conversation: ${e.message}"
+                        }
+                        sendEvent(ShowErrorMessage("Failed to clear conversation: ${e.message}"))
+                    }
                 }
             }
 
             is ConversationListUiAction.DeleteConversation -> {
                 viewModelScope.launch {
-                    conversationService.deleteConversation(action.conversationId)
+                    try {
+                        conversationService.deleteConversation(action.conversationId)
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                            "Failed to delete conversation: ${e.message}"
+                        }
+                        sendEvent(ShowErrorMessage("Failed to delete conversation: ${e.message}"))
+                    }
                 }
             }
 
             is ConversationListUiAction.AcceptRejoin -> {
                 viewModelScope.launch {
-                    conversationService.acceptRejoin(action.conversationId)
+                    try {
+                        conversationService.acceptRejoin(action.conversationId)
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                            "Failed to accept rejoin: ${e.message}"
+                        }
+                        sendEvent(ShowErrorMessage("Failed to accept rejoin: ${e.message}"))
+                    }
                 }
             }
 
             is ConversationListUiAction.DeclineRejoin -> {
                 viewModelScope.launch {
-                    conversationService.declineRejoin(action.conversationId)
-                    conversationStream.onConversationLeft(action.conversationId)
+                    try {
+                        conversationService.declineRejoin(action.conversationId)
+                        conversationStream.onConversationLeft(action.conversationId)
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                            "Failed to decline rejoin: ${e.message}"
+                        }
+                        sendEvent(ShowErrorMessage("Failed to decline rejoin: ${e.message}"))
+                    }
                 }
             }
 
