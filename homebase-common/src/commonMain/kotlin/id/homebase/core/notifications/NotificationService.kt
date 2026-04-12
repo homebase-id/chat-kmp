@@ -70,6 +70,14 @@ class NotificationService(
 
     /** Set by the UI layer to indicate whether the app is in the foreground. */
     var isAppInForeground: Boolean = false
+        set(value) {
+            if (value && !field) {
+                // App opened — reset alert cooldown so the next background
+                // notification plays a sound immediately.
+                lastAlertMark = TimeSource.Monotonic.markNow() - ALERT_COOLDOWN
+            }
+            field = value
+        }
 
     init {
         startListening()
