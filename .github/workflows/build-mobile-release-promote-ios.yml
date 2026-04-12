@@ -1,0 +1,235 @@
+name: Promote iOS Release to public
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Build number to promote (leave empty to use latest)'
+        required: false
+        default: ''
+
+concurrency:
+  group: mobile-release-ios-public-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-ios:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26"
+
+      - name: Setup App Store Connect API key
+        run: |
+          mkdir -p "${{ runner.temp }}/private_keys"
+          echo "${{ secrets.APPSTORE_API_PRIVATE_KEY }}" > \
+            "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8"
+
+      - name: Install jq for JSON parsing
+        run: brew install jq
+
+      - name: Generate JWT token for App Store Connect API
+        id: jwt
+        run: |
+          # Install jwt-cli or use Python/Node to generate JWT
+          # For simplicity, using a Python one-liner
+          cat > /tmp/generate_jwt.py << 'EOF'
+          import jwt
+          import time
+          import sys
+          
+          key_id = sys.argv[1]
+          issuer_id = sys.argv[2]
+          key_file = sys.argv[3]
+          
+          with open(key_file, 'r') as f:
+              private_key = f.read()
+          
+          token = jwt.encode(
+              {
+                  'iss': issuer_id,
+                  'iat': int(time.time()),
+                  'exp': int(time.time()) + 20 * 60,  # 20 minutes
+                  'aud': 'appstoreconnect-v1'
+              },
+              private_key,
+              algorithm='ES256',
+              headers={'kid': key_id}
+          )
+          print(token)
+          EOF
+          
+          pip3 install PyJWT cryptography
+          
+          TOKEN=$(python3 /tmp/generate_jwt.py \
+            "${{ secrets.APPSTORE_API_KEY_ID }}" \
+            "${{ secrets.APPSTORE_API_ISSUER_ID }}" \
+            "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8")
+          
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+          echo "::add-mask::$TOKEN"
+
+      - name: Get App ID
+        id: app
+        run: |
+          # Get your app's ID - replace with your actual bundle ID
+          BUNDLE_ID="id.homebase.feed"
+          
+          RESPONSE=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+            "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=$BUNDLE_ID")
+          
+          if echo "$RESPONSE" | jq -e '.errors' > /dev/null; then
+            echo "❌ API Error:"
+            echo "$RESPONSE" | jq '.errors'
+            exit 1
+          fi
+          
+          APP_ID=$(echo "$RESPONSE" | jq -r '.data[0].id')
+          
+          if [ -z "$APP_ID" ] || [ "$APP_ID" == "null" ]; then
+            echo "❌ App not found for bundle ID: $BUNDLE_ID"
+            exit 1
+          fi
+          
+          echo "app_id=$APP_ID" >> $GITHUB_OUTPUT
+          echo "App ID: $APP_ID"
+
+      - name: Get latest pre-release build or specific build
+        id: build
+        run: |
+          if [ -n "${{ github.event.inputs.build_number }}" ]; then
+            BUILD_NUMBER="${{ github.event.inputs.build_number }}"
+          else
+            # Get the latest pre-release build
+            BUILDS=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+              "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=${{ steps.app.outputs.app_id }}&filter[preReleaseVersion.platform]=IOS&sort=-uploadedDate&limit=1")
+          
+            BUILD_NUMBER=$(echo "$BUILDS" | jq -r '.data[0].attributes.version')
+          fi
+          
+          # Get build ID by version number
+          BUILDS=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+            "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=${{ steps.app.outputs.app_id }}&filter[version]=$BUILD_NUMBER")
+          
+          BUILD_ID=$(echo "$BUILDS" | jq -r '.data[0].id')
+          
+          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+          echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "Promoting build: $BUILD_NUMBER (ID: $BUILD_ID)"
+
+      - name: Create or update App Store version
+        id: version
+        run: |
+          # Get version string from build
+          BUILD_INFO=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+            "https://api.appstoreconnect.apple.com/v1/builds/${{ steps.build.outputs.build_id }}")
+          
+          # Get marketing version from preReleaseVersion relationship
+          VERSION_STRING=$(echo "$BUILD_INFO" | jq -r '.included[] | select(.type=="preReleaseVersions") | .attributes.version')        
+          
+          if [ -z "$VERSION_STRING" ] || [ "$VERSION_STRING" == "null" ]; then
+            echo "❌ Failed to get version string from build"
+            exit 1
+          fi
+          
+          echo "Version string: $VERSION_STRING"
+          
+          # Check if version already exists
+          VERSIONS=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+            "https://api.appstoreconnect.apple.com/v1/appStoreVersions?filter[app]=${{ steps.app.outputs.app_id }}&filter[versionString]=$VERSION_STRING&filter[platform]=IOS")
+          
+          VERSION_ID=$(echo "$VERSIONS" | jq -r '.data[0].id // empty')
+          
+          if [ -z "$VERSION_ID" ]; then
+            # Create new App Store version
+            CREATE_RESPONSE=$(curl -s -X POST \
+              -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+              -H "Content-Type: application/json" \
+              "https://api.appstoreconnect.apple.com/v1/appStoreVersions" \
+              -d '{
+                "data": {
+                  "type": "appStoreVersions",
+                  "attributes": {
+                    "platform": "IOS",
+                    "versionString": "'"$VERSION_STRING"'"
+                  },
+                  "relationships": {
+                    "app": {
+                      "data": {
+                        "type": "apps",
+                        "id": "'"${{ steps.app.outputs.app_id }}"'"
+                      }
+                    }
+                  }
+                }
+              }')
+          
+            VERSION_ID=$(echo "$CREATE_RESPONSE" | jq -r '.data.id')
+            echo "Created new version: $VERSION_ID"
+          else
+            echo "Using existing version: $VERSION_ID"
+          fi
+          
+          echo "version_id=$VERSION_ID" >> $GITHUB_OUTPUT
+
+      - name: Attach build to App Store version
+        run: |
+          curl -X PATCH \
+            -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            "https://api.appstoreconnect.apple.com/v1/appStoreVersions/${{ steps.version.outputs.version_id }}" \
+            -d '{
+              "data": {
+                "type": "appStoreVersions",
+                "id": "'"${{ steps.version.outputs.version_id }}"'",
+                "relationships": {
+                  "build": {
+                    "data": {
+                      "type": "builds",
+                      "id": "'"${{ steps.build.outputs.build_id }}"'"
+                    }
+                  }
+                }
+              }
+            }'
+          
+          echo "Build attached to App Store version"
+
+      - name: Submit for review (optional - uncomment to auto-submit)
+        if: false  # Change to true to enable auto-submission
+        run: |
+          # Create submission
+          curl -X POST \
+            -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            "https://api.appstoreconnect.apple.com/v1/appStoreVersionSubmissions" \
+            -d '{
+              "data": {
+                "type": "appStoreVersionSubmissions",
+                "relationships": {
+                  "appStoreVersion": {
+                    "data": {
+                      "type": "appStoreVersions",
+                      "id": "'"${{ steps.version.outputs.version_id }}"'"
+                    }
+                  }
+                }
+              }
+            }'
+          
+          echo "Submitted for App Store review"
+
+      - name: Summary
+        run: |
+          echo "✅ Successfully promoted build ${{ steps.build.outputs.build_number }} to App Store Connect"
+          echo "Build ID: ${{ steps.build.outputs.build_id }}"
+          echo "Version ID: ${{ steps.version.outputs.version_id }}"
+          echo ""
+          echo "Next steps:"
+          echo "1. Go to App Store Connect"
+          echo "2. Complete any remaining metadata (What's New, screenshots, etc.)"

@@ -282,7 +282,7 @@ fun ConversationListUi(
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
-    val isExpanded = windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(800)
+    val isExpanded = windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(1200)
     val scaffoldDirective = PaneScaffoldDirective(
         maxHorizontalPartitions = if (isExpanded) 2 else 1,
         horizontalPartitionSpacerSize = 0.dp, // Remove the white border

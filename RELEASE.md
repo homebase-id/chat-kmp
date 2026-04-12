@@ -46,7 +46,7 @@ Update version information in `gradle/version.properties`.
 - Nightly (automated)
 - Manual trigger available
 
-**GitHub Action:** `Build Desktop Dev Release`
+**GitHub Action:** `Build Desktop Release Dev`
 
 ---
 
