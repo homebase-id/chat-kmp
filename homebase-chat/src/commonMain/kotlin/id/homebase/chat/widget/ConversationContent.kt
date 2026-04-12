@@ -371,6 +371,7 @@ fun ConversationContent(
                                     )
                                 }
                             ) {
+                                Spacer(modifier = Modifier.width(8.dp))
                                 ConversationAvatar(
                                     modifier = Modifier.focusable(), // to avoid textfield focus
                                     avatarModel = conversation.conversation.avatarModel,
@@ -416,7 +417,8 @@ fun ConversationContent(
                                 })
                         }
                     }
-                }, navigationIcon = {
+                },
+                navigationIcon = {
                     if (showBackButton && !uiState.isSearchActive) {
                         IconButton(onClick = onBackClick) {
                             Icon(
@@ -425,7 +427,8 @@ fun ConversationContent(
                             )
                         }
                     }
-                }, actions = {
+                },
+                actions = {
                     if (!uiState.isSearchActive) {
                         IconButton(onClick = { showConversationMenu = true }) {
                             Icon(
@@ -507,9 +510,10 @@ fun ConversationContent(
                             } else null,
                         )
                     }
-                }, colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
             )
         },
     ) { innerPadding ->
