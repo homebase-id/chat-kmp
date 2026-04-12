@@ -284,7 +284,6 @@ fun ConversationMessagesPane(
                         FullScreenAttachmentEditor(
                             data = data,
                             textFieldState = textFieldState,
-                            isSendingMessage = uiState.isSendingMessage,
                             currentPage = currentGalleryPage,
                             onPageChanged = { currentGalleryPage = it },
                             onSaveFile = { onUiAction(SaveFile(it)) },

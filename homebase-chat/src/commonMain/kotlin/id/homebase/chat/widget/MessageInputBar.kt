@@ -930,10 +930,10 @@ private fun MessageEditMessageInfo(
 fun MessageTextFieldForAttachment(
     modifier: Modifier = Modifier,
     state: RichTextState,
-    isSendingMessage: Boolean = false,
     onSmileyClick: () -> Unit,
     onSendMessage: () -> Unit
 ) {
+    var hasSent by remember { mutableStateOf(false) }
     val isKeyboardVisible by keyboardAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -953,8 +953,11 @@ fun MessageTextFieldForAttachment(
                         if (keyEvent.isShiftPressed) {
                             state.addTextAfterSelection("\n")
                             true
-                        } else {
+                        } else if (!hasSent) {
+                            hasSent = true
                             onSendMessage()
+                            true
+                        } else {
                             true
                         }
                     } else {
@@ -990,8 +993,8 @@ fun MessageTextFieldForAttachment(
             Spacer(modifier = Modifier.width(8.dp))
             if (!isKeyboardVisible) {
                 IconButton(
-                    onClick = onSendMessage,
-                    enabled = !isSendingMessage,
+                    onClick = { hasSent = true; onSendMessage() },
+                    enabled = !hasSent,
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                         contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
