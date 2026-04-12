@@ -33,7 +33,7 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Read version info
+      - name: Set Android version
         id: version
         run: |
           VERSION_NAME=$(grep 'version.name=' gradle/version.properties | cut -d'=' -f2)
