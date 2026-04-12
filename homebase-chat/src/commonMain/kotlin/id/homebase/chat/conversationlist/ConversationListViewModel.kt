@@ -1963,6 +1963,7 @@ class ConversationListViewModel(
                         isEditingVersionTag = null
                     )
                 }
+                messageInputTextState.clear()
             } catch (e: Exception) {
                 sendEvent(ShowErrorMessage("Failed to edit message: ${e.message}"))
             } finally {
