@@ -1905,14 +1905,16 @@ class ConversationListViewModel(
                                 )
                             }
 
-                            val totalElapsed = loadStart.elapsedNow()
-                            if (totalElapsed > 200.milliseconds) {
-                                Logger.w("SlowConversationLoad") {
-                                    "conversationId=$conversationId " +
-                                            "messageCount=${messages.size} " +
-                                            "cached=$hasCachedMessages " +
-                                            "dbFetch=$dbFetchElapsed " +
-                                            "total=$totalElapsed"
+                            if (setInitialScroll) {
+                                val totalElapsed = loadStart.elapsedNow()
+                                if (totalElapsed > 200.milliseconds) {
+                                    Logger.w("SlowConversationLoad") {
+                                        "conversationId=$conversationId " +
+                                                "messageCount=${messages.size} " +
+                                                "cached=$hasCachedMessages " +
+                                                "dbFetch=$dbFetchElapsed " +
+                                                "total=$totalElapsed"
+                                    }
                                 }
                             }
 
