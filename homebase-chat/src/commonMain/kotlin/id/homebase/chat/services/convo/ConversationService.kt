@@ -743,7 +743,8 @@ class ConversationService(
         if (conversation.isGroupConversation && !(
                     conversation.conversationState == ConversationState.Left ||
                             conversation.conversationState == ConversationState.RejoinPending ||
-                            conversation.conversationState == ConversationState.Removed
+                            conversation.conversationState == ConversationState.Removed ||
+                            conversation.conversationState == ConversationState.Archived
                     )
         ) {
             throw IllegalStateException("You must leave the group before deleting it")
