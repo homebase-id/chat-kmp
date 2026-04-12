@@ -71,7 +71,6 @@ fun FullScreenAttachmentEditor(
     modifier: Modifier = Modifier,
     data: FullScreenOverlay.AttachmentData,
     textFieldState: RichTextState,
-    isSendingMessage: Boolean = false,
     currentPage: Int,
     onPageChanged: (Int) -> Unit,
     onSaveFile: (file: AttachmentPendingFile) -> Unit,
@@ -357,7 +356,6 @@ fun FullScreenAttachmentEditor(
                 .padding(16.dp)
                 .imePadding(),
             state = textFieldState,
-            isSendingMessage = isSendingMessage,
             onSmileyClick = {},
             onSendMessage = {
                 onSendMessage(
