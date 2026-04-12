@@ -930,6 +930,7 @@ private fun MessageEditMessageInfo(
 fun MessageTextFieldForAttachment(
     modifier: Modifier = Modifier,
     state: RichTextState,
+    isSendingMessage: Boolean = false,
     onSmileyClick: () -> Unit,
     onSendMessage: () -> Unit
 ) {
@@ -989,7 +990,9 @@ fun MessageTextFieldForAttachment(
             Spacer(modifier = Modifier.width(8.dp))
             if (!isKeyboardVisible) {
                 IconButton(
-                    onClick = onSendMessage, colors = IconButtonDefaults.iconButtonColors(
+                    onClick = onSendMessage,
+                    enabled = !isSendingMessage,
+                    colors = IconButtonDefaults.iconButtonColors(
                         containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
                         contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                     )

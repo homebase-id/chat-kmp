@@ -503,6 +503,7 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.EditMessageSave -> {
+                _messagesUiState.update { it.copy(isSendingMessage = true) }
                 _messagesUiState.value.isEditingMessageId?.let { messageId ->
                     editMessage(
                         messageId = messageId,
@@ -1962,6 +1963,8 @@ class ConversationListViewModel(
                 }
             } catch (e: Exception) {
                 sendEvent(ShowErrorMessage("Failed to edit message: ${e.message}"))
+            } finally {
+                _messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }
     }
