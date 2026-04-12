@@ -43,7 +43,7 @@ jobs:
           echo "Version: $VERSION_NAME ($VERSION_CODE)"
           
           # Update version.properties with the full version
-          sed -i "s/^version.name=.*/version.name=VERSION_NAME/" gradle/version.properties
+          sed -i "s/^version.name=.*/version.name=$VERSION_NAME/" gradle/version.properties
           
           echo "Updated version.properties:"
           cat gradle/version.properties  
@@ -148,7 +148,7 @@ jobs:
           echo "Version: $VERSION_NAME ($VERSION_CODE)"
           
           # Update version.properties with the full version
-          sed -i "s/^version.name=.*/version.name=VERSION_NAME/" gradle/version.properties
+          sed -i '' "s/^version.name=.*/version.name=$VERSION_NAME/" gradle/version.properties
           
           echo "Updated version.properties:"
           cat gradle/version.properties  
