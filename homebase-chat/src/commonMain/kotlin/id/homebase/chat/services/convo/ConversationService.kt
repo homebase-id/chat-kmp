@@ -220,6 +220,22 @@ class ConversationService(
             return
         }
 
+        if (existing != null) {
+            // Conversation was soft-deleted — undelete it by clearing archivalStatus.
+            // We can't create a new file because the server still has the old one.
+            Logger.d("ConversationService: undeleting note-to-self conversation $noteToSelfId")
+            updateConversationInternal(
+                conversationId = noteToSelfId,
+                title = "",
+                participants = listOf(domain),
+                archivalStatus = ArchivalStatus.None,
+                distribute = false
+            )
+            pinConversation(noteToSelfId)
+            return
+        }
+
+        // First-ever creation — no file exists locally or on the server
         Logger.d("ConversationService: creating note-to-self conversation $noteToSelfId")
 
         val success = writeConversationFile(
