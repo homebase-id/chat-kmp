@@ -90,6 +90,9 @@
 
     <!-- Settings screen -->
     <string name="settings_appearance">Udseende</string>
+    <string name="settings_connections">Forbindelser</string>
+    <string name="connections_already_sent_title">Anmodning allerede sendt</string>
+    <string name="connections_already_sent_text">En forbindelsesanmodning til %1$s findes allerede. Åbn ejer konsollen for at se eller administrere den.</string>
     <string name="settings_notifications">Notifikationer</string>
     <string name="settings_logout">Log ud</string>
     <string name="settings_delete_account">Slet min konto</string>
