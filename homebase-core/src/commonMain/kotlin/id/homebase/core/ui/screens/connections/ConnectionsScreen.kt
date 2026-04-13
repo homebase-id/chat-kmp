@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -44,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -62,6 +64,10 @@ import kotlin.time.ExperimentalTime
 import id.homebase.resources.cancel
 import id.homebase.resources.connections_already_sent_text
 import id.homebase.resources.connections_already_sent_title
+import id.homebase.resources.connections_empty_description
+import id.homebase.resources.connections_empty_title
+import id.homebase.resources.connections_no_incoming
+import id.homebase.resources.connections_no_outgoing
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_connections
 import id.homebase.resources.settings_open_owner_console
@@ -159,71 +165,79 @@ fun ConnectionsUi(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Spacer(modifier = Modifier.height(8.dp))
-
-                SectionHeader(
-                    title = "Incoming",
-                    count = uiState.incomingRequests.size,
-                )
-                if (uiState.incomingRequests.isEmpty() && !uiState.isLoading) {
-                    EmptyState(text = "No incoming requests")
-                } else {
-                    uiState.incomingRequests.forEach { req ->
-                        IncomingRequestCard(
-                            request = req,
-                            identity = uiState.identities[req.senderOdinId],
-                            isPending = req.senderOdinId in uiState.pendingOdinIds,
-                            onAccept = { onAction(ConnectionsUiAction.AcceptIncoming(req.senderOdinId)) },
-                            onReject = { onAction(ConnectionsUiAction.RejectIncoming(req.senderOdinId)) },
-                        )
-                    }
-                }
-
-                val introductionCount = uiState.outgoingRequests.count {
+            val introductionCount = uiState.outgoingRequests.count {
+                it.connectionRequestOrigin.equals("introduction", ignoreCase = true)
+            }
+            val visibleOutgoing = if (uiState.showIntroductionOutgoing) {
+                uiState.outgoingRequests
+            } else {
+                uiState.outgoingRequests.filterNot {
                     it.connectionRequestOrigin.equals("introduction", ignoreCase = true)
                 }
-                val visibleOutgoing = if (uiState.showIntroductionOutgoing) {
-                    uiState.outgoingRequests
-                } else {
-                    uiState.outgoingRequests.filterNot {
-                        it.connectionRequestOrigin.equals("introduction", ignoreCase = true)
-                    }
-                }
+            }
+            val showFullEmptyState = !uiState.isLoading &&
+                    uiState.incomingRequests.isEmpty() &&
+                    visibleOutgoing.isEmpty() &&
+                    introductionCount == 0
 
-                SectionHeader(
-                    title = "Outgoing",
-                    count = visibleOutgoing.size,
-                )
-                if (introductionCount > 0) {
-                    IntroductionToggleRow(
-                        hiddenCount = introductionCount,
-                        checked = uiState.showIntroductionOutgoing,
-                        onCheckedChange = {
-                            onAction(ConnectionsUiAction.SetShowIntroductionOutgoing(it))
-                        },
+            if (showFullEmptyState) {
+                FullEmptyState(modifier = Modifier.align(Alignment.Center))
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    SectionHeader(
+                        title = "Incoming",
+                        count = uiState.incomingRequests.size,
                     )
-                }
-                if (visibleOutgoing.isEmpty() && !uiState.isLoading) {
-                    EmptyState(text = "No outgoing requests")
-                } else {
-                    visibleOutgoing.forEach { req ->
-                        OutgoingRequestCard(
-                            request = req,
-                            identity = uiState.identities[req.recipient],
-                            isPending = req.recipient in uiState.pendingOdinIds,
-                            onCancel = { onAction(ConnectionsUiAction.CancelOutgoing(req.recipient)) },
+                    if (uiState.incomingRequests.isEmpty() && !uiState.isLoading) {
+                        EmptyState(text = stringResource(MR.string.connections_no_incoming))
+                    } else {
+                        uiState.incomingRequests.forEach { req ->
+                            IncomingRequestCard(
+                                request = req,
+                                identity = uiState.identities[req.senderOdinId],
+                                isPending = req.senderOdinId in uiState.pendingOdinIds,
+                                onAccept = { onAction(ConnectionsUiAction.AcceptIncoming(req.senderOdinId)) },
+                                onReject = { onAction(ConnectionsUiAction.RejectIncoming(req.senderOdinId)) },
+                            )
+                        }
+                    }
+
+                    SectionHeader(
+                        title = "Outgoing",
+                        count = visibleOutgoing.size,
+                    )
+                    if (introductionCount > 0) {
+                        IntroductionToggleRow(
+                            hiddenCount = introductionCount,
+                            checked = uiState.showIntroductionOutgoing,
+                            onCheckedChange = {
+                                onAction(ConnectionsUiAction.SetShowIntroductionOutgoing(it))
+                            },
                         )
                     }
-                }
+                    if (visibleOutgoing.isEmpty() && !uiState.isLoading) {
+                        EmptyState(text = stringResource(MR.string.connections_no_outgoing))
+                    } else {
+                        visibleOutgoing.forEach { req ->
+                            OutgoingRequestCard(
+                                request = req,
+                                identity = uiState.identities[req.recipient],
+                                isPending = req.recipient in uiState.pendingOdinIds,
+                                onCancel = { onAction(ConnectionsUiAction.CancelOutgoing(req.recipient)) },
+                            )
+                        }
+                    }
 
-                Spacer(modifier = Modifier.height(80.dp)) // room for FAB
+                    Spacer(modifier = Modifier.height(80.dp)) // room for FAB
+                }
             }
 
             if (uiState.isLoading &&
@@ -293,6 +307,35 @@ private fun SectionHeader(title: String, count: Int) {
             text = "($count)",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun FullEmptyState(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.People,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(56.dp),
+        )
+        Text(
+            text = stringResource(MR.string.connections_empty_title),
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = stringResource(MR.string.connections_empty_description),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
 }

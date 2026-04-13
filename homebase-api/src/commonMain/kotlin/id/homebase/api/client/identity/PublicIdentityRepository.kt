@@ -9,17 +9,23 @@ import io.ktor.http.isSuccess
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+private const val TAG = "PublicIdentityRepository"
+
 /**
  * Fetches public identity info (display name, first/last name, status) for any OdinId by
  * reading `https://<odinId>/cdn/sitedata.json`.
  *
- * Mirrors the pattern used by `OwnerSessionRepository` for the signed-in user, but works
- * for arbitrary identities and memoizes results per OdinId for the process lifetime.
+ * Also exposes lower-level helpers ([fetchSiteData], [siteDataSectionHeader],
+ * [siteDataSectionData]) that other components can reuse when they need to extract
+ * additional sections from the same document — `OwnerSessionRepository` uses this to
+ * also pull the `photo` section for the signed-in user.
  */
 class PublicIdentityRepository(
     private val httpClient: HttpClient
@@ -59,51 +65,37 @@ class PublicIdentityRepository(
         cache.clear()
     }
 
-    private suspend fun fetch(odinId: OdinId): PublicIdentity? {
+    /**
+     * Fetches and parses the raw `sitedata.json` root array for an identity, returning `null`
+     * on any fetch/parse failure. Shared entry point for callers that need sections beyond
+     * the core public-identity fields.
+     */
+    suspend fun fetchSiteData(odinId: OdinId): JsonArray? {
         val url = "https://$odinId/cdn/sitedata.json"
 
         val response = try {
             httpClient.get(url)
         } catch (e: Exception) {
-            Logger.e(tag = "PublicIdentityRepository") { "Fetching $url failed: ${e.message}" }
+            Logger.e(tag = TAG) { "Fetching $url failed: ${e.message}" }
             return null
         }
 
         if (!response.status.isSuccess()) return null
 
         return try {
-            val root = Json.parseToJsonElement(response.bodyAsText()).jsonArray
+            Json.parseToJsonElement(response.bodyAsText()).jsonArray
+        } catch (e: Exception) {
+            Logger.e(tag = TAG) { "Parsing $url failed: ${e.message}" }
+            null
+        }
+    }
 
-            val nameSection = root.find { it.jsonObject["name"]?.jsonPrimitive?.content == "name" }
-            val statusSection = root.find { it.jsonObject["name"]?.jsonPrimitive?.content == "status" }
+    private suspend fun fetch(odinId: OdinId): PublicIdentity? {
+        val root = fetchSiteData(odinId) ?: return null
 
-            val nameContent = nameSection
-                ?.jsonObject?.get("files")
-                ?.jsonArray?.firstOrNull()
-                ?.jsonObject?.get("header")
-                ?.jsonObject?.get("fileMetadata")
-                ?.jsonObject?.get("appData")
-                ?.jsonObject?.get("content")
-                ?.jsonPrimitive?.content
-
-            val nameData = nameContent
-                ?.let { Json.parseToJsonElement(it) }
-                ?.jsonObject?.get("data")
-                ?.jsonObject
-
-            val statusContent = statusSection
-                ?.jsonObject?.get("files")
-                ?.jsonArray?.firstOrNull()
-                ?.jsonObject?.get("header")
-                ?.jsonObject?.get("fileMetadata")
-                ?.jsonObject?.get("appData")
-                ?.jsonObject?.get("content")
-                ?.jsonPrimitive?.content
-
-            val statusData = statusContent
-                ?.let { Json.parseToJsonElement(it) }
-                ?.jsonObject?.get("data")
-                ?.jsonObject
+        return try {
+            val nameData = root.siteDataSectionData("name")
+            val statusData = root.siteDataSectionData("status")
 
             PublicIdentity(
                 odinId = odinId,
@@ -113,8 +105,38 @@ class PublicIdentityRepository(
                 status = statusData?.get("status")?.jsonPrimitive?.contentOrNull,
             )
         } catch (e: Exception) {
-            Logger.e(tag = "PublicIdentityRepository") { "Parsing $url failed: ${e.message}" }
+            Logger.e(tag = TAG) { "Parsing identity sections for $odinId failed: ${e.message}" }
             null
         }
     }
+}
+
+/**
+ * Returns the `files[0].header` JSON object for the named section (e.g. "name", "photo",
+ * "status") of a `sitedata.json` root array, or `null` if the section isn't present.
+ */
+fun JsonArray.siteDataSectionHeader(sectionName: String): JsonObject? {
+    val section = find {
+        it.jsonObject["name"]?.jsonPrimitive?.content == sectionName
+    }?.jsonObject ?: return null
+
+    return section["files"]
+        ?.jsonArray?.firstOrNull()
+        ?.jsonObject?.get("header")
+        ?.jsonObject
+}
+
+/**
+ * Returns the inner `data` JSON object parsed out of `header.fileMetadata.appData.content`
+ * for the named section, or `null` if absent.
+ */
+fun JsonArray.siteDataSectionData(sectionName: String): JsonObject? {
+    val content = siteDataSectionHeader(sectionName)
+        ?.get("fileMetadata")
+        ?.jsonObject?.get("appData")
+        ?.jsonObject?.get("content")
+        ?.jsonPrimitive?.content
+        ?: return null
+
+    return Json.parseToJsonElement(content).jsonObject["data"]?.jsonObject
 }
