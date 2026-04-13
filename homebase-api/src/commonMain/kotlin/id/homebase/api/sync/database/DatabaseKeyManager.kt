@@ -8,6 +8,10 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 object DatabaseKeyManager {
     private const val KEY_DB_ENCRYPTION = "odin_db_encryption_key"
 
+    fun clearKey() {
+        SecureStorage.remove(KEY_DB_ENCRYPTION)
+    }
+
     @OptIn(ExperimentalEncodingApi::class)
     fun getOrGenerateKey(): String {
         val existingKey = SecureStorage.get(KEY_DB_ENCRYPTION)

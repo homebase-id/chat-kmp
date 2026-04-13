@@ -46,11 +46,26 @@ class MainApplication : Application(), KoinComponent {
 
         runBlocking {
             val dbKey = DatabaseKeyManager.getOrGenerateKey()
-            // DatabaseManager.wipe { DatabaseDriverFactory(applicationContext).createDriver(dbKey)
-            // } //
-            // <-- Uncomment to wipe database
-            DatabaseManager.initialize {
-                DatabaseDriverFactory(applicationContext).createDriver(dbKey)
+            try {
+                DatabaseManager.initialize {
+                    DatabaseDriverFactory(applicationContext).createDriver(dbKey)
+                }
+            } catch (e: Exception) {
+                Logger.e("MainApplication", e, "Database init failed, resetting")
+                // Delete the corrupted/undecryptable database file and its journal files
+                val dbFile = applicationContext.getDatabasePath("odin-2.db")
+                dbFile.delete()
+                java.io.File(dbFile.path + "-journal").delete()
+                java.io.File(dbFile.path + "-wal").delete()
+                java.io.File(dbFile.path + "-shm").delete()
+
+                // Clear the stale encryption key and generate a fresh one
+                DatabaseKeyManager.clearKey()
+                val freshKey = DatabaseKeyManager.getOrGenerateKey()
+
+                DatabaseManager.initialize {
+                    DatabaseDriverFactory(applicationContext).createDriver(freshKey)
+                }
             }
         }
 
