@@ -163,7 +163,7 @@ class ChatReadCountWrapperTest {
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
-            val conversations = wrapper.selectAllConversations()
+            val conversations = wrapper.selectAllConversations(testData.identityId)
 
             // Should return all 3 conversations (fileType 8888)
             assertEquals(3, conversations.size, "Should return all conversations")
@@ -187,7 +187,7 @@ class ChatReadCountWrapperTest {
         DatabaseManager { createInMemoryDatabase() }.use { dbm ->
             val wrapper = dbm.chatReadCount
 
-            val conversations = wrapper.selectAllConversations()
+            val conversations = wrapper.selectAllConversations(Uuid.random())
 
             assertTrue(
                 conversations.isEmpty(), "Should return empty list when no conversations exist"
@@ -201,7 +201,7 @@ class ChatReadCountWrapperTest {
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
-            val conversationsWithMessages = wrapper.selectAllConversationPlusLastMessage()
+            val conversationsWithMessages = wrapper.selectAllConversationPlusLastMessage(testData.identityId)
 
             // Should return all 3 conversations
             assertEquals(
@@ -261,7 +261,7 @@ class ChatReadCountWrapperTest {
         DatabaseManager { createInMemoryDatabase() }.use { dbm ->
             val wrapper = dbm.chatReadCount
 
-            val conversationsWithMessages = wrapper.selectAllConversationPlusLastMessage()
+            val conversationsWithMessages = wrapper.selectAllConversationPlusLastMessage(Uuid.random())
 
             assertTrue(
                 conversationsWithMessages.isEmpty(),
@@ -279,12 +279,15 @@ class ChatReadCountWrapperTest {
             // No read time set, so all messages should be unread
             // FAILS HERE :
             val conv1Unread = wrapper.selectUnreadCountForConversation(
+                testData.identityId,
                 testData.convWithNoMessages.fileMetadata.appData.uniqueId!!
             )
             val conv2Unread = wrapper.selectUnreadCountForConversation(
+                testData.identityId,
                 testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
             )
             val conv3Unread = wrapper.selectUnreadCountForConversation(
+                testData.identityId,
                 testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
             )
 
@@ -313,6 +316,7 @@ class ChatReadCountWrapperTest {
             )
 
             val conv3Unread = wrapper.selectUnreadCountForConversation(
+                testData.identityId,
                 testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
             )
 
@@ -327,7 +331,7 @@ class ChatReadCountWrapperTest {
             val wrapper = dbm.chatReadCount
             val nonExistentGroupId = Uuid.random()
 
-            val unreadCount = wrapper.selectUnreadCountForConversation(nonExistentGroupId)
+            val unreadCount = wrapper.selectUnreadCountForConversation(Uuid.random(), nonExistentGroupId)
 
             assertEquals(
                 0L, unreadCount, "Non-existent conversation should have 0 unread"
@@ -415,7 +419,7 @@ class ChatReadCountWrapperTest {
             val wrapper = dbm.chatReadCount
 
             val originalAuthor: OdinId = OdinId("somewhere.demo.rocks")
-            val allReadCounts = wrapper.selectAllUnreadCount(originalAuthor)
+            val allReadCounts = wrapper.selectAllUnreadCount(Uuid.random(), originalAuthor)
 
             assertTrue(
                 allReadCounts.isEmpty(), "Should return empty list when no conversations exist"
@@ -438,6 +442,7 @@ class ChatReadCountWrapperTest {
 
             // Verify unread count changed
             val unreadCount = wrapper.selectUnreadCountForConversation(
+                testData.identityId,
                 testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(
@@ -469,6 +474,7 @@ class ChatReadCountWrapperTest {
             // Verify unread count changed (should be 0 now since read time is after all
             // messages)
             val unreadCount = wrapper.selectUnreadCountForConversation(
+                testData.identityId,
                 testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(
@@ -506,6 +512,7 @@ class ChatReadCountWrapperTest {
 
             // Verify it exists by checking unread count
             var unreadCount = wrapper.selectUnreadCountForConversation(
+                testData.identityId,
                 testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(0L, unreadCount, "Should have 0 unread with read time set")
@@ -516,6 +523,7 @@ class ChatReadCountWrapperTest {
 
             // Verify it's gone - unread count should be back to original
             unreadCount = wrapper.selectUnreadCountForConversation(
+                testData.identityId,
                 testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(
@@ -557,6 +565,7 @@ class ChatReadCountWrapperTest {
 
             // Verify unread count is back to original
             var unreadCount = wrapper.selectUnreadCountForConversation(
+                testData.identityId,
                 testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(3L, unreadCount, "Should have 3 unread after deletion")
@@ -570,6 +579,7 @@ class ChatReadCountWrapperTest {
 
             // Verify new read time is effective
             unreadCount = wrapper.selectUnreadCountForConversation(
+                testData.identityId,
                 testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
             )
             assertEquals(
