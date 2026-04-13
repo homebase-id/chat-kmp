@@ -1,5 +1,6 @@
 package id.homebase.core.di
 
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.di.apiModule
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.auth.login.LoginViewModel
@@ -17,6 +18,7 @@ import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
@@ -70,6 +72,11 @@ val appModule = module {
             eventBus = get(),
             databaseManager = get(),
             onPostAuthenticated = {
+                // Set the global note-to-self conversation ID once at auth time
+                get<CredentialsManager>().credentialsFlow.value?.domain?.let {
+                    ChatProtocol.initNoteToSelfId(it)
+                }
+
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
                 val conversationStream = get<ConversationStream>()

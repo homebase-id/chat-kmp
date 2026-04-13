@@ -87,7 +87,8 @@ fun ConversationSettingsUi(
             }
 
             uiState.conversation?.let { conversation ->
-                val isWithSelf = conversation.id == ChatProtocol.ConversationWithYourselfId
+                // LEGACY NOTE TO SELF — isWithSelf check can be removed once legacy is removed
+                val isWithSelf = conversation.isAnySelfConversation
                 AvatarNameDisplay(
                     modifier = Modifier
                         .fillMaxWidth()

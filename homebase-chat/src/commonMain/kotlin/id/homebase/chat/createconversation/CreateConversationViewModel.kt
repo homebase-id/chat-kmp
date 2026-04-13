@@ -53,6 +53,7 @@ class CreateConversationViewModel(
         when (action) {
             is CreateConversationUiAction.BackClicked -> _uiState.update { it.copy(uiEvent = CreateConversationUiEvent.Back) }
             is CreateConversationUiAction.CreateNewGroup -> _uiState.update { it.copy(uiEvent = CreateConversationUiEvent.ShowCreateGroupScreen) }
+            // LEGACY NOTE TO SELF — change to ChatProtocol.noteToSelfId once legacy is removed
             is CreateConversationUiAction.CreateSelfConversation -> {
                 _uiState.update {
                     it.copy(

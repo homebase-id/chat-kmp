@@ -15,7 +15,22 @@ object ChatProtocol {
 
     const val MessageVersionNumberOne = 1
 
+    // region LEGACY NOTE TO SELF — remove once new XOR-based note-to-self is verified
     val ConversationWithYourselfId: Uuid = Uuid.parse("e4ef2382-ab3c-405d-a8b5-ad3e09e980dd")
+    // endregion LEGACY NOTE TO SELF
+
+    /**
+     * Cached note-to-self conversation ID for the active user.
+     * Set once via [initNoteToSelfId] at authentication time; read everywhere else.
+     */
+    lateinit var noteToSelfId: Uuid
+        private set
+
+    /** Computes and caches the note-to-self ID from the user's domain. Call once at auth time. */
+    fun initNoteToSelfId(domain: OdinId) {
+        noteToSelfId = XorIdUtil.getNewXorId(domain.domainName, domain.domainName)
+    }
+
     const val ConversationPayloadKey = "convo_pk" // TODO: Explain what this represents
     const val ConversationImageKey = "convo_img"
 
@@ -60,8 +75,9 @@ object ChatProtocol {
     const val MaxDescriptorContentLength = 1024
     const val MaxHeaderContentBytes = 7000
 
+    // region LEGACY NOTE TO SELF — remove once new XOR-based note-to-self is verified
     /**
-     * Creates a static [ConversationUiModel] for the "Note to Self" conversation.
+     * Creates a static [ConversationUiModel] for the legacy "Note to Self" conversation.
      * This conversation is never created on the server — it exists purely as a
      * local constant identified by [ConversationWithYourselfId].
      */
@@ -83,6 +99,8 @@ object ChatProtocol {
             admins = setOf(domain),
             isPinned = true,
             isGroup = false,
+            isLegacyNoteToSelf = true,
         )
     }
+    // endregion LEGACY NOTE TO SELF
 }

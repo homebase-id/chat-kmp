@@ -352,11 +352,18 @@ class ChatMessageStream(
     companion object {
         private fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
+            // LEGACY NOTE TO SELF — the ConversationWithYourselfId check can be removed
+            // once the legacy note-to-self is removed
             if (header.fileMetadata.appData.groupId == ChatProtocol.ConversationWithYourselfId) {
                 return ChatDeliveryStatus.Read
             }
 
             val count = header.serverMetadata.originalRecipientCount
+
+            // No recipients means local-only (note-to-self); delivery status is always Read
+            if (count == 0) {
+                return ChatDeliveryStatus.Read
+            }
             val transferSummary =
                 header.serverMetadata.transferHistory?.summary ?: return ChatDeliveryStatus.Sent
 

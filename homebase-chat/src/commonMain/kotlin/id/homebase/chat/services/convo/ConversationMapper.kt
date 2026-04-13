@@ -73,10 +73,13 @@ class ConversationMapper(
             val isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
             val isLegacyGroup = !isGroup && participants.size > 2
             val isAnyGroup = isGroup || isLegacyGroup
+            val isNoteToSelf = !isAnyGroup && participants.size == 1 && participants[0] == domain
             val displayNames = participants.map { it.domainName }
 
             val title =
-                if (conversationId == ChatProtocol.ConversationWithYourselfId) {
+                // LEGACY NOTE TO SELF — the ConversationWithYourselfId check can be removed
+                // once the legacy note-to-self is removed
+                if (conversationId == ChatProtocol.ConversationWithYourselfId || isNoteToSelf) {
                     "" // Display name resolved via string resource at UI layer
                 } else if (isAnyGroup) {
                     conversationData.title?.takeIf { it.isNotBlank() } ?: displayNames.joinToString(", ")
@@ -144,6 +147,7 @@ class ConversationMapper(
                     conversationState = conversationState,
                     isGroup = isGroup,
                     isLegacyGroup = isLegacyGroup,
+                    isNoteToSelf = isNoteToSelf,
                     exitedAt = exitedAt
                 )
 
@@ -279,7 +283,10 @@ class ConversationMapper(
             )
         }
 
-        if (conversationId == ChatProtocol.ConversationWithYourselfId) {
+        // LEGACY NOTE TO SELF — the ConversationWithYourselfId check can be removed
+        // once the legacy note-to-self is removed
+        val isNoteToSelfAvatar = !participants.any { it != domain }
+        if (conversationId == ChatProtocol.ConversationWithYourselfId || isNoteToSelfAvatar) {
             return ConversationAvatarModel(
                 odinId = domain,
                 type = ConversationAvatarModel.Type.Owner

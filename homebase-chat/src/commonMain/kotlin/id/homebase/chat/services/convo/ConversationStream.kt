@@ -415,6 +415,10 @@ class ConversationStream(
         }
     }
 
+    // region LEGACY NOTE TO SELF — remove this entire method body and replace with:
+    //   val result = dbm.chatReadCount.selectAllConversationPlusLastMessage()
+    //   return result.map { mapper.mapToConversationUi(it.conversation, it.message) }
+    // once the legacy note-to-self is removed
     suspend fun fetchConversations(): List<ConversationUiModel> {
         val result = dbm.chatReadCount.selectAllConversationPlusLastMessage()
         val conversations = result.map { mapper.mapToConversationUi(it.conversation, it.message) }
@@ -422,9 +426,9 @@ class ConversationStream(
         val domain = c.domain
         var self = ChatProtocol.buildSelfConversation(domain)
 
-        // Query the latest message for the self-conversation directly from the DB.
-        // There is no conversation file for the self-conversation, so we query message files
-        // by groupId and use the latest one to populate timestamp, lastMessage, etc.
+        // Query the latest message for the legacy self-conversation directly from the DB.
+        // There is no conversation file for the legacy self-conversation, so we query message
+        // files by groupId and use the latest one to populate timestamp, lastMessage, etc.
         val queryBatch = QueryBatch(c.getIdentityId())
         val selfMessages = queryBatch.queryBatchAsync(
             dbm = dbm,
@@ -449,6 +453,7 @@ class ConversationStream(
 
         return listOf(self) + conversations.filter { it.id != ChatProtocol.ConversationWithYourselfId }
     }
+    // endregion LEGACY NOTE TO SELF
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {
         return _conversations.value.items.firstOrNull { it.id == conversationId }
