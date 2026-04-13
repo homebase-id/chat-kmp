@@ -207,13 +207,12 @@ class ConversationService(
 
     /**
      * Ensures a real note-to-self conversation file exists.
-     * Uses [XorIdUtil.getNewXorId] with the user's own domain to derive a
-     * deterministic conversation ID, then creates and pins the conversation
-     * if it doesn't already exist in the DB.
+     * Uses [ChatProtocol.ConversationWithYourselfId] as the conversation ID,
+     * then creates and pins the conversation if it doesn't already exist in the DB.
      */
     suspend fun ensureNoteToSelfExists() {
         val domain = credentialsManager.requireActiveDomain()
-        val noteToSelfId = ChatProtocol.noteToSelfId
+        val noteToSelfId = ChatProtocol.ConversationWithYourselfId
 
         val existing = getConversation(noteToSelfId)
         if (existing != null && existing.conversationState != ConversationState.Deleted) {
@@ -262,13 +261,6 @@ class ConversationService(
     }
 
     suspend fun getConversation(conversationId: Uuid): ConversationUiModel? {
-
-        // LEGACY NOTE TO SELF — remove this early return once legacy note-to-self is removed
-        if(conversationId == ChatProtocol.ConversationWithYourselfId)
-        {
-            return ChatProtocol.buildSelfConversation(credentialsManager.requireActiveDomain())
-        }
-
         val file = getConversationHomebaseFile(conversationId) ?: return null
         return mapper.mapToConversationUi(file, null)
     }

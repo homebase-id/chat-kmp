@@ -49,10 +49,7 @@ class ChatMessageActionService(
         val domain = credentialsManager.requireActiveDomain()
         val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
 
-        // LEGACY NOTE TO SELF — the ConversationWithYourselfId check can be removed
-        // once the legacy note-to-self is removed
         val isSelfConversation = conversationId == ChatProtocol.ConversationWithYourselfId
-                || conversationId == ChatProtocol.noteToSelfId
         val unreadRecords = batch.records
             .filter {
                 it.localReadTimestamp == null &&

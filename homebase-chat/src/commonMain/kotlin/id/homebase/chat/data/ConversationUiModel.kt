@@ -34,8 +34,6 @@ data class ConversationUiModel(
     val conversationState: ConversationState = ConversationState.Active,
     val isGroup: Boolean = false,
     val isLegacyGroup: Boolean = false,
-    val isNoteToSelf: Boolean = false,
-    val isLegacyNoteToSelf: Boolean = false,
     val exitedAt: Instant? = null,
 ) {
     fun isCurrentUserAdmin(odinId: OdinId): Boolean {
@@ -48,9 +46,6 @@ data class ConversationUiModel(
 
     val isWithSelf: Boolean
         get() = id == ChatProtocol.ConversationWithYourselfId
-
-    val isAnySelfConversation: Boolean
-        get() = isWithSelf || isNoteToSelf
 
 
     fun getDisplayName(): String {

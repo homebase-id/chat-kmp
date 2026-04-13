@@ -16,8 +16,7 @@ class ConversationEnricher {
 
         val currentUser = ownerSession.odinId
 
-        // LEGACY NOTE TO SELF — isWithSelf check can be removed once legacy note-to-self is removed
-        if (convo.isAnySelfConversation) {
+        if (convo.isWithSelf) {
             return EnrichedConversationUiModel(
                 conversation = convo,
                 participants = emptyList(),

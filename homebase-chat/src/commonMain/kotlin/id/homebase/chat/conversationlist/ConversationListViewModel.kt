@@ -535,11 +535,8 @@ class ConversationListViewModel(
                 val message = messages.firstOrNull { it.id == action.messageId } ?: return
                 val isCurrentUserMessage =
                     message.originalAuthor?.domainName == _uiState.value.ownerSession?.odinId?.domainName
-                // LEGACY NOTE TO SELF — the ConversationWithYourselfId check can be removed
-                // once the legacy note-to-self is removed
                 val isWithSelf =
                     message.conversationId == ChatProtocol.ConversationWithYourselfId
-                            || message.conversationId == ChatProtocol.noteToSelfId
                 _uiState.update {
                     it.copy(
                         uiDialog = DeleteMessage(
@@ -1349,7 +1346,6 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ShowContactInfo -> {
                 if (action.odinId == uiState.value.ownerSession?.odinId?.domainName) {
-                    // LEGACY NOTE TO SELF — update to use noteToSelfId once legacy is removed
                     // Show self-conversation settings as owner profile
                     _uiState.update {
                         it.copy(
@@ -1837,10 +1833,7 @@ class ConversationListViewModel(
                             else
                                 messageState.messages
                             // Hide soft-deleted messages in "Note to Self" conversation
-                            // LEGACY NOTE TO SELF — the ConversationWithYourselfId check can
-                            // be removed once the legacy note-to-self is removed
-                            val messages = if (conversationId == ChatProtocol.ConversationWithYourselfId
-                                || conversationId == ChatProtocol.noteToSelfId)
+                            val messages = if (conversationId == ChatProtocol.ConversationWithYourselfId)
                                 filteredByExit.filter { !it.isDeleted }
                             else
                                 filteredByExit

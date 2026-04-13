@@ -3,18 +3,14 @@ package id.homebase.chat.services.convo
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchSortField
-import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
-import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessage
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
@@ -415,45 +411,10 @@ class ConversationStream(
         }
     }
 
-    // region LEGACY NOTE TO SELF — remove this entire method body and replace with:
-    //   val result = dbm.chatReadCount.selectAllConversationPlusLastMessage()
-    //   return result.map { mapper.mapToConversationUi(it.conversation, it.message) }
-    // once the legacy note-to-self is removed
     suspend fun fetchConversations(): List<ConversationUiModel> {
         val result = dbm.chatReadCount.selectAllConversationPlusLastMessage()
-        val conversations = result.map { mapper.mapToConversationUi(it.conversation, it.message) }
-        val c = credentialsManager.requireActiveCredentials()
-        val domain = c.domain
-        var self = ChatProtocol.buildSelfConversation(domain)
-
-        // Query the latest message for the legacy self-conversation directly from the DB.
-        // There is no conversation file for the legacy self-conversation, so we query message
-        // files by groupId and use the latest one to populate timestamp, lastMessage, etc.
-        val queryBatch = QueryBatch(c.getIdentityId())
-        val selfMessages = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = chatDrive,
-            noOfItems = 1,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
-            groupIdAnyOf = listOf(ChatProtocol.ConversationWithYourselfId)
-        )
-
-        val latestMsg = selfMessages.records.firstOrNull()?.let {
-            ChatMessageStream.mapToMessageData(it, credentialsManager) { file ->
-                file.fileMetadata.originalAuthor?.domainName ?: ""
-            }
-        }
-
-        if (latestMsg != null) {
-            self = self.updateWithLatestMessage(latestMsg, domain)
-        }
-
-        return listOf(self) + conversations.filter { it.id != ChatProtocol.ConversationWithYourselfId }
+        return result.map { mapper.mapToConversationUi(it.conversation, it.message) }
     }
-    // endregion LEGACY NOTE TO SELF
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {
         return _conversations.value.items.firstOrNull { it.id == conversationId }

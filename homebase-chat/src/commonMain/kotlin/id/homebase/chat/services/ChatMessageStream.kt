@@ -352,8 +352,6 @@ class ChatMessageStream(
     companion object {
         private fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
-            // LEGACY NOTE TO SELF — the ConversationWithYourselfId check can be removed
-            // once the legacy note-to-self is removed
             if (header.fileMetadata.appData.groupId == ChatProtocol.ConversationWithYourselfId) {
                 return ChatDeliveryStatus.Read
             }

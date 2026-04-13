@@ -48,10 +48,7 @@ class ConversationSettingsViewModel(
         viewModelScope.launch {
             try {
                 val conversationId = Uuid.parse(route.conversationId)
-                // LEGACY NOTE TO SELF — the ConversationWithYourselfId check can be removed
-                // once the legacy note-to-self is removed
-                if (conversationId == ChatProtocol.ConversationWithYourselfId
-                    || conversationId == ChatProtocol.noteToSelfId) {
+                if (conversationId == ChatProtocol.ConversationWithYourselfId) {
                     val conversation = conversationStream.getConversationById(conversationId)
                     val owner = ownerSessionRepository.user.value
                     _uiState.update {

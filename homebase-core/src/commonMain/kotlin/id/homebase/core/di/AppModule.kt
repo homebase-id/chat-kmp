@@ -72,11 +72,6 @@ val appModule = module {
             eventBus = get(),
             databaseManager = get(),
             onPostAuthenticated = {
-                // Set the global note-to-self conversation ID once at auth time
-                get<CredentialsManager>().credentialsFlow.value?.domain?.let {
-                    ChatProtocol.initNoteToSelfId(it)
-                }
-
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
                 val conversationStream = get<ConversationStream>()
