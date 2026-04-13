@@ -1457,6 +1457,12 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.DeleteConversation -> {
+                _uiState.update {
+                    it.copy(uiDialog = ConversationListUiDialog.DeleteConversation(action.conversationId))
+                }
+            }
+
+            is ConversationListUiAction.ConfirmDeleteConversation -> {
                 viewModelScope.launch {
                     try {
                         conversationService.deleteConversation(action.conversationId)
