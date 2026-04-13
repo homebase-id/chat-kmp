@@ -40,6 +40,7 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
+import id.homebase.core.ui.screens.connections.ConnectionsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
@@ -126,6 +127,7 @@ val appModule = module {
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::HelpViewModel)
+    viewModelOf(::ConnectionsViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
 }

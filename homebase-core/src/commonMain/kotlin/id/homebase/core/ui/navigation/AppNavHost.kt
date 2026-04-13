@@ -67,6 +67,7 @@ import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
+import id.homebase.core.ui.screens.connections.ConnectionsScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
@@ -503,6 +504,9 @@ fun AppNavHost(
                             SettingsScreen(
                                 viewModel = koinViewModel(),
                                 onBackClick = { navController.popBackStack() },
+                                onNavigateToConnections = {
+                                    navController.navigate(Route.Connections)
+                                },
                                 onNavigateToNotifications = {
                                     navController.navigate(Route.NotificationSettings)
                                 },
@@ -512,6 +516,15 @@ fun AppNavHost(
                                 onNavigateToHelp = {
                                     navController.navigate(Route.Help)
                                 },
+                            )
+                        }
+                    }
+
+                    composable<Route.Connections> {
+                        if (isAuthenticated) {
+                            ConnectionsScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() },
                             )
                         }
                     }

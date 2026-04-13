@@ -3,6 +3,7 @@ package id.homebase.api.di
 import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
@@ -46,6 +47,7 @@ val apiModule = module {
     singleOf(::VideoPreloader)
     singleOf(::CredentialsManager)
     singleOf(::OwnerSessionRepository)
+    singleOf(::PublicIdentityRepository)
     singleOf(::DriveFileHttpProvider)
     singleOf(::DriveFileProviderCached)
     single<OutboxUploader> { DriveOutboxUploader(get(), get(), get(), get()) }

@@ -107,6 +107,13 @@
 
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
+    <string name="settings_connections">Connections</string>
+    <string name="connections_already_sent_title">Request already sent</string>
+    <string name="connections_already_sent_text">A connection request to %1$s already exists. Open the owner console to view or manage it.</string>
+    <string name="connections_empty_title">No connection requests yet</string>
+    <string name="connections_empty_description">When you send or receive a connection request, it will show up here. Tap the + button to send one.</string>
+    <string name="connections_no_incoming">No incoming requests</string>
+    <string name="connections_no_outgoing">No outgoing requests</string>
     <string name="settings_notifications">Notifications</string>
     <string name="settings_help">Help</string>
     <string name="settings_logout">Log out</string>

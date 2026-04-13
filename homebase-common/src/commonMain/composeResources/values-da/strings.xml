@@ -90,6 +90,13 @@
 
     <!-- Settings screen -->
     <string name="settings_appearance">Udseende</string>
+    <string name="settings_connections">Forbindelser</string>
+    <string name="connections_already_sent_title">Anmodning allerede sendt</string>
+    <string name="connections_already_sent_text">En forbindelsesanmodning til %1$s findes allerede. Åbn ejer konsollen for at se eller administrere den.</string>
+    <string name="connections_empty_title">Ingen forbindelsesanmodninger endnu</string>
+    <string name="connections_empty_description">Når du sender eller modtager en forbindelsesanmodning, vises den her. Tryk på + knappen for at sende en.</string>
+    <string name="connections_no_incoming">Ingen indgående anmodninger</string>
+    <string name="connections_no_outgoing">Ingen udgående anmodninger</string>
     <string name="settings_notifications">Notifikationer</string>
     <string name="settings_logout">Log ud</string>
     <string name="settings_delete_account">Slet min konto</string>
