@@ -6,6 +6,8 @@ import app.cash.sqldelight.db.SqlCursor
 import kotlin.Any
 import kotlin.Long
 import kotlin.compareTo
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.uuid.Uuid
 
 class DriveMainIndexWrapper(
@@ -56,6 +58,14 @@ class DriveMainIndexWrapper(
     ): DriveMainIndex? = delegate.selectByIdentityAndDriveAndUnique(identityId, driveId, uniqueId)
         .executeAsOneOrNull()
 
+    fun selectHomebaseFileByUnique(
+        identityId: Uuid,
+        driveId: Uuid,
+        uniqueId: Uuid,
+    ): HomebaseFile? {
+        val row = selectByIdentityAndDriveAndUnique(identityId, driveId, uniqueId) ?: return null
+        return OdinSystemSerializer.deserialize<HomebaseFile>(row.jsonHeader)
+    }
 
     fun selectByIdentityAndDriveAndGlobal(
         identityId: Uuid,

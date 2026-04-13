@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS DriveMainIndex( -- Version: 4
 CREATE INDEX IF NOT EXISTS Idx0DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,created,rowId);
 CREATE INDEX IF NOT EXISTS Idx1DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,modified,rowId);
 CREATE INDEX IF NOT EXISTS Idx2DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,userDate,rowId);
+CREATE INDEX IF NOT EXISTS Idx3DriveMainIndex ON DriveMainIndex(identityId,driveId,fileSystemType,groupId,fileType,userDate DESC,rowId);
 -- Other DriveMainIndex INDEX is created in ChatReadCount.sq
 
 -- Upsert a record
