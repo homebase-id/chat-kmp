@@ -5,11 +5,8 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchSortField
-import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -226,21 +223,10 @@ class ConversationMapper(
     private suspend fun queryAdmins(conversationId: Uuid): Set<OdinId>? {
         val c = credentialsManager.requireActiveCredentials()
         val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
-        val queryBatch = QueryBatch(c.getIdentityId())
 
-        val result = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = chatDrive,
-            noOfItems = 1,
-            cursor = null,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            uniqueIdAnyOf = listOf(adminUniqueId),
-            filetypesAnyOf = listOf(ChatProtocol.ConversationAdminFileType),
-        )
-
-        val file = result.records.firstOrNull() ?: return null
+        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            c.getIdentityId(), chatDrive, adminUniqueId
+        ) ?: return null
         val content = file.fileMetadata.appData.content
         if (content.isNullOrEmpty()) return null
 

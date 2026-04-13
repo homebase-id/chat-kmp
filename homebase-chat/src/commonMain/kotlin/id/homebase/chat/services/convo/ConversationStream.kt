@@ -225,19 +225,10 @@ class ConversationStream(
 
     suspend fun loadConversation(conversationId: Uuid) {
         val c = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(c.getIdentityId())
 
-        val conversationFile = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = chatDrive,
-            noOfItems = 1,
-            cursor = null,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            uniqueIdAnyOf = listOf(conversationId),
-            filetypesAnyOf = listOf(ChatProtocol.ConversationFileType)
-        ).records.firstOrNull() ?: return
+        val conversationFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            c.getIdentityId(), chatDrive, conversationId
+        ) ?: return
 
         val incoming = mapper.mapToConversationUi(conversationFile, null)
         val existing = _conversations.value.items.find { it.id == conversationId }
