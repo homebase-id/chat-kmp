@@ -1,12 +1,18 @@
 package id.homebase.feed
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
@@ -16,11 +22,14 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
+import id.homebase.core.settings.ThemeState
+import id.homebase.core.settings.UserPreferences
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.init
 import io.github.vinceglb.filekit.manualFileKitCoreInitialization
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
+import org.koin.compose.koinInject
 
 class MainActivity : AppCompatActivity() {
 
@@ -44,7 +53,33 @@ class MainActivity : AppCompatActivity() {
         FileKit.manualFileKitCoreInitialization(this)
         FileKit.init(this)
 
-        setContent { App() }
+        setContent {
+            val userPreferences = koinInject<UserPreferences>()
+            val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
+            val isDarkTheme = when (prefState.theme) {
+                ThemeState.System -> isSystemInDarkTheme()
+                ThemeState.Dark -> true
+                ThemeState.Light -> false
+            }
+
+            DisposableEffect(isDarkTheme) {
+                enableEdgeToEdge(
+                    statusBarStyle = if (isDarkTheme) {
+                        SystemBarStyle.dark(Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                    },
+                    navigationBarStyle = if (isDarkTheme) {
+                        SystemBarStyle.dark(Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                    },
+                )
+                onDispose {}
+            }
+
+            App()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
