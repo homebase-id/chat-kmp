@@ -1820,10 +1820,15 @@ class ConversationListViewModel(
                             val exitedAt = _uiState.value.activeConversations
                                 .find { it.conversation.id == conversationId }
                                 ?.conversation?.exitedAt
-                            val messages = if (exitedAt != null)
+                            val filteredByExit = if (exitedAt != null)
                                 messageState.messages.filter { it.userDate <= exitedAt }
                             else
                                 messageState.messages
+                            // Hide soft-deleted messages in "Note to Self" conversation
+                            val messages = if (conversationId == ChatProtocol.ConversationWithYourselfId)
+                                filteredByExit.filter { !it.isDeleted }
+                            else
+                                filteredByExit
                             // Group messages within day sections
                             val timezone = TimeZone.currentSystemDefault()
                             val groupedMessages =
