@@ -7,8 +7,6 @@ import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.IntroductionGroup
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchSortField
-import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.PayloadFile
@@ -29,7 +27,6 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.toBase64
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
@@ -816,46 +813,14 @@ class ConversationService(
     }
 
     private suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
-
         val c = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(c.getIdentityId())
-
-        val result =
-            queryBatch.queryBatchAsync(
-                dbm = dbm,
-                driveId = chatDrive,
-                noOfItems = 1,
-                cursor = null,
-                sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
-                fileSystemType = 0,
-                uniqueIdAnyOf = listOf(conversationId),
-                filetypesAnyOf = listOf(ChatProtocol.ConversationFileType),
-            )
-
-        val file = result.records.firstOrNull()
-
-        return file
+        return dbm.driveMainIndex.selectHomebaseFileByUnique(c.getIdentityId(), chatDrive, conversationId)
     }
 
     suspend fun getConversationAdminHomebaseFile(conversationId: Uuid): HomebaseFile? {
         val c = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(c.getIdentityId())
         val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
-
-        val result = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = chatDrive,
-            noOfItems = 1,
-            cursor = null,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            uniqueIdAnyOf = listOf(adminUniqueId),
-            filetypesAnyOf = listOf(ChatProtocol.ConversationAdminFileType),
-        )
-
-        return result.records.firstOrNull()
+        return dbm.driveMainIndex.selectHomebaseFileByUnique(c.getIdentityId(), chatDrive, adminUniqueId)
     }
 
     /** Reads the admin list from the dedicated admin file, falling back to originalAuthor. */

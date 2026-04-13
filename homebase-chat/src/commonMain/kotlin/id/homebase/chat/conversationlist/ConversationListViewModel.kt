@@ -106,7 +106,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.encoding.Base64
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
@@ -1458,6 +1457,12 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.DeleteConversation -> {
+                _uiState.update {
+                    it.copy(uiDialog = ConversationListUiDialog.DeleteConversation(action.conversationId))
+                }
+            }
+
+            is ConversationListUiAction.ConfirmDeleteConversation -> {
                 viewModelScope.launch {
                     try {
                         conversationService.deleteConversation(action.conversationId)
@@ -1789,9 +1794,7 @@ class ConversationListViewModel(
     ) {
         val loadStart = TimeSource.Monotonic.markNow()
 
-        val hasCachedMessages =
-            conversationId == _uiState.value.selectedConversationId &&
-                    chatMessageStream.hasCachedMessages(conversationId)
+        val hasCachedMessages = chatMessageStream.hasCachedMessages(conversationId)
 
         _messagesUiState.update {
             it.copy(scrollPosition = null, isLoadingMessages = !hasCachedMessages)
@@ -1808,7 +1811,6 @@ class ConversationListViewModel(
                 if (!hasCachedMessages) {
                     chatMessageStream.loadConversation(conversationId)
                 }
-                val dbFetchElapsed = loadStart.elapsedNow()
 
                 chatMessageStream.observeMessages(conversationId).collect { messageState ->
                     when (messageState) {
@@ -1820,10 +1822,15 @@ class ConversationListViewModel(
                             val exitedAt = _uiState.value.activeConversations
                                 .find { it.conversation.id == conversationId }
                                 ?.conversation?.exitedAt
-                            val messages = if (exitedAt != null)
+                            val filteredByExit = if (exitedAt != null)
                                 messageState.messages.filter { it.userDate <= exitedAt }
                             else
                                 messageState.messages
+                            // Hide soft-deleted messages in "Note to Self" conversation
+                            val messages = if (conversationId == ChatProtocol.ConversationWithYourselfId)
+                                filteredByExit.filter { !it.isDeleted }
+                            else
+                                filteredByExit
                             // Group messages within day sections
                             val timezone = TimeZone.currentSystemDefault()
                             val groupedMessages =
@@ -1907,14 +1914,11 @@ class ConversationListViewModel(
 
                             if (setInitialScroll) {
                                 val totalElapsed = loadStart.elapsedNow()
-                                if (totalElapsed > 200.milliseconds) {
-                                    Logger.w("SlowConversationLoad") {
-                                        "conversationId=$conversationId " +
-                                                "messageCount=${messages.size} " +
-                                                "cached=$hasCachedMessages " +
-                                                "dbFetch=$dbFetchElapsed " +
-                                                "total=$totalElapsed"
-                                    }
+                                Logger.d("ConversationLoad") {
+                                    "conversationId=$conversationId " +
+                                            "messageCount=${messages.size} " +
+                                            "cached=$hasCachedMessages " +
+                                            "total=$totalElapsed"
                                 }
                             }
 

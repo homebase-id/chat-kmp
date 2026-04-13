@@ -85,6 +85,7 @@ sealed interface ConversationListUiAction {
         ConversationListUiAction
 
     data class DeleteConversation(val conversationId: Uuid) : ConversationListUiAction
+    data class ConfirmDeleteConversation(val conversationId: Uuid) : ConversationListUiAction
     data class ArchiveConversation(val conversationId: Uuid) : ConversationListUiAction
 
     data class UnarchiveConversation(val conversationId: Uuid) : ConversationListUiAction

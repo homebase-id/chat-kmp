@@ -18,6 +18,9 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
+import id.homebase.core.logging.StartupLogger
+import id.homebase.core.util.PlatformInfo
+import chat_kmp.homebase_common.BuildConfig
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.settings.UserPreferences
@@ -43,11 +46,26 @@ class MainApplication : Application(), KoinComponent {
 
         runBlocking {
             val dbKey = DatabaseKeyManager.getOrGenerateKey()
-            // DatabaseManager.wipe { DatabaseDriverFactory(applicationContext).createDriver(dbKey)
-            // } //
-            // <-- Uncomment to wipe database
-            DatabaseManager.initialize {
-                DatabaseDriverFactory(applicationContext).createDriver(dbKey)
+            try {
+                DatabaseManager.initialize {
+                    DatabaseDriverFactory(applicationContext).createDriver(dbKey)
+                }
+            } catch (e: Exception) {
+                Logger.e("MainApplication", e, "Database init failed, resetting")
+                // Delete the corrupted/undecryptable database file and its journal files
+                val dbFile = applicationContext.getDatabasePath("odin-2.db")
+                dbFile.delete()
+                java.io.File(dbFile.path + "-journal").delete()
+                java.io.File(dbFile.path + "-wal").delete()
+                java.io.File(dbFile.path + "-shm").delete()
+
+                // Clear the stale encryption key and generate a fresh one
+                DatabaseKeyManager.clearKey()
+                val freshKey = DatabaseKeyManager.getOrGenerateKey()
+
+                DatabaseManager.initialize {
+                    DatabaseDriverFactory(applicationContext).createDriver(freshKey)
+                }
             }
         }
 
@@ -73,6 +91,9 @@ class MainApplication : Application(), KoinComponent {
         } catch (e: Exception) {
             Logger.e("MainApplication", e, "Failed to initialize file logging")
         }
+
+        val platformInfo = get<PlatformInfo>()
+        StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
 
         // Set up uncaught exception handler for crash logging
         setupCrashHandler()

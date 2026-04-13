@@ -7,8 +7,6 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchSortField
-import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
@@ -24,7 +22,6 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
-import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.toBase64
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
 import id.homebase.api.crypto.ByteArrayUtil
@@ -137,23 +134,12 @@ class OptimisticWriter(
     ) {
 
         val credentials = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(credentials.getIdentityId())
         val uid = unecryptedMetadata.appData.uniqueId
             ?: throw IllegalStateException("missing unique id")
 
-        val result = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = driveId,
-            noOfItems = 1,
-            cursor = null,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            uniqueIdAnyOf = listOf(uid)
-        )
-
-        val existingFile = result.records.singleOrNull()
-            ?: throw IllegalStateException("no file by uid")
+        val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), driveId, uid
+        ) ?: throw IllegalStateException("no file by uid")
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
 
@@ -224,20 +210,10 @@ class OptimisticWriter(
      *  pending message is not left stranded in the conversation list. */
     suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid) {
         val credentials = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(credentials.getIdentityId())
 
-        val result = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = driveId,
-            noOfItems = 1,
-            cursor = null,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            uniqueIdAnyOf = listOf(uniqueId)
-        )
-
-        val file = result.records.singleOrNull() ?: return
+        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), driveId, uniqueId
+        ) ?: return
 
         // Only remove files that are still pending — if the outbox already sent the message
         // the isPendingSendTag will have been removed, and we must not delete it.
@@ -267,20 +243,10 @@ class OptimisticWriter(
      *  Returns the original file so the caller can rollback if the outbox enqueue fails. */
     suspend fun writeDelete(driveId: Uuid, uniqueId: Uuid): HomebaseFile? {
         val credentials = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(credentials.getIdentityId())
 
-        val result = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = driveId,
-            noOfItems = 1,
-            cursor = null,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            uniqueIdAnyOf = listOf(uniqueId)
-        )
-
-        val existingFile = result.records.singleOrNull() ?: return null
+        val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), driveId, uniqueId
+        ) ?: return null
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
 
@@ -358,21 +324,10 @@ class OptimisticWriter(
         reactionJson: String,
     ): Pair<ToggleReactionResultType, HomebaseFile?> {
         val credentials = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(credentials.getIdentityId())
 
-        val result = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = driveId,
-            noOfItems = 1,
-            cursor = null,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            uniqueIdAnyOf = listOf(uniqueId)
-        )
-
-        val existingFile = result.records.singleOrNull()
-            ?: return Pair(ToggleReactionResultType.None, null)
+        val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), driveId, uniqueId
+        ) ?: return Pair(ToggleReactionResultType.None, null)
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
         val currentReactions =
@@ -443,20 +398,10 @@ class OptimisticWriter(
     @OptIn(ExperimentalEncodingApi::class)
     suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalMetadataContentOutboxRequest? {
         val credentials = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(credentials.getIdentityId())
 
-        val result = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = driveId,
-            noOfItems = 1,
-            cursor = null,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            uniqueIdAnyOf = listOf(conversationId)
-        )
-
-        val existingFile = result.records.singleOrNull() ?: return null
+        val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), driveId, conversationId
+        ) ?: return null
 
         val existing = existingFile.fileMetadata.localAppData?.content?.let {
             try { OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it) } catch (_: Throwable) { null }
@@ -533,20 +478,10 @@ class OptimisticWriter(
         newTags: List<Uuid>
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
-        val queryBatch = QueryBatch(credentials.getIdentityId())
 
-        val result = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = driveId,
-            noOfItems = 1,
-            cursor = null,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            uniqueIdAnyOf = listOf(uniqueId)
-        )
-
-        val existingFile = result.records.singleOrNull() ?: return
+        val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), driveId, uniqueId
+        ) ?: return
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
 

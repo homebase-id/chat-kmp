@@ -7,7 +7,11 @@ import id.homebase.api.sync.database.DatabaseKeyManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.logging.LoggerConfig
+import id.homebase.core.logging.StartupLogger
 import id.homebase.core.logging.setErrorCollectionEnabled
+import id.homebase.core.util.PlatformInfo
+import chat_kmp.homebase_common.BuildConfig
+import org.koin.core.context.GlobalContext
 import id.homebase.core.logging.setupIOSCrashHandler
 import id.homebase.core.settings.UserPreferencesHelper
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -16,6 +20,7 @@ import kotlinx.io.files.Path
 import org.koin.core.context.startKoin
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSHomeDirectory
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
 
@@ -38,6 +43,9 @@ fun MainViewController(): UIViewController {
         Logger.e(throwable = e, tag = "MainViewController") { "Failed to initialize file logging" }
     }
 
+    val platformInfo = GlobalContext.get().get<PlatformInfo>()
+    StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
+
     // Configure Crashlytics based on user preference
     // Note: Koin must be initialized before accessing UserPreferences
     setErrorCollectionEnabled(UserPreferencesHelper.errorCollectionEnabled)
@@ -47,8 +55,24 @@ fun MainViewController(): UIViewController {
 
     runBlocking {
         val dbKey = DatabaseKeyManager.getOrGenerateKey()
-        // DatabaseManager.wipe { DatabaseDriverFactory().createDriver(dbKey) }
-        DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
+        try {
+            DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
+        } catch (e: Exception) {
+            Logger.e("MainViewController", e, "Database init failed, resetting")
+            // Delete the corrupted/undecryptable database file
+            val fileManager = NSFileManager.defaultManager
+            val dbDir = "${NSHomeDirectory()}/databases"
+            fileManager.removeItemAtPath("$dbDir/odin-2.db", null)
+            fileManager.removeItemAtPath("$dbDir/odin-2.db-journal", null)
+            fileManager.removeItemAtPath("$dbDir/odin-2.db-wal", null)
+            fileManager.removeItemAtPath("$dbDir/odin-2.db-shm", null)
+
+            // Clear the stale encryption key and generate a fresh one
+            DatabaseKeyManager.clearKey()
+            val freshKey = DatabaseKeyManager.getOrGenerateKey()
+
+            DatabaseManager.initialize { DatabaseDriverFactory().createDriver(freshKey) }
+        }
     }
     val controller = ComposeUIViewController { App() }
     MainViewControllerRef.instance = controller

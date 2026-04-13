@@ -51,6 +51,8 @@ import id.homebase.core.widget.DialogTitle
 import id.homebase.resources.MR
 import id.homebase.resources.action_cannot_be_undone
 import id.homebase.resources.cancel
+import id.homebase.resources.chat_delete
+import id.homebase.resources.chat_delete_conversation_title
 import id.homebase.resources.chat_message_delete_dialog_title
 import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
@@ -216,6 +218,34 @@ fun ConversationListScreen(
                     }) {
                     DialogTitle(
                         text = stringResource(MR.string.chat_message_delete_dialog_title),
+                    )
+                }
+            }
+        }
+
+        is ConversationListUiDialog.DeleteConversation -> {
+            Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
+                DialogCard(
+                    buttons = {
+                        DialogButtons(
+                            primaryText = stringResource(MR.string.chat_delete),
+                            onPrimaryClick = {
+                                viewModel.onAction(
+                                    ConversationListUiAction.ConfirmDeleteConversation(
+                                        dialog.conversationId
+                                    )
+                                )
+                                viewModel.dialogClosed()
+                            },
+                            secondaryText = stringResource(MR.string.cancel),
+                            onSecondaryClick = { viewModel.dialogClosed() },
+                        )
+                    }) {
+                    DialogTitle(
+                        text = stringResource(MR.string.chat_delete_conversation_title),
+                    )
+                    DialogText(
+                        text = stringResource(MR.string.action_cannot_be_undone),
                     )
                 }
             }

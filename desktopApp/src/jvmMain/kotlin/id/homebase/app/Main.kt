@@ -21,6 +21,9 @@ import id.homebase.core.App
 import id.homebase.core.di.allModules
 import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
+import id.homebase.core.logging.StartupLogger
+import id.homebase.core.util.PlatformInfo
+import chat_kmp.homebase_common.BuildConfig
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
 import id.homebase.core.ui.screens.appearance.getIconForTheme
@@ -58,6 +61,9 @@ fun main() {
 
     // Initialize Koin first
     startKoin { modules(allModules) }
+
+    val platformInfo = GlobalContext.get().get<PlatformInfo>()
+    StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
 
     // OSX customizations
     System.setProperty("apple.awt.application.appearance", "system")
