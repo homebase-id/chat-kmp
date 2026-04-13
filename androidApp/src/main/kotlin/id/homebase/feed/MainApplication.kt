@@ -18,6 +18,9 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
+import id.homebase.core.logging.StartupLogger
+import id.homebase.core.util.PlatformInfo
+import chat_kmp.homebase_common.BuildConfig
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.settings.UserPreferences
@@ -73,6 +76,9 @@ class MainApplication : Application(), KoinComponent {
         } catch (e: Exception) {
             Logger.e("MainApplication", e, "Failed to initialize file logging")
         }
+
+        val platformInfo = get<PlatformInfo>()
+        StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
 
         // Set up uncaught exception handler for crash logging
         setupCrashHandler()
