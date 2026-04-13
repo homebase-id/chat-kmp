@@ -185,6 +185,7 @@
     <string name="chat_settings">Samtale indstillinger</string>
     <string name="chat_group_settings">Gruppe indstillinger</string>
     <string name="chat_delete">Slet</string>
+    <string name="chat_delete_conversation_title">Slet samtale?</string>
     <string name="chat_archive">Arkivér</string>
     <string name="chat_archived">Arkiveret</string>
     <string name="chat_unarchive">Gendan</string>

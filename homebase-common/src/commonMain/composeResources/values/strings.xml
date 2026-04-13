@@ -213,6 +213,7 @@
     <string name="chat_settings">Conversation settings</string>
     <string name="chat_group_settings">Group settings</string>
     <string name="chat_delete">Delete</string>
+    <string name="chat_delete_conversation_title">Delete conversation?</string>
     <string name="chat_archive">Archive</string>
     <string name="chat_archived">Archived</string>
     <string name="chat_unarchive">Restore</string>

@@ -7,4 +7,6 @@ sealed interface ConversationListUiDialog {
         ConversationListUiDialog
 
     data class DiscardDraft(val messageId: Uuid, val versionTag: Uuid) : ConversationListUiDialog
+
+    data class DeleteConversation(val conversationId: Uuid) : ConversationListUiDialog
 }
