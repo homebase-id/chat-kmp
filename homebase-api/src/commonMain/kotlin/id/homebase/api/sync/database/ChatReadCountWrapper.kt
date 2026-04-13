@@ -39,8 +39,8 @@ class ChatReadCountWrapper(
      * Select all conversations (fileType 8888) from DriveMainIndex
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
-    fun selectAllConversations(): List<HomebaseFile> {
-        val list = delegate.selectAllCoversations().executeAsList()
+    fun selectAllConversations(identityId: Uuid): List<HomebaseFile> {
+        val list = delegate.selectAllCoversations(identityId).executeAsList()
         return list.mapNotNull {
             try {
                 OdinSystemSerializer.deserialize<HomebaseFile>(it)
@@ -59,11 +59,11 @@ class ChatReadCountWrapper(
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
 
-    fun selectAllConversationPlusLastMessage(): List<ConversationWithLastMessage> {
+    fun selectAllConversationPlusLastMessage(identityId: Uuid): List<ConversationWithLastMessage> {
 
         val start = Clock.System.now().toEpochMilliseconds()
 
-        val list = delegate.selectAllConversationPlusLastMessage().executeAsList()
+        val list = delegate.selectAllConversationPlusLastMessage(identityId).executeAsList()
 
         logger.d { "Fetched rows=${list.size} in ${Clock.System.now().toEpochMilliseconds() - start}ms" }
 
@@ -112,8 +112,8 @@ class ChatReadCountWrapper(
      * Get unread message count for a specific conversation
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
-    fun selectUnreadCountForConversation(groupId: Uuid): Long {
-        val result = delegate.selectUnreadCountForConversation(groupId).executeAsOneOrNull()
+    fun selectUnreadCountForConversation(identityId: Uuid, groupId: Uuid): Long {
+        val result = delegate.selectUnreadCountForConversation(identityId, groupId).executeAsOneOrNull()
 
         if (result == null)
             return 0
@@ -125,8 +125,8 @@ class ChatReadCountWrapper(
      * Get all conversation read counts
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
-    suspend fun selectAllUnreadCount(originalAuthor: OdinId): List<ConversationUnreadCount> {
-        val list = delegate.selectAllUnreadCount(originalAuthor.domainName).executeAsList()
+    suspend fun selectAllUnreadCount(identityId: Uuid, originalAuthor: OdinId): List<ConversationUnreadCount> {
+        val list = delegate.selectAllUnreadCount(identityId, originalAuthor.domainName).executeAsList()
         return list.map {
             ConversationUnreadCount(
                 conversationId = it.groupId,
@@ -150,6 +150,15 @@ class ChatReadCountWrapper(
     suspend fun deleteByGroupId(groupId: Uuid): Boolean {
         return databaseManager.withWriteValue { db ->
             db.chatReadCountQueries.deleteByGroupId(groupId).value > 0
+        }
+    }
+
+    /**
+     * Delete all read count entries (used during logout to ensure no data survives)
+     */
+    suspend fun deleteAll(): Boolean {
+        return databaseManager.withWriteValue { db ->
+            db.chatReadCountQueries.deleteAll().value > 0
         }
     }
 }
