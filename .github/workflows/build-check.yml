@@ -62,7 +62,7 @@ jobs:
               ./gradlew :desktopApp:createDistributable
           - os: macos-latest
             name: iOS
-            build-command: ./gradlew :homebase-core:linkDebugFrameworkIosArm64
+            build-command: ./gradlew :homebase-common:linkDebugFrameworkIosArm64
       fail-fast: false
     name: Build ${{ matrix.name }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -118,11 +118,11 @@ jobs:
 
       - name: Verify iOS build artifact
         if: ${{ matrix.name == 'iOS' }}
-        run: find homebase-core/build/bin/iosArm64/debugFramework -name "*.framework" | grep -q ".framework$"
+        run: find homebase-common/build/bin/iosArm64/debugFramework -name "*.framework" | grep -q ".framework$"
 
       - name: Upload iOS artifact
         if: ${{ matrix.name == 'iOS' }}
         uses: actions/upload-artifact@v6
         with:
           name: ios-framework
-          path: homebase-core/build/bin/iosArm64/debugFramework/*.framework
+          path: homebase-common/build/bin/iosArm64/debugFramework/*.framework
