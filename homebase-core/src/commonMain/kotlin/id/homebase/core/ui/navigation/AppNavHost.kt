@@ -371,6 +371,7 @@ fun AppNavHost(
                         if (isAuthenticated) {
                             CreateConversationScreen(
                                 viewModel = koinViewModel(),
+                                connectRequestViewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
                                 onShowConversation = { conversationId ->
                                     navController.selectConversationOnChatList(conversationId)
@@ -524,6 +525,7 @@ fun AppNavHost(
                         if (isAuthenticated) {
                             ConnectionsScreen(
                                 viewModel = koinViewModel(),
+                                connectRequestViewModel = koinViewModel(),
                                 onBackClick = { navController.popBackStack() },
                             )
                         }

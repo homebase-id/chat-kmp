@@ -97,6 +97,7 @@
     <string name="connections_empty_description">Når du sender eller modtager en forbindelsesanmodning, vises den her. Tryk på + knappen for at sende en.</string>
     <string name="connections_no_incoming">Ingen indgående anmodninger</string>
     <string name="connections_no_outgoing">Ingen udgående anmodninger</string>
+    <string name="connections_manage_in_owner_console">Administrer i ejer konsollen</string>
     <string name="settings_notifications">Notifikationer</string>
     <string name="settings_logout">Log ud</string>
     <string name="settings_delete_account">Slet min konto</string>
@@ -154,6 +155,7 @@
     <string name="chat_new_conversation">Ny samtale</string>
     <string name="chat_new_conversation_search_placeholder">Søg kontakter</string>
     <string name="chat_new_conversation_new_group">Ny gruppe</string>
+    <string name="chat_new_conversation_connection_request">Ny forbindelsesanmodning</string>
     <string name="chat_no_contacts_found">Ingen kontakter fundet</string>
 
     <!-- Group -->
