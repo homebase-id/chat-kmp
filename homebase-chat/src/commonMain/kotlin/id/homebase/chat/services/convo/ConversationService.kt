@@ -217,9 +217,6 @@ class ConversationService(
 
         val existing = getConversation(noteToSelfId)
         if (existing != null && existing.conversationState != ConversationState.Deleted) {
-            if (!existing.isPinned) {
-                pinConversation(noteToSelfId)
-            }
             return
         }
 
