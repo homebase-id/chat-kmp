@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="database" path="odin-2.db" />
+    <exclude domain="database" path="odin-2.db-journal" />
+    <exclude domain="database" path="odin-2.db-wal" />
+    <exclude domain="database" path="odin-2.db-shm" />
+</full-backup-content>

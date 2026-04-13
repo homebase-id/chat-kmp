@@ -16,6 +16,7 @@ import kotlinx.io.files.Path
 import org.koin.core.context.startKoin
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSHomeDirectory
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
 
@@ -47,8 +48,24 @@ fun MainViewController(): UIViewController {
 
     runBlocking {
         val dbKey = DatabaseKeyManager.getOrGenerateKey()
-        // DatabaseManager.wipe { DatabaseDriverFactory().createDriver(dbKey) }
-        DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
+        try {
+            DatabaseManager.initialize { DatabaseDriverFactory().createDriver(dbKey) }
+        } catch (e: Exception) {
+            Logger.e("MainViewController", e, "Database init failed, resetting")
+            // Delete the corrupted/undecryptable database file
+            val fileManager = NSFileManager.defaultManager
+            val dbDir = "${NSHomeDirectory()}/databases"
+            fileManager.removeItemAtPath("$dbDir/odin-2.db", null)
+            fileManager.removeItemAtPath("$dbDir/odin-2.db-journal", null)
+            fileManager.removeItemAtPath("$dbDir/odin-2.db-wal", null)
+            fileManager.removeItemAtPath("$dbDir/odin-2.db-shm", null)
+
+            // Clear the stale encryption key and generate a fresh one
+            DatabaseKeyManager.clearKey()
+            val freshKey = DatabaseKeyManager.getOrGenerateKey()
+
+            DatabaseManager.initialize { DatabaseDriverFactory().createDriver(freshKey) }
+        }
     }
     val controller = ComposeUIViewController { App() }
     MainViewControllerRef.instance = controller
