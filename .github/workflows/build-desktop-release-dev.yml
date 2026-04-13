@@ -1,4 +1,4 @@
-name: Build Desktop Dev Release
+name: Build Desktop Release Dev
 
 on:
   # Run on schedule (every day at 2 AM UTC)

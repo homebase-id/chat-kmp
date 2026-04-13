@@ -6,6 +6,10 @@
     <string>app-store</string>
     <key>teamID</key>
     <string>JNJ85M8JM6</string>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>uploadBitcode</key>
+    <false/>
     <key>provisioningProfiles</key>
     <dict>
         <key>id.homebase.feed.dev</key>

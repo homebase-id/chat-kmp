@@ -120,7 +120,7 @@ fun MessageBubbleRaw(
 
     val filteredPayloads = message.payloads?.filter {
         it.key != ChatProtocol.DefaultPayloadKey &&
-        !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
+                !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
     }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
     // We store the result of the text layout to know where the last line ends
@@ -180,32 +180,33 @@ fun MessageBubbleRaw(
         else MaterialTheme.colorScheme.onSurface
 
     val deletedText = stringResource(MR.string.chat_message_deleted)
-    val textState = remember(message.isDeleted, message.content, searchQuery, isCurrentSearchResult) {
-        RichTextState()
-            .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
-            .applyMarkDownContent(if (message.isDeleted) deletedText else message.content)
-            .also { state ->
-                if (searchQuery.isNotEmpty()) {
-                    val plainText = state.annotatedString.text
-                    val lowerQuery = searchQuery.lowercase()
-                    val lowerText = plainText.lowercase()
-                    var startIndex = 0
-                    while (true) {
-                        val idx = lowerText.indexOf(lowerQuery, startIndex)
-                        if (idx == -1) break
-                        val highlightColor = if (isCurrentSearchResult)
-                            Color(0xFFFF8C00).copy(alpha = 0.6f)
-                        else
-                            Color(0xFFFFEB3B).copy(alpha = 0.5f)
-                        state.addSpanStyle(
-                            spanStyle = SpanStyle(background = highlightColor),
-                            TextRange(idx, idx + lowerQuery.length)
-                        )
-                        startIndex = idx + lowerQuery.length
+    val textState =
+        remember(message.isDeleted, message.content, searchQuery, isCurrentSearchResult) {
+            RichTextState()
+                .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
+                .applyMarkDownContent(if (message.isDeleted) deletedText else message.content)
+                .also { state ->
+                    if (searchQuery.isNotEmpty()) {
+                        val plainText = state.annotatedString.text
+                        val lowerQuery = searchQuery.lowercase()
+                        val lowerText = plainText.lowercase()
+                        var startIndex = 0
+                        while (true) {
+                            val idx = lowerText.indexOf(lowerQuery, startIndex)
+                            if (idx == -1) break
+                            val highlightColor = if (isCurrentSearchResult)
+                                Color(0xFFFF8C00).copy(alpha = 0.6f)
+                            else
+                                Color(0xFFFFEB3B).copy(alpha = 0.5f)
+                            state.addSpanStyle(
+                                spanStyle = SpanStyle(background = highlightColor),
+                                TextRange(idx, idx + lowerQuery.length)
+                            )
+                            startIndex = idx + lowerQuery.length
+                        }
                     }
                 }
-            }
-    }
+        }
 
     val shape = remember {
         RoundedCornerShape(
@@ -337,6 +338,11 @@ fun MessageBubbleRaw(
                         Row(
                             modifier = Modifier.padding(
                                 horizontal = 12.dp, vertical = 12.dp
+                            ).combinedClickable(
+                                onClick = {},
+                                onLongClick = { handleLongClick() },
+                                interactionSource = pressInteractionSource,
+                                indication = null
                             ),
                         ) {
                             if (emojiOnly) {
@@ -372,13 +378,25 @@ fun MessageBubbleRaw(
                                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                                     color = contentColor,
                                     modifier = Modifier
-                                        .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)
+                                        .padding(
+                                            start = 12.dp,
+                                            end = 12.dp,
+                                            top = 4.dp,
+                                            bottom = 6.dp
+                                        )
                                 )
                             }
                         }
 
                         Row(
-                            modifier = Modifier.padding(start = 8.dp),
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .combinedClickable(
+                                    onClick = {},
+                                    onLongClick = { handleLongClick() },
+                                    interactionSource = pressInteractionSource,
+                                    indication = null
+                                ),
                             verticalAlignment = Alignment.Bottom,
                             horizontalArrangement = Arrangement.End,
                         ) {
@@ -401,7 +419,8 @@ fun MessageBubbleRaw(
                     // Find MediaMessage index (after author and reply preview)
                     var mediaIndex = 0
                     if (authorName != null) mediaIndex++
-                    val replyIndex = if (message.messageAppData.replyPreview != null) mediaIndex else -1
+                    val replyIndex =
+                        if (message.messageAppData.replyPreview != null) mediaIndex else -1
                     if (message.messageAppData.replyPreview != null) mediaIndex++
 
                     val textIndex = if (hasMedia) mediaIndex + 1 else mediaIndex
@@ -449,7 +468,8 @@ fun MessageBubbleRaw(
                         val lastLineRight = layoutResult.getLineRight(lastLineIndex)
                         val horizontalGap = 8.dp.roundToPx()
                         val textRowPadding = 12.dp.roundToPx()
-                        val availableWidth = if (mediaWidth > 0) mediaWidth else constraints.maxWidth
+                        val availableWidth =
+                            if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                         val lastLineEnd = textRowPadding + lastLineRight.toInt()
                         val fitsOnLastLine =
                             (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
@@ -465,12 +485,16 @@ fun MessageBubbleRaw(
                             maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
                         }
                     } else {
-                        potentialFinalWidth = maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
+                        potentialFinalWidth =
+                            maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
                     }
 
                     // NOW measure reply with the correct width that accounts for info placement
                     val replyPlaceable = if (replyIndex != -1) measurables[replyIndex].measure(
-                        constraints.copy(minWidth = potentialFinalWidth, maxWidth = potentialFinalWidth)
+                        constraints.copy(
+                            minWidth = potentialFinalWidth,
+                            maxWidth = potentialFinalWidth
+                        )
                     ) else null
                     val replyWidth = replyPlaceable?.width ?: 0
                     val replyHeight = replyPlaceable?.height ?: 0
@@ -486,7 +510,8 @@ fun MessageBubbleRaw(
                         val lastLineRight = layoutResult.getLineRight(lastLineIndex)
                         val horizontalGap = 8.dp.roundToPx()
                         val textRowPadding = 12.dp.roundToPx()
-                        val availableWidth = if (mediaWidth > 0) mediaWidth else constraints.maxWidth
+                        val availableWidth =
+                            if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                         val lastLineEnd = textRowPadding + lastLineRight.toInt()
                         val fitsOnLastLine =
                             (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
@@ -509,8 +534,15 @@ fun MessageBubbleRaw(
                                         textPlaceable.height +
                                         (showMorePlaceable.height)
                         } else {
-                            finalWidth = maxOf(mediaWidth, replyWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
-                            infoY = placeables.sumOf { it.height } + replyHeight + textPlaceable.height
+                            finalWidth = maxOf(
+                                mediaWidth,
+                                replyWidth,
+                                textPlaceable.width,
+                                infoPlaceable.width,
+                                authorWidth
+                            )
+                            infoY =
+                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height
                             infoX = finalWidth - infoPlaceable.width - textRowPadding
                             finalHeight =
                                 placeables.sumOf { it.height } +
@@ -521,7 +553,13 @@ fun MessageBubbleRaw(
                                         8.dp.roundToPx()
                         }
                     } else {
-                        finalWidth = maxOf(mediaWidth, replyWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
+                        finalWidth = maxOf(
+                            mediaWidth,
+                            replyWidth,
+                            textPlaceable.width,
+                            infoPlaceable.width,
+                            authorWidth
+                        )
                         infoY = placeables.sumOf { it.height } + replyHeight + textPlaceable.height
                         infoX = finalWidth - infoPlaceable.width
                         finalHeight =

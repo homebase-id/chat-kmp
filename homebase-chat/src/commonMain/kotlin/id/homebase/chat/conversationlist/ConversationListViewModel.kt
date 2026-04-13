@@ -1905,14 +1905,16 @@ class ConversationListViewModel(
                                 )
                             }
 
-                            val totalElapsed = loadStart.elapsedNow()
-                            if (totalElapsed > 200.milliseconds) {
-                                Logger.w("SlowConversationLoad") {
-                                    "conversationId=$conversationId " +
-                                            "messageCount=${messages.size} " +
-                                            "cached=$hasCachedMessages " +
-                                            "dbFetch=$dbFetchElapsed " +
-                                            "total=$totalElapsed"
+                            if (setInitialScroll) {
+                                val totalElapsed = loadStart.elapsedNow()
+                                if (totalElapsed > 200.milliseconds) {
+                                    Logger.w("SlowConversationLoad") {
+                                        "conversationId=$conversationId " +
+                                                "messageCount=${messages.size} " +
+                                                "cached=$hasCachedMessages " +
+                                                "dbFetch=$dbFetchElapsed " +
+                                                "total=$totalElapsed"
+                                    }
                                 }
                             }
 
@@ -1961,6 +1963,7 @@ class ConversationListViewModel(
                         isEditingVersionTag = null
                     )
                 }
+                messageInputTextState.clear()
             } catch (e: Exception) {
                 sendEvent(ShowErrorMessage("Failed to edit message: ${e.message}"))
             } finally {
@@ -2218,12 +2221,13 @@ class ConversationListViewModel(
                     payloadBundle = bundle,
                 )
                 messageInputTextState.clear()
-                _messagesUiState.update { it.copy(fullScreenOverlay = null) }
+                _messagesUiState.update { it.copy(fullScreenOverlay = null, isSendingMessage = false) }
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
                 _messagesUiState.update { state ->
                     state.copy(
-                        uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap()
+                        uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap(),
+                        isSendingMessage = false
                     )
                 }
                 sendEvent(
@@ -2231,8 +2235,6 @@ class ConversationListViewModel(
                         "Failed to send file(s): ${e.message}"
                     )
                 )
-            } finally {
-                _messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }
     }
