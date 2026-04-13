@@ -106,7 +106,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.encoding.Base64
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
@@ -1789,9 +1788,7 @@ class ConversationListViewModel(
     ) {
         val loadStart = TimeSource.Monotonic.markNow()
 
-        val hasCachedMessages =
-            conversationId == _uiState.value.selectedConversationId &&
-                    chatMessageStream.hasCachedMessages(conversationId)
+        val hasCachedMessages = chatMessageStream.hasCachedMessages(conversationId)
 
         _messagesUiState.update {
             it.copy(scrollPosition = null, isLoadingMessages = !hasCachedMessages)
@@ -1808,7 +1805,6 @@ class ConversationListViewModel(
                 if (!hasCachedMessages) {
                     chatMessageStream.loadConversation(conversationId)
                 }
-                val dbFetchElapsed = loadStart.elapsedNow()
 
                 chatMessageStream.observeMessages(conversationId).collect { messageState ->
                     when (messageState) {
@@ -1907,14 +1903,11 @@ class ConversationListViewModel(
 
                             if (setInitialScroll) {
                                 val totalElapsed = loadStart.elapsedNow()
-                                if (totalElapsed > 200.milliseconds) {
-                                    Logger.w("SlowConversationLoad") {
-                                        "conversationId=$conversationId " +
-                                                "messageCount=${messages.size} " +
-                                                "cached=$hasCachedMessages " +
-                                                "dbFetch=$dbFetchElapsed " +
-                                                "total=$totalElapsed"
-                                    }
+                                Logger.d("ConversationLoad") {
+                                    "conversationId=$conversationId " +
+                                            "messageCount=${messages.size} " +
+                                            "cached=$hasCachedMessages " +
+                                            "total=$totalElapsed"
                                 }
                             }
 
