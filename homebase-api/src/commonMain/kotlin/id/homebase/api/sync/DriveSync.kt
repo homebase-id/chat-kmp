@@ -53,13 +53,13 @@ class DriveSync(
     }
 
 
-    // Call this to clear everything if you want to run a test and re-sync
+    // Wipe all synced data on logout — nothing should survive for security
     suspend fun clearStorage() {
-        // Temp hack, remove soon.
-        databaseManager.driveMainIndex.deleteAll() // TODO: <-- don't delete all! :-)
-        databaseManager.driveTagIndex.deleteAll() // TODO: <-- don't delete all! :-)
-        databaseManager.driveLocalTagIndex.deleteAll() // TODO: <-- don't delete all! :-)
-        databaseManager.keyValue.deleteByKey(driveId) // TODO: <-- don't delete the cursor
+        databaseManager.driveMainIndex.deleteAll()
+        databaseManager.driveTagIndex.deleteAll()
+        databaseManager.driveLocalTagIndex.deleteAll()
+        databaseManager.chatReadCount.deleteAll()
+        databaseManager.keyValue.deleteByKey(driveId)
         val cursorStorage = CursorStorage(databaseManager, driveId)
         cursorStorage.deleteCursor()
         cursor = null
