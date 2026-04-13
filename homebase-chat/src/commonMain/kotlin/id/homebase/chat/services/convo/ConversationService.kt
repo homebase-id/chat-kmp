@@ -216,7 +216,7 @@ class ConversationService(
         val noteToSelfId = ChatProtocol.noteToSelfId
 
         val existing = getConversation(noteToSelfId)
-        if (existing != null) {
+        if (existing != null && existing.conversationState != ConversationState.Deleted) {
             if (!existing.isPinned) {
                 pinConversation(noteToSelfId)
             }
