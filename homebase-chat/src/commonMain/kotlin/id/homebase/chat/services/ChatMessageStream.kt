@@ -361,8 +361,6 @@ class ChatMessageStream(
             }
 
             val count = header.serverMetadata.originalRecipientCount
-
-            // No recipients means local-only (note-to-self); delivery status is always Read
             if (count == 0) {
                 return ChatDeliveryStatus.Read
             }
