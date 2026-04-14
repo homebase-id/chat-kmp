@@ -1,7 +1,9 @@
 package id.homebase.chat.services.convo
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.*
 import id.homebase.chat.services.convo.contact.ContactConnectionState
@@ -11,7 +13,10 @@ class ConversationEnricher {
     fun enrich(
         convo: ConversationUiModel,
         contactMap: Map<OdinId, ContactUiModel>,
-        ownerSession: OwnerSession
+        ownerSession: OwnerSession,
+        connectionMap: Map<OdinId, RedactedIdentityConnectionRegistration> = emptyMap(),
+        incomingRequestSenders: Set<OdinId> = emptySet(),
+        outgoingRequestRecipients: Set<OdinId> = emptySet(),
     ): EnrichedConversationUiModel {
 
         val currentUser = ownerSession.odinId
@@ -43,10 +48,38 @@ class ConversationEnricher {
                 emptyList()
             }
 
+        val oneOnOneConnectionStatus = if (otherParticipants.size == 1) {
+            val other = otherParticipants.first()
+            val connection = connectionMap[other]
+            val connected = connection?.status == ConnectionStatus.Connected
+
+            val status = when {
+                connected -> OneOnOneConnectionStatus.Connected(other)
+                incomingRequestSenders.contains(other) ->
+                    OneOnOneConnectionStatus.IncomingRequestPending(other)
+                outgoingRequestRecipients.contains(other) ->
+                    OneOnOneConnectionStatus.OutgoingRequestPending(other)
+                else -> OneOnOneConnectionStatus.NotConnected(other)
+            }
+            if (status !is OneOnOneConnectionStatus.Connected) {
+                Logger.d(tag = "ConversationEnricher") {
+                    "1:1 convo=${convo.id} other=$other " +
+                            "connectionStatus=${connection?.status} " +
+                            "inIncoming=${incomingRequestSenders.contains(other)} " +
+                            "inOutgoing=${outgoingRequestRecipients.contains(other)} " +
+                            "incomingSet=$incomingRequestSenders " +
+                            "outgoingSet=$outgoingRequestRecipients " +
+                            "-> $status"
+                }
+            }
+            status
+        } else null
+
         return EnrichedConversationUiModel(
             conversation = convo,
             participants = participants,
-            missingConnections = missingConnections
+            missingConnections = missingConnections,
+            oneOnOneConnectionStatus = oneOnOneConnectionStatus,
         )
     }
 }

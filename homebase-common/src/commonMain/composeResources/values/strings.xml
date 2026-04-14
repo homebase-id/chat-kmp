@@ -216,6 +216,13 @@
     <string name="chat_group_rejoin_accept">Rejoin</string>
     <string name="chat_group_rejoin_decline">Decline</string>
 
+    <!-- 1:1 connection state banner (shown in place of the message composer) -->
+    <string name="chat_not_connected_description">You\'re not connected.</string>
+    <string name="chat_not_connected_outgoing_description">Waiting for them to accept your connection request.</string>
+    <string name="chat_not_connected_incoming_description">They want to connect with you.</string>
+    <string name="chat_not_connected_view_request">View request</string>
+    <string name="chat_not_connected_review_request">Review request</string>
+
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>
     <string name="chat_send_message_button">Send message</string>

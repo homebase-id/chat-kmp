@@ -188,6 +188,13 @@
     <string name="chat_group_rejoin_accept">Genindtræd</string>
     <string name="chat_group_rejoin_decline">Afvis</string>
 
+    <!-- 1:1 connection state banner -->
+    <string name="chat_not_connected_description">Du er ikke forbundet.</string>
+    <string name="chat_not_connected_outgoing_description">Venter på, at de accepterer din forbindelsesanmodning.</string>
+    <string name="chat_not_connected_incoming_description">De vil gerne forbinde med dig.</string>
+    <string name="chat_not_connected_view_request">Se anmodning</string>
+    <string name="chat_not_connected_review_request">Gennemse anmodning</string>
+
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>
     <string name="chat_send_message_button">Send besked</string>
