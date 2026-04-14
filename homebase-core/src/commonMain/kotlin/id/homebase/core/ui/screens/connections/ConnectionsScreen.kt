@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.connections
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -12,15 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,8 +26,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -46,8 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.connections.IncomingConnectionRequestResponse
 import id.homebase.api.client.connections.OutgoingConnectionRequestResponse
@@ -57,42 +51,37 @@ import id.homebase.api.client.identity.initials
 import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
+import id.homebase.core.connections.ConnectRequestAction
+import id.homebase.core.connections.ConnectRequestDialogs
+import id.homebase.core.connections.ConnectRequestEvent
+import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
-import id.homebase.resources.cancel
-import id.homebase.resources.connections_already_sent_text
-import id.homebase.resources.connections_already_sent_title
 import id.homebase.resources.connections_empty_description
 import id.homebase.resources.connections_empty_title
+import id.homebase.resources.connections_manage_in_owner_console
 import id.homebase.resources.connections_no_incoming
 import id.homebase.resources.connections_no_outgoing
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_connections
-import id.homebase.resources.settings_open_owner_console
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun ConnectionsScreen(
     viewModel: ConnectionsViewModel,
+    connectRequestViewModel: ConnectRequestViewModel,
     onBackClick: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val connectState by connectRequestViewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val uriHandler = getUriHandler()
 
     LaunchedEffect(uiState.uiEvent) {
         when (val event = uiState.uiEvent) {
             null -> {}
-            ConnectionsUiEvent.SendSuccess -> {
-                snackbarHostState.showSnackbar("Connection request sent")
-                viewModel.eventConsumed()
-            }
-            is ConnectionsUiEvent.SendError -> {
-                snackbarHostState.showSnackbar(event.message)
-                viewModel.eventConsumed()
-            }
             is ConnectionsUiEvent.ActionError -> {
                 snackbarHostState.showSnackbar(event.message)
                 viewModel.eventConsumed()
@@ -104,10 +93,23 @@ fun ConnectionsScreen(
         }
     }
 
+    // Refresh the list when the shared dialog reports a successful send.
+    LaunchedEffect(connectState.uiEvent) {
+        if (connectState.uiEvent is ConnectRequestEvent.SendSuccess) {
+            viewModel.refresh()
+        }
+    }
+
     ConnectionsUi(
         uiState = uiState,
         onAction = viewModel::onAction,
+        onComposeClick = { connectRequestViewModel.onAction(ConnectRequestAction.OpenDialog) },
         onBackClick = onBackClick,
+        snackbarHostState = snackbarHostState,
+    )
+
+    ConnectRequestDialogs(
+        viewModel = connectRequestViewModel,
         snackbarHostState = snackbarHostState,
     )
 }
@@ -117,6 +119,7 @@ fun ConnectionsScreen(
 fun ConnectionsUi(
     uiState: ConnectionsUiState,
     onAction: (ConnectionsUiAction) -> Unit,
+    onComposeClick: () -> Unit,
     onBackClick: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
@@ -149,9 +152,7 @@ fun ConnectionsUi(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { onAction(ConnectionsUiAction.OpenComposeDialog) }
-            ) {
+            FloatingActionButton(onClick = onComposeClick) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "New connection request"
@@ -203,9 +204,7 @@ fun ConnectionsUi(
                             IncomingRequestCard(
                                 request = req,
                                 identity = uiState.identities[req.senderOdinId],
-                                isPending = req.senderOdinId in uiState.pendingOdinIds,
-                                onAccept = { onAction(ConnectionsUiAction.AcceptIncoming(req.senderOdinId)) },
-                                onReject = { onAction(ConnectionsUiAction.RejectIncoming(req.senderOdinId)) },
+                                onManageClick = { onAction(ConnectionsUiAction.OpenOwnerConsoleClicked) },
                             )
                         }
                     }
@@ -230,8 +229,7 @@ fun ConnectionsUi(
                             OutgoingRequestCard(
                                 request = req,
                                 identity = uiState.identities[req.recipient],
-                                isPending = req.recipient in uiState.pendingOdinIds,
-                                onCancel = { onAction(ConnectionsUiAction.CancelOutgoing(req.recipient)) },
+                                onManageClick = { onAction(ConnectionsUiAction.OpenOwnerConsoleClicked) },
                             )
                         }
                     }
@@ -250,44 +248,6 @@ fun ConnectionsUi(
                 )
             }
         }
-    }
-
-    uiState.alreadySentRecipient?.let { recipient ->
-        AlertDialog(
-            onDismissRequest = { onAction(ConnectionsUiAction.DismissAlreadySentDialog) },
-            title = { Text(stringResource(MR.string.connections_already_sent_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        MR.string.connections_already_sent_text,
-                        recipient.domainName,
-                    )
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { onAction(ConnectionsUiAction.OpenOwnerConsoleClicked) }) {
-                    Text(stringResource(MR.string.settings_open_owner_console))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { onAction(ConnectionsUiAction.DismissAlreadySentDialog) }) {
-                    Text(stringResource(MR.string.cancel))
-                }
-            }
-        )
-    }
-
-    if (uiState.showComposeDialog) {
-        ComposeRequestDialog(
-            recipient = uiState.composeRecipient,
-            message = uiState.composeMessage,
-            resolution = uiState.recipientResolution,
-            isSending = uiState.isSending,
-            onRecipientChange = { onAction(ConnectionsUiAction.ComposeRecipientChanged(it)) },
-            onMessageChange = { onAction(ConnectionsUiAction.ComposeMessageChanged(it)) },
-            onSend = { onAction(ConnectionsUiAction.SendClicked) },
-            onDismiss = { onAction(ConnectionsUiAction.CloseComposeDialog) },
-        )
     }
 }
 
@@ -421,9 +381,7 @@ private fun IdentityHeader(
 private fun IncomingRequestCard(
     request: IncomingConnectionRequestResponse,
     identity: PublicIdentity?,
-    isPending: Boolean,
-    onAccept: () -> Unit,
-    onReject: () -> Unit,
+    onManageClick: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -435,31 +393,7 @@ private fun IncomingRequestCard(
                 identity = identity,
                 timestampLabel = "Received ${formatTimestamp(request.receivedTimestampMilliseconds)}",
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(
-                    onClick = onReject,
-                    enabled = !isPending,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Reject") }
-                Button(
-                    onClick = onAccept,
-                    enabled = !isPending,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    if (isPending) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    } else {
-                        Text("Accept")
-                    }
-                }
-            }
+            ManageInOwnerConsoleLink(onClick = onManageClick)
         }
     }
 }
@@ -468,8 +402,7 @@ private fun IncomingRequestCard(
 private fun OutgoingRequestCard(
     request: OutgoingConnectionRequestResponse,
     identity: PublicIdentity?,
-    isPending: Boolean,
-    onCancel: () -> Unit,
+    onManageClick: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -494,158 +427,19 @@ private fun OutgoingRequestCard(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            OutlinedButton(
-                onClick = onCancel,
-                enabled = !isPending,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (isPending) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text("Cancel request")
-                }
-            }
+            ManageInOwnerConsoleLink(onClick = onManageClick)
         }
     }
 }
 
 @Composable
-private fun RecipientResolutionIndicator(resolution: RecipientResolution) {
-    when (resolution) {
-        RecipientResolution.Idle,
-        RecipientResolution.InvalidFormat -> {
-            // Stay quiet while the user is still typing a partial OdinId.
-        }
-        RecipientResolution.Resolving -> {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    strokeWidth = 2.dp,
-                )
-                Text(
-                    text = "Checking identity…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        RecipientResolution.NotFound -> {
-            Text(
-                text = "This isn't a valid Homebase identity",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-        is RecipientResolution.Resolved -> {
-            val identity = resolution.identity
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                ContactAvatar(
-                    odinId = identity.odinId,
-                    profileImageData = null,
-                    initials = identity.initials(),
-                    options = AvatarOptions(size = 40.dp),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = identity.displayNameOrDomain(),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    if (identity.displayName?.isNotBlank() == true) {
-                        Text(
-                            text = identity.odinId.domainName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    identity.status?.takeIf { it.isNotBlank() }?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
+private fun ManageInOwnerConsoleLink(onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+    ) {
+        Text(stringResource(MR.string.connections_manage_in_owner_console))
     }
-}
-
-@Composable
-private fun ComposeRequestDialog(
-    recipient: String,
-    message: String,
-    resolution: RecipientResolution,
-    isSending: Boolean,
-    onRecipientChange: (String) -> Unit,
-    onMessageChange: (String) -> Unit,
-    onSend: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val canSend = resolution is RecipientResolution.Resolved
-    AlertDialog(
-        onDismissRequest = { if (!isSending) onDismiss() },
-        title = { Text("New connection request") },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                val isError = resolution is RecipientResolution.NotFound
-                OutlinedTextField(
-                    value = recipient,
-                    onValueChange = onRecipientChange,
-                    label = { Text("Recipient OdinId") },
-                    placeholder = { Text("example.dotyou.cloud") },
-                    singleLine = true,
-                    isError = isError,
-                    enabled = !isSending,
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.None,
-                        imeAction = ImeAction.Next,
-                    ),
-                )
-                RecipientResolutionIndicator(resolution = resolution)
-                OutlinedTextField(
-                    value = message,
-                    onValueChange = onMessageChange,
-                    label = { Text("Message (optional)") },
-                    enabled = !isSending,
-                    minLines = 4,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onSend,
-                enabled = !isSending && canSend,
-            ) {
-                if (isSending) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text("Send")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSending) { Text("Cancel") }
-        }
-    )
 }
 
 @OptIn(ExperimentalTime::class)

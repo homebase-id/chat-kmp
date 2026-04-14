@@ -1,5 +1,6 @@
 package id.homebase.chat.services.requests
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IncomingConnectionRequestResponse
 import id.homebase.api.client.connections.OutgoingConnectionRequestResponse
@@ -65,8 +66,14 @@ class ConnectionRequestService(
     }
 
     private suspend fun refresh() {
-        _incomingRequests.update { fetchIncomingRequests() }
-        _outgoingRequests.update { fetchOutgoingRequests() }
+        val incoming = fetchIncomingRequests()
+        val outgoing = fetchOutgoingRequests()
+        Logger.d(tag = "ConnectionRequestService") {
+            "refresh loaded incoming=${incoming.size} outgoing=${outgoing.size} " +
+                    "outgoingRecipients=${outgoing.map { it.recipientOdinId }}"
+        }
+        _incomingRequests.update { incoming }
+        _outgoingRequests.update { outgoing }
     }
 
     suspend fun fetchIncomingRequests(): List<IncomingConnectionRequestUiModel> {
@@ -90,14 +97,20 @@ class ConnectionRequestService(
     }
 
     suspend fun fetchOutgoingRequests(): List<OutgoingConnectionRequestUiModel> {
-        //TODO: Paging
-        val outgoing = connectionRequestProvider.getOutgoingRequests(
-            pageNumber = 1,
-            pageSize = 1000
-        )
+        return try {
+            //TODO: Paging
+            val outgoing = connectionRequestProvider.getOutgoingRequests(
+                pageNumber = 1,
+                pageSize = 1000
+            )
 
-        val requests = outgoing.results.map { mapToOutgoingModel(it) }
-        return requests
+            outgoing.results.map { mapToOutgoingModel(it) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            println("Failed to fetch outgoing requests: ${e.message}")
+            emptyList()
+        }
     }
 
     fun mapToIncomingModel(serverResponse: IncomingConnectionRequestResponse): IncomingConnectionRequestUiModel {
@@ -112,14 +125,10 @@ class ConnectionRequestService(
     }
 
     fun mapToOutgoingModel(serverResponse: OutgoingConnectionRequestResponse): OutgoingConnectionRequestUiModel {
-        if (serverResponse.direction != "outgoing") {
-            throw IllegalStateException("this mapper only handles incoming requests")
-        }
-
         val ui =
             OutgoingConnectionRequestUiModel(
                 recipientName = "TODO " + serverResponse.recipient.domainName,
-                recipientOdinId = serverResponse.senderOdinId,
+                recipientOdinId = serverResponse.recipient,
                 message = serverResponse.message,
                 introducerOdinId = serverResponse.introducerOdinId,
                 receivedTimestampMilliseconds = UnixTimeUtc(serverResponse.receivedTimestampMilliseconds),
