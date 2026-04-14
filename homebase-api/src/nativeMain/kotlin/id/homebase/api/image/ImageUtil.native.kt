@@ -6,9 +6,9 @@ import id.homebase.api.lib.image.ImageFormatDetector
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
-import org.jetbrains.skia.Image
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.IRect
+import org.jetbrains.skia.Image
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.Surface
 import platform.Foundation.dataWithBytes
@@ -55,6 +55,7 @@ actual object ImageUtils {
             convertHeicToJpeg(bytes)
                 ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
         } else bytes
+        // Image.makeFromEncoded applies EXIF orientation automatically (dims + pixels)
         return Image.makeFromEncoded(inputBytes)
     }
 
