@@ -1,6 +1,7 @@
 package id.homebase.core.connections
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +18,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -25,9 +28,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -61,16 +66,20 @@ fun ConnectRequestBottomSheet(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
+    // Separate snackbar state for errors shown while the sheet is open
+    val sheetSnackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(state.uiEvent) {
         when (val event = state.uiEvent) {
             null -> {}
             ConnectRequestEvent.SendSuccess -> {
+                // Sheet closes on success, so use the parent scaffold's snackbar
                 snackbarHostState.showSnackbar(sendSuccessMessage)
                 viewModel.onAction(ConnectRequestAction.EventConsumed)
             }
             is ConnectRequestEvent.SendError -> {
-                snackbarHostState.showSnackbar(event.message)
+                // Sheet stays open on error, so use the sheet's own snackbar
+                sheetSnackbarHostState.showSnackbar(event.message)
                 viewModel.onAction(ConnectRequestAction.EventConsumed)
             }
             is ConnectRequestEvent.OpenUrl -> {
@@ -114,15 +123,21 @@ fun ConnectRequestBottomSheet(
             },
             sheetState = sheetState,
         ) {
-            ComposeRequestSheetContent(
-                recipient = state.recipient,
-                message = state.message,
-                resolution = state.resolution,
-                isSending = state.isSending,
-                onRecipientChange = { viewModel.onAction(ConnectRequestAction.RecipientChanged(it)) },
-                onMessageChange = { viewModel.onAction(ConnectRequestAction.MessageChanged(it)) },
-                onSend = { viewModel.onAction(ConnectRequestAction.SendClicked) },
-            )
+            Box {
+                ComposeRequestSheetContent(
+                    recipient = state.recipient,
+                    message = state.message,
+                    resolution = state.resolution,
+                    isSending = state.isSending,
+                    onRecipientChange = { viewModel.onAction(ConnectRequestAction.RecipientChanged(it)) },
+                    onMessageChange = { viewModel.onAction(ConnectRequestAction.MessageChanged(it)) },
+                    onSend = { viewModel.onAction(ConnectRequestAction.SendClicked) },
+                )
+                SnackbarHost(
+                    hostState = sheetSnackbarHostState,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
         }
     }
 }
@@ -154,7 +169,7 @@ private fun ComposeRequestSheetContent(
         )
 
         val isError = resolution is RecipientResolution.NotFound
-        OutlinedTextField(
+        TextField(
             value = recipient,
             onValueChange = onRecipientChange,
             label = { Text(stringResource(MR.string.connections_recipient_label)) },
@@ -163,6 +178,15 @@ private fun ComposeRequestSheetContent(
             isError = isError,
             enabled = !isSending,
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+            ),
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.None,
                 imeAction = ImeAction.Next,
@@ -171,13 +195,22 @@ private fun ComposeRequestSheetContent(
 
         RecipientResolutionIndicator(resolution = resolution)
 
-        OutlinedTextField(
+        TextField(
             value = message,
             onValueChange = onMessageChange,
             label = { Text(stringResource(MR.string.connections_message_label)) },
             enabled = !isSending,
             minLines = 3,
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+            ),
         )
 
         Button(
