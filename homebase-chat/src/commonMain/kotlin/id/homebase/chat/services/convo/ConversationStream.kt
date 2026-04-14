@@ -166,7 +166,9 @@ class ConversationStream(
                         // Conversation has an image
                         avatarInitials = "AxB",
                         avatarUrl = "",
-                        participants = emptyList(),
+                        participants = if (m.originalAuthor != null) {
+                            listOfNotNull(m.originalAuthor, credentialsManager.getActiveDomain()).distinct()
+                        } else emptyList(),
                         lastRead = UnixTimeUtc(0).toInstant(),
                         avatarModel =
                             ConversationAvatarModel(

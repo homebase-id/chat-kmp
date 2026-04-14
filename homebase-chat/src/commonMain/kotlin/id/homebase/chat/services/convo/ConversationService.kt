@@ -277,6 +277,57 @@ class ConversationService(
         }
     }
 
+    /**
+     * Scans all loaded conversations and ensures each has a corresponding
+     * conversation file (fileType 8888) in the local DB. Conversations that
+     * exist only as in-memory placeholders (created by [ConversationStream]
+     * for messages arriving without a conversation file) will have their file
+     * created and enqueued for server upload.
+     *
+     * Called after sync completes to self-heal any conversations whose file
+     * was lost (e.g. due to a silently-dropped outbox upload).
+     */
+    suspend fun ensureConversationFilesExist() {
+        val domain = credentialsManager.requireActiveDomain()
+        val conversations = conversationStream.conversations.value.items
+
+        for (conversation in conversations) {
+            if (conversation.id == ChatProtocol.ConversationWithYourselfId) continue
+
+            if (conversation.conversationState == ConversationState.Left
+                || conversation.conversationState == ConversationState.Removed
+                || conversation.conversationState == ConversationState.Deleted
+            ) continue
+
+            val existingFile = getConversationHomebaseFile(conversation.id)
+            if (existingFile != null) continue
+
+            // Reconstruct participants from the placeholder data
+            val participants = conversation.participants.ifEmpty {
+                // Fall back to admins (populated from message originalAuthor)
+                (conversation.admins.toList() + domain).distinct()
+            }
+
+            if (participants.size < 2) {
+                Logger.w("ensureConversationFilesExist: skipping ${conversation.id} — insufficient participant data (${participants.size})")
+                continue
+            }
+
+            val isGroup = participants.size > 2
+            val transitRecipients = participants.filter { it != domain }
+
+            Logger.d("ensureConversationFilesExist: creating missing file for ${conversation.id} participants=$participants")
+
+            writeConversationFile(
+                conversationId = conversation.id,
+                allParticipants = participants,
+                transitRecipients = transitRecipients,
+                title = "",
+                isGroup = isGroup
+            )
+        }
+    }
+
     suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
         return getConversation(conversationId)
             ?: throw IllegalStateException("No conversation found")

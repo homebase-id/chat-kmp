@@ -2,6 +2,7 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.LocalAppData
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
@@ -41,8 +42,33 @@ class DriveOutboxUploader(
             }
         } catch (e: ClientException) {
             if (e.status == 400) {
-                Logger.w("Dropping outbox item ${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadType} — 400 Bad Request: ${e.message}")
-                return
+                when (e.errorCode) {
+                    OdinClientErrorCode.ExistingFileWithUniqueId -> {
+                        Logger.e(
+                            "Potential data loss: outbox item ${outboxRecord.uniqueId} " +
+                                    "uploadType=${outboxRecord.uploadType} — server already has a file " +
+                                    "with this uniqueId. Client content discarded. " +
+                                    "Error: ${e.message}"
+                        )
+                        return
+                    }
+
+                    OdinClientErrorCode.VersionTagMismatch -> {
+                        Logger.w(
+                            "Discarding outbox item ${outboxRecord.uniqueId} " +
+                                    "uploadType=${outboxRecord.uploadType} — VersionTagMismatch: ${e.message}"
+                        )
+                        return
+                    }
+
+                    else -> {
+                        Logger.e(
+                            "Non-recoverable 400 for outbox item ${outboxRecord.uniqueId} " +
+                                    "uploadType=${outboxRecord.uploadType} errorCode=${e.errorCode} — " +
+                                    "rethrowing for retry: ${e.message}"
+                        )
+                    }
+                }
             }
             throw e
         }
