@@ -3,18 +3,14 @@ package id.homebase.chat.services.convo
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchSortField
-import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
-import id.homebase.chat.data.ConversationUiModel.Companion.updateWithLatestMessage
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
@@ -88,7 +84,7 @@ class ConversationStream(
                 if (event !is BackendEvent.DriveEvent || event.driveId != chatDrive) return@collect
 
                 when (event) {
-                    is BackendEvent.DriveEvent.Started -> { }
+                    is BackendEvent.DriveEvent.Started -> {}
 
                     is BackendEvent.DriveEvent.Stopped -> {
                         Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
@@ -111,9 +107,11 @@ class ConversationStream(
                                         ChatProtocol.ConversationAdminFileType
                             }
 
-                        Logger.d("ConversationStream: BatchReceived " +
-                                "${event.batchData.size} files " +
-                                "(conversations=${conversationFiles.size}, messages=${messageFiles.size}, adminFiles=${adminFiles.size})")
+                        Logger.d(
+                            "ConversationStream: BatchReceived " +
+                                    "${event.batchData.size} files " +
+                                    "(conversations=${conversationFiles.size}, messages=${messageFiles.size}, adminFiles=${adminFiles.size})"
+                        )
 
                         if (conversationFiles.isNotEmpty())
                             processConversationBatchIncrementally(conversationFiles)
@@ -152,7 +150,8 @@ class ConversationStream(
 
             // Drop messages for conversations the user has left or been removed from
             if (matchingConversation?.conversationState == ConversationState.Left
-                || matchingConversation?.conversationState == ConversationState.Removed) continue
+                || matchingConversation?.conversationState == ConversationState.Removed
+            ) continue
 
             if (matchingConversation == null) {
                 val emptyConversation =
@@ -204,7 +203,8 @@ class ConversationStream(
         if (m.userDate >= c.latestMessageTimestamp) {
             val domain = credentialsManager.getActiveDomain()
 
-            val increment = if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) 1 else 0
+            val increment =
+                if (!m.isEdited && !m.isAuthoredBy(domain) && !m.isStatusMessage) 1 else 0
             if (increment > 0) {
                 Logger.d("ConversationStream: unread++ convo=${c.id} count=${c.unreadCount + increment}")
             }
@@ -277,7 +277,10 @@ class ConversationStream(
         _conversations.value = ConversationsData(items = currentList)
     }
 
-    private suspend fun updateConversation(existing: ConversationUiModel, incoming: ConversationUiModel) {
+    private suspend fun updateConversation(
+        existing: ConversationUiModel,
+        incoming: ConversationUiModel
+    ) {
         // Left is sticky — only cleared by an explicit rejoin action, not by outbox responses
         // which may not preserve localAppData tags. RejoinPending is the one exception: it means
         // the server shows us back in participants while we still have the Left tag locally.
@@ -286,15 +289,15 @@ class ConversationStream(
             && incoming.conversationState != ConversationState.RejoinPending
         ) {
             ConversationState.Left
-          } else {
+        } else {
             incoming.conversationState
         }
 
         // Stamp lastExitedAt in localAppData the first time we detect a Removed transition.
         // The mapper reads it back from localAppData on subsequent loads (cold start, reconnect).
         val isNewlyRemoved = resolvedState == ConversationState.Removed
-            && existing.conversationState != ConversationState.Removed
-            && existing.conversationState != ConversationState.Left
+                && existing.conversationState != ConversationState.Removed
+                && existing.conversationState != ConversationState.Left
         if (isNewlyRemoved) {
             optimisticWriter.stampConversationExitedAt(chatDrive, existing.id)
                 ?.let { outboxSync.tryEnqueue(it) }
@@ -303,11 +306,12 @@ class ConversationStream(
         // Clear exitedAt when active again; preserve on Left/Removed (first stamp wins).
         val resolvedExitedAt = when {
             resolvedState == ConversationState.Active
-                || resolvedState == ConversationState.RejoinPending -> null
+                    || resolvedState == ConversationState.RejoinPending -> null
+
             isNewlyRemoved -> UnixTimeUtc().toInstant()
             else -> existing.exitedAt ?: incoming.exitedAt
         }
-        
+
         // Structural fields (membership, identity) always come from the conversation file,
         // regardless of timestamp. The in-memory timestamp is driven by message arrivals and
         // is almost always newer than metadata.created, so a timestamp guard would silently
@@ -393,8 +397,8 @@ class ConversationStream(
     }
 
     suspend fun updateUnreadCounts() {
-        val domain = credentialsManager.requireActiveDomain()
-        val unread = dbm.chatReadCount.selectAllUnreadCount(domain)
+        val c = credentialsManager.requireActiveCredentials()
+        val unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
         val unreadMap = unread.associate { it.conversationId to it.unreadCount.toInt() }
 
         var changed = false
@@ -416,38 +420,11 @@ class ConversationStream(
     }
 
     suspend fun fetchConversations(): List<ConversationUiModel> {
-        val result = dbm.chatReadCount.selectAllConversationPlusLastMessage()
-        val conversations = result.map { mapper.mapToConversationUi(it.conversation, it.message) }
+
         val c = credentialsManager.requireActiveCredentials()
-        val domain = c.domain
-        var self = ChatProtocol.buildSelfConversation(domain)
+        val result = dbm.chatReadCount.selectAllConversationPlusLastMessage(c.getIdentityId())
+        return result.map { mapper.mapToConversationUi(it.conversation, it.message) }
 
-        // Query the latest message for the self-conversation directly from the DB.
-        // There is no conversation file for the self-conversation, so we query message files
-        // by groupId and use the latest one to populate timestamp, lastMessage, etc.
-        val queryBatch = QueryBatch(c.getIdentityId())
-        val selfMessages = queryBatch.queryBatchAsync(
-            dbm = dbm,
-            driveId = chatDrive,
-            noOfItems = 1,
-            sortOrder = QueryBatchSortOrder.NewestFirst,
-            sortField = QueryBatchSortField.CreatedDate,
-            fileSystemType = 0,
-            filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
-            groupIdAnyOf = listOf(ChatProtocol.ConversationWithYourselfId)
-        )
-
-        val latestMsg = selfMessages.records.firstOrNull()?.let {
-            ChatMessageStream.mapToMessageData(it, credentialsManager) { file ->
-                file.fileMetadata.originalAuthor?.domainName ?: ""
-            }
-        }
-
-        if (latestMsg != null) {
-            self = self.updateWithLatestMessage(latestMsg, domain)
-        }
-
-        return listOf(self) + conversations.filter { it.id != ChatProtocol.ConversationWithYourselfId }
     }
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {
@@ -464,11 +441,15 @@ class ConversationStream(
         )
     }
 
-    suspend fun getRecipients(conversationId: Uuid, additionalRecipients: List<OdinId> = emptyList()): List<OdinId> {
+    suspend fun getRecipients(
+        conversationId: Uuid,
+        additionalRecipients: List<OdinId> = emptyList()
+    ): List<OdinId> {
 
         val domain = credentialsManager.requireActiveDomain()
         val conversation = getConversationById(conversationId) ?: return listOf()
-        val recipients = (conversation.participants + additionalRecipients).filter { it != domain }.distinct()
+        val recipients =
+            (conversation.participants + additionalRecipients).filter { it != domain }.distinct()
         return recipients
     }
 

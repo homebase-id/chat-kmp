@@ -25,6 +25,7 @@ fun ProblemDetails.errorCodeEnum(): OdinClientErrorCode? {
             ?.contentOrNull
             ?: return null
 
+    raw.toIntOrNull()?.let { return OdinClientErrorCode.fromInt(it) }
     return OdinClientErrorCode.fromString(raw)
 }
 

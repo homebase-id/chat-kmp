@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -59,6 +60,7 @@ import id.homebase.resources.cancel
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
+import id.homebase.resources.settings_connections
 import id.homebase.resources.settings_delete_account
 import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
@@ -72,6 +74,7 @@ import org.jetbrains.compose.resources.stringResource
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBackClick: () -> Unit,
+    onNavigateToConnections: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToHelp: () -> Unit,
@@ -125,6 +128,7 @@ fun SettingsScreen(
         uiState = uiState,
         onAction = viewModel::onAction,
         onBackClick = onBackClick,
+        onNavigateToConnections = onNavigateToConnections,
         onNavigateToNotifications = onNavigateToNotifications,
         onNavigateToAppearance = onNavigateToAppearance,
         onNavigateToHelp = onNavigateToHelp
@@ -137,6 +141,7 @@ fun SettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
+    onNavigateToConnections: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToHelp: () -> Unit,
@@ -194,6 +199,12 @@ fun SettingsUi(
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                imageVector = Icons.Outlined.People,
+                text = stringResource(MR.string.settings_connections),
+                onClick = onNavigateToConnections
+            )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
                 imageVector = Icons.Outlined.Notifications,
@@ -285,6 +296,7 @@ fun SettingsUiPreview() {
             uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
             onAction = {},
             onBackClick = {},
+            onNavigateToConnections = {},
             onNavigateToNotifications = {},
             onNavigateToAppearance = {},
             onNavigateToHelp = {}

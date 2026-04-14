@@ -361,6 +361,9 @@ class ChatMessageStream(
             }
 
             val count = header.serverMetadata.originalRecipientCount
+            if (count == 0) {
+                return ChatDeliveryStatus.Read
+            }
             val transferSummary =
                 header.serverMetadata.transferHistory?.summary ?: return ChatDeliveryStatus.Sent
 

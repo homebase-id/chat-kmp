@@ -1,5 +1,6 @@
 package id.homebase.core.di
 
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.di.apiModule
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.auth.login.LoginViewModel
@@ -17,6 +18,7 @@ import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalVideoContextStore
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
@@ -32,6 +34,7 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.syncLabeledDrives
+import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.settings.UserPreferences
@@ -40,6 +43,7 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
+import id.homebase.core.ui.screens.connections.ConnectionsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
@@ -126,6 +130,8 @@ val appModule = module {
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::HelpViewModel)
+    viewModelOf(::ConnectionsViewModel)
+    viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
 }

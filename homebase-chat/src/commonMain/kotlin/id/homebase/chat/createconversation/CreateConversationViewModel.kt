@@ -102,6 +102,7 @@ class CreateConversationViewModel(
         // Only display new group and note to self options if not showing search results
         if (query.isEmpty()) {
             result.add(CreateConversationListItem.NoteToSelf)
+            result.add(CreateConversationListItem.ConnectionRequest)
             result.add(CreateConversationListItem.NewGroup)
         }
 
