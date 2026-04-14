@@ -292,9 +292,14 @@ fun ReceivedMessagePopup(
                 val localDensity = LocalDensity.current
                 var messageBubbleHeight by remember { mutableStateOf(0.dp) }
                 var actionMenuY by remember { mutableStateOf(0f) }
+                var boxY by remember { mutableStateOf(0f) }
 
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onGloballyPositioned { coordinates ->
+                            boxY = coordinates.positionInRoot().y
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     // Layer 1: Message bubble - positioned absolutely, doesn't affect layout
@@ -304,8 +309,8 @@ fun ReceivedMessagePopup(
                             .padding(horizontal = 16.dp)
                             .offset(
                                 y = with(localDensity) {
-                                    // Allow negative offset - content will be clipped at screen top
-                                    actionMenuY.toDp() - messageBubbleHeight
+                                    // Calculate offset relative to Box
+                                    (actionMenuY - boxY).toDp() - messageBubbleHeight
                                 }
                             )
                             .onGloballyPositioned { coordinates ->
@@ -346,31 +351,6 @@ fun ReceivedMessagePopup(
                     }
                 }
             }
-//            PopupWithScrim(
-//                onDismissRequest = dismissMenu
-//            ) {
-//                Column(
-//                    modifier = Modifier.fillMaxWidth(),
-//                    horizontalAlignment = Alignment.Start
-//                ) {
-//                    ReactionMenu(
-//                        modifier = Modifier.padding(horizontal = 16.dp),
-//                        userDefaultReactions = userDefaultReactions,
-//                        onSelect = onSelectEmoji,
-//                        onShowAllEmojis = onShowAllEmojis,
-//                    )
-//                    Spacer(modifier = Modifier.height(8.dp))
-//
-//                    ReceivedMessageBubbleDisplayOnly(
-//                        modifier = Modifier.padding(horizontal = 16.dp),
-//                        message = message,
-//                    )
-//                    Spacer(modifier = Modifier.height(8.dp))
-//
-//                    actionMenu(Unit)
-//
-//                }
-//            }
         }
 
         else -> {}
@@ -483,9 +463,14 @@ fun SentMessagePopup(
                 val localDensity = LocalDensity.current
                 var messageBubbleHeight by remember { mutableStateOf(0.dp) }
                 var actionMenuY by remember { mutableStateOf(0f) }
+                var boxY by remember { mutableStateOf(0f) }
 
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onGloballyPositioned { coordinates ->
+                            boxY = coordinates.positionInRoot().y
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     // Layer 1: Message bubble - positioned absolutely, doesn't affect layout
@@ -495,8 +480,8 @@ fun SentMessagePopup(
                             .padding(horizontal = 16.dp)
                             .offset(
                                 y = with(localDensity) {
-                                    // Allow negative offset - content will be clipped at screen top
-                                    actionMenuY.toDp() - messageBubbleHeight
+                                    // Calculate offset relative to Box
+                                    (actionMenuY - boxY).toDp() - messageBubbleHeight
                                 }
                             )
                             .onGloballyPositioned { coordinates ->
