@@ -2,8 +2,8 @@ name: Build Desktop Release Dev
 
 on:
   # Run on schedule (every day at 2 AM UTC)
-  schedule:
-    - cron: '0 2 * * *'  # Adjust time as needed
+#  schedule:
+#    - cron: '0 2 * * *'  # Adjust time as needed
 
   # Allow manual triggering from GitHub UI
   workflow_dispatch:
