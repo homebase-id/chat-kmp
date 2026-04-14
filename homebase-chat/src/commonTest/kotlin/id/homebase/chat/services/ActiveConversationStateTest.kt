@@ -79,4 +79,30 @@ class ActiveConversationStateTest {
         assertNull(state.messages.value[convo1]!!.firstOrNull { it.id == target.id })
         assertEquals(1, state.messages.value[convo2]!!.size)
     }
+
+    @Test
+    fun upsert_skipsConversationsNotYetLoaded() {
+        val state = ActiveConversationState()
+        val convoId = Uuid.random()
+        val msg = message(conversationId = convoId)
+
+        // Upsert into a conversation that was never set() — should be a no-op
+        state.upsert(convoId, listOf(msg))
+
+        assertEquals(null, state.messages.value[convoId])
+    }
+
+    @Test
+    fun upsert_updatesConversationThatWasLoaded() {
+        val state = ActiveConversationState()
+        val convoId = Uuid.random()
+        val existing = message(conversationId = convoId)
+        state.set(convoId, listOf(existing))
+
+        val incoming = message(conversationId = convoId)
+        state.upsert(convoId, listOf(incoming))
+
+        val messages = state.messages.value[convoId]!!
+        assertEquals(2, messages.size)
+    }
 }

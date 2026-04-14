@@ -5,6 +5,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -73,6 +74,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getOdinIdColor
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isEmojiContentOnly
+import id.homebase.core.util.isMobile
 import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.core.widget.ReactionList
 import id.homebase.resources.MR
@@ -249,37 +251,53 @@ fun SentMessageBubble(
                 })
             }
 
-            Box {
-                MessageBubbleRaw(
-                    modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
-                    message = message,
-                    decryptedFiles = decryptedFiles,
-                    sentByYou = true,
-                    onLongClick = {
-                        if (onMessageInfo != null) {
-                            popupMode = MessagePopupMode.All
-                        }
-                    },
-                    onMediaClick = onMediaClick,
-                    onClickMessageId = onClickMessageId,
-                    onRequestDecryptedFile = onRequestDecryptedFile,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    downloadingFiles = downloadingFiles,
-                    onShowMoreClick = onShowMore,
-                    isPendingSend = message.isPendingSend,
-                    uploadStatus = uploadStatus,
-                    replyMessages = replyMessages,
-                    searchQuery = searchQuery,
-                    isCurrentSearchResult = isCurrentSearchResult,
-                )
-                message.reactionPreview?.let { reactionSummary ->
-                    ReactionList(
-                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
-                        reactionSummary = reactionSummary,
-                        onClick = { onAddReaction?.invoke(message.id, it) },
-                        onLongClick = { onShowReactions() },
+            Box(
+                modifier = if (isMobile()) {
+                    Modifier.fillMaxWidth().combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                        onLongClick = {
+                            if (onMessageInfo != null) {
+                                popupMode = MessagePopupMode.All
+                            }
+                        },
                     )
+                } else Modifier,
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Box {
+                    MessageBubbleRaw(
+                        modifier = Modifier.padding(bottom = if (message.reactionPreview == null) 0.dp else 26.dp),
+                        message = message,
+                        decryptedFiles = decryptedFiles,
+                        sentByYou = true,
+                        onLongClick = {
+                            if (onMessageInfo != null) {
+                                popupMode = MessagePopupMode.All
+                            }
+                        },
+                        onMediaClick = onMediaClick,
+                        onClickMessageId = onClickMessageId,
+                        onRequestDecryptedFile = onRequestDecryptedFile,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        downloadingFiles = downloadingFiles,
+                        onShowMoreClick = onShowMore,
+                        isPendingSend = message.isPendingSend,
+                        uploadStatus = uploadStatus,
+                        replyMessages = replyMessages,
+                        searchQuery = searchQuery,
+                        isCurrentSearchResult = isCurrentSearchResult,
+                    )
+                    message.reactionPreview?.let { reactionSummary ->
+                        ReactionList(
+                            modifier = Modifier.align(Alignment.BottomStart).padding(start = 4.dp),
+                            reactionSummary = reactionSummary,
+                            onClick = { onAddReaction?.invoke(message.id, it) },
+                            onLongClick = { onShowReactions() },
+                        )
+                    }
                 }
             }
         }
@@ -392,58 +410,76 @@ fun ReceivedMessageBubble(
             horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
-                val authorNameTxt = message.displayName
-                val authorOdinColor = getOdinIdColor(message.originalAuthor?.domainName ?: "")
-                val isDark = isSystemInDarkTheme()
-                val finalAuthorColor =
-                    if (isDark) authorOdinColor.darkTheme else authorOdinColor.lightTheme
-
-                if (renderAuthorName && !hasVisibleBackground) {
-                    Text(
-                        text = authorNameTxt,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = finalAuthorColor,
-                        modifier = Modifier.padding(start = 12.dp, bottom = 2.dp),
-                        maxLines = 1,
-                    )
-                }
-                Box {
-                    MessageBubbleRaw(
-                        modifier = Modifier.padding(
-                            bottom = if (message.reactionPreview == null) 0.dp
-                            else 26.dp
-                        ),
-                        message = message,
-                        decryptedFiles = decryptedFiles,
-                        sentByYou = false,
-                        authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
-                        else null,
-                        authorColor = if (renderAuthorName && hasVisibleBackground) finalAuthorColor
-                        else null,
+            Box(
+                modifier = if (isMobile()) {
+                    Modifier.fillMaxWidth().combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
                         onLongClick = {
                             if (onMessageInfo != null) {
                                 popupMode = MessagePopupMode.All
                             }
                         },
-                        onMediaClick = onMediaClick,
-                        onClickMessageId = onClickMessageId,
-                        onRequestDecryptedFile = onRequestDecryptedFile,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        downloadingFiles = downloadingFiles,
-                        onShowMoreClick = onShowMore,
-                        replyMessages = replyMessages,
-                        searchQuery = searchQuery,
-                        isCurrentSearchResult = isCurrentSearchResult,
                     )
-                    message.reactionPreview?.let { reactionSummary ->
-                        ReactionList(
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 4.dp),
-                            reactionSummary = reactionSummary,
-                            onClick = { onAddReaction?.invoke(message.id, it) },
-                            onLongClick = { onShowReactions() },
+                } else Modifier,
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Column {
+                    val authorNameTxt = message.displayName
+                    val authorOdinColor =
+                        getOdinIdColor(message.originalAuthor?.domainName ?: "")
+                    val isDark = isSystemInDarkTheme()
+                    val finalAuthorColor =
+                        if (isDark) authorOdinColor.darkTheme else authorOdinColor.lightTheme
+
+                    if (renderAuthorName && !hasVisibleBackground) {
+                        Text(
+                            text = authorNameTxt,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = finalAuthorColor,
+                            modifier = Modifier.padding(start = 12.dp, bottom = 2.dp),
+                            maxLines = 1,
                         )
+                    }
+                    Box {
+                        MessageBubbleRaw(
+                            modifier = Modifier.padding(
+                                bottom = if (message.reactionPreview == null) 0.dp
+                                else 26.dp
+                            ),
+                            message = message,
+                            decryptedFiles = decryptedFiles,
+                            sentByYou = false,
+                            authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
+                            else null,
+                            authorColor = if (renderAuthorName && hasVisibleBackground) finalAuthorColor
+                            else null,
+                            onLongClick = {
+                                if (onMessageInfo != null) {
+                                    popupMode = MessagePopupMode.All
+                                }
+                            },
+                            onMediaClick = onMediaClick,
+                            onClickMessageId = onClickMessageId,
+                            onRequestDecryptedFile = onRequestDecryptedFile,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            downloadingFiles = downloadingFiles,
+                            onShowMoreClick = onShowMore,
+                            replyMessages = replyMessages,
+                            searchQuery = searchQuery,
+                            isCurrentSearchResult = isCurrentSearchResult,
+                        )
+                        message.reactionPreview?.let { reactionSummary ->
+                            ReactionList(
+                                modifier = Modifier.align(Alignment.BottomEnd)
+                                    .padding(end = 4.dp),
+                                reactionSummary = reactionSummary,
+                                onClick = { onAddReaction?.invoke(message.id, it) },
+                                onLongClick = { onShowReactions() },
+                            )
+                        }
                     }
                 }
             }
