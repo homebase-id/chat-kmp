@@ -7,10 +7,15 @@ import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionRequestHeader
-import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.PublicIdentityRepository
+import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.StatusMessage
+import id.homebase.chat.services.StatusMessageData
+import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.contact.DriveContactService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,9 +27,12 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.Uuid
 
 class ConnectRequestViewModel(
-    private val connectionRequestProvider: ConnectionRequestProvider,
+    private val connectionRequestService: ConnectionRequestService,
     private val publicIdentityRepository: PublicIdentityRepository,
     private val ownerSessionRepository: OwnerSessionRepository,
+    private val driveContactService: DriveContactService,
+    private val conversationService: ConversationService,
+    private val chatMessageSenderService: ChatMessageSenderService,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ConnectRequestState())
@@ -76,6 +84,48 @@ class ConnectRequestViewModel(
 
             ConnectRequestAction.EventConsumed ->
                 _state.update { it.copy(uiEvent = null) }
+        }
+    }
+
+    /**
+     * Creates (or reuses) the 1:1 conversation with [recipient] so the sender can jump into it
+     * before the connection request is accepted. The conversation file and status message are
+     * enqueued for transit delivery to [recipient] — while they remain un-connected the server
+     * retries until acceptance flips them to connected, at which point they sync through.
+     *
+     * Only posts the "ConversationStarted" status when the conversation file is freshly
+     * written; a revive of a previously-deleted thread is intentionally silent so the sender
+     * doesn't see a spurious "You started the conversation" entry above existing history.
+     *
+     * Returns the conversation id on success, or null if creation failed (logged, not
+     * surfaced — the connection request itself already succeeded and shouldn't be rolled back).
+     */
+    private suspend fun startConversationWithRecipient(recipient: OdinId): Uuid? {
+        return try {
+            val result = conversationService.createConversation(
+                recipients = listOf(recipient),
+                title = null,
+                payloadBundle = null,
+            )
+
+            if (result.wasNewlyCreated) {
+                chatMessageSenderService.sendStatusMessage(
+                    messageUniqueId = Uuid.random(),
+                    conversationId = result.conversationId,
+                    previousMessageUniqueId = result.conversationId,
+                    statusMessage = StatusMessageData(
+                        statusMessage = StatusMessage.ConversationStarted,
+                        subject = null,
+                    ),
+                )
+            }
+
+            result.conversationId
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e) { "Failed to start conversation with $recipient" }
+            null
         }
     }
 
@@ -141,7 +191,11 @@ class ConnectRequestViewModel(
         _state.update { it.copy(isSending = true) }
         viewModelScope.launch {
             try {
-                connectionRequestProvider.sendConnectionRequest(header)
+                connectionRequestService.sendConnectionRequest(header)
+                driveContactService.saveContactForOdinId(header.recipient)
+
+                val conversationId = startConversationWithRecipient(header.recipient)
+
                 _state.update {
                     it.copy(
                         isSending = false,
@@ -149,7 +203,9 @@ class ConnectRequestViewModel(
                         recipient = "",
                         message = "",
                         resolution = RecipientResolution.Idle,
-                        uiEvent = ConnectRequestEvent.SendSuccess,
+                        uiEvent = conversationId
+                            ?.let { id -> ConnectRequestEvent.NavigateToConversation(id) }
+                            ?: ConnectRequestEvent.SendSuccess,
                     )
                 }
             } catch (e: CancellationException) {
@@ -225,4 +281,5 @@ sealed interface ConnectRequestEvent {
     data object SendSuccess : ConnectRequestEvent
     data class SendError(val message: String) : ConnectRequestEvent
     data class OpenUrl(val url: String) : ConnectRequestEvent
+    data class NavigateToConversation(val conversationId: Uuid) : ConnectRequestEvent
 }

@@ -122,6 +122,7 @@ fun CreateConversationScreen(
     ConnectRequestBottomSheet(
         viewModel = connectRequestViewModel,
         snackbarHostState = snackbarHostState,
+        onNavigateToConversation = onShowConversation,
     )
 }
 

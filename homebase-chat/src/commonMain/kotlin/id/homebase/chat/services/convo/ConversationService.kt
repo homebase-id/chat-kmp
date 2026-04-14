@@ -64,7 +64,7 @@ class ConversationService(
         recipients: List<OdinId>,
         title: String?,
         payloadBundle: PayloadBundle?
-    ): Uuid {
+    ): CreateConversationResult {
 
         val domain = credentialsManager.requireActiveDomain()
 
@@ -123,7 +123,7 @@ class ConversationService(
                     distribute = true,
                 )
             }
-            return newConversationId
+            return CreateConversationResult(newConversationId, wasNewlyCreated = false)
         }
 
         val allParticipants = (normalizedRecipients + domain).distinct()
@@ -164,8 +164,18 @@ class ConversationService(
             )
         }
 
-        return newConversationId
+        return CreateConversationResult(newConversationId, wasNewlyCreated = true)
     }
+
+    /**
+     * Result of [createConversation]. [wasNewlyCreated] is true when a fresh conversation file
+     * was written; false when an existing file (active or revived) satisfied the request. Use
+     * this to decide whether to post "conversation started" status messages — skip if false.
+     */
+    data class CreateConversationResult(
+        val conversationId: Uuid,
+        val wasNewlyCreated: Boolean
+    )
 
     /**
      * Creates a conversation file locally and enqueues it for server upload.
