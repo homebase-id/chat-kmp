@@ -412,9 +412,43 @@ class ConversationStream(
     }
 
     suspend fun fetchConversations(): List<ConversationUiModel> {
+<<<<<<<<< Temporary merge branch 1
+        val result = dbm.chatReadCount.selectAllConversationPlusLastMessage()
+        return result.map { mapper.mapToConversationUi(it.conversation, it.message) }
+=========
         val c = credentialsManager.requireActiveCredentials()
         val result = dbm.chatReadCount.selectAllConversationPlusLastMessage(c.getIdentityId())
-        return result.map { mapper.mapToConversationUi(it.conversation, it.message) }
+        val conversations = result.map { mapper.mapToConversationUi(it.conversation, it.message) }
+        val domain = c.domain
+        var self = ChatProtocol.buildSelfConversation(domain)
+
+        // Query the latest message for the self-conversation directly from the DB.
+        // There is no conversation file for the self-conversation, so we query message files
+        // by groupId and use the latest one to populate timestamp, lastMessage, etc.
+        val queryBatch = QueryBatch(c.getIdentityId())
+        val selfMessages = queryBatch.queryBatchAsync(
+            dbm = dbm,
+            driveId = chatDrive,
+            noOfItems = 1,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.CreatedDate,
+            fileSystemType = 0,
+            filetypesAnyOf = listOf(ChatProtocol.MessageFileType),
+            groupIdAnyOf = listOf(ChatProtocol.ConversationWithYourselfId)
+        )
+
+        val latestMsg = selfMessages.records.firstOrNull()?.let {
+            ChatMessageStream.mapToMessageData(it, credentialsManager) { file ->
+                file.fileMetadata.originalAuthor?.domainName ?: ""
+            }
+        }
+
+        if (latestMsg != null) {
+            self = self.updateWithLatestMessage(latestMsg, domain)
+        }
+
+        return listOf(self) + conversations.filter { it.id != ChatProtocol.ConversationWithYourselfId }
+>>>>>>>>> Temporary merge branch 2
     }
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {
