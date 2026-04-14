@@ -19,7 +19,7 @@ sqldelight {
 kotlin {
     applyDefaultHierarchyTemplate()
 
-    androidLibrary {
+    android {
         namespace = "id.homebase.core"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
