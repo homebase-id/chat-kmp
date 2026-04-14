@@ -8,6 +8,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.SpanStyle
@@ -219,320 +221,357 @@ fun MessageBubbleRaw(
     }
 
     Surface(
-        modifier = modifier.clip(shape).ifTrue(isMobile()) {
-            Modifier.combinedClickable(
-                onClick = {},
-                onLongClick = { handleLongClick() },
-                interactionSource = pressInteractionSource,
-                indication = null
-            )
-        }.graphicsLayer {
-            scaleX = scaleAnim.value
-            scaleY = scaleAnim.value
-        },
+        modifier = modifier
+            .clip(shape)
+            .ifTrue(isMobile()) {
+                Modifier.combinedClickable(
+                    onClick = {},
+                    onLongClick = { handleLongClick() },
+                    interactionSource = pressInteractionSource,
+                    indication = null
+                )
+            }
+            .graphicsLayer {
+                scaleX = scaleAnim.value
+                scaleY = scaleAnim.value
+            },
         shape = shape,
         color = backgroundColor,
     ) {
-        if (mediaOnly && !message.isDeleted) {
-            Box(modifier = Modifier.wrapContentWidth()) {
-                MediaMessage(
-                    payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
-                    fileId = message.fileId,
-                    decryptedFiles = decryptedFiles,
-                    keyHeader = message.keyHeader,
-                    driveId = chatTargetDrive.alias,
-                    previewThumbnail = message.previewThumbnail,
-                    onMediaClick = onMediaClick,
-                    onMediaLongPress = { _, _ -> handleLongClick() },
-                    onRequestDecryptedFile = onRequestDecryptedFile,
-                    shape = RoundedCornerShape(Dimens.Message.cornerRadius),
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    messageId = message.id,
-                    downloadingFiles = downloadingFiles,
-                    uploadStatus = uploadStatus,
+        Box {
+            // Overlay Box that captures all long clicks
+            if (isMobile()) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .pointerInput(message.id) {
+                            detectTapGestures(
+                                onLongPress = { handleLongClick() }
+                            )
+                        }
                 )
-                Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().height(40.dp)
-                            .align(Alignment.BottomStart).background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color.Black.copy(
-                                            alpha = 0.6f
-                                        ),
+            }
+
+            if (mediaOnly && !message.isDeleted) {
+                Box(modifier = Modifier.wrapContentWidth()) {
+                    MediaMessage(
+                        payloads = filteredPayloads?.toPersistentList() ?: persistentListOf(),
+                        fileId = message.fileId,
+                        decryptedFiles = decryptedFiles,
+                        keyHeader = message.keyHeader,
+                        driveId = chatTargetDrive.alias,
+                        previewThumbnail = message.previewThumbnail,
+                        onMediaClick = onMediaClick,
+                        onMediaLongPress = { _, _ -> handleLongClick() },
+                        onRequestDecryptedFile = onRequestDecryptedFile,
+                        shape = RoundedCornerShape(Dimens.Message.cornerRadius),
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        messageId = message.id,
+                        downloadingFiles = downloadingFiles,
+                        uploadStatus = uploadStatus,
+                    )
+                    Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(40.dp)
+                                .align(Alignment.BottomStart).background(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.Transparent,
+                                            Color.Black.copy(
+                                                alpha = 0.6f
+                                            ),
+                                        )
+                                    )
+                                ),
+                        ) {
+                            Row(
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                Text(
+                                    text = messageInfoText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(
+                                        alpha = 0.7f
                                     )
                                 )
-                            ),
-                    ) {
-                        Row(
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-                            verticalAlignment = Alignment.Bottom
-                        ) {
-                            Text(
-                                text = messageInfoText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = HomebaseTheme.extendedColors.bubbleSentOnSurface.copy(alpha = 0.7f)
-                            )
-                            if (sentByYou) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                DeliveryStatus(
-                                    isPendingSend = isPendingSend,
-                                    deliveryStatus = message.messageAppData.deliveryStatus,
-                                    contentColor = contentColor.copy(alpha = 0.7f),
-                                )
+                                if (sentByYou) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    DeliveryStatus(
+                                        isPendingSend = isPendingSend,
+                                        deliveryStatus = message.messageAppData.deliveryStatus,
+                                        contentColor = contentColor.copy(alpha = 0.7f),
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
-        } else {
-            // Note: If adding composables to Layout here, remember to update layout code to take new widget into account
-            Column {
-                Layout(
-                    content = {
-                        authorName?.let {
-                            Text(
-                                text = it,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = authorColor ?: contentColor,
-                                modifier = Modifier.padding(
-                                    start = 12.dp, top = 8.dp, end = 12.dp, bottom = 8.dp,
-                                ),
-                                maxLines = 1,
-                            )
-                        }
-                        // Inline reply preview if this message is a reply
-                        message.messageAppData.replyPreview?.let { reply ->
-                            InlineReplyPreview(
-                                replyPreview = reply,
-                                sentByYou = sentByYou,
-                                onClick = { onClickMessageId(reply.replyUniqueId) },
-                                replyMessage = replyMessages[reply.replyUniqueId],
-                                driveId = chatTargetDrive.alias,
-                            )
-                        }
-                        if (hasMedia) {
-                            MediaMessage(
-                                payloads = filteredPayloads.toPersistentList(),
-                                decryptedFiles = decryptedFiles,
-                                fileId = message.fileId,
-                                driveId = chatTargetDrive.alias,
-                                previewThumbnail = message.previewThumbnail,
-                                onMediaClick = onMediaClick,
-                                keyHeader = message.keyHeader,
-                                shape = if (authorName == null) RoundedCornerShape(
-                                    topStart = Dimens.Message.cornerRadius,
-                                    topEnd = Dimens.Message.cornerRadius
-                                ) else RoundedCornerShape(0.dp),
-                                onMediaLongPress = { _, _ -> handleLongClick() },
-                                onRequestDecryptedFile = onRequestDecryptedFile,
-                                sharedTransitionScope = sharedTransitionScope,
-                                animatedVisibilityScope = animatedVisibilityScope,
-                                messageId = message.id,
-                                downloadingFiles = downloadingFiles,
-                                uploadStatus = uploadStatus,
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.padding(
-                                horizontal = 12.dp, vertical = 12.dp
-                            ).combinedClickable(
-                                onClick = {},
-                                onLongClick = { handleLongClick() },
-                                interactionSource = pressInteractionSource,
-                                indication = null
-                            ),
-                        ) {
-                            if (emojiOnly) {
-                                // Render emoji-only messages prominently
-                                val size = if (message.content.length <= 6) 56.sp else 42.sp
+            } else {
+                // Note: If adding composables to Layout here, remember to update layout code to take new widget into account
+                Column {
+                    Layout(
+                        content = {
+                            authorName?.let {
                                 Text(
-                                    text = message.content,
-                                    onTextLayout = { textLayoutResult = it },
-                                    fontSize = size,
-                                    style = MaterialTheme.typography.displaySmall,
-                                    color = contentColor
+                                    text = it,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = authorColor ?: contentColor,
+                                    modifier = Modifier.padding(
+                                        start = 12.dp, top = 8.dp, end = 12.dp, bottom = 8.dp,
+                                    ),
+                                    maxLines = 1,
+                                )
+                            }
+                            // Inline reply preview if this message is a reply
+                            message.messageAppData.replyPreview?.let { reply ->
+                                InlineReplyPreview(
+                                    replyPreview = reply,
+                                    sentByYou = sentByYou,
+                                    onClick = { onClickMessageId(reply.replyUniqueId) },
+                                    replyMessage = replyMessages[reply.replyUniqueId],
+                                    driveId = chatTargetDrive.alias,
+                                )
+                            }
+                            if (hasMedia) {
+                                MediaMessage(
+                                    payloads = filteredPayloads.toPersistentList(),
+                                    decryptedFiles = decryptedFiles,
+                                    fileId = message.fileId,
+                                    driveId = chatTargetDrive.alias,
+                                    previewThumbnail = message.previewThumbnail,
+                                    onMediaClick = onMediaClick,
+                                    keyHeader = message.keyHeader,
+                                    shape = if (authorName == null) RoundedCornerShape(
+                                        topStart = Dimens.Message.cornerRadius,
+                                        topEnd = Dimens.Message.cornerRadius
+                                    ) else RoundedCornerShape(0.dp),
+                                    onMediaLongPress = { _, _ -> handleLongClick() },
+                                    onRequestDecryptedFile = onRequestDecryptedFile,
+                                    sharedTransitionScope = sharedTransitionScope,
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                    messageId = message.id,
+                                    downloadingFiles = downloadingFiles,
+                                    uploadStatus = uploadStatus,
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.padding(
+                                    horizontal = 12.dp, vertical = 12.dp
+                                ),
+                            ) {
+                                if (emojiOnly) {
+                                    // Render emoji-only messages prominently
+                                    val size = if (message.content.length <= 6) 56.sp else 42.sp
+                                    Text(
+                                        text = message.content,
+                                        onTextLayout = { textLayoutResult = it },
+                                        fontSize = size,
+                                        style = MaterialTheme.typography.displaySmall,
+                                        color = contentColor
+                                    )
+                                } else {
+                                    RichText(
+                                        state = textState,
+                                        onTextLayout = { textLayoutResult = it },
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = contentColor
+                                    )
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (onShowMoreClick != null) Modifier.clickable(onClick = onShowMoreClick)
+                                        else Modifier
+                                    )
+                            ) {
+                                if (message.hasMore && onShowMoreClick != null) {
+                                    Text(
+                                        text = stringResource(MR.string.show_more),
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                        color = contentColor,
+                                        modifier = Modifier
+                                            .padding(
+                                                start = 12.dp,
+                                                end = 12.dp,
+                                                top = 4.dp,
+                                                bottom = 6.dp
+                                            )
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .padding(start = 8.dp),
+                                verticalAlignment = Alignment.Bottom,
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                Text(
+                                    text = messageInfoText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = contentColor.copy(alpha = 0.7f)
+                                )
+                                if (sentByYou && !message.isDeleted) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    DeliveryStatus(
+                                        isPendingSend = isPendingSend,
+                                        deliveryStatus = message.messageAppData.deliveryStatus,
+                                        contentColor = contentColor.copy(alpha = 0.7f),
+                                    )
+                                }
+                            }
+                        }
+                    ) { measurables, constraints ->
+                        // Find MediaMessage index (after author and reply preview)
+                        var mediaIndex = 0
+                        if (authorName != null) mediaIndex++
+                        val replyIndex =
+                            if (message.messageAppData.replyPreview != null) mediaIndex else -1
+                        if (message.messageAppData.replyPreview != null) mediaIndex++
+
+                        val textIndex = if (hasMedia) mediaIndex + 1 else mediaIndex
+                        val showMoreIndex = textIndex + 1
+                        val infoIndex = showMoreIndex + 1
+
+                        val placeables: MutableList<Placeable> = mutableListOf()
+                        var mediaWidth = 0
+                        var authorWidth = 0
+
+                        // Measure up to text content
+                        for (i in 0 until textIndex) {
+                            if (i == replyIndex) continue
+                            val placeable = measurables[i].measure(constraints)
+                            placeables += placeable
+                            if (hasMedia && i == mediaIndex) {
+                                mediaWidth = placeable.width
+                            }
+                            if (authorName != null && i == 0) {
+                                authorWidth = placeable.width
+                            }
+                        }
+
+                        // Measure text content
+                        val textPlaceable = measurables[textIndex].measure(
+                            if (mediaWidth > 0) constraints.copy(
+                                minWidth = mediaWidth,
+                                maxWidth = mediaWidth
+                            )
+                            else constraints
+                        )
+
+                        // Measure show more text
+                        val showMorePlaceable = measurables[showMoreIndex].measure(constraints)
+
+                        // Measure info text
+                        val infoPlaceable = measurables[infoIndex].measure(constraints)
+
+                        // Calculate potential final width BEFORE measuring reply
+                        val layoutResult = textLayoutResult
+                        val potentialFinalWidth: Int
+
+                        if (layoutResult != null && layoutResult.lineCount > 0) {
+                            val lastLineIndex = layoutResult.lineCount - 1
+                            val lastLineRight = layoutResult.getLineRight(lastLineIndex)
+                            val horizontalGap = 8.dp.roundToPx()
+                            val textRowPadding = 12.dp.roundToPx()
+                            val availableWidth =
+                                if (mediaWidth > 0) mediaWidth else constraints.maxWidth
+                            val lastLineEnd = textRowPadding + lastLineRight.toInt()
+                            val fitsOnLastLine =
+                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
+
+                            potentialFinalWidth = if (fitsOnLastLine) {
+                                maxOf(
+                                    mediaWidth,
+                                    textPlaceable.width,
+                                    (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
+                                    authorWidth
                                 )
                             } else {
-                                RichText(
-                                    state = textState,
-                                    onTextLayout = { textLayoutResult = it },
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = contentColor
+                                maxOf(
+                                    mediaWidth,
+                                    textPlaceable.width,
+                                    infoPlaceable.width,
+                                    authorWidth
                                 )
                             }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .then(
-                                    if (onShowMoreClick != null) Modifier.clickable(onClick = onShowMoreClick)
-                                    else Modifier
-                                )
-                        ) {
-                            if (message.hasMore && onShowMoreClick != null) {
-                                Text(
-                                    text = stringResource(MR.string.show_more),
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                    color = contentColor,
-                                    modifier = Modifier
-                                        .padding(
-                                            start = 12.dp,
-                                            end = 12.dp,
-                                            top = 4.dp,
-                                            bottom = 6.dp
-                                        )
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .combinedClickable(
-                                    onClick = {},
-                                    onLongClick = { handleLongClick() },
-                                    interactionSource = pressInteractionSource,
-                                    indication = null
-                                ),
-                            verticalAlignment = Alignment.Bottom,
-                            horizontalArrangement = Arrangement.End,
-                        ) {
-                            Text(
-                                text = messageInfoText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = contentColor.copy(alpha = 0.7f)
-                            )
-                            if (sentByYou && !message.isDeleted) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                DeliveryStatus(
-                                    isPendingSend = isPendingSend,
-                                    deliveryStatus = message.messageAppData.deliveryStatus,
-                                    contentColor = contentColor.copy(alpha = 0.7f),
-                                )
-                            }
-                        }
-                    }
-                ) { measurables, constraints ->
-                    // Find MediaMessage index (after author and reply preview)
-                    var mediaIndex = 0
-                    if (authorName != null) mediaIndex++
-                    val replyIndex =
-                        if (message.messageAppData.replyPreview != null) mediaIndex else -1
-                    if (message.messageAppData.replyPreview != null) mediaIndex++
-
-                    val textIndex = if (hasMedia) mediaIndex + 1 else mediaIndex
-                    val showMoreIndex = textIndex + 1
-                    val infoIndex = showMoreIndex + 1
-
-                    val placeables: MutableList<Placeable> = mutableListOf()
-                    var mediaWidth = 0
-                    var authorWidth = 0
-
-                    // Measure up to text content
-                    for (i in 0 until textIndex) {
-                        if (i == replyIndex) continue
-                        val placeable = measurables[i].measure(constraints)
-                        placeables += placeable
-                        if (hasMedia && i == mediaIndex) {
-                            mediaWidth = placeable.width
-                        }
-                        if (authorName != null && i == 0) {
-                            authorWidth = placeable.width
-                        }
-                    }
-
-                    // Measure text content
-                    val textPlaceable = measurables[textIndex].measure(
-                        if (mediaWidth > 0) constraints.copy(
-                            minWidth = mediaWidth,
-                            maxWidth = mediaWidth
-                        )
-                        else constraints
-                    )
-
-                    // Measure show more text
-                    val showMorePlaceable = measurables[showMoreIndex].measure(constraints)
-
-                    // Measure info text
-                    val infoPlaceable = measurables[infoIndex].measure(constraints)
-
-                    // Calculate potential final width BEFORE measuring reply
-                    val layoutResult = textLayoutResult
-                    val potentialFinalWidth: Int
-
-                    if (layoutResult != null && layoutResult.lineCount > 0) {
-                        val lastLineIndex = layoutResult.lineCount - 1
-                        val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-                        val horizontalGap = 8.dp.roundToPx()
-                        val textRowPadding = 12.dp.roundToPx()
-                        val availableWidth =
-                            if (mediaWidth > 0) mediaWidth else constraints.maxWidth
-                        val lastLineEnd = textRowPadding + lastLineRight.toInt()
-                        val fitsOnLastLine =
-                            (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
-
-                        potentialFinalWidth = if (fitsOnLastLine) {
-                            maxOf(
-                                mediaWidth,
-                                textPlaceable.width,
-                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
-                                authorWidth
-                            )
                         } else {
-                            maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
+                            potentialFinalWidth =
+                                maxOf(
+                                    mediaWidth,
+                                    textPlaceable.width,
+                                    infoPlaceable.width,
+                                    authorWidth
+                                )
                         }
-                    } else {
-                        potentialFinalWidth =
-                            maxOf(mediaWidth, textPlaceable.width, infoPlaceable.width, authorWidth)
-                    }
 
-                    // NOW measure reply with the correct width that accounts for info placement
-                    val replyPlaceable = if (replyIndex != -1) measurables[replyIndex].measure(
-                        constraints.copy(
-                            minWidth = potentialFinalWidth,
-                            maxWidth = potentialFinalWidth
-                        )
-                    ) else null
-                    val replyWidth = replyPlaceable?.width ?: 0
-                    val replyHeight = replyPlaceable?.height ?: 0
-
-                    // Calculate final dimensions (now including reply width)
-                    val finalWidth: Int
-                    val finalHeight: Int
-                    val infoX: Int
-                    val infoY: Int
-
-                    if (layoutResult != null && layoutResult.lineCount > 0) {
-                        val lastLineIndex = layoutResult.lineCount - 1
-                        val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-                        val horizontalGap = 8.dp.roundToPx()
-                        val textRowPadding = 12.dp.roundToPx()
-                        val availableWidth =
-                            if (mediaWidth > 0) mediaWidth else constraints.maxWidth
-                        val lastLineEnd = textRowPadding + lastLineRight.toInt()
-                        val fitsOnLastLine =
-                            (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
-
-                        if (fitsOnLastLine) {
-                            finalWidth = maxOf(
-                                mediaWidth,
-                                replyWidth,
-                                textPlaceable.width,
-                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
-                                authorWidth
+                        // NOW measure reply with the correct width that accounts for info placement
+                        val replyPlaceable = if (replyIndex != -1) measurables[replyIndex].measure(
+                            constraints.copy(
+                                minWidth = potentialFinalWidth,
+                                maxWidth = potentialFinalWidth
                             )
-                            val lastLineBottom = layoutResult.getLineBottom(lastLineIndex)
-                            infoY =
-                                placeables.sumOf { it.height } + replyHeight + lastLineBottom.toInt() + 16.dp.roundToPx() - infoPlaceable.height
-                            infoX = finalWidth - infoPlaceable.width - textRowPadding
-                            finalHeight =
-                                placeables.sumOf { it.height } +
-                                        replyHeight +
-                                        textPlaceable.height +
-                                        (showMorePlaceable.height)
+                        ) else null
+                        val replyWidth = replyPlaceable?.width ?: 0
+                        val replyHeight = replyPlaceable?.height ?: 0
+
+                        // Calculate final dimensions (now including reply width)
+                        val finalWidth: Int
+                        val finalHeight: Int
+                        val infoX: Int
+                        val infoY: Int
+
+                        if (layoutResult != null && layoutResult.lineCount > 0) {
+                            val lastLineIndex = layoutResult.lineCount - 1
+                            val lastLineRight = layoutResult.getLineRight(lastLineIndex)
+                            val horizontalGap = 8.dp.roundToPx()
+                            val textRowPadding = 12.dp.roundToPx()
+                            val availableWidth =
+                                if (mediaWidth > 0) mediaWidth else constraints.maxWidth
+                            val lastLineEnd = textRowPadding + lastLineRight.toInt()
+                            val fitsOnLastLine =
+                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
+
+                            if (fitsOnLastLine) {
+                                finalWidth = maxOf(
+                                    mediaWidth,
+                                    replyWidth,
+                                    textPlaceable.width,
+                                    (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
+                                    authorWidth
+                                )
+                                val lastLineBottom = layoutResult.getLineBottom(lastLineIndex)
+                                infoY =
+                                    placeables.sumOf { it.height } + replyHeight + lastLineBottom.toInt() + 16.dp.roundToPx() - infoPlaceable.height
+                                infoX = finalWidth - infoPlaceable.width - textRowPadding
+                                finalHeight =
+                                    placeables.sumOf { it.height } +
+                                            replyHeight +
+                                            textPlaceable.height +
+                                            (showMorePlaceable.height)
+                            } else {
+                                finalWidth = maxOf(
+                                    mediaWidth,
+                                    replyWidth,
+                                    textPlaceable.width,
+                                    infoPlaceable.width,
+                                    authorWidth
+                                )
+                                infoY =
+                                    placeables.sumOf { it.height } + replyHeight + textPlaceable.height
+                                infoX = finalWidth - infoPlaceable.width - textRowPadding
+                                finalHeight =
+                                    placeables.sumOf { it.height } +
+                                            replyHeight +
+                                            textPlaceable.height +
+                                            (showMorePlaceable.height) +
+                                            infoPlaceable.height +
+                                            8.dp.roundToPx()
+                            }
                         } else {
                             finalWidth = maxOf(
                                 mediaWidth,
@@ -543,47 +582,30 @@ fun MessageBubbleRaw(
                             )
                             infoY =
                                 placeables.sumOf { it.height } + replyHeight + textPlaceable.height
-                            infoX = finalWidth - infoPlaceable.width - textRowPadding
+                            infoX = finalWidth - infoPlaceable.width
                             finalHeight =
-                                placeables.sumOf { it.height } +
-                                        replyHeight +
-                                        textPlaceable.height +
-                                        (showMorePlaceable.height) +
-                                        infoPlaceable.height +
-                                        8.dp.roundToPx()
-                        }
-                    } else {
-                        finalWidth = maxOf(
-                            mediaWidth,
-                            replyWidth,
-                            textPlaceable.width,
-                            infoPlaceable.width,
-                            authorWidth
-                        )
-                        infoY = placeables.sumOf { it.height } + replyHeight + textPlaceable.height
-                        infoX = finalWidth - infoPlaceable.width
-                        finalHeight =
-                            placeables.sumOf { it.height } + replyHeight + textPlaceable.height + infoPlaceable.height
-                    }
-
-                    layout(finalWidth, finalHeight) {
-                        var yPos = 0
-                        replyPlaceable?.let {
-                            it.placeRelative(0, yPos)
-                            yPos += it.height
+                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + infoPlaceable.height
                         }
 
-                        placeables.forEach { placeable ->
-                            placeable.placeRelative(0, yPos)
-                            yPos += placeable.height
+                        layout(finalWidth, finalHeight) {
+                            var yPos = 0
+                            replyPlaceable?.let {
+                                it.placeRelative(0, yPos)
+                                yPos += it.height
+                            }
+
+                            placeables.forEach { placeable ->
+                                placeable.placeRelative(0, yPos)
+                                yPos += placeable.height
+                            }
+                            textPlaceable.placeRelative(0, yPos)
+                            yPos += textPlaceable.height
+
+                            showMorePlaceable.placeRelative(0, yPos)
+                            yPos += showMorePlaceable.height
+
+                            infoPlaceable.placeRelative(infoX, infoY)
                         }
-                        textPlaceable.placeRelative(0, yPos)
-                        yPos += textPlaceable.height
-
-                        showMorePlaceable.placeRelative(0, yPos)
-                        yPos += showMorePlaceable.height
-
-                        infoPlaceable.placeRelative(infoX, infoY)
                     }
                 }
             }
