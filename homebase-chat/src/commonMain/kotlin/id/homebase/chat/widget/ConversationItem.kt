@@ -95,7 +95,9 @@ fun ConversationItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (enrichedData.conversation.isWithSelf) stringResource(MR.string.chat_note_to_self) else enrichedData.getDisplayName(),
+                    text = if (enrichedData.conversation.isWithSelf)
+                        stringResource(MR.string.chat_note_to_self)
+                    else enrichedData.getDisplayName(),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (enrichedData.conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1,

@@ -101,6 +101,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -224,12 +225,18 @@ class ConversationListViewModel(
             messageInputTextState.setMarkdown("")
         }
 
+        viewModelScope.launch {
+            conversationStream.conversations.first { it.dataReady }
+            conversationService.ensureNoteToSelfExists()
+        }
+
         // Listen for search query changes
         viewModelScope.launch {
             snapshotFlow { conversationSearchTextState.text.toString() }.debounce(300)
                 .collectLatest {
                     if (uiState.value.conversationsContent is ConversationListContentState.Items
-                        || uiState.value.conversationsContent is ConversationListContentState.EmptySearch) {
+                        || uiState.value.conversationsContent is ConversationListContentState.EmptySearch
+                    ) {
                         updateListContent()
                     }
                 }
@@ -1417,7 +1424,8 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.OpenConnectionRequestInOwnerConsole -> {
                 uiState.value.ownerSession?.odinId?.let { currentUser ->
-                    val url = "https://${currentUser.domainName}/owner/connections/${action.odinId.domainName}"
+                    val url =
+                        "https://${currentUser.domainName}/owner/connections/${action.odinId.domainName}"
                     _uiState.update { it.copy(uiEvent = ConversationListUiEvent.OpenUrl(url)) }
                 }
             }
@@ -1861,10 +1869,11 @@ class ConversationListViewModel(
                             else
                                 messageState.messages
                             // Hide soft-deleted messages in "Note to Self" conversation
-                            val messages = if (conversationId == ChatProtocol.ConversationWithYourselfId)
-                                filteredByExit.filter { !it.isDeleted }
-                            else
-                                filteredByExit
+                            val messages =
+                                if (conversationId == ChatProtocol.ConversationWithYourselfId)
+                                    filteredByExit.filter { !it.isDeleted }
+                                else
+                                    filteredByExit
                             // Group messages within day sections
                             val timezone = TimeZone.currentSystemDefault()
                             val groupedMessages =
@@ -1879,14 +1888,19 @@ class ConversationListViewModel(
                             messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
                                 listOf(MessageListContentModel.Section(date)) + messages.map {
                                     if (it.isStatusMessage)
-                                        MessageListContentModel.System(it.content, it.userDate, systemIndex++)
+                                        MessageListContentModel.System(
+                                            it.content,
+                                            it.userDate,
+                                            systemIndex++
+                                        )
                                     else
                                         MessageListContentModel.Message(it)
                                 }
                             })
 
                             // Scroll handling, either use new message id, click message id or null
-                            val newMessageId = messages.firstOrNull { it.id == pendingMessageId }?.id
+                            val newMessageId =
+                                messages.firstOrNull { it.id == pendingMessageId }?.id
                             pendingMessageId = null
                             val indexOfMessageForScroll = if (newMessageId != null) {
                                 val index = messagesModels.indexOfLast {
@@ -1948,7 +1962,7 @@ class ConversationListViewModel(
 
                             if (setInitialScroll) {
                                 val totalElapsed = loadStart.elapsedNow()
-                                Logger.d("ConversationLoad") {
+                                Logger.d(tag = "ConversationLoad") {
                                     "conversationId=$conversationId " +
                                             "messageCount=${messages.size} " +
                                             "cached=$hasCachedMessages " +
@@ -2035,7 +2049,10 @@ class ConversationListViewModel(
                 messageInputTextState.clear()
                 Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) { "addMessage failed for conversation=$conversationId" }
+                Logger.e(
+                    throwable = e,
+                    tag = TAG
+                ) { "addMessage failed for conversation=$conversationId" }
                 sendEvent(ShowErrorMessage("Failed to send message: ${e.message}"))
             } finally {
                 _messagesUiState.update { it.copy(isSendingMessage = false) }
@@ -2077,7 +2094,10 @@ class ConversationListViewModel(
                 _messagesUiState.update { it.copy(replyToMessage = null) }
                 Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) { "replyToMessage failed for conversation=$conversationId" }
+                Logger.e(
+                    throwable = e,
+                    tag = TAG
+                ) { "replyToMessage failed for conversation=$conversationId" }
                 sendEvent(ShowErrorMessage("Failed to send reply: ${e.message}"))
             } finally {
                 _messagesUiState.update { it.copy(isSendingMessage = false) }
@@ -2259,9 +2279,17 @@ class ConversationListViewModel(
                     payloadBundle = bundle,
                 )
                 messageInputTextState.clear()
-                _messagesUiState.update { it.copy(fullScreenOverlay = null, isSendingMessage = false) }
+                _messagesUiState.update {
+                    it.copy(
+                        fullScreenOverlay = null,
+                        isSendingMessage = false
+                    )
+                }
             } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
+                Logger.e(
+                    throwable = e,
+                    tag = TAG
+                ) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
                 _messagesUiState.update { state ->
                     state.copy(
                         uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap(),

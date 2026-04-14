@@ -87,7 +87,7 @@ fun ConversationSettingsUi(
             }
 
             uiState.conversation?.let { conversation ->
-                val isWithSelf = conversation.id == ChatProtocol.ConversationWithYourselfId
+                val isWithSelf = conversation.isWithSelf
                 AvatarNameDisplay(
                     modifier = Modifier
                         .fillMaxWidth()
