@@ -132,8 +132,8 @@ jobs:
             const { data: release } = await github.rest.repos.createRelease({
               owner: owner,
               repo: repo,
-              tag_name: `v${version}`,
-              name: `Desktop Dev v${version}`,
+              tag_name: `${version}`,
+              name: `${version}`,
               body: `Desktop development release v${version}\n\nBuilt from ${context.repo.owner}/${context.repo.repo}@${context.sha.substring(0, 7)}`,
               draft: false,
               prerelease: false  // Set to false for production releases
