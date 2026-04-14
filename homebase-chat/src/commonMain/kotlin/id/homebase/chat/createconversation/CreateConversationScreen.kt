@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -51,11 +52,15 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
+import id.homebase.core.connections.ConnectRequestAction
+import id.homebase.core.connections.ConnectRequestDialogs
+import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_new_conversation
+import id.homebase.resources.chat_new_conversation_connection_request
 import id.homebase.resources.chat_new_conversation_new_group
 import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.chat_no_contacts_found
@@ -70,6 +75,7 @@ import kotlin.uuid.Uuid
 @Composable
 fun CreateConversationScreen(
     viewModel: CreateConversationViewModel,
+    connectRequestViewModel: ConnectRequestViewModel,
     onNavigateBack: () -> Unit,
     onShowConversation: (conversationId: Uuid) -> Unit,
     onShowCreateGroup: () -> Unit,
@@ -107,7 +113,15 @@ fun CreateConversationScreen(
         snackbarHostState = snackbarHostState,
         uiState = uiState,
         searchTextState = viewModel.searchTextState,
-        onUiAction = viewModel::onUiAction
+        onUiAction = viewModel::onUiAction,
+        onConnectionRequestClicked = {
+            connectRequestViewModel.onAction(ConnectRequestAction.OpenDialog)
+        },
+    )
+
+    ConnectRequestDialogs(
+        viewModel = connectRequestViewModel,
+        snackbarHostState = snackbarHostState,
     )
 }
 
@@ -118,6 +132,7 @@ fun CreateConversationUi(
     uiState: CreateConversationUiState,
     searchTextState: TextFieldState,
     onUiAction: (CreateConversationUiAction) -> Unit,
+    onConnectionRequestClicked: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -226,6 +241,19 @@ fun CreateConversationUi(
                                     imageVector = Icons.AutoMirrored.Filled.StickyNote2,
                                     text = stringResource(MR.string.chat_note_to_self),
                                     onClick = { onUiAction(CreateConversationUiAction.CreateSelfConversation) }
+                                )
+                            }
+                        }
+
+                        is CreateConversationListItem.ConnectionRequest -> {
+                            item {
+                                ListItemAction(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    imageVector = Icons.Default.PersonAdd,
+                                    text = stringResource(MR.string.chat_new_conversation_connection_request),
+                                    onClick = onConnectionRequestClicked,
                                 )
                             }
                         }

@@ -107,6 +107,14 @@
 
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
+    <string name="settings_connections">Connections</string>
+    <string name="connections_already_sent_title">Request already sent</string>
+    <string name="connections_already_sent_text">A connection request to %1$s already exists. Open the owner console to view or manage it.</string>
+    <string name="connections_empty_title">No connection requests yet</string>
+    <string name="connections_empty_description">When you send or receive a connection request, it will show up here. Tap the + button to send one.</string>
+    <string name="connections_no_incoming">No incoming requests</string>
+    <string name="connections_no_outgoing">No outgoing requests</string>
+    <string name="connections_manage_in_owner_console">Manage in owner console</string>
     <string name="settings_notifications">Notifications</string>
     <string name="settings_help">Help</string>
     <string name="settings_logout">Log out</string>
@@ -175,6 +183,7 @@
     <string name="chat_new_conversation">New conversation</string>
     <string name="chat_new_conversation_search_placeholder">Search contacts</string>
     <string name="chat_new_conversation_new_group">New group</string>
+    <string name="chat_new_conversation_connection_request">New connection request</string>
     <string name="chat_no_contacts_found">No contacts found</string>
     <string name="chat_group_select_members">Select members</string>
 
@@ -206,6 +215,13 @@
     <string name="chat_group_rejoin_pending_description">You were re-added to this group</string>
     <string name="chat_group_rejoin_accept">Rejoin</string>
     <string name="chat_group_rejoin_decline">Decline</string>
+
+    <!-- 1:1 connection state banner (shown in place of the message composer) -->
+    <string name="chat_not_connected_description">You\'re not connected.</string>
+    <string name="chat_not_connected_outgoing_description">Waiting for them to accept your connection request.</string>
+    <string name="chat_not_connected_incoming_description">They want to connect with you.</string>
+    <string name="chat_not_connected_view_request">View request</string>
+    <string name="chat_not_connected_review_request">Review request</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>

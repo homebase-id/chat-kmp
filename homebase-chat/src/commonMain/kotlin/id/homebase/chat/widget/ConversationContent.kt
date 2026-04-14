@@ -101,6 +101,7 @@ import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.createconversation.GroupOrConversationItem
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
+import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.util.isDesktop
@@ -128,6 +129,11 @@ import id.homebase.resources.chat_message_forward_to
 import id.homebase.resources.chat_message_search_no_results
 import id.homebase.resources.chat_message_search_result_count
 import id.homebase.resources.chat_no_messages
+import id.homebase.resources.chat_not_connected_description
+import id.homebase.resources.chat_not_connected_incoming_description
+import id.homebase.resources.chat_not_connected_outgoing_description
+import id.homebase.resources.chat_not_connected_review_request
+import id.homebase.resources.chat_not_connected_view_request
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
 import id.homebase.resources.chat_search_placeholder
@@ -771,6 +777,67 @@ fun ConversationContent(
                             }) {
                                 Text(stringResource(MR.string.chat_group_rejoin_decline))
                             }
+                        }
+                    }
+                } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.NotConnected) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_not_connected_description),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.OutgoingRequestPending) {
+                    val status = conversation.oneOnOneConnectionStatus
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_not_connected_outgoing_description),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        ElevatedButton(onClick = {
+                            onUiAction(
+                                ConversationListUiAction.OpenConnectionRequestInOwnerConsole(
+                                    status.otherOdinId
+                                )
+                            )
+                        }) {
+                            Text(stringResource(MR.string.chat_not_connected_view_request))
+                        }
+                    }
+                } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.IncomingRequestPending) {
+                    val status = conversation.oneOnOneConnectionStatus
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.chat_not_connected_incoming_description),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        ElevatedButton(onClick = {
+                            onUiAction(
+                                ConversationListUiAction.OpenConnectionRequestInOwnerConsole(
+                                    status.otherOdinId
+                                )
+                            )
+                        }) {
+                            Text(stringResource(MR.string.chat_not_connected_review_request))
                         }
                     }
                 } else if (!uiState.isSearchActive) {

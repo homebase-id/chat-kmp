@@ -34,6 +34,7 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.syncLabeledDrives
+import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.settings.UserPreferences
@@ -42,6 +43,7 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
+import id.homebase.core.ui.screens.connections.ConnectionsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
@@ -128,6 +130,8 @@ val appModule = module {
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::HelpViewModel)
+    viewModelOf(::ConnectionsViewModel)
+    viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
 }

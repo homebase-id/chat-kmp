@@ -94,8 +94,35 @@ class ConversationService(
                 XorIdUtil.getNewXorId(domain.domainName, normalizedRecipients.first().domainName)
             }
 
-        val existingConversation = getConversation(newConversationId)
-        if (existingConversation != null) {
+        // The deterministic 1:1 uniqueId may already exist server-side from a prior
+        // (possibly deleted or corrupted) conversation. Check for an existing file
+        // without requiring a clean parse — some older files may be missing
+        // participant data and would otherwise throw.
+        val existingFile = getConversationHomebaseFile(newConversationId)
+        if (existingFile != null) {
+            val existingState: ConversationState? = try {
+                mapper.mapToConversationUi(existingFile, null).conversationState
+            } catch (e: Exception) {
+                Logger.w(e) { "Existing conversation file $newConversationId failed to map — will overwrite" }
+                null
+            }
+
+            val needsRevive = existingState == null ||
+                    existingState == ConversationState.Deleted ||
+                    existingState == ConversationState.Invalid
+
+            if (needsRevive) {
+                // Revive by clearing the Removed archival flag and pushing a fresh
+                // participant list from the caller. updateConversationInternal uses
+                // replaceEnqueue, so this supersedes any stale pending update.
+                updateConversationInternal(
+                    conversationId = newConversationId,
+                    title = title ?: "",
+                    participants = (normalizedRecipients + domain).distinct(),
+                    archivalStatus = ArchivalStatus.None,
+                    distribute = true,
+                )
+            }
             return newConversationId
         }
 
