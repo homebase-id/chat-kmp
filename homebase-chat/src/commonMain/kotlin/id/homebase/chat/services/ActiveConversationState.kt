@@ -15,6 +15,9 @@ class ActiveConversationState {
     val messages: StateFlow<Map<Uuid, List<MessageUiModel>>> =
         _messages.asStateFlow()
 
+    fun hasCachedMessages(conversationId: Uuid): Boolean =
+        _messages.value.containsKey(conversationId)
+
     fun set(conversationId: Uuid, messages: List<MessageUiModel>) {
         _messages.update { current ->
             current.toMutableMap().apply {
@@ -33,10 +36,11 @@ class ActiveConversationState {
 
     fun upsert(conversationId: Uuid, incoming: List<MessageUiModel>) {
         if (incoming.isEmpty()) return
+        if (!hasCachedMessages(conversationId)) return
 
         _messages.update { current ->
+            val existing = current[conversationId] ?: return@update current
             current.toMutableMap().apply {
-                val existing = this[conversationId].orEmpty()
                 this[conversationId] = upsertMessages(existing, incoming)
             }
         }
