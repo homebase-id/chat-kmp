@@ -22,7 +22,10 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -68,6 +71,8 @@ import id.homebase.resources.settings_help
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_open_owner_console
+import id.homebase.resources.settings_profile_info
+import id.homebase.resources.settings_security_setup
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -207,6 +212,20 @@ fun SettingsUi(
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
+                imageVector = Icons.Outlined.Person,
+                text = stringResource(MR.string.settings_profile_info),
+                onClick = { onAction(SettingsUiAction.ProfileInfoClicked) },
+                trailingContent = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
                 imageVector = Icons.Outlined.Notifications,
                 text = stringResource(MR.string.settings_notifications),
                 onClick = onNavigateToNotifications,
@@ -235,6 +254,20 @@ fun SettingsUi(
                             )
                         }
                     }
+                }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                imageVector = Icons.Outlined.Security,
+                text = stringResource(MR.string.settings_security_setup),
+                onClick = { onAction(SettingsUiAction.SecuritySetupClicked) },
+                trailingContent = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             )
             Spacer(modifier = Modifier.height(8.dp))
