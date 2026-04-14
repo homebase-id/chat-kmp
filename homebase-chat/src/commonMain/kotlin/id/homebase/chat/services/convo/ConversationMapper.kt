@@ -221,22 +221,7 @@ class ConversationMapper(
     }
 
     private suspend fun queryAdmins(conversationId: Uuid): Set<OdinId>? {
-        val c = credentialsManager.requireActiveCredentials()
-        val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
-
-        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
-            c.getIdentityId(), chatDrive, adminUniqueId
-        ) ?: return null
-        val content = file.fileMetadata.appData.content
-        if (content.isNullOrEmpty()) return null
-
-        return try {
-            val adminInfo = OdinSystemSerializer.deserialize<ConversationAdminInfo>(content)
-            adminInfo.admins?.toSet()
-        } catch (e: Exception) {
-            logger.w("Failed to deserialize admin file for $conversationId: ${e.message}")
-            null
-        }
+        return ConversationAdminInfo.queryFromDb(credentialsManager, dbm, chatDrive, conversationId)
     }
 
     private suspend fun buildConversationAvatarModel(

@@ -911,20 +911,10 @@ class ConversationService(
 
     /** Reads the admin list from the dedicated admin file, falling back to originalAuthor. */
     suspend fun getAdmins(conversationId: Uuid): Set<OdinId> {
-        val adminFile = getConversationAdminHomebaseFile(conversationId)
-        if (adminFile != null) {
-            val content = adminFile.fileMetadata.appData.content
-            if (!content.isNullOrEmpty()) {
-                try {
-                    val adminInfo = OdinSystemSerializer.deserialize<ConversationAdminInfo>(content)
-                    if (!adminInfo.admins.isNullOrEmpty()) {
-                        return adminInfo.admins.toSet()
-                    }
-                } catch (e: Exception) {
-                    Logger.e(e) { "Failed to deserialize admin info for conversation=$conversationId: ${content.take(200)}" }
-                }
-            }
-        }
+        val fromFile = ConversationAdminInfo.queryFromDb(
+            credentialsManager, dbm, chatDrive, conversationId
+        )
+        if (!fromFile.isNullOrEmpty()) return fromFile
 
         // Fallback: originalAuthor from conversation file
         val conversationFile = getConversationHomebaseFile(conversationId)
