@@ -1,6 +1,5 @@
 package id.homebase.chat.widget
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -8,8 +7,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -304,6 +301,7 @@ fun MessageTextFieldExpanded(
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
             state = state,
+            enabled = true,
         )
         if (editExistingMode) {
             MessageEditMessageInfo(
@@ -516,16 +514,20 @@ fun MessageTextFieldCompact(
     ) {
         if (!isRecordingActive) {
             Spacer(modifier = Modifier.height(8.dp))
-            AnimatedVisibility(
-                visible = isKeyboardFocused,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it },
-            ) {
-                RichTextEditorButtons(
-                    modifier = Modifier.fillMaxWidth(),
-                    state = state,
-                )
-            }
+//            AnimatedVisibility(
+//                visible = isKeyboardFocused,
+//                enter = slideInVertically { it },
+//                exit = slideOutVertically { it },
+//            ) {
+            RichTextEditorButtons(
+                modifier = Modifier.fillMaxWidth(),
+                state = state,
+                enabled = isKeyboardFocused,
+            )
+//            }
+//            if (!isKeyboardFocused) {
+//                Spacer(modifier = Modifier.height(48.dp))
+//            }
             if (linkPreviewData != null) {
                 LinkPreviewCard(
                     linkPreview = linkPreviewData,
@@ -941,6 +943,7 @@ fun MessageTextFieldForAttachment(
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
             state = state,
+            enabled = true,
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1027,7 +1030,11 @@ fun MessageTextFieldForAttachment(
 }
 
 @Composable
-fun RichTextEditorButtons(modifier: Modifier = Modifier, state: RichTextState) {
+fun RichTextEditorButtons(
+    modifier: Modifier = Modifier,
+    state: RichTextState,
+    enabled: Boolean,
+) {
     LazyRow(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
         item {
             RichTextStyleButton(
@@ -1036,6 +1043,7 @@ fun RichTextEditorButtons(modifier: Modifier = Modifier, state: RichTextState) {
                         SpanStyle(fontWeight = FontWeight.Bold)
                     )
                 },
+                enabled = enabled,
                 isSelected = state.currentSpanStyle.fontWeight == FontWeight.Bold,
                 icon = Icons.Outlined.FormatBold
             )
@@ -1048,6 +1056,7 @@ fun RichTextEditorButtons(modifier: Modifier = Modifier, state: RichTextState) {
                         SpanStyle(fontStyle = FontStyle.Italic)
                     )
                 },
+                enabled = enabled,
                 isSelected = state.currentSpanStyle.fontStyle == FontStyle.Italic,
                 icon = Icons.Outlined.FormatItalic
             )
@@ -1059,9 +1068,12 @@ fun RichTextEditorButtons(modifier: Modifier = Modifier, state: RichTextState) {
                     state.toggleSpanStyle(
                         SpanStyle(textDecoration = TextDecoration.Underline)
                     )
-                }, isSelected = state.currentSpanStyle.textDecoration?.contains(
+                },
+                enabled = enabled,
+                isSelected = state.currentSpanStyle.textDecoration?.contains(
                     TextDecoration.Underline
-                ) == true, icon = Icons.Outlined.FormatUnderlined
+                ) == true,
+                icon = Icons.Outlined.FormatUnderlined,
             )
         }
 
@@ -1073,9 +1085,12 @@ fun RichTextEditorButtons(modifier: Modifier = Modifier, state: RichTextState) {
                             textDecoration = TextDecoration.LineThrough
                         )
                     )
-                }, isSelected = state.currentSpanStyle.textDecoration?.contains(
+                },
+                enabled = enabled,
+                isSelected = state.currentSpanStyle.textDecoration?.contains(
                     TextDecoration.LineThrough
-                ) == true, icon = Icons.Outlined.FormatStrikethrough
+                ) == true,
+                icon = Icons.Outlined.FormatStrikethrough,
             )
         }
 
@@ -1085,6 +1100,7 @@ fun RichTextEditorButtons(modifier: Modifier = Modifier, state: RichTextState) {
             RichTextStyleButton(
                 onClick = { state.toggleUnorderedList() },
                 isSelected = state.isUnorderedList,
+                enabled = enabled,
                 icon = Icons.AutoMirrored.Outlined.FormatListBulleted,
             )
         }
@@ -1093,6 +1109,7 @@ fun RichTextEditorButtons(modifier: Modifier = Modifier, state: RichTextState) {
             RichTextStyleButton(
                 onClick = { state.toggleOrderedList() },
                 isSelected = state.isOrderedList,
+                enabled = enabled,
                 icon = Icons.Outlined.FormatListNumbered,
             )
         }

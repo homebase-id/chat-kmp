@@ -532,7 +532,17 @@ fun ConversationContent(
         ) {
             Column(
                 modifier = Modifier.fillMaxSize()
-                    .offset { IntOffset(0, -imeInsets.getBottom(this)) }
+                    .offset {
+                        val imeHeight = imeInsets.getBottom(this)
+                        val sheetOffset = if (imeHeight > 0) {
+                            imeHeight
+                        } else if (showEmojiSheet || showAttachmentSheet) {
+                            keyboardHeight.coerceAtLeast(300.dp).roundToPx()
+                        } else {
+                            0
+                        }
+                        IntOffset(0, -sheetOffset)
+                    }
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             ) {
             if (conversation.missingConnections.isNotEmpty()) {
@@ -948,47 +958,54 @@ fun ConversationContent(
                                 )
                             },
                             onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) })
-
-                        EmojiSelectorSheet(
-                            modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
-                            visible = showEmojiSheet,
-                            onBackSpace = { textFieldState.programmaticBackspace() },
-                            onEmojiSelected = { textFieldState.addTextAfterSelection(it) })
-
-                        AttachmentOptionsDisplay(
-                            modifier = Modifier.height(keyboardHeight.coerceAtLeast(300.dp)),
-                            visible = showAttachmentSheet && !isKeyboardVisible,
-                        ) {
-                            AttachmentGallery(
-                                onImageSelected = {
-                                    showAttachmentSheet = false
-                                    onUiAction(
-                                        ConversationListUiAction.AttachGalleryItem(
-                                            conversationId = conversation.conversation.id,
-                                            files = listOf(it)
-                                        )
-                                    )
-                                    // Handle image selection
-                                },
-                            )
-                            AttachmentOptions(onGalleryClick = {
-                                showAttachmentSheet = false
-                                galleryLauncher.launch()
-                            }, onFileClick = {
-                                showAttachmentSheet = false
-                                fileLauncher.launch()
-                            }, onContactClick = {
-                                showAttachmentSheet = false
-                                // Handle camera
-                            }, onLocationClick = {
-                                showAttachmentSheet = false
-                                // Handle location
-                            })
-                        }
                     }
                 } // else (not Left)
             }
             }
+
+            // Sheets live outside the offset Column so they sit flush at the screen
+            // bottom without double-counting the offset.
+            // Each sheet applies its modifier to its inner Column, not to the root
+            // AnimatedVisibility, so we wrap in a Box to anchor them at the bottom.
+            Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
+                EmojiSelectorSheet(
+                    modifier = Modifier.fillMaxWidth()
+                        .height(keyboardHeight.coerceAtLeast(300.dp)),
+                    visible = showEmojiSheet,
+                    onBackSpace = { textFieldState.programmaticBackspace() },
+                    onEmojiSelected = { textFieldState.addTextAfterSelection(it) })
+            }
+
+            Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
+                AttachmentOptionsDisplay(
+                    modifier = Modifier.fillMaxWidth()
+                        .height(keyboardHeight.coerceAtLeast(300.dp)),
+                    visible = showAttachmentSheet && !isKeyboardVisible,
+                ) {
+                AttachmentGallery(
+                    onImageSelected = {
+                        showAttachmentSheet = false
+                        onUiAction(
+                            ConversationListUiAction.AttachGalleryItem(
+                                conversationId = conversation.conversation.id,
+                                files = listOf(it)
+                            )
+                        )
+                    },
+                )
+                AttachmentOptions(onGalleryClick = {
+                    showAttachmentSheet = false
+                    galleryLauncher.launch()
+                }, onFileClick = {
+                    showAttachmentSheet = false
+                    fileLauncher.launch()
+                }, onContactClick = {
+                    showAttachmentSheet = false
+                }, onLocationClick = {
+                    showAttachmentSheet = false
+                })
+                }
+            } // AttachmentOptionsDisplay wrapper Box
         } // Box (clipToBounds)
     }
 }
