@@ -115,7 +115,7 @@ class ChatMessageStream(
             .stateIn(scope, SharingStarted.WhileSubscribed(5_000), ChatMessagesData.Initializing)
 
     fun hasCachedMessages(conversationId: Uuid): Boolean =
-        conversationState.messages.value.containsKey(conversationId)
+        conversationState.hasCachedMessages(conversationId)
 
     // Full message load from local DB for a single conversation.
     // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
