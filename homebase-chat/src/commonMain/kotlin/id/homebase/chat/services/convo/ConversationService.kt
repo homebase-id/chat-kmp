@@ -86,7 +86,6 @@ class ConversationService(
         }
 
         val isGroup = normalizedRecipients.size > 1
-        val keyHeader = KeyHeader.newRandom16()
 
         val newConversationId: Uuid =
             if (isGroup) {
@@ -127,61 +126,17 @@ class ConversationService(
             return newConversationId
         }
 
-        val content =
-            ConversationAppDataJson(
-                title = title ?: "",
-                recipients = (normalizedRecipients + domain).distinct(),
-                version = 1
-            )
-
-        val encryptedBundle =
-            payloadBundleEncryptionService.encryptBundle(
-                newConversationId,
-                payloadBundle,
-                keyHeader.aesKey,
-                scope
-            )
-
-        val metadata =
-            UploadFileMetadata(
-                allowDistribution = true,
-                isEncrypted = true,
-                appData =
-                    UploadAppFileMetaData(
-                        uniqueId = newConversationId,
-                        tags = if (isGroup) listOf(ChatProtocol.ConversationGroupTag) else null,
-                        fileType = ChatProtocol.ConversationFileType,
-                        content = OdinSystemSerializer.serialize(content),
-                        previewThumbnail =
-                            encryptedBundle.previewThumbs.minByOrNull {
-                                it.pixelWidth
-                            }
-                    ),
-            )
-
-        val request =
-            UploadFileRequest(
-                driveId = chatDrive,
-                keyHeader = keyHeader,
-                metadata = metadata.encryptContent(keyHeader),
-                transitOptions =
-                    TransitOptions(recipients = normalizedRecipients, useAppNotification = false),
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails
-            )
-
-        optimisticWriter.writeNewFile(
-            driveId = chatDrive,
-            keyHeader = keyHeader,
-            unecryptedMetadata = metadata,
-            originalRecipientCount = normalizedRecipients.size,
-            fileSystemType = FileSystemType.Standard,
+        val allParticipants = (normalizedRecipients + domain).distinct()
+        val success = writeConversationFile(
+            conversationId = newConversationId,
+            allParticipants = allParticipants,
+            transitRecipients = normalizedRecipients,
+            title = title,
+            isGroup = isGroup,
+            payloadBundle = payloadBundle
         )
-        conversationStream.loadConversation(newConversationId)
 
-        val enqueued = outboxSync.tryEnqueue(request)
-
-        if (!enqueued) {
+        if (!success) {
             error("failed to create conversation")
         }
 
@@ -212,6 +167,116 @@ class ConversationService(
         return newConversationId
     }
 
+    /**
+     * Creates a conversation file locally and enqueues it for server upload.
+     * Shared by [createConversation] and [ensureNoteToSelfExists].
+     *
+     * @return true if the file was successfully enqueued for upload
+     */
+    private suspend fun writeConversationFile(
+        conversationId: Uuid,
+        allParticipants: List<OdinId>,
+        transitRecipients: List<OdinId>,
+        title: String?,
+        isGroup: Boolean,
+        payloadBundle: PayloadBundle? = null
+    ): Boolean {
+        val keyHeader = KeyHeader.newRandom16()
+
+        val content = ConversationAppDataJson(
+            title = title ?: "",
+            recipients = allParticipants,
+            version = 1
+        )
+
+        val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
+            conversationId,
+            payloadBundle,
+            keyHeader.aesKey,
+            scope
+        )
+
+        val metadata = UploadFileMetadata(
+            allowDistribution = true,
+            isEncrypted = true,
+            appData = UploadAppFileMetaData(
+                uniqueId = conversationId,
+                tags = if (isGroup) listOf(ChatProtocol.ConversationGroupTag) else null,
+                fileType = ChatProtocol.ConversationFileType,
+                content = OdinSystemSerializer.serialize(content),
+                previewThumbnail = encryptedBundle.previewThumbs.minByOrNull { it.pixelWidth }
+            ),
+        )
+
+        val request = UploadFileRequest(
+            driveId = chatDrive,
+            keyHeader = keyHeader,
+            metadata = metadata.encryptContent(keyHeader),
+            transitOptions = TransitOptions(
+                recipients = transitRecipients,
+                useAppNotification = false
+            ),
+            payloads = encryptedBundle.payloads,
+            thumbnails = encryptedBundle.thumbnails
+        )
+
+        optimisticWriter.writeNewFile(
+            driveId = chatDrive,
+            keyHeader = keyHeader,
+            unecryptedMetadata = metadata,
+            originalRecipientCount = transitRecipients.size,
+            fileSystemType = FileSystemType.Standard,
+        )
+        conversationStream.loadConversation(conversationId)
+
+        return outboxSync.tryEnqueue(request)
+    }
+
+    /**
+     * Ensures a real note-to-self conversation file exists.
+     * Uses [ChatProtocol.ConversationWithYourselfId] as the conversation ID,
+     * then creates and pins the conversation if it doesn't already exist in the DB.
+     */
+    suspend fun ensureNoteToSelfExists() {
+        val domain = credentialsManager.requireActiveDomain()
+        val noteToSelfId = ChatProtocol.ConversationWithYourselfId
+
+        val existing = getConversation(noteToSelfId)
+        if (existing != null && existing.conversationState != ConversationState.Deleted) {
+            return
+        }
+
+        if (existing != null) {
+            // Conversation was soft-deleted — undelete it by clearing archivalStatus.
+            // We can't create a new file because the server still has the old one.
+            Logger.d("ConversationService: undeleting note-to-self conversation $noteToSelfId")
+            updateConversationInternal(
+                conversationId = noteToSelfId,
+                title = "",
+                participants = listOf(domain),
+                archivalStatus = ArchivalStatus.None,
+                distribute = false
+            )
+            pinConversation(noteToSelfId)
+            return
+        }
+
+        // First-ever creation — no file exists locally or on the server
+        Logger.d("ConversationService: creating note-to-self conversation $noteToSelfId")
+
+        val success = writeConversationFile(
+            conversationId = noteToSelfId,
+            allParticipants = listOf(domain),
+            transitRecipients = emptyList(),
+            title = "",
+            isGroup = false
+        )
+
+        if (success) {
+            pinConversation(noteToSelfId)
+        }
+    }
+
     suspend fun requireConversation(conversationId: Uuid): ConversationUiModel {
         return getConversation(conversationId)
             ?: throw IllegalStateException("No conversation found")
@@ -223,12 +288,6 @@ class ConversationService(
     }
 
     suspend fun getConversation(conversationId: Uuid): ConversationUiModel? {
-
-        if(conversationId == ChatProtocol.ConversationWithYourselfId)
-        {
-            return ChatProtocol.buildSelfConversation(credentialsManager.requireActiveDomain())
-        }
-
         val file = getConversationHomebaseFile(conversationId) ?: return null
         return mapper.mapToConversationUi(file, null)
     }
