@@ -73,6 +73,18 @@ class SettingsViewModel(
                 }
             }
 
+            SettingsUiAction.ProfileInfoClicked -> {
+                uiState.value.ownerSession?.let {
+                    sendEvent(SettingsUiEvent.OpenUrl("https://${it.odinId.domainName}/owner/profile/standard-info"))
+                }
+            }
+
+            SettingsUiAction.SecuritySetupClicked -> {
+                uiState.value.ownerSession?.let {
+                    sendEvent(SettingsUiEvent.OpenUrl("https://${it.odinId.domainName}/owner/security"))
+                }
+            }
+
             SettingsUiAction.DeleteAccount -> {
                 _uiState.update { it.copy(uiDialog = SettingsUiDialog.DeleteAccount) }
             }

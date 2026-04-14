@@ -11,7 +11,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.scale
 import co.touchlab.kermit.Logger
 import id.homebase.api.lib.image.ImageFormatDetector
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import androidx.exifinterface.media.ExifInterface
 
 /**
  * Android implementation: Convert ByteArray to ImageBitmap using Android's BitmapFactory
@@ -85,8 +87,47 @@ actual object ImageUtils {
             inPreferredConfig = Bitmap.Config.ARGB_8888
             inMutable = true
         }
-        return BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
+        val bitmap = BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
             ?: throw IllegalArgumentException("Failed to decode image bytes")
+        return applyExifOrientation(bitmap, inputBytes)
+    }
+
+    private fun applyExifOrientation(bitmap: Bitmap, imageBytes: ByteArray): Bitmap {
+        val exif = ExifInterface(ByteArrayInputStream(imageBytes))
+        val orientation = exif.getAttributeInt(
+            ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+        )
+        if (orientation == ExifInterface.ORIENTATION_NORMAL ||
+            orientation == ExifInterface.ORIENTATION_UNDEFINED
+        ) {
+            return bitmap
+        }
+
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f, 1f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> {
+                matrix.setRotate(180f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.setRotate(90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.setRotate(-90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(-90f)
+        }
+
+        val corrected = Bitmap.createBitmap(
+            bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+        )
+        if (corrected != bitmap) bitmap.recycle()
+        return corrected
     }
 
     @RequiresApi(Build.VERSION_CODES.R)

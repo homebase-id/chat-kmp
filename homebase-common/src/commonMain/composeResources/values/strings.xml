@@ -131,6 +131,8 @@
     <string name="connections_empty_outgoing_subtitle">Tap the + button to send a connection request.</string>
     <string name="connections_send_request">Send Request</string>
     <string name="settings_notifications">Notifications</string>
+    <string name="settings_profile_info">Profile Info</string>
+    <string name="settings_security_setup">Security Setup</string>
     <string name="settings_help">Help</string>
     <string name="settings_logout">Log out</string>
     <string name="settings_delete_account">Delete my account</string>

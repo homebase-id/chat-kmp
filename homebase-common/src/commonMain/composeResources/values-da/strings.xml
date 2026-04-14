@@ -114,6 +114,8 @@
     <string name="connections_empty_outgoing_subtitle">Tryk på + knappen for at sende en forbindelsesanmodning.</string>
     <string name="connections_send_request">Send anmodning</string>
     <string name="settings_notifications">Notifikationer</string>
+    <string name="settings_profile_info">Profiloplysninger</string>
+    <string name="settings_security_setup">Sikkerhedsopsætning</string>
     <string name="settings_logout">Log ud</string>
     <string name="settings_delete_account">Slet min konto</string>
     <string name="settings_delete_account_dialog_title">Slet din konto?</string>

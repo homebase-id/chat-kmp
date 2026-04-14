@@ -4,11 +4,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import co.touchlab.kermit.Logger
 import id.homebase.api.lib.image.ImageFormatDetector
-import org.jetbrains.skia.Image
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.IRect
-import org.jetbrains.skia.Surface
+import org.jetbrains.skia.Image
 import org.jetbrains.skia.Rect
+import org.jetbrains.skia.Surface
 
 /**
  * Desktop/JVM: Convert HEIC to JPEG using the bundled FFmpeg binary.
@@ -71,6 +71,7 @@ actual object ImageUtils {
         val inputBytes = if (ImageFormatDetector.isHeic(bytes)) {
             convertHeicToJpeg(bytes) ?: throw IllegalArgumentException("Failed to convert HEIC to JPEG")
         } else bytes
+        // Image.makeFromEncoded applies EXIF orientation automatically (dims + pixels)
         return Image.makeFromEncoded(inputBytes)
     }
 

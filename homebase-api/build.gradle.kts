@@ -101,6 +101,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.androidx.appcompat)
+            implementation(libs.androidx.exifinterface)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.browser)
@@ -130,6 +131,20 @@ kotlin {
 
             implementation(libs.kotlinx.html.jvm)
 
+        }
+
+        // Provide Skia native binaries for JVM image tests (platform-specific)
+        val osName = System.getProperty("os.name").lowercase()
+        val osArch = System.getProperty("os.arch").lowercase()
+        val desktopDep = when {
+            osName.contains("win") -> libs.jetbrains.compose.desktop.jvm.windows.x64
+            osName.contains("mac") && osArch.contains("aarch64") -> libs.jetbrains.compose.desktop.jvm.macos.arm64
+            osName.contains("mac") -> libs.jetbrains.compose.desktop.jvm.macos.x64
+            osArch.contains("aarch64") || osArch.contains("arm64") -> libs.jetbrains.compose.desktop.jvm.linux.arm64
+            else -> libs.jetbrains.compose.desktop.jvm.linux.x64
+        }
+        jvmTest.dependencies {
+            implementation(desktopDep)
         }
     }
 
