@@ -98,7 +98,7 @@ jobs:
             const path = require('path');
             const version = '${{ steps.version.outputs.VERSION_NAME }}';
             const owner = 'homebase-id';  
-            const repo = 'chat-desktop-release-bleeding/releases';
+            const repo = 'chat-desktop-release-bleeding';
             const outputDir = path.join(process.cwd(), 'desktopApp', 'output');
             
             console.log(`Creating release v${version} in ${owner}/${repo}`);
