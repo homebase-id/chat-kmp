@@ -49,7 +49,9 @@ import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
+import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
@@ -125,6 +127,8 @@ class ConversationListViewModel(
     private val audioWaveFormGenerator: AudioWaveFormGenerator,
     private val eventBus: EventBus,
     private val contactService: ContactService,
+    private val connectionService: ConnectionService,
+    private val connectionRequestService: ConnectionRequestService,
     private val driveFileProvider: DriveFileProvider,
     private val shareContentProcessor: ShareContentProcessor,
     private val localVideoContextStore: LocalVideoContextStore,
@@ -165,19 +169,42 @@ class ConversationListViewModel(
         viewModelScope.launch {
             contactService.start()
             conversationStream.start()
+            connectionService.start()
+            connectionRequestService.start()
+
+            val connectionStatusFlow = combine(
+                connectionService.connections,
+                connectionRequestService.incomingRequests,
+                connectionRequestService.outgoingRequests,
+            ) { connections, incoming, outgoing ->
+                Triple(
+                    connections.map,
+                    incoming.map { it.senderOdinId }.toSet(),
+                    outgoing.map { it.recipientOdinId }.toSet(),
+                )
+            }
 
             combine(
                 conversationStream.conversations,
                 contactService.contacts,
-                ownerSessionRepository.user
-            ) { conversationState, contacts, ownerSession ->
+                ownerSessionRepository.user,
+                connectionStatusFlow,
+            ) { conversationState, contacts, ownerSession, connectionCtx ->
 
                 if (ownerSession == null) return@combine Pair(false, emptyList())
 
                 val contactMap = contacts.associateBy { it.odinId }
+                val (connectionMap, incomingSenders, outgoingRecipients) = connectionCtx
 
                 Pair(conversationState.dataReady, conversationState.items.map {
-                    enricher.enrich(it, contactMap, ownerSession)
+                    enricher.enrich(
+                        convo = it,
+                        contactMap = contactMap,
+                        ownerSession = ownerSession,
+                        connectionMap = connectionMap,
+                        incomingRequestSenders = incomingSenders,
+                        outgoingRequestRecipients = outgoingRecipients,
+                    )
                 })
             }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
                 if (dataReady) {
@@ -1390,6 +1417,13 @@ class ConversationListViewModel(
             is ConversationListUiAction.ConnectToIdentity -> {
                 uiState.value.ownerSession?.odinId?.let { currentUser ->
                     val url = currentUser.buildConnectToIdentityUrl(action.odinId)
+                    _uiState.update { it.copy(uiEvent = ConversationListUiEvent.OpenUrl(url)) }
+                }
+            }
+
+            is ConversationListUiAction.OpenConnectionRequestInOwnerConsole -> {
+                uiState.value.ownerSession?.odinId?.let { currentUser ->
+                    val url = "https://${currentUser.domainName}/owner/connections/${action.odinId.domainName}"
                     _uiState.update { it.copy(uiEvent = ConversationListUiEvent.OpenUrl(url)) }
                 }
             }

@@ -139,3 +139,18 @@ GitHub Actions workflows in `.github/workflows/`:
 - `build-android-release.yml`, `build-ios-release.yml`, `build-mobile-release.yml` — release builds
 
 Do NOT use slash (/) in Git branch names
+
+## UI & Design Quality
+
+All UI code must follow **Material 3** guidelines and the **kmp-compose-multiplatform** skill. Before
+writing or modifying any screen/composable, verify:
+
+- Use `Icons.AutoMirrored.*` for directional icons (back arrows, forward) — never `Icons.Default.ChevronLeft`
+- Use `collectAsStateWithLifecycle()` — never `collectAsState()` for ViewModel StateFlows
+- All user-facing strings must use `stringResource()` from compose resources — never hardcode text
+- Use `start`/`end` padding, not `left`/`right` (RTL support)
+- Use Material 3 color roles from `MaterialTheme.colorScheme` — never hardcode colors
+- Use Material 3 typography from `MaterialTheme.typography` — never hardcode text styles
+- Provide `contentDescription` on all meaningful icons/images for accessibility
+- UiState should be a flat `data class` with `_uiState.update { }` pattern
+- One-time events (navigation, snackbar) should use separate `SharedFlow`, not stored in UiState

@@ -132,7 +132,10 @@ enum class ConnectionRequestOrigin {
     IdentityOwner,
 
     @SerialName("introduction")
-    Introduction
+    Introduction,
+
+    @SerialName("identityOwnerApp")
+    IdentityOwnerApp
 }
 
 // ------------------------------------------------------------

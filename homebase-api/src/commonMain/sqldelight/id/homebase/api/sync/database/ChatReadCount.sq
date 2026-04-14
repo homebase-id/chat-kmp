@@ -18,7 +18,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_filetype_datatype_groupid_userDate
 selectAllCoversations:
 SELECT jsonHeader
 FROM DriveMainIndex
-WHERE fileType = 8888;
+WHERE identityId = ? AND fileType = 8888;
 
 -- Like above, but add last message from each conversation
 -- This is needed at boot-time to efficiently load the full list of conversations
@@ -34,13 +34,15 @@ LEFT JOIN DriveMainIndex AS m
   ON m.rowId = (
     SELECT m2.rowId
     FROM DriveMainIndex AS m2
-    WHERE m2.groupId = d.uniqueId
+    WHERE m2.identityId = d.identityId
+      AND m2.groupId = d.uniqueId
       AND m2.fileType = 7878
       AND m2.dataType = 0
     ORDER BY m2.userDate DESC
     LIMIT 1
   )
-WHERE d.fileType = 8888 -- Conversation
+WHERE d.identityId = ?
+  AND d.fileType = 8888
 ORDER BY msgUserDate DESC;
 
 -- Return unread message count for a specific groupId
@@ -49,7 +51,8 @@ selectUnreadCountForConversation:
 SELECT COUNT(*) AS unreadCount
 FROM DriveMainIndex d
 LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
-WHERE d.groupId = ?
+WHERE d.identityId = ?
+  AND d.groupId = ?
   AND d.fileType = 7878 AND d.dataType = 0
   AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime);
 
@@ -69,8 +72,9 @@ selectAllUnreadCount:
 SELECT d.groupId, COUNT(*) AS unreadCount
 FROM DriveMainIndex AS d
 LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
-WHERE d.fileType = 7878  -- Message
-  AND d.dataType = 0 -- Standard message
+WHERE d.identityId = ?
+  AND d.fileType = 7878
+  AND d.dataType = 0
   AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime)
   AND d.groupId IS NOT NULL
   AND (d.originalAuthor IS NULL OR d.originalAuthor != ?)
@@ -88,3 +92,7 @@ SET lastReadTime = MAX(excluded.lastReadTime, lastReadTime);
 deleteByGroupId:
 DELETE FROM ChatReadCount
 WHERE groupId = ?;
+
+-- Delete all records
+deleteAll:
+DELETE FROM ChatReadCount;

@@ -133,6 +133,7 @@ enum class OdinClientErrorCode(val value: Int) {
     BlockedConnection(5004),
     CannotSendConnectionRequestToValidConnection(5005),
     RemoteServerMissingOutgoingRequest(5006),
+    ConnectionRequestAlreadySent(5007),
 
     // App or YouAuth Domain Errors 60xx
     AppNotRegistered(6001),
