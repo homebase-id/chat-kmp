@@ -22,6 +22,8 @@ sealed interface SettingsUiAction {
     data object LogoutClicked : SettingsUiAction
     data object DeleteAccount: SettingsUiAction
     data object OpenOwnerConsoleClicked : SettingsUiAction
+    data object ProfileInfoClicked : SettingsUiAction
+    data object SecuritySetupClicked : SettingsUiAction
 }
 
 /** One-off events for side effects (navigation). */
