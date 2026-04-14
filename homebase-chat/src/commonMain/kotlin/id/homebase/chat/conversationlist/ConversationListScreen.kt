@@ -44,6 +44,7 @@ import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.isDesktop
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
@@ -312,7 +313,7 @@ fun ConversationListUi(
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
-    val isExpanded = windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(1200)
+    val isExpanded = isDesktop() &&  windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(800)
     val scaffoldDirective = PaneScaffoldDirective(
         maxHorizontalPartitions = if (isExpanded) 2 else 1,
         horizontalPartitionSpacerSize = 0.dp, // Remove the white border
