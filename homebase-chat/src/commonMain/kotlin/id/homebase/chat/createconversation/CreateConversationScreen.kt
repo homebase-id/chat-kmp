@@ -53,7 +53,7 @@ import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.connections.ConnectRequestAction
-import id.homebase.core.connections.ConnectRequestDialogs
+import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.ListItemAction
@@ -119,7 +119,7 @@ fun CreateConversationScreen(
         },
     )
 
-    ConnectRequestDialogs(
+    ConnectRequestBottomSheet(
         viewModel = connectRequestViewModel,
         snackbarHostState = snackbarHostState,
     )
