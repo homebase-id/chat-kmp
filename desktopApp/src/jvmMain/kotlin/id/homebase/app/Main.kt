@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
 import com.kdroid.composetray.tray.api.Tray
 import com.mmk.kmpnotifier.notification.NotifierManager
@@ -22,14 +23,13 @@ import id.homebase.core.di.allModules
 import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
-import id.homebase.core.util.PlatformInfo
-import chat_kmp.homebase_common.BuildConfig
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
 import id.homebase.core.ui.screens.appearance.getIconForTheme
 import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
 import id.homebase.core.ui.screens.desktop.DesktopUiAction
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
+import id.homebase.core.util.PlatformInfo
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.homebase_icon_round
@@ -98,7 +98,7 @@ fun main() {
         val uiState by viewModel.uiState.collectAsState()
         val icon = painterResource(MR.drawable.homebase_icon_round)
         var isWindowVisible by remember { mutableStateOf(true) }
-        var notificationsEnabled by remember { mutableStateOf(true) }
+//        var notificationsEnabled by remember { mutableStateOf(true) }
         val state = rememberWindowState(
             placement = config.windowPlacement,
             position = config.windowPosition,
@@ -130,13 +130,13 @@ fun main() {
             Divider()
 
             // Reactive checkable item
-            CheckableItem(
-                label = "Notifications",
-                checked = notificationsEnabled,
-                onCheckedChange = { notificationsEnabled = it }
-            )
-
-            Divider()
+//            CheckableItem(
+//                label = "Notifications",
+//                checked = notificationsEnabled,
+//                onCheckedChange = { notificationsEnabled = it }
+//            )
+//
+//            Divider()
 
             Item(label = "Homebase Chat", isEnabled = false)
             Item(label = "Version ${uiState.version}", isEnabled = false)
