@@ -37,6 +37,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
+import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.ui.theme.HomebaseTheme
@@ -45,6 +46,11 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived
+import id.homebase.resources.chat_connection_invitation_received
+import id.homebase.resources.chat_connection_invitation_sent
+import id.homebase.resources.chat_connection_invited
+import id.homebase.resources.chat_connection_not_connected
+import id.homebase.resources.chat_connection_wants_to_connect
 import id.homebase.resources.chat_group_legacy
 import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
@@ -129,8 +135,29 @@ fun ConversationItem(
                     firstPayload = enrichedData.conversation.lastMessageFirstPayload,
                     hasMultiplePayloads = enrichedData.conversation.lastMessageHasMultiplePayloads,
                 )
-                val previewText = contentLabel?.text ?: enrichedData.conversation.lastMessage
-                val iconRes = contentLabel?.icon
+
+                // When there's no history for a 1:1 conversation with a pending connection
+                // request, swap the default "No messages yet" fallback for a line that
+                // actually tells the user what's happening.
+                val pendingSubtitle: String? = if (
+                    contentLabel == null &&
+                    enrichedData.conversation.lastMessage.isBlank()
+                ) {
+                    when (enrichedData.oneOnOneConnectionStatus) {
+                        is OneOnOneConnectionStatus.OutgoingRequestPending ->
+                            stringResource(MR.string.chat_connection_invitation_sent)
+                        is OneOnOneConnectionStatus.IncomingRequestPending ->
+                            stringResource(MR.string.chat_connection_invitation_received)
+                        is OneOnOneConnectionStatus.NotConnected ->
+                            stringResource(MR.string.chat_connection_not_connected)
+                        else -> null
+                    }
+                } else null
+
+                val previewText = pendingSubtitle
+                    ?: contentLabel?.text
+                    ?: enrichedData.conversation.lastMessage
+                val iconRes = if (pendingSubtitle != null) null else contentLabel?.icon
 
                 ConversationMessagePreview(
                     text = previewText,
@@ -187,6 +214,51 @@ fun ConversationItem(
                             .padding(horizontal = 4.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                when (enrichedData.oneOnOneConnectionStatus) {
+                    is OneOnOneConnectionStatus.OutgoingRequestPending -> {
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            stringResource(MR.string.chat_connection_invited),
+                            modifier = Modifier
+                                .background(
+                                    MaterialTheme.colorScheme.tertiaryContainer,
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                    }
+                    is OneOnOneConnectionStatus.IncomingRequestPending -> {
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            stringResource(MR.string.chat_connection_wants_to_connect),
+                            modifier = Modifier
+                                .background(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                    is OneOnOneConnectionStatus.NotConnected -> {
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            stringResource(MR.string.chat_connection_not_connected),
+                            modifier = Modifier
+                                .background(
+                                    MaterialTheme.colorScheme.errorContainer,
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                    else -> {}
                 }
             }
 

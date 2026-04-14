@@ -2,6 +2,8 @@ package id.homebase.chat.services.convo.contact
 
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
@@ -12,7 +14,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import co.touchlab.kermit.Logger
-import org.koin.core.component.getScopeId
 
 data class ConnectionState(
     val isLoaded: Boolean,
@@ -21,6 +22,7 @@ data class ConnectionState(
 
 class ConnectionService(
     private val provider: ConnectionNetworkProvider,
+    private val eventBus: EventBus,
     private val scope: CoroutineScope
 ) {
 
@@ -31,6 +33,22 @@ class ConnectionService(
         _connections.asStateFlow()
 
     private var startJob: Job? = null
+
+    init {
+        // Keep the connected-identity map in sync with websocket events so downstream UI
+        // (1:1 connection chips, conversation disclaimers) flips as soon as the server
+        // reports an accepted/finalized connection — we don't wait for the next manual
+        // refresh or app-foreground event.
+        scope.launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.CircleNetworkEvent.ConnectionRequestAccepted ||
+                    event is BackendEvent.CircleNetworkEvent.ConnectionRequestFinalized
+                ) {
+                    refresh()
+                }
+            }
+        }
+    }
 
     fun start() {
         if (startJob?.isActive == true) return

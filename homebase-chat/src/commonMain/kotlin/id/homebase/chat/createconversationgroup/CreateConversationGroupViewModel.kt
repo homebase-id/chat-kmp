@@ -91,7 +91,7 @@ class CreateConversationGroupViewModel(
                             recipients = memberOdinIds,
                             title = name,
                             payloadBundle = bundle,
-                        )
+                        ).conversationId
                         sendEvent(CreateConversationGroupUiEvent.LoadConversation(conversationId))
                     } catch (e: Exception) {
                         sendEvent(CreateConversationGroupUiEvent.ShowErrorMessage("Failed to create conversation: ${e.message}"))

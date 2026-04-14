@@ -528,7 +528,7 @@ fun ConversationContent(
                 .consumeWindowInsets(innerPadding).imePadding()
                 .background(MaterialTheme.colorScheme.surfaceContainerLowest)
         ) {
-            if (conversation.missingConnections.isNotEmpty()) {
+            if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
                 Row(
                     modifier = Modifier.fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(16.dp)

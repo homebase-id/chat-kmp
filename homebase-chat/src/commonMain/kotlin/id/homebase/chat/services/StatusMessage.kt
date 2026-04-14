@@ -13,5 +13,9 @@ enum class StatusMessage() {
     GroupConversationStarted,
 
     ConversationMemberLeft,
-    ConversationMemberDeclinedRejoin
+    ConversationMemberDeclinedRejoin,
+
+    /** Posted when a 1:1 conversation is freshly created — currently emitted by the
+     *  connection-request send flow so both sides see an opening status entry. */
+    ConversationStarted
 }

@@ -125,12 +125,16 @@ class ConversationMapper(
                 localAppData?.lastExitedAt?.toInstant()
             } else null
 
+            // Seed the sort timestamp with the conversation's creation time so a freshly
+            // created thread (e.g. one started alongside a connection request, before any
+            // messages have flowed) sorts to the top of the list instead of the bottom.
+            // updateWithLatestMessage below will overwrite this once a real message exists.
             var ui =
                 ConversationUiModel(
                     id = conversationId,
                     name = title,
                     lastMessage = " ",
-                    latestMessageTimestamp = UnixTimeUtc.ZeroTime.toInstant(),
+                    latestMessageTimestamp = metadata.created.toInstant(),
                     unreadCount = 0,
                     avatarTiny = appData.previewThumbnail,
                     avatarInitials = "",
