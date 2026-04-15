@@ -63,6 +63,12 @@ class ConversationStream(
     val shareableConversations: StateFlow<List<ShareableConversation>> =
         _shareableConversations.asStateFlow()
 
+    // region Recovery: missing conversation file
+    /** Called when a message arrives for a conversation that has no file in the local DB.
+     *  Wired in AppModule to trigger conversation file creation via ConversationService. */
+    var onOrphanedConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
+    // endregion
+
 
     // The full conversation list is loaded once from the local DB on authentication
     // (via start(), called from onPostAuthenticated in AppModule).
@@ -166,9 +172,7 @@ class ConversationStream(
                         // Conversation has an image
                         avatarInitials = "AxB",
                         avatarUrl = "",
-                        participants = if (m.originalAuthor != null) {
-                            listOfNotNull(m.originalAuthor, credentialsManager.getActiveDomain()).distinct()
-                        } else emptyList(),
+                        participants = emptyList(),
                         lastRead = UnixTimeUtc(0).toInstant(),
                         avatarModel =
                             ConversationAvatarModel(
@@ -186,8 +190,25 @@ class ConversationStream(
                         isGroup = false
                     )
 
-                Logger.w("ConversationStream: message arrived for unknown conversation ${m.conversationId}, creating placeholder")
+                Logger.w("ConversationStream: message arrived for unknown conversation ${m.conversationId} from=${m.originalAuthor}, creating placeholder")
                 insertNewConversation(emptyConversation)
+
+                // region Recovery: missing conversation file
+                // Trigger conversation file creation so the server gets the file
+                if (m.originalAuthor != null) {
+                    Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — triggering file creation for author=${m.originalAuthor}")
+                    scope.launch {
+                        try {
+                            onOrphanedConversation?.invoke(m.conversationId, m.originalAuthor)
+                            Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — file creation triggered successfully")
+                        } catch (e: Exception) {
+                            Logger.e(e) { "ConversationStream: orphaned conversation ${m.conversationId} — file creation FAILED: ${e.message}" }
+                        }
+                    }
+                } else {
+                    Logger.w("ConversationStream: orphaned conversation ${m.conversationId} — cannot trigger file creation, originalAuthor is null")
+                }
+                // endregion
             } else {
                 updateConversationFromNewMessage(matchingConversation, m)
             }

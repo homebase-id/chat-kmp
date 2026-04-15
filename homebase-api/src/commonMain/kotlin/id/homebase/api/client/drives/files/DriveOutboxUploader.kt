@@ -4,11 +4,15 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.LocalAppData
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
+import id.homebase.api.client.drives.upload.UpdateLocale
+import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.eventbus.BackendEvent
@@ -43,16 +47,6 @@ class DriveOutboxUploader(
         } catch (e: ClientException) {
             if (e.status == 400) {
                 when (e.errorCode) {
-                    OdinClientErrorCode.ExistingFileWithUniqueId -> {
-                        Logger.e(
-                            "Potential data loss: outbox item ${outboxRecord.uniqueId} " +
-                                    "uploadType=${outboxRecord.uploadType} — server already has a file " +
-                                    "with this uniqueId. Client content discarded. " +
-                                    "Error: ${e.message}"
-                        )
-                        return
-                    }
-
                     OdinClientErrorCode.VersionTagMismatch -> {
                         Logger.w(
                             "Discarding outbox item ${outboxRecord.uniqueId} " +
@@ -76,13 +70,100 @@ class DriveOutboxUploader(
 
     private suspend fun uploadNewFile(outboxRecord: Outbox, eventBus: EventBus) {
         val request = OdinSystemSerializer.deserialize<UploadFileRequest>(outboxRecord.json.decodeToString())
-        driveUploadProvider.uploadFile(request, onProgress = { sent, total ->
-//            println("Upload: Sent $sent | Total: $total")
+        Logger.d("$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} fileType=${request.metadata.appData.fileType} driveId=${request.driveId}")
+        try {
+            driveUploadProvider.uploadFile(request, onProgress = { sent, total ->
+                val percent = percentOf(sent, total)
+                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
+            })
+            Logger.d("$TAG uploadNewFile: success uniqueId=${request.metadata.appData.uniqueId}")
+        // region Recovery: missing conversation file
+        // If the server already has a file with this uniqueId (e.g. stale/archived
+        // from a previous install), convert the failed UploadNewFile into an
+        // UpdateFileByUniqueId so the client's fresh content lands on the server.
+        } catch (e: ClientException) {
+            if (e.status == 400 && e.errorCode == OdinClientErrorCode.ExistingFileWithUniqueId) {
+                Logger.w(
+                    "$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} " +
+                            "got ExistingFileWithUniqueId (server already has this file) — " +
+                            "converting to update so client content is not lost. " +
+                            "fileType=${request.metadata.appData.fileType} error=${e.message}"
+                )
+                retryAsUpdate(request, outboxRecord, eventBus)
+                return
+            }
+            Logger.e("$TAG uploadNewFile: failed uniqueId=${request.metadata.appData.uniqueId} status=${e.status} errorCode=${e.errorCode} message=${e.message}")
+            throw e
+        }
+        // endregion
+    }
+
+    // region Recovery: missing conversation file — retry UploadNewFile as update
+    /**
+     * When an UploadNewFile fails with ExistingFileWithUniqueId, the server already
+     * has a file with this uniqueId (e.g. a stale/archived version). Convert the
+     * original upload request into an UpdateFileByUniqueId so the client's fresh
+     * content (participants, keys) lands on the server instead of being discarded.
+     */
+    private suspend fun retryAsUpdate(
+        original: UploadFileRequest,
+        outboxRecord: Outbox,
+        eventBus: EventBus
+    ) {
+        val uniqueId = original.metadata.appData.uniqueId
+            ?: error("Cannot retry as update — no uniqueId in metadata")
+
+        Logger.d("$TAG retryAsUpdate: fetching server file header for uniqueId=$uniqueId driveId=${original.driveId}")
+        val serverFile = fileProvider.getFileHeaderByUid(original.driveId, uniqueId)
+        val versionTag = serverFile?.fileMetadata?.versionTag
+
+        if (serverFile == null) {
+            Logger.e("$TAG retryAsUpdate: server returned 404 for uniqueId=$uniqueId — file does not exist on server despite ExistingFileWithUniqueId error. Aborting retry.")
+            error("retryAsUpdate: server file not found for uniqueId=$uniqueId")
+        }
+
+        Logger.d(
+            "$TAG retryAsUpdate: server file found for uniqueId=$uniqueId " +
+                    "versionTag=$versionTag " +
+                    "fileType=${serverFile.fileMetadata.appData.fileType} " +
+                    "fileState=${serverFile.fileState} " +
+                    "recipients=${original.transitOptions?.recipients?.size ?: 0}"
+        )
+
+        // original.metadata is already encrypted (encryptContent was called before
+        // the request was serialized into the outbox). Just stamp the versionTag.
+        val metadataWithVersionTag = original.metadata.copy(
+            versionTag = versionTag
+        )
+
+        val updateRequest = UpdateFileByUniqueIdRequest(
+            driveId = original.driveId,
+            uniqueId = uniqueId,
+            keyHeader = original.keyHeader,
+            instructions = FileUpdateInstructionSet(
+                transferIv = ByteArrayUtil.getRndByteArray(16),
+                locale = UpdateLocale.Local,
+                recipients = original.transitOptions?.recipients ?: emptyList(),
+                manifest = UpdateManifest.build(
+                    payloads = original.payloads,
+                    toDeletePayloads = null,
+                    thumbnails = original.thumbnails,
+                    generatePayloadIv = false
+                )
+            ),
+            metadata = metadataWithVersionTag,
+            payloads = original.payloads,
+            thumbnails = original.thumbnails
+        )
+
+        Logger.d("$TAG retryAsUpdate: sending update for uniqueId=$uniqueId versionTag=$versionTag")
+        driveUploadProvider.updateFileByUniqueId(updateRequest, onProgress = { sent, total ->
             val percent = percentOf(sent, total)
             eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
-//            println("Upload: $percent%")
         })
+        Logger.i("$TAG retryAsUpdate: SUCCESS — uniqueId=$uniqueId updated on server (was ExistingFileWithUniqueId)")
     }
+    // endregion
 
     private suspend fun updateFile(outboxRecord: Outbox, eventBus: EventBus) {
         val request = OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(outboxRecord.json.decodeToString())
@@ -158,6 +239,7 @@ class DriveOutboxUploader(
         if (total != null && total > 0) (sent.toFloat() / total.toFloat()) * 100f else 0f
 
     companion object {
+        private const val TAG = "DriveOutboxUploader"
         const val UploadNewFile = 1L
         const val UpdateFile = 2L
         const val DeleteFile = 3L

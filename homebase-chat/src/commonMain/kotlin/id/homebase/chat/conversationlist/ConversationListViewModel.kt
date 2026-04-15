@@ -228,7 +228,6 @@ class ConversationListViewModel(
         viewModelScope.launch {
             conversationStream.conversations.first { it.dataReady }
             conversationService.ensureNoteToSelfExists()
-            conversationService.ensureConversationFilesExist()
         }
 
         // Listen for search query changes

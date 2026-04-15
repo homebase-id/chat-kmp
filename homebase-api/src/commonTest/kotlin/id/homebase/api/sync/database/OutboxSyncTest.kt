@@ -222,6 +222,58 @@ class OutboxSyncTest {
     }
 
     @Test
+    fun testMaxRetriesDrop() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+
+        runTest {
+            val eventBus = EventBus()
+            val uploader = TestUploader()
+            uploader.shouldFail = true
+
+            val sync = OutboxSync(
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+            )
+            sync.setOnline(true)
+
+            val droppedDeferred = async {
+                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.ItemDropped>().first()
+            }
+            testScheduler.runCurrent()
+
+            // Insert a record and pre-set checkOutCount to 19 (one attempt away from the limit of 20)
+            val driveId = Uuid.random()
+            val uniqueId = Uuid.random()
+            db.outbox.insert(
+                driveId = driveId,
+                uniqueId = uniqueId,
+                dependencyUniqueId = null,
+                priority = 0,
+                uploadType = 0,
+                json = byteArrayOf(),
+                filePaths = null
+            )
+            db.driver.execute(null, "UPDATE Outbox SET checkOutCount = 19", 0)
+
+            assertEquals(1L, db.outbox.count())
+
+            try {
+                sync.send()
+            } catch (_: Exception) {
+            }
+            advanceUntilIdle()
+
+            val dropped = droppedDeferred.await()
+
+            // Item should be dropped — removed from outbox
+            assertEquals(0L, db.outbox.count())
+            assertEquals(uniqueId, dropped.uniqueId)
+            assertEquals(driveId, dropped.driveId)
+            assertEquals(20, dropped.attempts)
+        }
+        db.close()
+    }
+
+    @Test
     fun testEmptyOutbox() {
         val db = DatabaseManager { createInMemoryDatabase() }
 

@@ -85,6 +85,18 @@ val appModule = module {
                     conversationStream.getConversationById(conversationId)
                         ?.conversationState.let { it == ConversationState.Left || it == ConversationState.Removed }
                 }
+
+                // region Recovery: missing conversation file
+                // When a message arrives for a conversation with no file, create it
+                val conversationService = get<ConversationService>()
+                conversationStream.onOrphanedConversation = { _, originalAuthor ->
+                    conversationService.createConversation(
+                        recipients = listOf(originalAuthor),
+                        title = "",
+                        payloadBundle = null
+                    )
+                }
+                // endregion
             }
         )
     }
