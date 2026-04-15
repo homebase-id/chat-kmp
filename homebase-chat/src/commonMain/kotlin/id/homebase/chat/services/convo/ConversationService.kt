@@ -834,39 +834,76 @@ class ConversationService(
         updateConversationTags(conversationId) { it - ChatProtocol.ConversationPinnedTag }
     }
 
-    // region Recovery: revive deleted conversation
+    // region Recovery: unified conversation recovery
     /**
-     * Revives a soft-deleted conversation by clearing its archivalStatus back to None.
-     * Reads existing participants from the file's decrypted appData — no external
-     * recipient needed, so it works for both self-authored and remote messages.
+     * Single entry point for recovering a conversation that is missing or soft-deleted.
+     * Determines 1:1 vs group via the XOR algorithm, reads existing participants
+     * from the file when available, and either revives or creates the file using
+     * the ORIGINAL [conversationId] (never recomputes it).
      */
-    suspend fun reviveDeletedConversation(conversationId: Uuid) {
-        val file = getConversationHomebaseFile(conversationId)
-        if (file == null) {
-            Logger.w("ConversationService: reviveDeletedConversation($conversationId) — no file in DB, skipping")
-            return
-        }
-        val appData = file.fileMetadata.appData
-        if (appData.archivalStatus != ArchivalStatus.Removed) {
-            Logger.d("ConversationService: reviveDeletedConversation($conversationId) — archivalStatus=${appData.archivalStatus}, not Removed, skipping")
+    suspend fun recoverConversation(conversationId: Uuid, originalAuthor: OdinId) {
+        val domain = credentialsManager.requireActiveDomain()
+        val isOneToOne = conversationId == XorIdUtil.getNewXorId(
+            domain.domainName, originalAuthor.domainName
+        )
+
+        Logger.i("ConversationService: recoverConversation($conversationId) author=${originalAuthor.domainName} isOneToOne=$isOneToOne")
+
+        val existingFile = getConversationHomebaseFile(conversationId)
+
+        if (existingFile != null) {
+            val existingState: ConversationState? = try {
+                mapper.mapToConversationUi(existingFile, null).conversationState
+            } catch (e: Exception) {
+                Logger.w(e) { "ConversationService: recoverConversation($conversationId) — existing file failed to map, will overwrite" }
+                null
+            }
+
+            Logger.d("ConversationService: recoverConversation($conversationId) existingState=$existingState")
+
+            val needsRevive = existingState == null
+                || existingState == ConversationState.Deleted
+                || existingState == ConversationState.Invalid
+
+            if (!needsRevive) {
+                Logger.d("ConversationService: recoverConversation($conversationId) — file exists and is $existingState, no action needed")
+                return
+            }
+
+            // Read existing participants from file if possible (preserves group membership)
+            val existingContent = existingFile.fileMetadata.appData.content?.let {
+                try {
+                    OdinSystemSerializer.deserialize<ConversationAppDataJson>(it)
+                } catch (e: Exception) { null }
+            }
+            val participants = existingContent?.recipients
+                ?.filterNotNull()?.distinct()
+                ?.takeIf { it.isNotEmpty() }
+                ?: listOf(originalAuthor, domain).distinct()
+
+            Logger.i("ConversationService: recoverConversation($conversationId) — reviving (state=$existingState) participants=${participants.map { it.domainName }}")
+
+            updateConversationInternal(
+                conversationId = conversationId,
+                title = existingContent?.title ?: "",
+                participants = participants,
+                archivalStatus = ArchivalStatus.None,
+                distribute = false
+            )
             return
         }
 
-        val existingContent = appData.content?.let {
-            OdinSystemSerializer.deserialize<ConversationAppDataJson>(it)
-        }
-        if (existingContent == null) {
-            Logger.w("ConversationService: reviveDeletedConversation($conversationId) — could not deserialize appData.content, skipping")
-            return
-        }
+        // No local file — create one with the ORIGINAL conversationId
+        val allParticipants = listOf(originalAuthor, domain).distinct()
+        Logger.i("ConversationService: recoverConversation($conversationId) — no local file, creating new (isGroup=${!isOneToOne}) participants=${allParticipants.map { it.domainName }}")
 
-        Logger.i("ConversationService: reviving deleted conversation $conversationId participants=${existingContent.recipients.filterNotNull().map { it.domainName }}")
-        updateConversationInternal(
+        writeConversationFile(
             conversationId = conversationId,
-            title = existingContent.title ?: "",
-            participants = existingContent.recipients.filterNotNull().distinct(),
-            archivalStatus = ArchivalStatus.None,
-            distribute = false
+            allParticipants = allParticipants,
+            transitRecipients = listOf(originalAuthor),
+            title = "",
+            isGroup = !isOneToOne,
+            payloadBundle = null
         )
     }
     // endregion
