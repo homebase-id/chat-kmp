@@ -205,7 +205,7 @@ class ConversationStream(
                         activeDomain.domainName, m.originalAuthor.domainName
                     )
 
-                val placeholderAvatar = if (isOneToOne && m.originalAuthor != null) {
+                val placeholderAvatar = if (isOneToOne) {
                     ConversationAvatarModel(
                         type = ConversationAvatarModel.Type.Connection,
                         odinId = m.originalAuthor
@@ -214,8 +214,8 @@ class ConversationStream(
                     ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback)
                 }
 
-                val placeholderParticipants = if (isOneToOne && activeDomain != null && m.originalAuthor != null) {
-                    listOf(activeDomain, m.originalAuthor).distinct()
+                val placeholderParticipants = if (isOneToOne) {
+                    listOf(activeDomain!!, m.originalAuthor!!).distinct()
                 } else {
                     emptyList()
                 }
