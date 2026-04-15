@@ -236,7 +236,7 @@ class OutboxSyncTest {
             sync.setOnline(true)
 
             val droppedDeferred = async {
-                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.ItemDropped>().first()
+                eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
             }
             testScheduler.runCurrent()
 

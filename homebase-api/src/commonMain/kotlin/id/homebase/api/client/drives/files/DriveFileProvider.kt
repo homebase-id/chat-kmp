@@ -109,7 +109,6 @@ public class DriveFileProvider(
         return file.asHomebaseFile(creds.secret)
     }
 
-    // region Recovery: missing conversation file — fetch server file by uniqueId
     /**
      * Gets a file header by its uniqueId.
      * Used by [DriveOutboxUploader.retryAsUpdate] to fetch the server's versionTag
@@ -148,7 +147,6 @@ public class DriveFileProvider(
         var file = deserialize<ServerFile>(response.body)
         return file.asHomebaseFile(creds.secret)
     }
-    // endregion
 
     /** Downloads the payload to the encrypted disk cache without decrypting it.
      *  Subsequent calls to [getPayloadBytesDecrypted] for the same key will be served from cache. */

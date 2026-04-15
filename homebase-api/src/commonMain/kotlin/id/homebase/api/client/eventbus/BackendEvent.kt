@@ -121,7 +121,7 @@ sealed interface BackendEvent {
         ) : OutboxEvent
 
         /** Fired when an item is permanently dropped after exceeding the max retry limit. */
-        data class ItemDropped(
+        data class OutboxItemDropped(
             val driveId: Uuid,
             val uniqueId: Uuid,
             val attempts: Int

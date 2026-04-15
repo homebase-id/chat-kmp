@@ -155,7 +155,7 @@ class OutboxSync(
                     )
                     databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
                     eventBus.emit(
-                        BackendEvent.OutboxEvent.ItemDropped(
+                        BackendEvent.OutboxEvent.OutboxItemDropped(
                             outboxRecord.driveId,
                             outboxRecord.uniqueId,
                             attempts.toInt()

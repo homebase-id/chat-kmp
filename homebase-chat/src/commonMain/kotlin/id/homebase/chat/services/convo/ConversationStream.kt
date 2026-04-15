@@ -163,7 +163,7 @@ class ConversationStream(
                 val emptyConversation =
                     ConversationUiModel(
                         id = m.conversationId,
-                        name = "Pending...",
+                        name = "Conversation missing...",
                         lastMessage = m.content,
                         latestMessageTimestamp = m.userDate,
                         admins = (if (m.originalAuthor == null) emptySet() else setOf(m.originalAuthor)),
@@ -190,11 +190,12 @@ class ConversationStream(
                         isGroup = false
                     )
 
+                // region Recovery: missing conversation file
+                // Trigger conversation file creation so the server gets the file
+
                 Logger.w("ConversationStream: message arrived for unknown conversation ${m.conversationId} from=${m.originalAuthor}, creating placeholder")
                 insertNewConversation(emptyConversation)
 
-                // region Recovery: missing conversation file
-                // Trigger conversation file creation so the server gets the file
                 if (m.originalAuthor != null) {
                     Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — triggering file creation for author=${m.originalAuthor}")
                     scope.launch {
