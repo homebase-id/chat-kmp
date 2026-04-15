@@ -12,6 +12,7 @@ import androidx.compose.ui.window.rememberWindowState
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
 import com.kdroid.composetray.tray.api.Tray
+import com.kdroid.composetray.utils.SingleInstanceManager
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.file.JvmFileSystemUtil
@@ -106,6 +107,17 @@ fun main() {
             height = maxOf(config.windowHeightDp, minHeight.dp), // Minimum height
         )
         val themeLabel = uiState.theme.getStringResourceForTheme()
+
+        val isSingleInstance = SingleInstanceManager.isSingleInstance(
+            onRestoreRequest = {
+                isWindowVisible = true  // Restore the existing window
+            }
+        )
+
+        if (!isSingleInstance) {
+            exitApplication()
+            return@application
+        }
 
         Tray(
             icon = icon,

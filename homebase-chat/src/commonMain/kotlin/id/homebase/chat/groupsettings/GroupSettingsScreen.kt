@@ -7,9 +7,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
@@ -31,15 +31,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.platform.LocalUriHandler
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.widget.AvatarNameDisplay
@@ -54,15 +54,13 @@ import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.connect
-import id.homebase.resources.not_connected
 import id.homebase.resources.chat_group_add_members
-import id.homebase.resources.chat_group_legacy_banner
 import id.homebase.resources.chat_group_admin
 import id.homebase.resources.chat_group_choose_new_admin
 import id.homebase.resources.chat_group_choose_new_admin_disclaimer
 import id.homebase.resources.chat_group_leave
 import id.homebase.resources.chat_group_leave_disclaimer
+import id.homebase.resources.chat_group_legacy_banner
 import id.homebase.resources.chat_group_make_admin
 import id.homebase.resources.chat_group_make_admin_dislaimer
 import id.homebase.resources.chat_group_remove
@@ -71,8 +69,10 @@ import id.homebase.resources.chat_group_remove_admin_dislaimer
 import id.homebase.resources.chat_group_remove_member
 import id.homebase.resources.chat_group_selected_members
 import id.homebase.resources.chat_message_edit
+import id.homebase.resources.connect
 import id.homebase.resources.leave
 import id.homebase.resources.menu_back
+import id.homebase.resources.not_connected
 import id.homebase.resources.ok
 import id.homebase.resources.remove
 import id.homebase.resources.you
@@ -89,7 +89,7 @@ fun GroupSettingsScreen(
     onAddMembers: (conversationId: String) -> Unit,
     onEditGroup: (conversationId: String) -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val uriHandler = LocalUriHandler.current

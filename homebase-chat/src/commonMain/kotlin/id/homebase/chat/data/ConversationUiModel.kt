@@ -35,6 +35,8 @@ data class ConversationUiModel(
     val isGroup: Boolean = false,
     val isLegacyGroup: Boolean = false,
     val exitedAt: Instant? = null,
+    /** Server-stamped last-modified time of the conversation file (fileMetadata.updated). */
+    val fileUpdated: Instant = Instant.fromEpochMilliseconds(0),
 ) {
     fun isCurrentUserAdmin(odinId: OdinId): Boolean {
         return admins.contains(odinId)

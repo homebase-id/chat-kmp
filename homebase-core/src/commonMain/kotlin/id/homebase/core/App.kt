@@ -4,8 +4,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -25,7 +25,7 @@ fun App(
     val youAuthFlowManager: YouAuthFlowManager = koinInject()
     val userPreferences: UserPreferences = koinInject()
 
-    val prefState by userPreferences.preferenceState.collectAsState()
+    val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
     val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme() else if (prefState.theme == ThemeState.Dark) true else false
 
     HomebaseTheme(darkTheme = isDarkTheme) {

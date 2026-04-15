@@ -12,11 +12,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import id.homebase.chat.services.ChatProtocol
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
@@ -30,7 +29,7 @@ fun ConversationSettingsScreen(
     onNavigateBack: () -> Unit,
     onShowContactInfo: (odinId: String) -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(uiState.uiEvent) {
         when (val event = uiState.uiEvent) {

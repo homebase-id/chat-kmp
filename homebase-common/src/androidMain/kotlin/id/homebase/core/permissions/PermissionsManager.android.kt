@@ -81,11 +81,17 @@ class AndroidPermissionsManager(
                     genericPermissionLauncher.launch(
                         arrayOf(
                             Manifest.permission.READ_MEDIA_IMAGES,
+                            Manifest.permission.READ_MEDIA_VIDEO,
                             Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
                         )
                     )
                 } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    genericPermissionLauncher.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES))
+                    genericPermissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.READ_MEDIA_IMAGES,
+                            Manifest.permission.READ_MEDIA_VIDEO,
+                        )
+                    )
                 } else {
                     genericPermissionLauncher.launch(
                         arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -98,6 +104,7 @@ class AndroidPermissionsManager(
                     genericPermissionLauncher.launch(
                         arrayOf(
                             Manifest.permission.READ_MEDIA_IMAGES,
+                            Manifest.permission.READ_MEDIA_VIDEO,
                             Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
                         )
                     )
@@ -130,9 +137,15 @@ class AndroidPermissionsManager(
 
             PermissionType.GALLERY -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    ContextCompat.checkSelfPermission(
+                    val hasImagePermission = ContextCompat.checkSelfPermission(
                         context, Manifest.permission.READ_MEDIA_IMAGES
                     ) == PackageManager.PERMISSION_GRANTED
+
+                    val hasVideoPermission = ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.READ_MEDIA_VIDEO
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                    hasImagePermission && hasVideoPermission  // ← Check both
                 } else {
                     ContextCompat.checkSelfPermission(
                         context, Manifest.permission.READ_EXTERNAL_STORAGE
