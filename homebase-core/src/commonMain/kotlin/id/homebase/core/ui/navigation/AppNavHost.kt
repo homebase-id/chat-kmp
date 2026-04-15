@@ -330,6 +330,7 @@ fun AppNavHost(
                             ConversationListScreen(
                                 viewModel = conversationListViewModel,
                                 extendPermissionViewModel = koinViewModel(),
+                                connectRequestViewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
                                 onNavigateToSettingsScreen = {
                                     navController.navigate(Route.Settings)

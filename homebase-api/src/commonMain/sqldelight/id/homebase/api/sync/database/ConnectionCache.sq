@@ -1,0 +1,39 @@
+import kotlin.uuid.Uuid;
+
+-- Offline-first cache of remote connection status per (loggedInIdentity, remoteOdinId).
+-- Populated on every successful ConnectionService / ConnectionRequestService refresh
+-- so the UI can render the last-known state when the network is unavailable.
+CREATE TABLE IF NOT EXISTS ConnectionCache(
+   identityId BLOB AS Uuid NOT NULL,
+   odinId TEXT NOT NULL,
+   status TEXT NOT NULL,
+   lastRefresh INTEGER NOT NULL,
+   PRIMARY KEY(identityId, odinId)
+);
+CREATE INDEX IF NOT EXISTS Idx0ConnectionCache ON ConnectionCache(identityId, status);
+
+upsert:
+INSERT INTO ConnectionCache(identityId, odinId, status, lastRefresh)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(identityId, odinId) DO UPDATE
+SET status = excluded.status, lastRefresh = excluded.lastRefresh;
+
+selectByIdentity:
+SELECT * FROM ConnectionCache
+WHERE identityId = ?;
+
+selectByIdentityAndStatus:
+SELECT * FROM ConnectionCache
+WHERE identityId = ? AND status = ?;
+
+deleteByIdentityAndOdinId:
+DELETE FROM ConnectionCache
+WHERE identityId = ? AND odinId = ?;
+
+deleteByIdentityAndStatus:
+DELETE FROM ConnectionCache
+WHERE identityId = ? AND status = ?;
+
+deleteAllByIdentity:
+DELETE FROM ConnectionCache
+WHERE identityId = ?;

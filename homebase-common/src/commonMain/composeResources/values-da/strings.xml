@@ -106,8 +106,6 @@
     <string name="connections_request_sent">Forbindelsesanmodning sendt</string>
     <string name="connections_tab_incoming">Indgående (%1$s)</string>
     <string name="connections_tab_outgoing">Udgående (%1$s)</string>
-    <string name="connections_filter_introductions">Vis introduktioner (%1$s)</string>
-    <string name="connections_via_intro">via intro</string>
     <string name="connections_empty_incoming_title">Ingen indgående anmodninger</string>
     <string name="connections_empty_incoming_subtitle">Når nogen sender dig en forbindelsesanmodning, vises den her.</string>
     <string name="connections_empty_outgoing_title">Ingen udgående anmodninger</string>

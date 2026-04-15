@@ -31,4 +31,9 @@ sealed interface OneOnOneConnectionStatus {
     data class NotConnected(override val otherOdinId: OdinId) : OneOnOneConnectionStatus
     data class OutgoingRequestPending(override val otherOdinId: OdinId) : OneOnOneConnectionStatus
     data class IncomingRequestPending(override val otherOdinId: OdinId) : OneOnOneConnectionStatus
+
+    /** We have no cached or live connection data for this identity (e.g. first launch
+     *  while offline). Don't assert "Not connected" — show nothing, since a wrong
+     *  negative is worse than no pill. */
+    data class Unknown(override val otherOdinId: OdinId) : OneOnOneConnectionStatus
 }

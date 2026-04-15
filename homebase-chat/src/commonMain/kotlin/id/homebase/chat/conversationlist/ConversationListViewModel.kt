@@ -112,6 +112,13 @@ import kotlin.io.encoding.Base64
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
+private data class ConnectionStatusContext(
+    val connectionMap: Map<id.homebase.api.common.OdinId, id.homebase.api.client.connections.RedactedIdentityConnectionRegistration>,
+    val incomingSenders: Set<id.homebase.api.common.OdinId>,
+    val outgoingRecipients: Set<id.homebase.api.common.OdinId>,
+    val statusKnown: Boolean,
+)
+
 @OptIn(FlowPreview::class)
 class ConversationListViewModel(
     private val conversationStream: ConversationStream,
@@ -176,11 +183,15 @@ class ConversationListViewModel(
                 connectionService.connections,
                 connectionRequestService.incomingRequests,
                 connectionRequestService.outgoingRequests,
-            ) { connections, incoming, outgoing ->
-                Triple(
-                    connections.map,
-                    incoming.map { it.senderOdinId }.toSet(),
-                    outgoing.map { it.recipientOdinId }.toSet(),
+                connectionRequestService.isLoaded,
+            ) { connections, incoming, outgoing, requestsLoaded ->
+                ConnectionStatusContext(
+                    connectionMap = connections.map,
+                    incomingSenders = incoming.map { it.senderOdinId }.toSet(),
+                    outgoingRecipients = outgoing.map { it.recipientOdinId }.toSet(),
+                    // Only claim the status is "known" once both sources have produced
+                    // at least one snapshot (either from the cache or from the network).
+                    statusKnown = connections.isLoaded && requestsLoaded,
                 )
             }
 
@@ -194,16 +205,16 @@ class ConversationListViewModel(
                 if (ownerSession == null) return@combine Pair(false, emptyList())
 
                 val contactMap = contacts.associateBy { it.odinId }
-                val (connectionMap, incomingSenders, outgoingRecipients) = connectionCtx
 
                 Pair(conversationState.dataReady, conversationState.items.map {
                     enricher.enrich(
                         convo = it,
                         contactMap = contactMap,
                         ownerSession = ownerSession,
-                        connectionMap = connectionMap,
-                        incomingRequestSenders = incomingSenders,
-                        outgoingRequestRecipients = outgoingRecipients,
+                        connectionMap = connectionCtx.connectionMap,
+                        incomingRequestSenders = connectionCtx.incomingSenders,
+                        outgoingRequestRecipients = connectionCtx.outgoingRecipients,
+                        connectionStatusKnown = connectionCtx.statusKnown,
                     )
                 })
             }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
@@ -1427,6 +1438,16 @@ class ConversationListViewModel(
                     val url =
                         "https://${currentUser.domainName}/owner/connections/${action.odinId.domainName}"
                     _uiState.update { it.copy(uiEvent = ConversationListUiEvent.OpenUrl(url)) }
+                }
+            }
+
+            is ConversationListUiAction.OpenSendConnectionRequestDialog -> {
+                _uiState.update {
+                    it.copy(
+                        uiEvent = ConversationListUiEvent.OpenSendConnectionRequestDialog(
+                            action.odinId
+                        )
+                    )
                 }
             }
 

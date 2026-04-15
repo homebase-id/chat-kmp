@@ -26,6 +26,7 @@ import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.contact.DriveContactService
@@ -114,6 +115,7 @@ val appModule = module {
     singleOf(::ShareContentProcessor)
     singleOf(::LocalVideoContextStore)
 
+    singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
     singleOf(::DriveContactService)
     singleOf(::ContactService)

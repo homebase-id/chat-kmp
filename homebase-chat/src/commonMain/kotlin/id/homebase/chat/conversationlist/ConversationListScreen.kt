@@ -42,6 +42,9 @@ import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
+import id.homebase.core.connections.ConnectRequestAction
+import id.homebase.core.connections.ConnectRequestBottomSheet
+import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktop
@@ -70,6 +73,7 @@ import kotlin.uuid.Uuid
 fun ConversationListScreen(
     viewModel: ConversationListViewModel,
     extendPermissionViewModel: ExtendPermissionViewModel,
+    connectRequestViewModel: ConnectRequestViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToSettingsScreen: () -> Unit,
     onNavigateToNewConversation: () -> Unit,
@@ -178,9 +182,21 @@ fun ConversationListScreen(
                 fileSystemHandler.openUrl(event.url)
             }
 
+            is ConversationListUiEvent.OpenSendConnectionRequestDialog -> {
+                viewModel.eventConsumed()
+                connectRequestViewModel.onAction(
+                    ConnectRequestAction.OpenDialogWithRecipient(event.odinId)
+                )
+            }
+
             null -> {}
         }
     }
+
+    ConnectRequestBottomSheet(
+        viewModel = connectRequestViewModel,
+        snackbarHostState = snackbarHostState,
+    )
 
     when (val dialog = conversationsUiState.uiDialog) {
         null -> {}
