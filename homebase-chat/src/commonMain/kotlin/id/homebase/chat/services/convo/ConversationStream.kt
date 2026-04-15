@@ -14,6 +14,7 @@ import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.sync.database.OutboxSync
@@ -63,14 +64,10 @@ class ConversationStream(
     val shareableConversations: StateFlow<List<ShareableConversation>> =
         _shareableConversations.asStateFlow()
 
-    // region Recovery: missing conversation file
-    /** Called when a message arrives for a conversation that has no file in the local DB.
-     *  Wired in AppModule to trigger conversation file creation via ConversationService. */
-    var onOrphanedConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
-
-    /** Called when a message arrives for a soft-deleted conversation.
-     *  Wired in AppModule to clear archivalStatus via ConversationService. */
-    var onReviveDeletedConversation: (suspend (conversationId: Uuid) -> Unit)? = null
+    // region Recovery: missing or deleted conversation file
+    /** Called when a message arrives for a conversation that is missing or soft-deleted.
+     *  Wired in AppModule to ConversationService.recoverConversation(). */
+    var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
     // endregion
 
 
@@ -164,15 +161,17 @@ class ConversationStream(
             ) continue
 
             // region Recovery: revive deleted conversation on new incoming message
-            // Compare server-stamped modified dates: only messages modified after the
-            // conversation file was last updated (i.e. deleted) trigger revival.
+            // Compare server-stamped *created* timestamp against the conversation's
+            // last-updated time. Using `created` (not `modified`) because the delete
+            // operation itself can bump `modified` on existing messages, causing a
+            // false-positive revival.
             if (matchingConversation?.conversationState == ConversationState.Deleted) {
-                val messageModified = m.modified ?: m.created
-                if (messageModified <= matchingConversation.fileUpdated) {
-                    Logger.d("ConversationStream: skipping old message for deleted conversation ${m.conversationId} (msgModified=$messageModified <= convoUpdated=${matchingConversation.fileUpdated})")
+                val messageCreated = m.created
+                if (messageCreated <= matchingConversation.fileUpdated) {
+                    Logger.d("ConversationStream: skipping old message for deleted conversation ${m.conversationId} (msgCreated=$messageCreated <= convoUpdated=${matchingConversation.fileUpdated})")
                     continue
                 }
-                Logger.i("ConversationStream: new message for deleted conversation ${m.conversationId} from=${m.originalAuthor} (msgModified=$messageModified > convoUpdated=${matchingConversation.fileUpdated}), reviving")
+                Logger.i("ConversationStream: new message for deleted conversation ${m.conversationId} from=${m.originalAuthor} (msgCreated=$messageCreated > convoUpdated=${matchingConversation.fileUpdated}), reviving")
                 // Flip state to Active in memory so it reappears in the UI immediately
                 val revived = matchingConversation.copy(conversationState = ConversationState.Active)
                 _conversations.value = ConversationsData(
@@ -180,20 +179,47 @@ class ConversationStream(
                 )
                 updateConversationFromNewMessage(revived, m)
 
-                // Trigger server-side revival (clears archivalStatus using existing file data)
-                scope.launch {
-                    try {
-                        onReviveDeletedConversation?.invoke(m.conversationId)
-                        Logger.i("ConversationStream: deleted conversation ${m.conversationId} — revival triggered successfully")
-                    } catch (e: Exception) {
-                        Logger.e(e) { "ConversationStream: deleted conversation ${m.conversationId} — revival FAILED: ${e.message}" }
+                // Trigger server-side revival via unified recovery
+                val revivalAuthor = m.originalAuthor
+                if (revivalAuthor != null) {
+                    scope.launch {
+                        try {
+                            onRecoverConversation?.invoke(m.conversationId, revivalAuthor)
+                            Logger.i("ConversationStream: deleted conversation ${m.conversationId} — recovery triggered successfully")
+                        } catch (e: Exception) {
+                            Logger.e(e) { "ConversationStream: deleted conversation ${m.conversationId} — recovery FAILED: ${e.message}" }
+                        }
                     }
+                } else {
+                    Logger.w("ConversationStream: deleted conversation ${m.conversationId} — cannot recover, originalAuthor is null")
                 }
                 continue
             }
             // endregion
 
             if (matchingConversation == null) {
+                // Determine 1:1 vs group so the placeholder has a useful avatar
+                val activeDomain = credentialsManager.getActiveDomain()
+                val isOneToOne = activeDomain != null && m.originalAuthor != null
+                    && m.conversationId == XorIdUtil.getNewXorId(
+                        activeDomain.domainName, m.originalAuthor.domainName
+                    )
+
+                val placeholderAvatar = if (isOneToOne) {
+                    ConversationAvatarModel(
+                        type = ConversationAvatarModel.Type.Connection,
+                        odinId = m.originalAuthor
+                    )
+                } else {
+                    ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback)
+                }
+
+                val placeholderParticipants = if (isOneToOne) {
+                    listOf(activeDomain!!, m.originalAuthor!!).distinct()
+                } else {
+                    emptyList()
+                }
+
                 val emptyConversation =
                     ConversationUiModel(
                         id = m.conversationId,
@@ -203,45 +229,36 @@ class ConversationStream(
                         admins = (if (m.originalAuthor == null) emptySet() else setOf(m.originalAuthor)),
                         unreadCount = 0,
                         avatarTiny = null,
-                        // Conversation has an image
-                        avatarInitials = "AxB",
+                        avatarInitials = "",
                         avatarUrl = "",
-                        participants = emptyList(),
+                        participants = placeholderParticipants,
                         lastRead = UnixTimeUtc(0).toInstant(),
-                        avatarModel =
-                            ConversationAvatarModel(
-                                type = ConversationAvatarModel.Type.GroupFallback,
-                                imageData = null,
-                                odinId = null,
-                                initials = null
-                            ),
+                        avatarModel = placeholderAvatar,
                         lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
                         lastMessageIsDeleted = m.isDeleted,
                         lastMessageFirstPayload = m.payloads?.firstOrNull(),
                         lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
                         lastMessageIsFromActiveUser =
                             m.isAuthoredBy(credentialsManager.getActiveDomain()),
-                        isGroup = false
+                        isGroup = !isOneToOne
                     )
 
                 // region Recovery: missing conversation file
-                // Trigger conversation file creation so the server gets the file
-
-                Logger.w("ConversationStream: message arrived for unknown conversation ${m.conversationId} from=${m.originalAuthor}, creating placeholder")
+                Logger.w("ConversationStream: orphaned conversation ${m.conversationId} from=${m.originalAuthor} isOneToOne=$isOneToOne, creating placeholder")
                 insertNewConversation(emptyConversation)
 
                 if (m.originalAuthor != null) {
-                    Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — triggering file creation for author=${m.originalAuthor}")
+                    Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — triggering recovery for author=${m.originalAuthor}")
                     scope.launch {
                         try {
-                            onOrphanedConversation?.invoke(m.conversationId, m.originalAuthor)
-                            Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — file creation triggered successfully")
+                            onRecoverConversation?.invoke(m.conversationId, m.originalAuthor)
+                            Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — recovery triggered successfully")
                         } catch (e: Exception) {
-                            Logger.e(e) { "ConversationStream: orphaned conversation ${m.conversationId} — file creation FAILED: ${e.message}" }
+                            Logger.e(e) { "ConversationStream: orphaned conversation ${m.conversationId} — recovery FAILED: ${e.message}" }
                         }
                     }
                 } else {
-                    Logger.w("ConversationStream: orphaned conversation ${m.conversationId} — cannot trigger file creation, originalAuthor is null")
+                    Logger.w("ConversationStream: orphaned conversation ${m.conversationId} — cannot recover, originalAuthor is null")
                 }
                 // endregion
             } else {
