@@ -17,11 +17,11 @@ class AndroidGalleryManager(val context: Context): PlatformGalleryManager {
     }
 
     private fun queryMediaStore(collectionUri: android.net.Uri): List<GalleryImage> {
-        val idColumn = MediaStore.Video.Media._ID
-        val dateColumn = MediaStore.Video.Media.DATE_ADDED
-        val mimeColumn = MediaStore.Video.Media.MIME_TYPE
-        val bucketColumn = MediaStore.Video.Media.BUCKET_DISPLAY_NAME
-        val displayNameColumn = MediaStore.Video.Media.DISPLAY_NAME
+        val idColumn = MediaStore.MediaColumns._ID
+        val dateColumn = MediaStore.MediaColumns.DATE_ADDED
+        val mimeColumn = MediaStore.MediaColumns.MIME_TYPE
+        val bucketColumn = MediaStore.MediaColumns.BUCKET_DISPLAY_NAME
+        val displayNameColumn = MediaStore.MediaColumns.DISPLAY_NAME
 
         val results = mutableListOf<GalleryImage>()
         val projection = arrayOf(idColumn, dateColumn, mimeColumn, bucketColumn, displayNameColumn)

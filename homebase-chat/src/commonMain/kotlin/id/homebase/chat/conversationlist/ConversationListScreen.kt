@@ -23,7 +23,6 @@ import androidx.compose.material3.adaptive.navigation.BackNavigationBehavior
 import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +35,7 @@ import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.widget.ConversationListPane
@@ -80,8 +80,8 @@ fun ConversationListScreen(
     onNavigateToMessageInfo: (conversationId: Uuid, messageId: Uuid, fileId: Uuid) -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
-    val conversationsUiState by viewModel.uiState.collectAsState()
-    val messagesUiState by viewModel.messagesUiState.collectAsState()
+    val conversationsUiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val messagesUiState by viewModel.messagesUiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val fileSystemHandler = getUriHandler()

@@ -1,26 +1,27 @@
 package id.homebase.feed.share
 
 import android.content.Intent
-
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.net.toUri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
-import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.settings.ThemeState
@@ -35,8 +36,6 @@ import org.koin.core.component.inject
 import java.io.File
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-import androidx.core.net.toUri
-import id.homebase.chat.services.ChatProtocol
 
 /**
  * Activity that handles incoming share intents from other apps.
@@ -91,7 +90,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         }
 
         setContent {
-            val prefState by userPreferences.preferenceState.collectAsState()
+            val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
             val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme()
             else prefState.theme == ThemeState.Dark
 
