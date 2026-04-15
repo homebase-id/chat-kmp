@@ -149,6 +149,7 @@ import id.homebase.resources.recents
 import id.homebase.resources.search
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
+import id.homebase.resources.you
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.persistentMapOf
@@ -392,7 +393,7 @@ fun ConversationContent(
                                         text = if (conversation.conversation.isWithSelf) stringResource(
                                             MR.string.chat_note_to_self
                                         )
-                                        else conversation.getDisplayName(),
+                                        else conversation.getDisplayName(youLabel = stringResource(MR.string.you)),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
@@ -590,7 +591,7 @@ fun ConversationContent(
                                                 .padding(bottom = 16.dp),
                                             displayName = if (conversation.conversation.isWithSelf) stringResource(
                                                 MR.string.chat_note_to_self
-                                            ) else conversation.getDisplayName(),
+                                            ) else conversation.getDisplayName(youLabel = stringResource(MR.string.you)),
                                             avatarModel = conversation.conversation.avatarModel,
                                             onClick = {
                                                 onUiAction(
@@ -1028,6 +1029,7 @@ fun ConversationContentSheets(
     uiState: MessageListUiState,
     onUiAction: (ConversationListUiAction) -> Unit,
 ) {
+    val youLabel = stringResource(MR.string.you)
     when (val sheet = uiState.uiSheet) {
         null -> {}
         is MessageListUiSheet.ConnectIdentities -> {
@@ -1086,7 +1088,7 @@ fun ConversationContentSheets(
                                     ignoreCase = true
                                 )
 
-                                is RecipientModel.Conversation -> recipient.conversation.getDisplayName()
+                                is RecipientModel.Conversation -> recipient.conversation.getDisplayName(youLabel = youLabel)
                                     .contains(query, ignoreCase = true)
                             }
                         }
@@ -1243,7 +1245,7 @@ fun RecipientItem(
         is RecipientModel.Conversation -> {
             GroupOrConversationItem(
                 avatarModel = recipientModel.conversation.conversation.avatarModel,
-                name = recipientModel.conversation.getDisplayName(),
+                name = recipientModel.conversation.getDisplayName(youLabel = stringResource(MR.string.you)),
                 selectionMode = true,
                 isSelected = isSelected,
                 onContactClick = {

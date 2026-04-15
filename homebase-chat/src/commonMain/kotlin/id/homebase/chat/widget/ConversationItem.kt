@@ -55,6 +55,7 @@ import id.homebase.resources.chat_group_legacy
 import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
+import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -103,7 +104,7 @@ fun ConversationItem(
                 Text(
                     text = if (enrichedData.conversation.isWithSelf)
                         stringResource(MR.string.chat_note_to_self)
-                    else enrichedData.getDisplayName(),
+                    else enrichedData.getDisplayName(youLabel = stringResource(MR.string.you)),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (enrichedData.conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1,

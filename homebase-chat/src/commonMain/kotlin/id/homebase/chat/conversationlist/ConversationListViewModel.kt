@@ -1007,7 +1007,7 @@ class ConversationListViewModel(
                             )
                         } else {
                             FullScreenOverlay.AttachmentData(
-                                conversationTitle = conversation.conversation.name,
+                                conversationTitle = conversation.getDisplayName(),
                                 conversationId = action.conversationId,
                                 selected = newFiles.last().attachmentId,
                                 attachments = newFiles,
@@ -1068,7 +1068,7 @@ class ConversationListViewModel(
                             )
                         } else {
                             FullScreenOverlay.AttachmentData(
-                                conversationTitle = conversation.conversation.name,
+                                conversationTitle = conversation.getDisplayName(),
                                 conversationId = action.conversationId,
                                 selected = newFiles.last().attachmentId,
                                 attachments = newFiles,
@@ -1591,7 +1591,7 @@ class ConversationListViewModel(
                             )
                         } else {
                             FullScreenOverlay.AttachmentData(
-                                conversationTitle = conversation.conversation.name,
+                                conversationTitle = conversation.getDisplayName(),
                                 conversationId = action.conversationId,
                                 selected = newFile.attachmentId,
                                 attachments = listOf(newFile),
@@ -1800,7 +1800,7 @@ class ConversationListViewModel(
                     val result = mutableListOf<ConversationListContentModel>()
 
                     val conversations = conversationsPool.filter { conversation ->
-                        conversation.conversation.name.contains(searchQuery, ignoreCase = true)
+                        conversation.getDisplayName().contains(searchQuery, ignoreCase = true)
                     }.toPersistentList()
                     if (conversations.isNotEmpty()) {
                         result.add(
