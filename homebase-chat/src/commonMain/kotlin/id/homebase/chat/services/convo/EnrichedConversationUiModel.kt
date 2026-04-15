@@ -12,12 +12,22 @@ data class EnrichedConversationUiModel(
     val missingConnections: List<OdinId>,
     val oneOnOneConnectionStatus: OneOnOneConnectionStatus? = null,
 ) {
-    fun getDisplayName(): String {
+    fun getDisplayName(youLabel: String = "You"): String {
         if (!conversation.isGroupConversation) {
-             participants.firstOrNull()?.let {
+            participants.firstOrNull()?.let {
                 return it.name
             }
+            return conversation.getDisplayName()
         }
+
+        conversation.name.takeIf { it.isNotBlank() }?.let { return it }
+
+        // Untitled group: prepend `youLabel` so a 2-person group visually differs from
+        // a 1:1 with the same person (which would just render "Alice").
+        val names = listOf(youLabel) + participants.map { it.name }.filter { it.isNotBlank() }
+        val joined = names.joinToString(", ")
+        if (joined.isNotBlank()) return joined
+
         return conversation.getDisplayName()
     }
 }

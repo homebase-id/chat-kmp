@@ -41,6 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import id.homebase.resources.MR
+import id.homebase.resources.you
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -360,7 +363,7 @@ private fun ConversationPickerItem(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = enriched.getDisplayName(),
+                text = enriched.getDisplayName(youLabel = stringResource(MR.string.you)),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,

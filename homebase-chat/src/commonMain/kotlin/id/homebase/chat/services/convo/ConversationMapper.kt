@@ -73,13 +73,15 @@ class ConversationMapper(
             val isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
             val isLegacyGroup = !isGroup && participants.size > 2
             val isAnyGroup = isGroup || isLegacyGroup
-            val displayNames = participants.map { it.domainName }
 
             val title =
                 if (conversationId == ChatProtocol.ConversationWithYourselfId) {
                     "" // Display name resolved via string resource at UI layer
                 } else if (isAnyGroup) {
-                    conversationData.title?.takeIf { it.isNotBlank() } ?: displayNames.joinToString(", ")
+                    // Leave blank when no explicit title; the UI layer builds a fallback from
+                    // resolved contact names (EnrichedConversationUiModel). Building it here
+                    // would bake in raw domain names, bypassing contact resolution.
+                    conversationData.title?.takeIf { it.isNotBlank() } ?: ""
                 } else {
                     val other = participants.first { it != domain }
                     other.domainName
@@ -103,7 +105,8 @@ class ConversationMapper(
                 conversationFile,
                 participants,
                 domain,
-                conversationId
+                conversationId,
+                isAnyGroup
             )
 
             val localTags = metadata.localAppData?.tags ?: emptyList()
@@ -235,7 +238,8 @@ class ConversationMapper(
         conversation: HomebaseFile,
         participants: List<OdinId>,
         domain: OdinId,
-        conversationId: Uuid
+        conversationId: Uuid,
+        isAnyGroup: Boolean
     ): ConversationAvatarModel {
 
         val metadata = conversation.fileMetadata
@@ -280,7 +284,10 @@ class ConversationMapper(
 
         val others = participants.filter { it != domain }
 
-        if (others.size == 1) {
+        // Any group (tagged or legacy) gets the group avatar, even at 2 participants.
+        // Otherwise a 2-person group would be indistinguishable from a 1:1 with the same
+        // person — both in title and avatar.
+        if (!isAnyGroup && others.size == 1) {
             return ConversationAvatarModel(
                 type = ConversationAvatarModel.Type.Connection,
                 odinId = others.first()

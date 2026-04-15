@@ -291,14 +291,17 @@ class DriveContactService(
         try {
             val identity = publicIdentityRepository.resolve(odinId) ?: return
 
+            // Coerce blank strings to null so the reader's `?: domainName` fallback kicks
+            // in — otherwise we'd persist a contact with an empty displayName and the
+            // conversation list would render blanks instead of the domain.
             saveContact(
                 ContactServerFile(
                     odinId = odinId,
                     name = ContactName(
-                        displayName = identity.displayName,
-                        givenName = identity.firstName,
+                        displayName = identity.displayName?.takeIf { it.isNotBlank() },
+                        givenName = identity.firstName?.takeIf { it.isNotBlank() },
                         additionalName = null,
-                        surname = identity.surName
+                        surname = identity.surName?.takeIf { it.isNotBlank() },
                     ),
                     source = "public"
                 )
@@ -332,7 +335,8 @@ class DriveContactService(
             id = uid,
             odinId = parsedContact.odinId
                 ?: throw IllegalStateException("why is the odin id missing?"),
-            name = parsedContact.name.displayName ?: parsedContact.odinId.domainName,
+            name = parsedContact.name.displayName?.takeIf { it.isNotBlank() }
+                ?: parsedContact.odinId.domainName,
             avatarInitials = parsedContact.name.initials(),
             avatarUrl = "https://${parsedContact.odinId}/pub/image"
         )
