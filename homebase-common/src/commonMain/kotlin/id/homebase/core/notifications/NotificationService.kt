@@ -5,6 +5,7 @@ import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.PayloadData
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.notifications.PushNotificationApi
+import id.homebase.api.client.notifications.PushSubscriptionResponse
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -473,22 +474,58 @@ class NotificationService(
         )
     }
 
-    /** Verifies the server-side push subscription against the local FCM token. */
+    /** Verifies the server-side push subscription against the local FCM token.
+     *  Self-healing: if a token mismatch is detected (e.g. FCM rotated the token
+     *  after the last registration), the current local token is re-registered
+     *  and verification is retried once. */
     suspend fun verifySubscription(): SubscriptionVerificationDetail {
         val localToken = getToken()
         val subscription = api.getSubscription()
-        val status = when {
-            subscription == null -> SubscriptionVerificationStatus.NOT_REGISTERED
-            localToken == null -> SubscriptionVerificationStatus.NO_LOCAL_TOKEN
-            subscription.firebaseDeviceToken != localToken -> SubscriptionVerificationStatus.TOKEN_MISMATCH
-            else -> SubscriptionVerificationStatus.OK
+
+        val status = checkSubscription(subscription, localToken)
+
+        // Only self-heal when the server has a stale token (value mismatch).
+        // If the server returned null, that's a server-side bug — don't retry.
+        if (status == SubscriptionVerificationStatus.TOKEN_MISMATCH
+            && localToken != null
+            && subscription?.firebaseDeviceToken != null
+        ) {
+            Logger.i(tag = "NotificationService") {
+                "Subscription verification: TOKEN_MISMATCH — re-registering local token"
+            }
+            try {
+                registerTokenSuspend(localToken)
+                val updatedLocal = getToken()
+                val updated = api.getSubscription()
+                val healedStatus = checkSubscription(updated, updatedLocal)
+                Logger.i(tag = "NotificationService") { "Subscription verification after re-register: $healedStatus" }
+                return SubscriptionVerificationDetail(
+                    status = healedStatus,
+                    serverToken = updated?.firebaseDeviceToken,
+                    friendlyName = updated?.friendlyName,
+                )
+            } catch (e: Exception) {
+                Logger.e(tag = "NotificationService") { "Re-register failed: ${e.message}" }
+            }
         }
+
         Logger.i(tag = "NotificationService") { "Subscription verification: $status" }
         return SubscriptionVerificationDetail(
             status = status,
             serverToken = subscription?.firebaseDeviceToken,
             friendlyName = subscription?.friendlyName,
         )
+    }
+
+    private fun checkSubscription(
+        subscription: PushSubscriptionResponse?,
+        localToken: String?
+    ): SubscriptionVerificationStatus = when {
+        subscription == null -> SubscriptionVerificationStatus.NOT_REGISTERED
+        localToken == null -> SubscriptionVerificationStatus.NO_LOCAL_TOKEN
+        subscription.firebaseDeviceToken == null -> SubscriptionVerificationStatus.TOKEN_MISMATCH
+        subscription.firebaseDeviceToken != localToken -> SubscriptionVerificationStatus.TOKEN_MISMATCH
+        else -> SubscriptionVerificationStatus.OK
     }
 
     /** Gets the current push notification token, or null if not available. */

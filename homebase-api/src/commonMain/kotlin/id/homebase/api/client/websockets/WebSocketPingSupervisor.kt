@@ -24,7 +24,13 @@ class WebSocketPingSupervisor(
         private const val PONG_TIMEOUT_MS = 10_000L
         private const val RETRY_DELAY_MS = 2_000L
         private const val OFFLINE_PING_INTERVAL_MS = 10_000L
+
+        private const val PONG_TIMEOUT_BACKGROUND_MS = 60_000L
+        private const val OFFLINE_PING_INTERVAL_BACKGROUND_MS = 60_000L
     }
+
+    @Volatile
+    var isInForeground: Boolean = true
 
     @Volatile
     private var lastPongAt: Long = 0L
@@ -40,7 +46,8 @@ class WebSocketPingSupervisor(
             while (true) {
                 sendPingSafely()
 
-                delay(PONG_TIMEOUT_MS)
+                val pongTimeout = if (isInForeground) PONG_TIMEOUT_MS else PONG_TIMEOUT_BACKGROUND_MS
+                delay(pongTimeout)
 
                 if (isPongFresh()) continue
 
@@ -54,7 +61,8 @@ class WebSocketPingSupervisor(
 
                     // fallback mode
                     while (true) {
-                        delay(OFFLINE_PING_INTERVAL_MS)
+                        val offlineInterval = if (isInForeground) OFFLINE_PING_INTERVAL_MS else OFFLINE_PING_INTERVAL_BACKGROUND_MS
+                        delay(offlineInterval)
                         sendPingSafely()
 
                         if (isPongFresh()) {
@@ -77,7 +85,8 @@ class WebSocketPingSupervisor(
     }
 
     private fun isPongFresh(): Boolean {
-        return nowMs() - lastPongAt <= PONG_TIMEOUT_MS
+        val timeout = if (isInForeground) PONG_TIMEOUT_MS else PONG_TIMEOUT_BACKGROUND_MS
+        return nowMs() - lastPongAt <= timeout
     }
 
     fun notifySessionReconnected() {

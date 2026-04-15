@@ -10,6 +10,7 @@ import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.share.ShareContentProcessor
@@ -31,6 +32,7 @@ class AppViewModel(
     private val credentialsManager: CredentialsManager,
     private val notificationService: NotificationService,
     private val shareContentProcessor: ShareContentProcessor,
+    private val authConnectionCoordinator: AuthConnectionCoordinator,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -69,6 +71,7 @@ class AppViewModel(
     /** Called when the app enters RESUMED state. */
     fun onResumed() {
         notificationService.isAppInForeground = true
+        authConnectionCoordinator.setForeground(true)
         refreshData()
         BadgeManager.clear()
     }
@@ -76,6 +79,7 @@ class AppViewModel(
     /** Called when the app leaves RESUMED state. */
     fun onPaused() {
         notificationService.isAppInForeground = false
+        authConnectionCoordinator.setForeground(false)
     }
 
     /** Collects notification events from NotificationService and forwards to UI. */
