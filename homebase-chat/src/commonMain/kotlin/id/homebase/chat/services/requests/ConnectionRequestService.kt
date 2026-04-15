@@ -26,7 +26,7 @@ class ConnectionRequestService(
     private val driveContactService: DriveContactService,
     private val connectionService: ConnectionService,
     private val eventBus: EventBus,
-    scope: CoroutineScope
+    private val scope: CoroutineScope
 ) {
     private val _incomingRequests =
         MutableStateFlow<List<IncomingConnectionRequestUiModel>>(emptyList())
@@ -38,8 +38,8 @@ class ConnectionRequestService(
     val outgoingRequests: StateFlow<List<OutgoingConnectionRequestUiModel>> =
         _outgoingRequests.asStateFlow()
 
-    suspend fun start() {
-        refresh()
+    fun start() {
+        scope.launch { refresh() }
     }
 
     init {
