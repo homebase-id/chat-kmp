@@ -44,6 +44,9 @@ private val outboxAdapter = Outbox.Adapter(
     uniqueIdAdapter = UuidAdapter,
     dependencyUniqueIdAdapter = UuidAdapter
 )
+private val connectionCacheAdapter = ConnectionCache.Adapter(
+    identityIdAdapter = UuidAdapter
+)
 
 class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
     private val logger = Logger.withTag("DatabaseManager")
@@ -60,6 +63,7 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
             driver,
             appNotificationsAdapter,
             chatReadCountAdapter,
+            connectionCacheAdapter,
             driveLocalTagIndexAdapter,
             driveMainIndexAdapter,
             driveTagIndexAdapter,
@@ -95,6 +99,7 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
             val tables = listOf(
                 "AppNotifications",
                 "ChatReadCount",
+                "ConnectionCache",
                 "DriveLocalTagIndex",
                 "DriveMainIndex",
                 "DriveTagIndex",
@@ -145,6 +150,9 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
     }
     public val outbox: OutboxWrapper by lazy {
         OutboxWrapper(driver, outboxAdapter, this)
+    }
+    public val connectionCache: ConnectionCacheWrapper by lazy {
+        ConnectionCacheWrapper(driver, connectionCacheAdapter, this)
     }
 
     suspend fun <R> executeReadQuery(

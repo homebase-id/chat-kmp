@@ -135,6 +135,7 @@ import id.homebase.resources.chat_not_connected_description
 import id.homebase.resources.chat_not_connected_incoming_description
 import id.homebase.resources.chat_not_connected_outgoing_description
 import id.homebase.resources.chat_not_connected_review_request
+import id.homebase.resources.chat_not_connected_send_request
 import id.homebase.resources.chat_not_connected_view_request
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
@@ -797,17 +798,28 @@ fun ConversationContent(
                         }
                     }
                 } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.NotConnected) {
-                    Box(
+                    val status = conversation.oneOnOneConnectionStatus
+                    Column(
                         modifier = Modifier.fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
                             text = stringResource(MR.string.chat_not_connected_description),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        ElevatedButton(onClick = {
+                            onUiAction(
+                                ConversationListUiAction.OpenSendConnectionRequestDialog(
+                                    status.otherOdinId
+                                )
+                            )
+                        }) {
+                            Text(stringResource(MR.string.chat_not_connected_send_request))
+                        }
                     }
                 } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.OutgoingRequestPending) {
                     val status = conversation.oneOnOneConnectionStatus

@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.common.OdinId
 import id.homebase.chat.data.MessageUiModel
 import org.jetbrains.compose.resources.StringResource
 
@@ -18,4 +19,5 @@ sealed interface ConversationListUiEvent {
     data class OpenFile(val filePath: String) : ConversationListUiEvent
     data class SaveFileToDevice(val filePath: String, val suggestedName: String) : ConversationListUiEvent
     data class OpenUrl(val url: String) : ConversationListUiEvent
+    data class OpenSendConnectionRequestDialog(val odinId: OdinId) : ConversationListUiEvent
 }

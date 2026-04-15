@@ -18,10 +18,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.PersonAddAlt1
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,7 +42,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,14 +66,13 @@ import id.homebase.resources.connections_empty_incoming_subtitle
 import id.homebase.resources.connections_empty_incoming_title
 import id.homebase.resources.connections_empty_outgoing_subtitle
 import id.homebase.resources.connections_empty_outgoing_title
-import id.homebase.resources.connections_filter_introductions
+import id.homebase.resources.connections_introduced_by
 import id.homebase.resources.connections_new_request
 import id.homebase.resources.connections_received_timestamp
 import id.homebase.resources.connections_refresh
 import id.homebase.resources.connections_sent_timestamp
 import id.homebase.resources.connections_tab_incoming
 import id.homebase.resources.connections_tab_outgoing
-import id.homebase.resources.connections_via_intro
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_connections
 import org.jetbrains.compose.resources.stringResource
@@ -216,29 +214,12 @@ fun ConnectionsUi(
                         isLoading = uiState.isLoading,
                         onManageClick = { onAction(ConnectionsUiAction.OpenOwnerConsoleClicked) },
                     )
-                    1 -> {
-                        val introductionCount = uiState.outgoingRequests.count {
-                            it.connectionRequestOrigin.equals("introduction", ignoreCase = true)
-                        }
-                        val visibleOutgoing = if (uiState.showIntroductionOutgoing) {
-                            uiState.outgoingRequests
-                        } else {
-                            uiState.outgoingRequests.filterNot {
-                                it.connectionRequestOrigin.equals("introduction", ignoreCase = true)
-                            }
-                        }
-                        OutgoingTabContent(
-                            requests = visibleOutgoing,
-                            identities = uiState.identities,
-                            isLoading = uiState.isLoading,
-                            introductionCount = introductionCount,
-                            showIntroductions = uiState.showIntroductionOutgoing,
-                            onToggleIntroductions = {
-                                onAction(ConnectionsUiAction.SetShowIntroductionOutgoing(it))
-                            },
-                            onManageClick = { onAction(ConnectionsUiAction.OpenOwnerConsoleClicked) },
-                        )
-                    }
+                    1 -> OutgoingTabContent(
+                        requests = uiState.outgoingRequests,
+                        identities = uiState.identities,
+                        isLoading = uiState.isLoading,
+                        onManageClick = { onAction(ConnectionsUiAction.OpenOwnerConsoleClicked) },
+                    )
                 }
             }
         }
@@ -289,15 +270,12 @@ private fun OutgoingTabContent(
     requests: List<OutgoingConnectionRequestResponse>,
     identities: Map<OdinId, PublicIdentity>,
     isLoading: Boolean,
-    introductionCount: Int,
-    showIntroductions: Boolean,
-    onToggleIntroductions: (Boolean) -> Unit,
     onManageClick: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         if (isLoading && requests.isEmpty()) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-        } else if (requests.isEmpty() && introductionCount == 0) {
+        } else if (requests.isEmpty()) {
             TabEmptyState(
                 title = stringResource(MR.string.connections_empty_outgoing_title),
                 subtitle = stringResource(MR.string.connections_empty_outgoing_subtitle),
@@ -305,30 +283,15 @@ private fun OutgoingTabContent(
             )
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                if (introductionCount > 0) {
-                    item(key = "intro-filter") {
-                        FilterChip(
-                            selected = showIntroductions,
-                            onClick = { onToggleIntroductions(!showIntroductions) },
-                            label = {
-                                Text(
-                                    stringResource(
-                                        MR.string.connections_filter_introductions,
-                                        introductionCount.toString(),
-                                    )
-                                )
-                            },
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
-                }
                 items(
                     items = requests,
                     key = { it.recipient.domainName },
                 ) { request ->
-                    val isIntroduction = request.connectionRequestOrigin.equals(
-                        "introduction", ignoreCase = true
-                    )
+                    val introducerOdinId = request.introducerOdinId
+                    val introLabel = introducerOdinId?.let {
+                        val introducerName = identities[it]?.displayNameOrDomain() ?: it.domainName
+                        stringResource(MR.string.connections_introduced_by, introducerName)
+                    }
                     ConnectionRequestRow(
                         odinId = request.recipient,
                         identity = identities[request.recipient],
@@ -336,7 +299,7 @@ private fun OutgoingTabContent(
                             MR.string.connections_sent_timestamp,
                             formatTimestamp(request.receivedTimestampMilliseconds),
                         ),
-                        introLabel = if (isIntroduction) stringResource(MR.string.connections_via_intro) else null,
+                        introLabel = introLabel,
                         messagePreview = request.message?.takeIf { it.isNotBlank() },
                         onClick = onManageClick,
                     )
@@ -390,35 +353,38 @@ private fun ConnectionRequestRow(
                 )
             }
             if (identity?.displayName?.isNotBlank() == true) {
-                Row {
-                    Text(
-                        text = odinId.domainName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (introLabel != null) {
-                        Text(
-                            text = " · $introLabel",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontStyle = FontStyle.Italic,
-                        )
-                    }
-                }
-            } else if (introLabel != null) {
                 Text(
-                    text = introLabel,
+                    text = odinId.domainName,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontStyle = FontStyle.Italic,
                 )
+            }
+            if (introLabel != null) {
+                Row(
+                    modifier = Modifier.padding(top = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.PersonAddAlt1,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        text = introLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             messagePreview?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontStyle = FontStyle.Italic,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

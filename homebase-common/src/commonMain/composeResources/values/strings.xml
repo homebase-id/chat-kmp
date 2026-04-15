@@ -123,8 +123,6 @@
     <string name="connections_request_sent">Connection request sent</string>
     <string name="connections_tab_incoming">Incoming (%1$s)</string>
     <string name="connections_tab_outgoing">Outgoing (%1$s)</string>
-    <string name="connections_filter_introductions">Show introductions (%1$s)</string>
-    <string name="connections_via_intro">via intro</string>
     <string name="connections_empty_incoming_title">No incoming requests</string>
     <string name="connections_empty_incoming_subtitle">When someone sends you a connection request, it will appear here.</string>
     <string name="connections_empty_outgoing_title">No outgoing requests</string>
@@ -239,6 +237,7 @@
     <string name="chat_not_connected_incoming_description">They want to connect with you.</string>
     <string name="chat_not_connected_view_request">View request</string>
     <string name="chat_not_connected_review_request">Review request</string>
+    <string name="chat_not_connected_send_request">Send connection request</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>

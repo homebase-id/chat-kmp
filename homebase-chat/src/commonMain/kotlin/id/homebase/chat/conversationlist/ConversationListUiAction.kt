@@ -29,6 +29,7 @@ sealed interface ConversationListUiAction {
     data class ConnectIdentities(val identities: List<OdinId>) : ConversationListUiAction
     data class ConnectToIdentity(val odinId: OdinId) : ConversationListUiAction
     data class OpenConnectionRequestInOwnerConsole(val odinId: OdinId) : ConversationListUiAction
+    data class OpenSendConnectionRequestDialog(val odinId: OdinId) : ConversationListUiAction
     data object DismissSheet : ConversationListUiAction
     data class SendMessage(val conversationId: Uuid, val linkPreview: LinkPreview? = null) :
         ConversationListUiAction
