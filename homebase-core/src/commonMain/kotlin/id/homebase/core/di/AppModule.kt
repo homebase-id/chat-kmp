@@ -96,6 +96,11 @@ val appModule = module {
                         payloadBundle = null
                     )
                 }
+
+                // When a message arrives for a soft-deleted conversation, revive it
+                conversationStream.onReviveDeletedConversation = { conversationId ->
+                    conversationService.reviveDeletedConversation(conversationId)
+                }
                 // endregion
             }
         )

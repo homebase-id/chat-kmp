@@ -67,6 +67,10 @@ class ConversationStream(
     /** Called when a message arrives for a conversation that has no file in the local DB.
      *  Wired in AppModule to trigger conversation file creation via ConversationService. */
     var onOrphanedConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
+
+    /** Called when a message arrives for a soft-deleted conversation.
+     *  Wired in AppModule to clear archivalStatus via ConversationService. */
+    var onReviveDeletedConversation: (suspend (conversationId: Uuid) -> Unit)? = null
     // endregion
 
 
@@ -158,6 +162,36 @@ class ConversationStream(
             if (matchingConversation?.conversationState == ConversationState.Left
                 || matchingConversation?.conversationState == ConversationState.Removed
             ) continue
+
+            // region Recovery: revive deleted conversation on new incoming message
+            // Compare server-stamped modified dates: only messages modified after the
+            // conversation file was last updated (i.e. deleted) trigger revival.
+            if (matchingConversation?.conversationState == ConversationState.Deleted) {
+                val messageModified = m.modified ?: m.created
+                if (messageModified <= matchingConversation.fileUpdated) {
+                    Logger.d("ConversationStream: skipping old message for deleted conversation ${m.conversationId} (msgModified=$messageModified <= convoUpdated=${matchingConversation.fileUpdated})")
+                    continue
+                }
+                Logger.i("ConversationStream: new message for deleted conversation ${m.conversationId} from=${m.originalAuthor} (msgModified=$messageModified > convoUpdated=${matchingConversation.fileUpdated}), reviving")
+                // Flip state to Active in memory so it reappears in the UI immediately
+                val revived = matchingConversation.copy(conversationState = ConversationState.Active)
+                _conversations.value = ConversationsData(
+                    items = _conversations.value.items.map { if (it.id == revived.id) revived else it }
+                )
+                updateConversationFromNewMessage(revived, m)
+
+                // Trigger server-side revival (clears archivalStatus using existing file data)
+                scope.launch {
+                    try {
+                        onReviveDeletedConversation?.invoke(m.conversationId)
+                        Logger.i("ConversationStream: deleted conversation ${m.conversationId} — revival triggered successfully")
+                    } catch (e: Exception) {
+                        Logger.e(e) { "ConversationStream: deleted conversation ${m.conversationId} — revival FAILED: ${e.message}" }
+                    }
+                }
+                continue
+            }
+            // endregion
 
             if (matchingConversation == null) {
                 val emptyConversation =
@@ -354,6 +388,7 @@ class ConversationStream(
             isPinned = incoming.isPinned,
             conversationState = resolvedState,
             exitedAt = resolvedExitedAt,
+            fileUpdated = incoming.fileUpdated,
             // Message preview — only overwrite if the file carries a newer last-message snapshot
             latestMessageTimestamp = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.latestMessageTimestamp else existing.latestMessageTimestamp,
             lastMessage = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessage else existing.lastMessage,

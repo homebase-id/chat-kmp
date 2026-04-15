@@ -148,7 +148,8 @@ class ConversationMapper(
                     conversationState = conversationState,
                     isGroup = isGroup,
                     isLegacyGroup = isLegacyGroup,
-                    exitedAt = exitedAt
+                    exitedAt = exitedAt,
+                    fileUpdated = metadata.updated.toInstant()
                 )
 
             if (lastMsg != null) {
@@ -182,7 +183,8 @@ class ConversationMapper(
                 avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
                 admins = emptySet(),
                 conversationState = ConversationState.Invalid,
-                isGroup = false
+                isGroup = false,
+                fileUpdated = conversationFile.fileMetadata.updated.toInstant()
             )
         }
     }
@@ -210,7 +212,8 @@ class ConversationMapper(
             avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
             admins = setOf(domain),
             conversationState = ConversationState.Deleted,
-            isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
+            isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true,
+            fileUpdated = metadata.updated.toInstant()
         )
 
         if (lastMsg != null) {
