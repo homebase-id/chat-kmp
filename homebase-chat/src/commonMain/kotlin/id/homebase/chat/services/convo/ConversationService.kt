@@ -64,7 +64,7 @@ class ConversationService(
         recipients: List<OdinId>,
         title: String?,
         payloadBundle: PayloadBundle?
-    ): Uuid {
+    ): CreateConversationResult {
 
         val domain = credentialsManager.requireActiveDomain()
 
@@ -107,11 +107,14 @@ class ConversationService(
                 null
             }
 
+            Logger.d("createConversation: $newConversationId found existing file in local DB, state=$existingState")
+
             val needsRevive = existingState == null ||
                     existingState == ConversationState.Deleted ||
                     existingState == ConversationState.Invalid
 
             if (needsRevive) {
+                Logger.d("createConversation: $newConversationId reviving (state=$existingState)")
                 // Revive by clearing the Removed archival flag and pushing a fresh
                 // participant list from the caller. updateConversationInternal uses
                 // replaceEnqueue, so this supersedes any stale pending update.
@@ -123,9 +126,10 @@ class ConversationService(
                     distribute = true,
                 )
             }
-            return newConversationId
+            return CreateConversationResult(newConversationId, wasNewlyCreated = false)
         }
 
+        Logger.d("createConversation: $newConversationId no local file found — creating new (recipients=$normalizedRecipients)")
         val allParticipants = (normalizedRecipients + domain).distinct()
         val success = writeConversationFile(
             conversationId = newConversationId,
@@ -164,8 +168,18 @@ class ConversationService(
             )
         }
 
-        return newConversationId
+        return CreateConversationResult(newConversationId, wasNewlyCreated = true)
     }
+
+    /**
+     * Result of [createConversation]. [wasNewlyCreated] is true when a fresh conversation file
+     * was written; false when an existing file (active or revived) satisfied the request. Use
+     * this to decide whether to post "conversation started" status messages — skip if false.
+     */
+    data class CreateConversationResult(
+        val conversationId: Uuid,
+        val wasNewlyCreated: Boolean
+    )
 
     /**
      * Creates a conversation file locally and enqueues it for server upload.
@@ -819,6 +833,43 @@ class ConversationService(
     suspend fun unpinConversation(conversationId: Uuid) {
         updateConversationTags(conversationId) { it - ChatProtocol.ConversationPinnedTag }
     }
+
+    // region Recovery: revive deleted conversation
+    /**
+     * Revives a soft-deleted conversation by clearing its archivalStatus back to None.
+     * Reads existing participants from the file's decrypted appData — no external
+     * recipient needed, so it works for both self-authored and remote messages.
+     */
+    suspend fun reviveDeletedConversation(conversationId: Uuid) {
+        val file = getConversationHomebaseFile(conversationId)
+        if (file == null) {
+            Logger.w("ConversationService: reviveDeletedConversation($conversationId) — no file in DB, skipping")
+            return
+        }
+        val appData = file.fileMetadata.appData
+        if (appData.archivalStatus != ArchivalStatus.Removed) {
+            Logger.d("ConversationService: reviveDeletedConversation($conversationId) — archivalStatus=${appData.archivalStatus}, not Removed, skipping")
+            return
+        }
+
+        val existingContent = appData.content?.let {
+            OdinSystemSerializer.deserialize<ConversationAppDataJson>(it)
+        }
+        if (existingContent == null) {
+            Logger.w("ConversationService: reviveDeletedConversation($conversationId) — could not deserialize appData.content, skipping")
+            return
+        }
+
+        Logger.i("ConversationService: reviving deleted conversation $conversationId participants=${existingContent.recipients.filterNotNull().map { it.domainName }}")
+        updateConversationInternal(
+            conversationId = conversationId,
+            title = existingContent.title ?: "",
+            participants = existingContent.recipients.filterNotNull().distinct(),
+            archivalStatus = ArchivalStatus.None,
+            distribute = false
+        )
+    }
+    // endregion
 
     suspend fun deleteConversation(conversationId: Uuid) {
         val conversation = requireConversation(conversationId)

@@ -527,6 +527,10 @@ fun AppNavHost(
                                 viewModel = koinViewModel(),
                                 connectRequestViewModel = koinViewModel(),
                                 onBackClick = { navController.popBackStack() },
+                                onShowConversation = { conversationId ->
+                                    navController.selectConversationOnChatList(conversationId)
+                                    navController.popBackStack(Route.ChatList, inclusive = false)
+                                },
                             )
                         }
                     }

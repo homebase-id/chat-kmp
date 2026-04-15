@@ -125,12 +125,16 @@ class ConversationMapper(
                 localAppData?.lastExitedAt?.toInstant()
             } else null
 
+            // Seed the sort timestamp with the conversation's creation time so a freshly
+            // created thread (e.g. one started alongside a connection request, before any
+            // messages have flowed) sorts to the top of the list instead of the bottom.
+            // updateWithLatestMessage below will overwrite this once a real message exists.
             var ui =
                 ConversationUiModel(
                     id = conversationId,
                     name = title,
                     lastMessage = " ",
-                    latestMessageTimestamp = UnixTimeUtc.ZeroTime.toInstant(),
+                    latestMessageTimestamp = metadata.created.toInstant(),
                     unreadCount = 0,
                     avatarTiny = appData.previewThumbnail,
                     avatarInitials = "",
@@ -144,7 +148,8 @@ class ConversationMapper(
                     conversationState = conversationState,
                     isGroup = isGroup,
                     isLegacyGroup = isLegacyGroup,
-                    exitedAt = exitedAt
+                    exitedAt = exitedAt,
+                    fileUpdated = metadata.updated.toInstant()
                 )
 
             if (lastMsg != null) {
@@ -178,7 +183,8 @@ class ConversationMapper(
                 avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
                 admins = emptySet(),
                 conversationState = ConversationState.Invalid,
-                isGroup = false
+                isGroup = false,
+                fileUpdated = conversationFile.fileMetadata.updated.toInstant()
             )
         }
     }
@@ -206,7 +212,8 @@ class ConversationMapper(
             avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
             admins = setOf(domain),
             conversationState = ConversationState.Deleted,
-            isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
+            isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true,
+            fileUpdated = metadata.updated.toInstant()
         )
 
         if (lastMsg != null) {
