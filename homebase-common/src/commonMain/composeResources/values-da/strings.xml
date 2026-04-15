@@ -227,6 +227,11 @@
     <string name="chat_clear">Ryd</string>
     <string name="chat_options">Samtale menu</string>
     <string name="chat_no_messages">Ingen beskeder endnu</string>
+    <string name="chat_connection_invited">Inviteret</string>
+    <string name="chat_connection_wants_to_connect">Vil forbinde</string>
+    <string name="chat_connection_invitation_sent">Invitation sendt — venter på at de accepterer</string>
+    <string name="chat_connection_invitation_received">Vil forbinde med dig</string>
+    <string name="chat_connection_not_connected">Ikke forbundet</string>
     <string name="chat_group_introduce_everyone">Introducer alle</string>
     <string name="chat_group_introduce_everyone_status">Indtroduktioner er blevet afsendt</string>
 

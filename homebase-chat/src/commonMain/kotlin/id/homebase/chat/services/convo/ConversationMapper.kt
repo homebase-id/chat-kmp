@@ -125,12 +125,16 @@ class ConversationMapper(
                 localAppData?.lastExitedAt?.toInstant()
             } else null
 
+            // Seed the sort timestamp with the conversation's creation time so a freshly
+            // created thread (e.g. one started alongside a connection request, before any
+            // messages have flowed) sorts to the top of the list instead of the bottom.
+            // updateWithLatestMessage below will overwrite this once a real message exists.
             var ui =
                 ConversationUiModel(
                     id = conversationId,
                     name = title,
                     lastMessage = " ",
-                    latestMessageTimestamp = UnixTimeUtc.ZeroTime.toInstant(),
+                    latestMessageTimestamp = metadata.created.toInstant(),
                     unreadCount = 0,
                     avatarTiny = appData.previewThumbnail,
                     avatarInitials = "",
@@ -221,22 +225,7 @@ class ConversationMapper(
     }
 
     private suspend fun queryAdmins(conversationId: Uuid): Set<OdinId>? {
-        val c = credentialsManager.requireActiveCredentials()
-        val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
-
-        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
-            c.getIdentityId(), chatDrive, adminUniqueId
-        ) ?: return null
-        val content = file.fileMetadata.appData.content
-        if (content.isNullOrEmpty()) return null
-
-        return try {
-            val adminInfo = OdinSystemSerializer.deserialize<ConversationAdminInfo>(content)
-            adminInfo.admins?.toSet()
-        } catch (e: Exception) {
-            logger.w("Failed to deserialize admin file for $conversationId: ${e.message}")
-            null
-        }
+        return ConversationAdminInfo.queryFromDb(credentialsManager, dbm, chatDrive, conversationId)
     }
 
     private suspend fun buildConversationAvatarModel(

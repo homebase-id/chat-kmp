@@ -234,7 +234,7 @@
     <string name="chat_group_rejoin_decline">Decline</string>
 
     <!-- 1:1 connection state banner (shown in place of the message composer) -->
-    <string name="chat_not_connected_description">You\'re not connected.</string>
+    <string name="chat_not_connected_description">You're not connected.</string>
     <string name="chat_not_connected_outgoing_description">Waiting for them to accept your connection request.</string>
     <string name="chat_not_connected_incoming_description">They want to connect with you.</string>
     <string name="chat_not_connected_view_request">View request</string>
@@ -255,6 +255,11 @@
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
+    <string name="chat_connection_invited">Invited</string>
+    <string name="chat_connection_wants_to_connect">Wants to connect</string>
+    <string name="chat_connection_invitation_sent">Invitation sent — waiting for them to accept</string>
+    <string name="chat_connection_invitation_received">Wants to connect with you</string>
+    <string name="chat_connection_not_connected">Not connected</string>
     <string name="chat_note_to_self">Note to Self</string>
     <string name="chat_group_introduce_everyone">Introduce Everyone</string>
     <string name="chat_group_introduce_everyone_status">Introductions has been sent</string>

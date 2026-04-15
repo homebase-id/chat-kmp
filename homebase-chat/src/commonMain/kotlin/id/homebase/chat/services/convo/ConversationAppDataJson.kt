@@ -1,8 +1,13 @@
 package id.homebase.chat.services.convo
 
-import kotlinx.serialization.Serializable
+import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
+import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.chat.services.ChatProtocol
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
@@ -16,6 +21,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.uuid.Uuid
 
 @Serializable(with = ConversationAppDataJsonSerializer::class)
 data class ConversationAppDataJson(
@@ -81,4 +87,36 @@ object ConversationAppDataJsonSerializer : KSerializer<ConversationAppDataJson> 
 @Serializable
 data class ConversationAdminInfo(
     val admins: List<OdinId>? = null
-)
+) {
+    companion object {
+        /**
+         * Reads the admin list from the dedicated admin file in the database.
+         *
+         * @return the admin set, or `null` if no file exists, content is empty, or
+         *         deserialization fails. Callers handle their own fallback logic.
+         */
+        suspend fun queryFromDb(
+            credentialsManager: CredentialsManager,
+            dbm: DatabaseManager,
+            chatDrive: Uuid,
+            conversationId: Uuid
+        ): Set<OdinId>? {
+            val c = credentialsManager.requireActiveCredentials()
+            val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
+            val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
+                c.getIdentityId(), chatDrive, adminUniqueId
+            ) ?: return null
+            val content = file.fileMetadata.appData.content
+            if (content.isNullOrEmpty()) return null
+            return try {
+                val adminInfo = OdinSystemSerializer.deserialize<ConversationAdminInfo>(content)
+                adminInfo.admins?.toSet()
+            } catch (e: Exception) {
+                Logger.w(tag = "ConversationAdminInfo") {
+                    "Failed to deserialize admin file for $conversationId: ${e.message}"
+                }
+                null
+            }
+        }
+    }
+}
