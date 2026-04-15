@@ -700,7 +700,8 @@ class ChatMessageStream(
                             )
                     }
 
-                StatusMessage.GroupConversationStarted ->
+                StatusMessage.GroupConversationStarted,
+                StatusMessage.ConversationStarted ->
                     if (authorIsYou) TranslationUtil.getString(MR.string.system_group_conversation_started_you)
                     else TranslationUtil.getString(
                         MR.string.system_group_conversation_started,

@@ -12,5 +12,6 @@ data class ContactServerFile(
     val location: ContactLocation? = null,
     val phone: ContactPhone? = null,
     val email: ContactEmail? = null,
-    val birthday: ContactBirthday? = null
+    val birthday: ContactBirthday? = null,
+    val image: ContactImage? = null
 )

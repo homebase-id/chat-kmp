@@ -15,9 +15,9 @@ data class ConversationUiModel(
     // TODO: Move the data objects / classes into Conversation.kt ?
     val id: Uuid,
     val name: String,
-    var lastMessage: String,
-    var latestMessageTimestamp: Instant, // Timestamp of the last message in this convo
-    var unreadCount: Int = 0,
+    val lastMessage: String,
+    val latestMessageTimestamp: Instant, // Timestamp of the last message in this convo
+    val unreadCount: Int = 0,
     val avatarInitials: String,
     val avatarUrl: String = "",
     val avatarTiny: EmbeddedThumb?,

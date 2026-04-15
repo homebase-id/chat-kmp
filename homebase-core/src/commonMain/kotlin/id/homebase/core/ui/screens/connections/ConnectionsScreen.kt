@@ -84,6 +84,7 @@ fun ConnectionsScreen(
     viewModel: ConnectionsViewModel,
     connectRequestViewModel: ConnectRequestViewModel,
     onBackClick: () -> Unit,
+    onShowConversation: (kotlin.uuid.Uuid) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val connectState by connectRequestViewModel.state.collectAsStateWithLifecycle()
@@ -121,6 +122,7 @@ fun ConnectionsScreen(
     ConnectRequestBottomSheet(
         viewModel = connectRequestViewModel,
         snackbarHostState = snackbarHostState,
+        onNavigateToConversation = onShowConversation,
     )
 }
 

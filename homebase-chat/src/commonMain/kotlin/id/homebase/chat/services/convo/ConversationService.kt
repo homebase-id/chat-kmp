@@ -64,7 +64,7 @@ class ConversationService(
         recipients: List<OdinId>,
         title: String?,
         payloadBundle: PayloadBundle?
-    ): Uuid {
+    ): CreateConversationResult {
 
         val domain = credentialsManager.requireActiveDomain()
 
@@ -126,7 +126,7 @@ class ConversationService(
                     distribute = true,
                 )
             }
-            return newConversationId
+            return CreateConversationResult(newConversationId, wasNewlyCreated = false)
         }
 
         Logger.d("createConversation: $newConversationId no local file found — creating new (recipients=$normalizedRecipients)")
@@ -168,8 +168,18 @@ class ConversationService(
             )
         }
 
-        return newConversationId
+        return CreateConversationResult(newConversationId, wasNewlyCreated = true)
     }
+
+    /**
+     * Result of [createConversation]. [wasNewlyCreated] is true when a fresh conversation file
+     * was written; false when an existing file (active or revived) satisfied the request. Use
+     * this to decide whether to post "conversation started" status messages — skip if false.
+     */
+    data class CreateConversationResult(
+        val conversationId: Uuid,
+        val wasNewlyCreated: Boolean
+    )
 
     /**
      * Creates a conversation file locally and enqueues it for server upload.
@@ -915,20 +925,10 @@ class ConversationService(
 
     /** Reads the admin list from the dedicated admin file, falling back to originalAuthor. */
     suspend fun getAdmins(conversationId: Uuid): Set<OdinId> {
-        val adminFile = getConversationAdminHomebaseFile(conversationId)
-        if (adminFile != null) {
-            val content = adminFile.fileMetadata.appData.content
-            if (!content.isNullOrEmpty()) {
-                try {
-                    val adminInfo = OdinSystemSerializer.deserialize<ConversationAdminInfo>(content)
-                    if (!adminInfo.admins.isNullOrEmpty()) {
-                        return adminInfo.admins.toSet()
-                    }
-                } catch (e: Exception) {
-                    Logger.e(e) { "Failed to deserialize admin info for conversation=$conversationId: ${content.take(200)}" }
-                }
-            }
-        }
+        val fromFile = ConversationAdminInfo.queryFromDb(
+            credentialsManager, dbm, chatDrive, conversationId
+        )
+        if (!fromFile.isNullOrEmpty()) return fromFile
 
         // Fallback: originalAuthor from conversation file
         val conversationFile = getConversationHomebaseFile(conversationId)

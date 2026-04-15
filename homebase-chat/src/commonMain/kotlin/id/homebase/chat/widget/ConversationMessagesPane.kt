@@ -161,57 +161,6 @@ fun ConversationMessagesPane(
             }
     }
 
-//    // Track the previous viewport height and scroll position before height change
-//    val previousViewportHeight = remember(conversation.id) { mutableStateOf(0) }
-//    val scrollPositionBeforeDecrease =
-//        remember(conversation.id) { mutableStateOf<Pair<Int, Int>?>(null) }
-//
-//    // Adjust scroll position when viewport height changes
-//    LaunchedEffect(conversation.id) {
-//        snapshotFlow { listState.layoutInfo.viewportSize.height }
-//            .distinctUntilChanged()
-//            .collect { currentHeight ->
-//                val previousHeight = previousViewportHeight.value
-//
-//                if (previousHeight > 0 && !isRestoringScrollPosition &&
-//                    listState.layoutInfo.totalItemsCount > 0
-//                ) {
-//                    when {
-//                        currentHeight < previousHeight -> {
-//                            // Height decreased (e.g., keyboard opened)
-//                            // Save current position before adjusting
-//                            scrollPositionBeforeDecrease.value =
-//                                listState.firstVisibleItemIndex to
-//                                        listState.firstVisibleItemScrollOffset
-//
-//                            val heightDiff = previousHeight - currentHeight
-//
-//                            // Calculate new scroll position to maintain visual position
-//                            val newOffset = listState.firstVisibleItemScrollOffset +
-//                                    heightDiff
-//                            listState.scrollToItem(listState.firstVisibleItemIndex, newOffset)
-//                        }
-//
-//                        currentHeight > previousHeight -> {
-//                            // Height increased (e.g., keyboard closed)
-//                            if (scrollPositionBeforeDecrease.value != null) {
-//                                val (savedIndex, savedOffset) = scrollPositionBeforeDecrease.value!!
-//                                listState.scrollToItem(savedIndex, savedOffset)
-//                                scrollPositionBeforeDecrease.value = null
-//                            } else {
-//                                // If no saved position, adjust by the height difference to maintain position
-//                                val heightDiff = currentHeight - previousHeight
-//                                val newOffset = (listState.firstVisibleItemScrollOffset - heightDiff).coerceAtLeast(0)
-//                                listState.scrollToItem(listState.firstVisibleItemIndex, newOffset)
-//                            }
-//                        }
-//                    }
-//                }
-//
-//                previousViewportHeight.value = currentHeight
-//            }
-//    }
-
     SharedTransitionLayout {
         AnimatedContent(
             targetState = uiState.fullScreenOverlay, transitionSpec = {

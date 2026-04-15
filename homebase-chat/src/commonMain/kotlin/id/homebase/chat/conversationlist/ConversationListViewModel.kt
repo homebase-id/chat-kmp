@@ -1337,7 +1337,7 @@ class ConversationListViewModel(
                                         recipients = listOf(recipientModel.contact.odinId),
                                         title = "",
                                         payloadBundle = null,
-                                    )
+                                    ).conversationId
                                 }
 
                                 is RecipientModel.Conversation -> recipientModel.conversation.conversation.id

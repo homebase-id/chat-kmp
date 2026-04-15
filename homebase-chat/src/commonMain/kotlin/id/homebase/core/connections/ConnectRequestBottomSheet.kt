@@ -55,6 +55,7 @@ import id.homebase.resources.connections_recipient_placeholder
 import id.homebase.resources.connections_request_sent
 import id.homebase.resources.connections_send_request
 import id.homebase.resources.settings_open_owner_console
+import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,6 +64,7 @@ fun ConnectRequestBottomSheet(
     viewModel: ConnectRequestViewModel,
     snackbarHostState: SnackbarHostState,
     sendSuccessMessage: String = stringResource(MR.string.connections_request_sent),
+    onNavigateToConversation: ((Uuid) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -85,6 +87,15 @@ fun ConnectRequestBottomSheet(
             is ConnectRequestEvent.OpenUrl -> {
                 viewModel.onAction(ConnectRequestAction.EventConsumed)
                 uriHandler.openUrl(event.url)
+            }
+            is ConnectRequestEvent.NavigateToConversation -> {
+                viewModel.onAction(ConnectRequestAction.EventConsumed)
+                if (onNavigateToConversation != null) {
+                    onNavigateToConversation(event.conversationId)
+                } else {
+                    // No navigation handler supplied; fall back to the standard success toast.
+                    snackbarHostState.showSnackbar(sendSuccessMessage)
+                }
             }
         }
     }

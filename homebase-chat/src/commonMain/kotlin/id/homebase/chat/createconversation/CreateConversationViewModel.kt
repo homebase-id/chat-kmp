@@ -69,7 +69,7 @@ class CreateConversationViewModel(
                             recipients = listOf(action.contact.odinId),
                             title = "",
                             payloadBundle = null,
-                        )
+                        ).conversationId
                         _uiState.update {
                             it.copy(
                                 uiEvent = CreateConversationUiEvent.LoadConversation(
