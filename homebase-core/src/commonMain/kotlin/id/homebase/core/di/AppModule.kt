@@ -87,20 +87,10 @@ val appModule = module {
                         ?.conversationState.let { it == ConversationState.Left || it == ConversationState.Removed }
                 }
 
-                // region Recovery: missing conversation file
-                // When a message arrives for a conversation with no file, create it
+                // region Recovery: missing or deleted conversation file
                 val conversationService = get<ConversationService>()
-                conversationStream.onOrphanedConversation = { _, originalAuthor ->
-                    conversationService.createConversation(
-                        recipients = listOf(originalAuthor),
-                        title = "",
-                        payloadBundle = null
-                    )
-                }
-
-                // When a message arrives for a soft-deleted conversation, revive it
-                conversationStream.onReviveDeletedConversation = { conversationId ->
-                    conversationService.reviveDeletedConversation(conversationId)
+                conversationStream.onRecoverConversation = { conversationId, originalAuthor ->
+                    conversationService.recoverConversation(conversationId, originalAuthor)
                 }
                 // endregion
             }

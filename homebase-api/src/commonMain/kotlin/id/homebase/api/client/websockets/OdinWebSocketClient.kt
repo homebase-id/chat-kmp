@@ -50,6 +50,7 @@ class OdinWebSocketClient(
 
     private var reconnectDelayMs = 1_000L
     private val MAX_RECONNECT_DELAY_MS = 5_000L
+    private val MAX_RECONNECT_DELAY_BACKGROUND_MS = 30_000L
     private var closed = false
 
     private val client = HttpClient {
@@ -68,6 +69,13 @@ class OdinWebSocketClient(
 
     private var connectionJob: Job? = null
     private var session: DefaultClientWebSocketSession? = null
+
+    @Volatile
+    var isInForeground: Boolean = true
+        set(value) {
+            field = value
+            pingSupervisor.isInForeground = value
+        }
 
     @Volatile
     private var handshakeDone = false
@@ -133,7 +141,8 @@ class OdinWebSocketClient(
                 delay(withJitter(reconnectDelayMs))
                 Logger.i { "Delay completed, reconnecting..." }
 
-                reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(MAX_RECONNECT_DELAY_MS)
+                val maxDelay = if (isInForeground) MAX_RECONNECT_DELAY_MS else MAX_RECONNECT_DELAY_BACKGROUND_MS
+                reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(maxDelay)
             }
 
         }
