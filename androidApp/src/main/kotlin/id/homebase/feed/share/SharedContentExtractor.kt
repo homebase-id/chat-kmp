@@ -24,6 +24,7 @@ object SharedContentExtractor {
 
     private fun extractSingle(intent: Intent, contentResolver: ContentResolver, tempDir: File): SharedContent? {
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+        @Suppress("DEPRECATION")
         val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
         val mimeType = intent.type ?: "*/*"
 
