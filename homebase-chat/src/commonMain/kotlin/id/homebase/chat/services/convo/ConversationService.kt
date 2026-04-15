@@ -657,7 +657,11 @@ class ConversationService(
         dependencyUniqueId: Uuid? = null,
         archivalStatus: ArchivalStatus? = null,
         distribute: Boolean = true,
-        additionalDistributionRecipients: List<OdinId> = emptyList()
+        additionalDistributionRecipients: List<OdinId> = emptyList(),
+        /** When true, ensures [ChatProtocol.ConversationGroupTag] is present in the file's
+         *  tags (used by recovery/revive paths to heal legacy or untagged group files).
+         *  null = preserve existing tags as-is. */
+        isGroup: Boolean? = null
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
@@ -723,6 +727,13 @@ class ConversationService(
         }
 
         val existingAppData = conversationFile.fileMetadata.appData
+        val mergedTags = if (isGroup == true) {
+            val existing = existingAppData.tags.orEmpty()
+            if (existing.contains(ChatProtocol.ConversationGroupTag)) existing
+            else existing + ChatProtocol.ConversationGroupTag
+        } else {
+            existingAppData.tags
+        }
         val metadata =
             UploadFileMetadata(
                 allowDistribution = distribute, // conversationFile.serverMetadata.allowDistribution,
@@ -733,7 +744,7 @@ class ConversationService(
                 appData =
                     UploadAppFileMetaData(
                         uniqueId = conversationId,
-                        tags = existingAppData.tags,
+                        tags = mergedTags,
                         fileType = existingAppData.fileType,
                         dataType = existingAppData.dataType,
                         groupId = existingAppData.groupId,
@@ -888,7 +899,8 @@ class ConversationService(
                 title = existingContent?.title ?: "",
                 participants = participants,
                 archivalStatus = ArchivalStatus.None,
-                distribute = false
+                distribute = false,
+                isGroup = !isOneToOne
             )
             return
         }
