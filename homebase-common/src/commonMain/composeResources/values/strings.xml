@@ -327,4 +327,7 @@
     <string name="upload_finalizing">Finalizing\u2026</string>
     <string name="upload_done">Done</string>
 
+    <string name="feed_error_title">Failed to load feed</string>
+    <string name="feed_error_retry">Retry</string>
+
 </resources>
