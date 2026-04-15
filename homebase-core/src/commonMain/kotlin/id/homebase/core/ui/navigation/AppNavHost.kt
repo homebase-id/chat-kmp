@@ -26,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
@@ -89,8 +89,8 @@ fun AppNavHost(
     navController: NavHostController,
     youAuthFlowManager: YouAuthFlowManager
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val authState by youAuthFlowManager.authState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val authState by youAuthFlowManager.authState.collectAsStateWithLifecycle()
     val isAuthenticated = authState is YouAuthState.Authenticated
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -316,8 +316,8 @@ fun AppNavHost(
                     composable<Route.ChatList> { backStackEntry ->
                         if (isAuthenticated) {
                             val conversationListViewModel: ConversationListViewModel = koinViewModel()
-                            val pendingConversationId by backStackEntry.savedStateHandle.getStateFlow<String?>("pendingConversationId", null).collectAsState()
-                            val pendingScrollToBottom by backStackEntry.savedStateHandle.getStateFlow("pendingScrollToBottom", false).collectAsState()
+                            val pendingConversationId by backStackEntry.savedStateHandle.getStateFlow<String?>("pendingConversationId", null).collectAsStateWithLifecycle()
+                            val pendingScrollToBottom by backStackEntry.savedStateHandle.getStateFlow("pendingScrollToBottom", false).collectAsStateWithLifecycle()
                             LaunchedEffect(pendingConversationId) {
                                 pendingConversationId?.let { idStr ->
                                     Uuid.parseOrNull(idStr)?.let {

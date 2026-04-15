@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
@@ -422,7 +423,7 @@ fun ReceivedMessageBubble(
                             }
                         },
                     )
-                } else Modifier,
+                } else Modifier.weight(1f, fill = false),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Column {
@@ -483,7 +484,9 @@ fun ReceivedMessageBubble(
                     }
                 }
             }
-            Row {
+            Row(
+                modifier = Modifier.wrapContentWidth(),
+            ) {
                 if (onAddReaction != null && isDesktop() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),

@@ -23,7 +23,6 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import kotlin.uuid.ExperimentalUuidApi
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -35,7 +34,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationStream
@@ -55,6 +54,7 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.widget.StyledSearchTextField
+import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 private const val RECENTS_COUNT = 5
@@ -70,9 +70,9 @@ fun SharePickerScreen(
     onSendToConversations: (Set<Uuid>) -> Unit,
     onCancel: () -> Unit,
 ) {
-    val conversationsData by conversationStream.conversations.collectAsState()
-    val contactsState by contactService.contacts.collectAsState()
-    val ownerSession by ownerSessionRepository.user.collectAsState()
+    val conversationsData by conversationStream.conversations.collectAsStateWithLifecycle()
+    val contactsState by contactService.contacts.collectAsStateWithLifecycle()
+    val ownerSession by ownerSessionRepository.user.collectAsStateWithLifecycle()
     val searchFieldState = remember { TextFieldState() }
     var selectedIds by remember { mutableStateOf(emptySet<Uuid>()) }
     val enricher = remember { ConversationEnricher() }
