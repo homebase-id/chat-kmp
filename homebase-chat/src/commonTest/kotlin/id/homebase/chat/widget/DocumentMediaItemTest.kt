@@ -2,7 +2,7 @@ package id.homebase.chat.widget
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -85,7 +85,7 @@ class DocumentMediaItemTest {
                 )
             }
         }
-        onNodeWithContentDescription("Download File").performClick()
+        onNodeWithTag("downloadButton").performClick()
         assertTrue(clicked)
     }
 
@@ -107,6 +107,6 @@ class DocumentMediaItemTest {
         }
         onNodeWithText("archive.zip").assertExists()
         // Download icon should be replaced by progress indicator
-        onNodeWithContentDescription("Download File").assertDoesNotExist()
+        onNodeWithTag("downloadButtonIcon").assertDoesNotExist()
     }
 }

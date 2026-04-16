@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -111,7 +112,7 @@ fun DocumentMediaItem(
         Spacer(modifier = Modifier.width(8.dp))
 
         // Download Action (always visible)
-        IconButton(onClick = { onDownloadClick() }, modifier = Modifier.size(40.dp)) {
+        IconButton(onClick = { onDownloadClick() }, modifier = Modifier.size(40.dp).testTag("downloadButton")) {
             if (isDownloading) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(24.dp),
@@ -120,6 +121,7 @@ fun DocumentMediaItem(
                 )
             } else {
                 Icon(
+                    modifier = Modifier.testTag("downloadButtonIcon"),
                     imageVector = Icons.Default.Download,
                     contentDescription = stringResource(MR.string.chat_message_download_file),
                     tint = MaterialTheme.colorScheme.primary
