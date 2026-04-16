@@ -125,6 +125,7 @@ fun ConversationMessagesPane(
                 uiState.scrollPosition.firstVisibleItemIndex,
                 uiState.scrollPosition.firstVisibleItemScrollOffset
             )
+            onUiAction(ConversationListUiAction.ClearScrollTrigger)
         }
     }
 
