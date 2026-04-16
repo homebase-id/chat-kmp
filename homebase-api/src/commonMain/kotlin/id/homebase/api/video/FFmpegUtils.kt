@@ -25,4 +25,10 @@ expect object FFmpegUtils {
     ): Pair<String, String>?
 
     suspend fun cacheInputVideo(fileName: String, data: ByteArray): String
+
+    /**
+     * Remuxes an HLS playlist (expecting unencrypted local .ts segments) into an MP4 container
+     * using stream copy (no re-encoding). Returns true on success.
+     */
+    suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean
 }
