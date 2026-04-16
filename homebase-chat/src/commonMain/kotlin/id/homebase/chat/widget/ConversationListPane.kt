@@ -27,6 +27,7 @@ import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -117,7 +118,21 @@ fun ConversationListPane(
         val iconOnlyMode by derivedStateOf { maxWidth <= 96.dp }
         Scaffold(
             topBar = {
-                if (!iconOnlyMode) {
+                if (uiState.showArchived) {
+                    TopAppBar(
+                        title = {
+                            Text(stringResource(MR.string.chat_archived_chats))
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { onUiAction(ConversationListUiAction.ArchiveBackClicked) }) {
+                                Icon(
+                                    imageVector = Icons.Default.ChevronLeft,
+                                    contentDescription = "Back"
+                                )
+                            }
+                        },
+                    )
+                } else if (!iconOnlyMode) {
                     TopAppBar(title = {
                         Box(modifier = Modifier.fillMaxWidth()) {
                             // Title row - keep it in place but fade out

@@ -8,6 +8,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
@@ -17,7 +18,6 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
-import id.homebase.api.sync.database.OutboxSync
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageLoader
@@ -242,7 +242,7 @@ class ConversationStream(
                 }
 
                 val placeholderParticipants = if (isOneToOne) {
-                    listOf(activeDomain!!, m.originalAuthor!!).distinct()
+                    listOf(activeDomain, m.originalAuthor).distinct()
                 } else {
                     emptyList()
                 }

@@ -9,13 +9,10 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.PayloadDescriptor
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.api.video.FFmpegUtils
@@ -1512,7 +1509,11 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ShowArchivedMessagesClicked -> {
-                _uiState.update { it.copy(uiEvent = ConversationListUiEvent.NavigateToArchivedConversations) }
+                _uiState.update { it.copy(showArchived = true) }
+            }
+
+            is ConversationListUiAction.ArchiveBackClicked -> {
+                _uiState.update { it.copy(showArchived = false) }
             }
 
             is ConversationListUiAction.ClearConversation -> {

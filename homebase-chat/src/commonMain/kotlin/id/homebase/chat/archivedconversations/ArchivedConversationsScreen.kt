@@ -95,6 +95,7 @@ fun ArchivedConversationsScreen(
 fun ArchivedConversationsUi(
     snackbarHostState: SnackbarHostState,
     uiState: ArchivedConversationsUiState,
+    selectedConversationId: Uuid? = null,
     onUiAction: (ArchivedConversationsUiAction) -> Unit,
 ) {
     val listState = rememberLazyListState()
@@ -153,7 +154,7 @@ fun ArchivedConversationsUi(
                                     onArchiveClick = {
                                         onUiAction(ArchivedConversationsUiAction.UnarchiveConversation(conversation.conversation.id))
                                     },
-                                    isSelected = false,
+                                    isSelected = selectedConversationId == conversation.conversation.id,
                                 )
                             }
                         }

@@ -329,6 +329,7 @@ fun AppNavHost(
                             }
                             ConversationListScreen(
                                 viewModel = conversationListViewModel,
+                                archivedConversationsViewModel = koinViewModel(),
                                 extendPermissionViewModel = koinViewModel(),
                                 connectRequestViewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
@@ -337,9 +338,6 @@ fun AppNavHost(
                                 },
                                 onNavigateToNewConversation = {
                                     navController.navigate(Route.CreateConversation)
-                                },
-                                onNavigateToArchivedConversations = {
-                                    navController.navigate(Route.ArchivedConversations)
                                 },
                                 onNavigateToContactInfo = {
                                     navController.navigate(Route.ContactInfo(it))
