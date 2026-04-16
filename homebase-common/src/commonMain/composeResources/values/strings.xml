@@ -374,7 +374,6 @@
     <string name="chat_message_play_video">Play video</string>
     <string name="chat_message_download_file">Download file</string>
     <string name="chat_message_file_type_icon">File type icon</string>
-    <string name="chat_message_camera">Camera</string>
     <string name="chat_message_microphone">Microphone</string>
     <string name="chat_message_emoji">Emoji</string>
     <string name="chat_message_discard_draft">Discard draft?</string>
