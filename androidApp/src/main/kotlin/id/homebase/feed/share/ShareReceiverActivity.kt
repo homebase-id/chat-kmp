@@ -6,29 +6,55 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
+import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.FFmpegUtils
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
+import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.widget.FullScreenAttachmentEditor
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.feed.MainActivity
+import id.homebase.feed.R
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import io.github.vinceglb.filekit.mimeType
+import io.github.vinceglb.filekit.name
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.dropWhile
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.core.component.KoinComponent
@@ -54,25 +80,37 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val userPreferences: UserPreferences by inject()
 
     private var isSending by mutableStateOf(false)
+    private var isProcessing by mutableStateOf(false)
+    private var screenState by mutableStateOf<ShareScreenState>(ShareScreenState.Picking)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Check authentication
-        val authState = youAuthFlowManager.authState.value
-        if (authState !is YouAuthState.Authenticated) {
-            Toast.makeText(this, "Please open Homebase Chat and sign in first", Toast.LENGTH_LONG)
-                .show()
-            finish()
-            return
+        // Wait for auth state to finish initializing (handles process-kill restart race)
+        lifecycleScope.launch {
+            val authState = youAuthFlowManager.authState
+                .dropWhile { it is YouAuthState.Initializing }
+                .first()
+            if (authState !is YouAuthState.Authenticated) {
+                Toast.makeText(
+                    this@ShareReceiverActivity,
+                    getString(R.string.share_auth_required),
+                    Toast.LENGTH_LONG
+                ).show()
+                finish()
+                return@launch
+            }
+            initShareFlow()
         }
+    }
 
+    private fun initShareFlow() {
         // Extract shared content
         val tempDir = File(cacheDir, "share_temp")
         val sharedContent = SharedContentExtractor.extract(intent, contentResolver, tempDir)
         if (sharedContent == null || sharedContent.isEmpty) {
-            Toast.makeText(this, "Nothing to share", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.share_nothing_to_share), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -82,8 +120,26 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         if (shortcutId != null) {
             try {
                 val conversationId = Uuid.parse(shortcutId.removePrefix("share_"))
-                sendSharedContent(conversationId, sharedContent)
-                return
+                if (sharedContent.hasFiles) {
+                    // Show overlay while converting files, then transition to editor
+                    isProcessing = true
+                    lifecycleScope.launch {
+                        val attachments = withContext(Dispatchers.IO) {
+                            convertToAttachmentFiles(sharedContent.files)
+                        }
+                        val title = resolveConversationTitle(setOf(conversationId))
+                        isProcessing = false
+                        screenState = ShareScreenState.Previewing(
+                            selectedConversationIds = setOf(conversationId),
+                            attachments = attachments,
+                            conversationTitle = title,
+                        )
+                    }
+                } else {
+                    // Text-only: send directly
+                    sendSharedContent(conversationId, sharedContent)
+                    return
+                }
             } catch (_: Exception) {
                 // Invalid UUID — fall through to picker
             }
@@ -94,18 +150,133 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme()
             else prefState.theme == ThemeState.Dark
 
+            // Hoisted unconditionally to satisfy Compose composition rules for ActivityResult launchers
+            var editorAttachments by remember { mutableStateOf<List<AttachmentPendingFile>>(emptyList()) }
+            val fileLauncher = rememberFilePickerLauncher { file ->
+                file?.let {
+                    editorAttachments = editorAttachments + AttachmentPendingFile.File(
+                        Uuid.random(), it
+                    )
+                }
+            }
+            val galleryLauncher = rememberFilePickerLauncher(
+                type = FileKitType.ImageAndVideo
+            ) { file ->
+                file?.let {
+                    val mimeType = it.mimeType()?.toString() ?: ""
+                    val pending = if (mimeType.startsWith("video/")) {
+                        AttachmentPendingFile.FileVideo(Uuid.random(), it)
+                    } else {
+                        AttachmentPendingFile.FileImage(Uuid.random(), it)
+                    }
+                    editorAttachments = editorAttachments + pending
+                }
+            }
+
             HomebaseTheme(darkTheme = isDarkTheme) {
-                SharePickerScreen(
-                    conversationStream = conversationStream,
-                    contactService = contactService,
-                    ownerSessionRepository = ownerSessionRepository,
-                    sharedContent = sharedContent,
-                    isSending = isSending,
-                    onSendToConversations = { conversationIds ->
-                        sendToMultipleConversations(conversationIds, sharedContent)
-                    },
-                    onCancel = { finish() },
-                )
+                Box(modifier = Modifier.fillMaxSize()) {
+                when (val state = screenState) {
+                    is ShareScreenState.Picking -> {
+                        SharePickerScreen(
+                            conversationStream = conversationStream,
+                            contactService = contactService,
+                            ownerSessionRepository = ownerSessionRepository,
+                            sharedContent = sharedContent,
+                            hasFiles = sharedContent.hasFiles,
+                            isSending = isSending,
+                            onSendToConversations = { conversationIds ->
+                                if (sharedContent.hasFiles) {
+                                    // Show overlay while converting files
+                                    isProcessing = true
+                                    lifecycleScope.launch {
+                                        val attachments = withContext(Dispatchers.IO) {
+                                            convertToAttachmentFiles(sharedContent.files)
+                                        }
+                                        val title = resolveConversationTitle(conversationIds)
+                                        editorAttachments = attachments
+                                        isProcessing = false
+                                        screenState = ShareScreenState.Previewing(
+                                            selectedConversationIds = conversationIds,
+                                            attachments = attachments,
+                                            conversationTitle = title,
+                                        )
+                                    }
+                                } else {
+                                    // Text-only: send directly as before
+                                    sendToMultipleConversations(conversationIds, sharedContent)
+                                }
+                            },
+                            onCancel = { finish() },
+                        )
+                    }
+
+                    is ShareScreenState.Previewing -> {
+                        val textFieldState = remember { RichTextState() }
+                        var currentPage by remember { mutableStateOf(0) }
+
+                        // Sync hoisted attachments from state on first entry
+                        LaunchedEffect(state) {
+                            if (editorAttachments.isEmpty()) {
+                                editorAttachments = state.attachments
+                            }
+                        }
+
+                        if (editorAttachments.isEmpty()) {
+                            // User removed all files — go back to picker
+                            screenState = ShareScreenState.Picking
+                        } else {
+                            FullScreenAttachmentEditor(
+                                data = FullScreenOverlay.AttachmentData(
+                                    selected = editorAttachments[currentPage.coerceIn(0, editorAttachments.lastIndex)].attachmentId,
+                                    conversationTitle = state.conversationTitle,
+                                    conversationId = state.selectedConversationIds.first(),
+                                    attachments = editorAttachments,
+                                ),
+                                textFieldState = textFieldState,
+                                currentPage = currentPage,
+                                onPageChanged = { currentPage = it },
+                                onSaveFile = { /* Not needed in share flow */ },
+                                onAddFile = { fileLauncher.launch() },
+                                onAddImage = { galleryLauncher.launch() },
+                                onRemoveFile = { _, attachmentId ->
+                                    val updated = editorAttachments.filter { it.attachmentId != attachmentId }
+                                    editorAttachments = updated
+                                    if (currentPage >= updated.size) {
+                                        currentPage = maxOf(0, updated.lastIndex)
+                                    }
+                                },
+                                onSendMessage = { _, message, files ->
+                                    sendEditedFiles(
+                                        conversationIds = state.selectedConversationIds,
+                                        caption = message,
+                                        files = files,
+                                    )
+                                },
+                                onDismiss = {
+                                    editorAttachments = emptyList()
+                                    screenState = ShareScreenState.Picking
+                                },
+                            )
+                        }
+                    }
+
+                }
+
+                // Semi-transparent overlay while processing (file conversion or sending)
+                if (isProcessing) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f))
+                            .clickable(onClick = {}),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.inversePrimary,
+                        )
+                    }
+                }
+                } // Box
             }
         }
     }
@@ -132,8 +303,11 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                     }
                 }
 
-                val countLabel =
-                    if (conversationIds.size > 1) "Sent to ${conversationIds.size} conversations" else "Sent"
+                val countLabel = if (conversationIds.size > 1) {
+                    getString(R.string.share_sent_multiple, conversationIds.size)
+                } else {
+                    getString(R.string.share_sent)
+                }
                 Toast.makeText(this@ShareReceiverActivity, countLabel, Toast.LENGTH_SHORT).show()
 
                 // Open the first conversation in the main app
@@ -181,7 +355,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                     }
                 }
 
-                Toast.makeText(this@ShareReceiverActivity, "Sent", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@ShareReceiverActivity, getString(R.string.share_sent), Toast.LENGTH_SHORT).show()
 
                 // Open conversation in main app
                 val mainIntent =
@@ -237,5 +411,143 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         } catch (_: Exception) {
             // Ignore cleanup errors
         }
+    }
+
+    private suspend fun convertToAttachmentFiles(files: List<SharedFile>): List<AttachmentPendingFile> {
+        return files.map { sharedFile ->
+            val platformFile = PlatformFile(java.io.File(sharedFile.path))
+            when {
+                sharedFile.mimeType.startsWith("image/") ->
+                    AttachmentPendingFile.FileImage(Uuid.random(), platformFile)
+                sharedFile.mimeType.startsWith("video/") -> {
+                    val thumbnailPath = FFmpegUtils.grabThumbnail(sharedFile.path)
+                    val thumbnailBytes = thumbnailPath?.let {
+                        java.io.File(it).readBytes()
+                    }
+                    AttachmentPendingFile.FileVideo(Uuid.random(), platformFile, thumbnailBytes)
+                }
+                else ->
+                    AttachmentPendingFile.File(Uuid.random(), platformFile)
+            }
+        }
+    }
+
+    private fun resolveConversationTitle(conversationIds: Set<Uuid>): String {
+        val conversations = conversationStream.conversations.value.items
+        val names = conversationIds.take(2).mapNotNull { id ->
+            conversations.find { it.id == id }?.name
+        }
+        val remaining = conversationIds.size - names.size.coerceAtMost(2)
+
+        return when {
+            names.isEmpty() -> getString(R.string.share_preview_title_single)
+            names.size == 1 && remaining == 0 -> names.first()
+            names.size == 1 && remaining > 0 -> getString(R.string.share_preview_title_others, names.first(), remaining)
+            remaining > 0 -> getString(R.string.share_preview_title_others, names.joinToString(", "), remaining)
+            else -> names.joinToString(", ")
+        }
+    }
+
+    private fun sendEditedFiles(
+        conversationIds: Set<Uuid>,
+        caption: String,
+        files: List<AttachmentPendingFile>,
+    ) {
+        isProcessing = true
+
+        lifecycleScope.launch {
+            try {
+                // Build payload on IO (thumbnail generation is the slow part)
+                val attachments = withContext(Dispatchers.IO) {
+                    files.map { attachment ->
+                        when (attachment) {
+                            is AttachmentPendingFile.FileImage -> AttachmentInput(
+                                filePath = attachment.file.toString(),
+                                contentType = attachment.file.mimeType()?.toString() ?: "image/jpeg",
+                                displayName = attachment.file.name,
+                            )
+                            is AttachmentPendingFile.FileVideo -> AttachmentInput(
+                                filePath = attachment.file.toString(),
+                                contentType = attachment.file.mimeType()?.toString() ?: "video/mp4",
+                                displayName = attachment.file.name,
+                            )
+                            is AttachmentPendingFile.File -> AttachmentInput(
+                                filePath = attachment.file.toString(),
+                                contentType = attachment.file.mimeType()?.toString() ?: "application/octet-stream",
+                                displayName = attachment.file.name,
+                            )
+                            is AttachmentPendingFile.Gallery -> AttachmentInput(
+                                filePath = attachment.image.file.toString(),
+                                contentType = "image/jpeg",
+                                displayName = attachment.image.fileName,
+                            )
+                            is AttachmentPendingFile.Audio -> AttachmentInput(
+                                filePath = attachment.audioFile.toString(),
+                                contentType = "audio/m4a",
+                                displayName = attachment.audioFile.name,
+                                waveformFile = attachment.waveformFile?.toString(),
+                                audioLengthSeconds = attachment.lengthSeconds,
+                            )
+                        }
+                    }
+                }
+
+                val payloadBundle = withContext(Dispatchers.IO) {
+                    MessageAttachmentBuilder.build(
+                        attachments = attachments,
+                        fileOperationsProvider = fileOperationsProvider,
+                    ) { index, _ -> "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index" }
+                }
+
+                // Navigate immediately — don't wait for sends to complete
+                val firstId = conversationIds.first()
+                val mainIntent = Intent(this@ShareReceiverActivity, MainActivity::class.java).apply {
+                    data = "homebase-fchat://conversation/${firstId}".toUri()
+                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                }
+                startActivity(mainIntent)
+
+                // Fire sends in background scope that survives the activity finish.
+                // Safe because MainActivity starts before finish(), keeping the process alive.
+                // For large uploads, consider migrating to WorkManager.
+                val sendScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+                sendScope.launch {
+                    try {
+                        for (conversationId in conversationIds) {
+                            chatMessageSenderService.sendNewMessage(
+                                messageUniqueId = Uuid.random(),
+                                conversationId = conversationId,
+                                messageText = caption,
+                                previousMessageUniqueId = null,
+                                payloadBundle = payloadBundle,
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Logger.e(tag = "ShareReceiver") { "Background send failed: ${e.message}" }
+                    } finally {
+                        cleanupTempFiles()
+                    }
+                }
+
+                finish()
+            } catch (e: Exception) {
+                Logger.e(tag = "ShareReceiver") { "Failed to prepare send: ${e.message}" }
+                isProcessing = false
+                Toast.makeText(
+                    this@ShareReceiverActivity,
+                    "Failed to send: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private sealed class ShareScreenState {
+        data object Picking : ShareScreenState()
+        data class Previewing(
+            val selectedConversationIds: Set<Uuid>,
+            val attachments: List<AttachmentPendingFile>,
+            val conversationTitle: String,
+        ) : ShareScreenState()
     }
 }

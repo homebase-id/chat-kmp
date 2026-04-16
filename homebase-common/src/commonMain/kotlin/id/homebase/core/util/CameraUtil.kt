@@ -9,3 +9,10 @@ expect fun rememberCameraManager(onResult: (PlatformFile?) -> Unit): PlatformCam
 interface PlatformCameraManager {
     fun launch()
 }
+
+@Composable
+expect fun rememberVideoRecorderManager(onResult: (PlatformFile?) -> Unit): PlatformVideoRecorderManager
+
+interface PlatformVideoRecorderManager {
+    fun launch()
+}

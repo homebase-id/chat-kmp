@@ -7,7 +7,16 @@ import io.github.vinceglb.filekit.PlatformFile
 actual fun rememberCameraManager(onResult: (PlatformFile?) -> Unit): PlatformCameraManager {
     return object : PlatformCameraManager {
         override fun launch() {
-            // No-op on web
+            // No-op on desktop
+        }
+    }
+}
+
+@Composable
+actual fun rememberVideoRecorderManager(onResult: (PlatformFile?) -> Unit): PlatformVideoRecorderManager {
+    return object : PlatformVideoRecorderManager {
+        override fun launch() {
+            // No-op on desktop
         }
     }
 }

@@ -11,3 +11,12 @@ actual fun rememberCameraManager(onResult: (PlatformFile?) -> Unit): PlatformCam
         }
     }
 }
+
+@Composable
+actual fun rememberVideoRecorderManager(onResult: (PlatformFile?) -> Unit): PlatformVideoRecorderManager {
+    return object : PlatformVideoRecorderManager {
+        override fun launch() {
+            // No-op on web
+        }
+    }
+}
