@@ -29,6 +29,20 @@ interface OutboxUploader {
     suspend fun upload(outboxRecord: Outbox, eventBus: EventBus): Unit
 }
 
+private fun uploadTypeName(t: Long): String = when (t) {
+    DriveOutboxUploader.UploadNewFile -> "UploadNewFile"
+    DriveOutboxUploader.UpdateFile -> "UpdateFile"
+    DriveOutboxUploader.DeleteFile -> "DeleteFile"
+    DriveOutboxUploader.UpdateLocalMetadataTags -> "UpdateLocalMetadataTags"
+    DriveOutboxUploader.UpdateLocalMetadataContent -> "UpdateLocalMetadataContent"
+    DriveOutboxUploader.SendReadReceiptByTime -> "SendReadReceiptByTime"
+    DriveOutboxUploader.ToggleReaction -> "ToggleReaction"
+    DriveOutboxUploader.DeleteFilesByGroupId -> "DeleteFilesByGroupId"
+    else -> "Unknown"
+}
+
+private fun Outbox.uploadTypeLabel(): String = "${uploadTypeName(uploadType)}($uploadType)"
+
 class OutboxSync(
     private val databaseManager: DatabaseManager,
     private val uploader: OutboxUploader,
@@ -127,13 +141,13 @@ class OutboxSync(
                         outboxRecord.uniqueId
                     )
                 )
-                Logger.i("OutboxSync: sending uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadType} driveId=${outboxRecord.driveId} attempt=${outboxRecord.checkOutCount + 1}")
+                Logger.i("OutboxSync: sending uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()} driveId=${outboxRecord.driveId} attempt=${outboxRecord.checkOutCount + 1}")
 
                 uploader.upload(outboxRecord, eventBus)
 
                 // if successful we remove it from the database
                 databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
-                Logger.i("OutboxSync: completed uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadType}")
+                Logger.i("OutboxSync: completed uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()}")
 
                 // We sent the item, send an event
                 eventBus.emit(
@@ -149,7 +163,7 @@ class OutboxSync(
                 if (attempts >= MAX_RETRIES) {
                     Logger.e(
                         "OutboxSync: DROPPING uniqueId=${outboxRecord.uniqueId} " +
-                                "uploadType=${outboxRecord.uploadType} after $attempts failed attempts. " +
+                                "uploadType=${outboxRecord.uploadTypeLabel()} after $attempts failed attempts. " +
                                 "Last error: ${e.message}",
                         e
                     )
@@ -167,7 +181,7 @@ class OutboxSync(
                 // Exponential backoff: 30s, 60s, 2m, 4m, 8m, 16m, 32m, 64m, 2h, 4h, 4h, ...
                 val n = minOf(BASE_DELAY_SECONDS * (1L shl minOf(outboxRecord.checkOutCount.toInt(), 30)), MAX_DELAY_SECONDS)
                 Logger.w(
-                    "Failed upload for ${outboxRecord.uniqueId}, retry in $n seconds (attempt $attempts/$MAX_RETRIES)",
+                    "Failed upload for ${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()}, retry in $n seconds (attempt $attempts/$MAX_RETRIES)",
                     e
                 )
 
