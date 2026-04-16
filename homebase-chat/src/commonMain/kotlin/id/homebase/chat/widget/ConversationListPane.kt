@@ -368,7 +368,19 @@ fun ConversationListPane(
                         }
 
                         is ConversationListContentState.Items -> {
-                            items(uiState.conversationsContent.list) { listItem ->
+                            items(
+                                uiState.conversationsContent.list,
+                                key = { listItem ->
+                                    when (listItem) {
+                                        is ConversationListContentModel.Conversation ->
+                                            listItem.conversation.conversation.id
+                                        is ConversationListContentModel.Message ->
+                                            listItem.message.id
+                                        is ConversationListContentModel.Header ->
+                                            listItem.resource.key
+                                    }
+                                }
+                            ) { listItem ->
                                 ConversationLisContentItem(
                                     listItem = listItem,
                                     selectedConversationId = selectedConversationId,
