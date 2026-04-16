@@ -47,6 +47,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.resources.MR
+import id.homebase.resources.share_picker_next
+import id.homebase.resources.share_picker_send
+import org.jetbrains.compose.resources.stringResource
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
@@ -66,6 +70,7 @@ fun SharePickerScreen(
     contactService: ContactService,
     ownerSessionRepository: OwnerSessionRepository,
     sharedContent: SharedContent,
+    hasFiles: Boolean,
     isSending: Boolean,
     onSendToConversations: (Set<Uuid>) -> Unit,
     onCancel: () -> Unit,
@@ -150,6 +155,7 @@ fun SharePickerScreen(
             if (selectedIds.isNotEmpty() && !isSending) {
                 ShareSendBar(
                     count = selectedIds.size,
+                    buttonText = if (hasFiles) stringResource(MR.string.share_picker_next) else stringResource(MR.string.share_picker_send),
                     onSend = { onSendToConversations(selectedIds) },
                 )
             }
@@ -290,6 +296,7 @@ fun SharePickerScreen(
 @Composable
 private fun ShareSendBar(
     count: Int,
+    buttonText: String,
     onSend: () -> Unit,
 ) {
     Column {
@@ -308,7 +315,7 @@ private fun ShareSendBar(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             FilledTonalButton(onClick = onSend) {
-                Text("Send")
+                Text(buttonText)
             }
         }
     }

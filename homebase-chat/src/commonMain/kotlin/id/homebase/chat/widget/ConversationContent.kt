@@ -111,6 +111,7 @@ import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
+import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
@@ -299,6 +300,17 @@ fun ConversationContent(
                     conversationId = conversation.conversation.id,
                     files = listOf(file),
                     isImage = true,
+                )
+            )
+        }
+    }
+    val videoRecorderLauncher = rememberVideoRecorderManager { file ->
+        file?.let {
+            onUiAction(
+                ConversationListUiAction.AttachPlatformFile(
+                    conversationId = conversation.conversation.id,
+                    files = listOf(file),
+                    isImage = false,
                 )
             )
         }
@@ -952,6 +964,7 @@ fun ConversationContent(
                                 }
                             },
                             onCameraClick = { cameraLauncher.launch() },
+                            onVideoRecordClick = { videoRecorderLauncher.launch() },
                             onRecordingStarted = {
                                 onUiAction(
                                     ConversationListUiAction.StartRecording(
