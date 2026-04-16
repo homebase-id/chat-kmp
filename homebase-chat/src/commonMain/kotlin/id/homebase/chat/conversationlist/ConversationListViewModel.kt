@@ -100,6 +100,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -193,7 +194,7 @@ class ConversationListViewModel(
                     // at least one snapshot (either from the cache or from the network).
                     statusKnown = connections.isLoaded && requestsLoaded,
                 )
-            }
+            }.distinctUntilChanged()
 
             combine(
                 conversationStream.conversations,
@@ -217,7 +218,7 @@ class ConversationListViewModel(
                         connectionStatusKnown = connectionCtx.statusKnown,
                     )
                 })
-            }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
+            }.debounce(50).collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
                 if (dataReady) {
                     _uiState.update {
                         it.copy(
