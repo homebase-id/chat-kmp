@@ -126,6 +126,8 @@ class MainActivity : AppCompatActivity() {
             // Auth callback
             val callbackURL = data.toString()
             lifecycleScope.launch { youAuthFlowManager.handleCallback(callbackURL) }
+            // Clear the deep link so it's not re-processed on config changes / onNewIntent
+            intent.data = null
         }
     }
 
