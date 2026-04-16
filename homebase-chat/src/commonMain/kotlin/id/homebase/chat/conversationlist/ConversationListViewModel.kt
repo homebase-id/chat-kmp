@@ -14,8 +14,10 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.convertHeicToJpeg
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.api.video.FFmpegUtils
+import id.homebase.api.video.VideoMetadata
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DeleteMessage
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
@@ -726,27 +728,49 @@ class ConversationListViewModel(
 
                 viewModelScope.launch {
                     try {
-                        val fullName = resolveDownloadFileName(
-                            action.payload.filename(), action.payloadKey, action.payload.contentType
+                        val hlsMetadata = resolveHlsVideoMetadata(
+                            descriptorContent = action.payload.descriptorContent,
+                            fileId = action.fileId,
+                            keyHeader = action.keyHeader,
                         )
-                        val filePath =
-                            "${fileOperationsProvider.getCacheDirectory()}/$fullName"
 
-                        val success = withContext(Dispatchers.IO) {
-                            driveFileProvider.streamPayloadDecryptedToPath(
-                                driveId = chatTargetDrive.alias,
-                                fileId = action.fileId,
-                                key = action.payloadKey,
-                                keyHeader = action.keyHeader,
-                                outputPath = filePath,
-                                fileOps = fileOperationsProvider,
-                            )
-                        }
-
-                        if (success) {
-                            sendEvent(SaveFileToDevice(filePath, fullName))
+                        if (hlsMetadata != null) {
+                            val (mp4Path, mp4Name) = withContext(Dispatchers.IO) {
+                                downloadAndRemuxHlsToMp4(
+                                    fileId = action.fileId,
+                                    payloadKey = action.payloadKey,
+                                    keyHeader = action.keyHeader,
+                                    metadata = hlsMetadata,
+                                    suggestedBaseName = action.payload.filename(),
+                                )
+                            } ?: run {
+                                sendEvent(ShowErrorMessage("Could not convert video"))
+                                return@launch
+                            }
+                            sendEvent(SaveFileToDevice(mp4Path, mp4Name))
                         } else {
-                            sendEvent(ShowErrorMessage("Could not download file"))
+                            val fullName = resolveDownloadFileName(
+                                action.payload.filename(), action.payloadKey, action.payload.contentType
+                            )
+                            val filePath =
+                                "${fileOperationsProvider.getCacheDirectory()}/$fullName"
+
+                            val success = withContext(Dispatchers.IO) {
+                                driveFileProvider.streamPayloadDecryptedToPath(
+                                    driveId = chatTargetDrive.alias,
+                                    fileId = action.fileId,
+                                    key = action.payloadKey,
+                                    keyHeader = action.keyHeader,
+                                    outputPath = filePath,
+                                    fileOps = fileOperationsProvider,
+                                )
+                            }
+
+                            if (success) {
+                                sendEvent(SaveFileToDevice(filePath, fullName))
+                            } else {
+                                sendEvent(ShowErrorMessage("Could not download file"))
+                            }
                         }
                     } catch (e: Exception) {
                         sendEvent(ShowErrorMessage("Error downloading file: ${e.message}"))
@@ -2134,6 +2158,95 @@ class ConversationListViewModel(
                 _messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }
+    }
+
+    private suspend fun resolveHlsVideoMetadata(
+        descriptorContent: String?,
+        fileId: Uuid,
+        keyHeader: KeyHeader,
+    ): VideoMetadata? {
+        val stub = descriptorContent?.let {
+            try {
+                OdinSystemSerializer.deserialize<VideoMetadata>(it)
+            } catch (_: Exception) {
+                null
+            }
+        } ?: return null
+
+        if (!stub.isSegmented) return null
+
+        val full = if (stub.isDescriptorContentComplete) {
+            stub
+        } else {
+            val json = driveFileProvider.getPayloadBytesDecrypted(
+                driveId = chatTargetDrive.alias,
+                fileId = fileId,
+                key = stub.key,
+                keyHeader = keyHeader,
+            )?.bytes?.decodeToString() ?: return null
+            try {
+                OdinSystemSerializer.deserialize<VideoMetadata>(json)
+            } catch (_: Exception) {
+                return null
+            }
+        }
+
+        return if (full.isSegmented && !full.hlsPlaylist.isNullOrBlank()) full else null
+    }
+
+    /**
+     * Decrypts the HLS segment payload + synthesizes a local playlist, then remuxes into an MP4
+     * using stream copy (no re-encoding). Returns (mp4Path, suggestedName) or null on failure.
+     */
+    private suspend fun downloadAndRemuxHlsToMp4(
+        fileId: Uuid,
+        payloadKey: String,
+        keyHeader: KeyHeader,
+        metadata: VideoMetadata,
+        suggestedBaseName: String?,
+    ): Pair<String, String>? {
+        val cacheDir = fileOperationsProvider.getCacheDirectory()
+        val uid = Uuid.random().toString().take(8)
+        val tsFileName = "input_hlsdl_${uid}.ts"
+        val tsPath = "$cacheDir/$tsFileName"
+        val mp4Path = "$cacheDir/hlsdl_${uid}.mp4"
+
+        val tsOk = driveFileProvider.streamPayloadDecryptedToPath(
+            driveId = chatTargetDrive.alias,
+            fileId = fileId,
+            key = payloadKey,
+            keyHeader = keyHeader,
+            outputPath = tsPath,
+            fileOps = fileOperationsProvider,
+        )
+        if (!tsOk) return null
+
+        // Strip EXT-X-KEY (segments are already decrypted on disk) and rewrite segment
+        // references to point at the local .ts file we just wrote.
+        val rewrittenPlaylist = metadata.hlsPlaylist!!.lines()
+            .filter { !it.startsWith("#EXT-X-KEY") }
+            .joinToString("\n") { line ->
+                if (line.isNotBlank() && !line.startsWith("#")) tsFileName else line
+            }
+
+        // cacheInputVideo writes to "<cacheDir>/input_<fileName>" on all platforms, which is the
+        // same directory as tsPath — the playlist's relative segment reference resolves correctly.
+        val playlistPath = FFmpegUtils.cacheInputVideo(
+            fileName = "hlsdl_${uid}.m3u8",
+            data = rewrittenPlaylist.encodeToByteArray(),
+        )
+
+        val ok = FFmpegUtils.remuxHlsToMp4(playlistPath = playlistPath, outputPath = mp4Path)
+
+        // Clean up intermediates regardless of success
+        runCatching { fileOperationsProvider.deleteTempFile(tsPath) }
+        runCatching { fileOperationsProvider.deleteTempFile(playlistPath) }
+
+        if (!ok) return null
+
+        val base = suggestedBaseName?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "video"
+        val safeBase = base.replace('/', '_').replace('\\', '_').replace('\u0000', '_')
+        return mp4Path to "$safeBase.mp4"
     }
 
     /**
