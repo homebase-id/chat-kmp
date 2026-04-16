@@ -37,6 +37,7 @@ import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived_chats
 import id.homebase.resources.chat_archived_chats_empty
+import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -95,6 +96,7 @@ fun ArchivedConversationsScreen(
 fun ArchivedConversationsUi(
     snackbarHostState: SnackbarHostState,
     uiState: ArchivedConversationsUiState,
+    selectedConversationId: Uuid? = null,
     onUiAction: (ArchivedConversationsUiAction) -> Unit,
 ) {
     val listState = rememberLazyListState()
@@ -110,7 +112,7 @@ fun ArchivedConversationsUi(
                     IconButton(onClick = { onUiAction(ArchivedConversationsUiAction.BackClicked) }) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
-                            contentDescription = "Back"
+                            contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
                 },
@@ -153,7 +155,7 @@ fun ArchivedConversationsUi(
                                     onArchiveClick = {
                                         onUiAction(ArchivedConversationsUiAction.UnarchiveConversation(conversation.conversation.id))
                                     },
-                                    isSelected = false,
+                                    isSelected = selectedConversationId == conversation.conversation.id,
                                 )
                             }
                         }

@@ -50,10 +50,14 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
+import id.homebase.resources.MR
+import id.homebase.resources.chat_message_image_attachment
+import id.homebase.resources.chat_message_video_thumbnail
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
@@ -194,7 +198,7 @@ fun MediaItem(
                     imageData = imageData,
                     modifier = finalModifier,
                     contentScale = imageContentScale,
-                    contentDescription = "Image attachment",
+                    contentDescription = stringResource(MR.string.chat_message_image_attachment),
                     onClick = onClick,
                     onLongPress = onLongPress,
                     sharedTransitionScope = sharedTransitionScope,
@@ -259,7 +263,7 @@ fun MediaItem(
                         imageData = imageData,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
-                        contentDescription = "Video thumbnail",
+                        contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
                         onClick = onClick,
                         onLongPress = onLongPress,
                         sharedTransitionScope = sharedTransitionScope,
@@ -315,7 +319,7 @@ fun MediaItem(
                         Box(modifier = finalModifier) {
                             Image(
                                 bitmap = imageBitmap,
-                                contentDescription = "Video thumbnail",
+                                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
                             )

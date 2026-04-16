@@ -9,6 +9,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.util.getUriHandler
+import id.homebase.resources.MR
+import id.homebase.resources.cancel
+import id.homebase.resources.permissions_extend
+import id.homebase.resources.permissions_missing_body
+import id.homebase.resources.permissions_missing_title
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * A composable that observes the [ExtendPermissionViewModel] and shows an alert dialog when the app
@@ -27,24 +33,22 @@ fun ExtendPermissionDialog(viewModel: ExtendPermissionViewModel) {
         is ExtendPermissionUiState.ShowDialog -> {
             AlertDialog(
                 onDismissRequest = { viewModel.dismissDialog() },
-                title = { Text("Missing Permissions") },
+                title = { Text(stringResource(MR.string.permissions_missing_title)) },
                 text = {
-                    Text(
-                        "The ${state.appName} app is missing permissions. " +
-                                "Without the necessary permissions the functionality " +
-                                "of ${state.appName} will be limited."
-                    )
+                    Text(stringResource(MR.string.permissions_missing_body, state.appName))
                 },
                 confirmButton = {
                     TextButton(onClick = {
                         uriHandler.openUrl(state.extendPermissionUrl)
                         viewModel.dismissDialog()
                     }) {
-                        Text("Extend Permissions")
+                        Text(stringResource(MR.string.permissions_extend))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { viewModel.dismissDialog() }) { Text("Cancel") }
+                    TextButton(onClick = { viewModel.dismissDialog() }) {
+                        Text(stringResource(MR.string.cancel))
+                    }
                 }
             )
         }

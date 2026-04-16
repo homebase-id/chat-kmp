@@ -66,6 +66,9 @@ import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
 import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
+import id.homebase.resources.done
+import id.homebase.resources.failed
+import id.homebase.resources.homebase_logo
 import id.homebase.resources.loading
 import id.homebase.resources.login_authenticating
 import id.homebase.resources.login_create_account_button
@@ -158,7 +161,7 @@ fun LoginUi(
         ) {
             SquircleIcon(
                 imageVector = HomebaseIcons.Homebase,
-                contentDescription = "Homebase Logo",
+                contentDescription = stringResource(MR.string.homebase_logo),
                 modifier = Modifier.size(72.dp)
             )
 
@@ -281,13 +284,13 @@ private fun DriveProgressRow(
             when {
                 drive.completed -> Icon(
                     imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = "Done",
+                    contentDescription = stringResource(MR.string.done),
                     tint = successColor,
                     modifier = Modifier.size(20.dp),
                 )
                 drive.error != null -> Icon(
                     imageVector = Icons.Filled.Cancel,
-                    contentDescription = "Failed",
+                    contentDescription = stringResource(MR.string.failed),
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(20.dp),
                 )

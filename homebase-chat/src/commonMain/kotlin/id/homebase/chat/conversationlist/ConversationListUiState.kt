@@ -31,6 +31,7 @@ data class ConversationListUiState(
     val archivedCount: Int = 0,
     val selectedConversationId: Uuid? = null,
     val filterByUnread: Boolean = false,
+    val showArchived: Boolean = false,
     val isSearchActive: Boolean = false,
     val ownerSession: OwnerSession? = null,
     val downloadingFiles: Set<String> = emptySet(),

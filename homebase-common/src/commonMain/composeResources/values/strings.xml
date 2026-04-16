@@ -62,6 +62,22 @@
     <string name="clear_log">Clear log</string>
     <string name="send">Send</string>
     <string name="media">Media</string>
+    <string name="about_homebase">About Homebase</string>
+    <string name="logging">Logging</string>
+    <string name="homebase_logo">Homebase Logo</string>
+    <string name="info">Info</string>
+    <string name="manage">Manage</string>
+    <string name="go_to_settings">Go to settings</string>
+    <string name="not_available">Not available</string>
+    <string name="error">Error</string>
+    <string name="audio_waveform">Audio waveform</string>
+
+    <!-- Avatars -->
+    <string name="avatar_owner">Owner avatar</string>
+    <string name="avatar_conversation">Conversation avatar</string>
+    <string name="avatar_default">Default avatar</string>
+    <string name="avatar_public">Public avatar</string>
+    <string name="avatar_person">%1$s avatar</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -91,6 +107,10 @@
     <string name="day_friday">Friday</string>
     <string name="day_saturday">Saturday</string>
     <string name="day_sunday">Sunday</string>
+
+    <!-- App version info (used in Home and Settings screens) -->
+    <string name="app_version">Version %1$s</string>
+    <string name="app_build">Build %1$s</string>
 
     <!-- Login screen -->
     <string name="login_title">Welcome to Homebase</string>
@@ -147,6 +167,44 @@
     <string name="settings_delete_account_dialog_title">Delete your account?</string>
     <string name="settings_delete_account_dialog_text">Your account is much more than only this app. If you want to remove your account, you can do so in the owner console.</string>
     <string name="settings_open_owner_console">Open owner console</string>
+    <string name="settings_notifications_active">Notifications active</string>
+    <string name="settings_notifications_issue">Notifications issue</string>
+
+    <!-- Notification settings screen -->
+    <string name="settings_notifications_disabled_title">Push Notifications are disabled</string>
+    <string name="settings_notifications_disabled_body">Enable notifications to receive messages when the app is closed.</string>
+    <string name="settings_enable_notifications">Enable Notifications</string>
+    <string name="settings_sounds">Sounds</string>
+    <string name="settings_message_sound">Message Sound</string>
+    <string name="settings_sound_system_default">System Default</string>
+    <string name="settings_play_while_app_open">Play While App is Open</string>
+    <string name="settings_notification_content">Notification Content</string>
+    <string name="settings_notification_show">Show</string>
+    <string name="settings_notification_locked_screen_note">Call and Message notifications can appear while your phone is locked.</string>
+    <string name="settings_badge_count">Badge Count</string>
+    <string name="settings_include_muted_chats">Include Muted Chats</string>
+    <string name="settings_re_register_push">Re-register Push Notifications</string>
+    <string name="settings_re_registering">Re-registering\u2026</string>
+    <string name="settings_re_register_success">Push notifications re-registered successfully</string>
+    <string name="settings_re_register_failure">Registration failed: %1$s</string>
+    <string name="settings_push_notification_status">Push Notification Status</string>
+    <string name="settings_device_token">Device Token</string>
+    <string name="settings_copy_token">Copy token</string>
+    <string name="settings_registration_status">Registration Status</string>
+    <string name="settings_registration_unknown">Unknown</string>
+    <string name="settings_registration_registered">Registered</string>
+    <string name="settings_registration_not_registered">Not Registered</string>
+    <string name="settings_registration_error">Error</string>
+    <string name="settings_server_verification">Server Verification</string>
+    <string name="settings_verifying">Verifying\u2026</string>
+    <string name="settings_status">Status</string>
+    <string name="settings_friendly_name">Friendly Name</string>
+    <string name="settings_server_token">Server Token</string>
+
+    <!-- Permissions dialog -->
+    <string name="permissions_missing_title">Missing Permissions</string>
+    <string name="permissions_missing_body">The %1$s app is missing permissions. Without the necessary permissions the functionality of %1$s will be limited.</string>
+    <string name="permissions_extend">Extend Permissions</string>
 
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s updated the conversation title</string>
@@ -193,6 +251,11 @@
     <string name="chat_search_result_empty">No results found for '%1$s'</string>
     <string name="chat_message_search_result_count">%1$d of %2$d</string>
     <string name="chat_message_search_no_results">No results</string>
+    <string name="chat_scroll_to_bottom">Scroll to bottom</string>
+    <string name="chat_previous_result">Previous result</string>
+    <string name="chat_next_result">Next result</string>
+    <string name="chat_no_gallery_items">No items</string>
+    <string name="chat_select_more_photos">Select more photos</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">New conversation</string>
@@ -306,6 +369,13 @@
     <string name="chat_message_add_gallery_image">Add image</string>
     <string name="chat_message_remove_gallery_image">Remove image</string>
     <string name="chat_message_hide_keyboard">Hide keyboard</string>
+    <string name="chat_message_image_attachment">Image attachment</string>
+    <string name="chat_message_video_thumbnail">Video thumbnail</string>
+    <string name="chat_message_play_video">Play video</string>
+    <string name="chat_message_download_file">Download file</string>
+    <string name="chat_message_file_type_icon">File type icon</string>
+    <string name="chat_message_microphone">Microphone</string>
+    <string name="chat_message_emoji">Emoji</string>
     <string name="chat_message_discard_draft">Discard draft?</string>
 
     <string name="chat_message_forward_to">Forward to</string>

@@ -115,9 +115,12 @@ import id.homebase.resources.chat_message_attachment_options
 import id.homebase.resources.chat_message_camera
 import id.homebase.resources.chat_message_record_video
 import id.homebase.resources.chat_message_take_photo
+import id.homebase.resources.chat_message_camera
 import id.homebase.resources.chat_message_edit_message
+import id.homebase.resources.chat_message_emoji
 import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_hide_keyboard
+import id.homebase.resources.chat_message_microphone
 import id.homebase.resources.chat_message_processing
 import id.homebase.resources.chat_new_message_placeholder
 import id.homebase.resources.chat_send_message_button
@@ -388,7 +391,7 @@ fun MessageTextFieldExpanded(
         ) {
             IconButton(onClick = onEmojiClick) {
                 Icon(
-                    imageVector = Icons.Default.EmojiEmotions, contentDescription = "Emoji"
+                    imageVector = Icons.Default.EmojiEmotions, contentDescription = stringResource(MR.string.chat_message_emoji)
                 )
             }
             if (!editExistingMode) {
@@ -770,7 +773,7 @@ fun MessageTextFieldCompact(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Mic,
-                                    contentDescription = "Microphone",
+                                    contentDescription = stringResource(MR.string.chat_message_microphone),
                                     tint = if (isMicrophonePressed) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -862,7 +865,7 @@ private fun BoxScope.RecordingInProgress(
                 .size(24.dp)
                 .alpha(dotAlpha),
             imageVector = Icons.Default.Mic,
-            contentDescription = "Microphone",
+            contentDescription = stringResource(MR.string.chat_message_microphone),
             tint = Color.Red,
         )
         Spacer(modifier = Modifier.width(8.dp))

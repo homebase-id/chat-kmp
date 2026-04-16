@@ -31,6 +31,9 @@ import coil3.compose.SubcomposeAsyncImageContent
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.image.toImageBitmap
 import id.homebase.core.util.ifTrue
+import id.homebase.resources.MR
+import id.homebase.resources.avatar_person
+import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 
 @Composable
@@ -72,7 +75,7 @@ fun AvatarImage(
             if (imageBitmap != null) {
                 Image(
                     bitmap = imageBitmap,
-                    contentDescription = "$avatarInitials avatar",
+                    contentDescription = stringResource(MR.string.avatar_person, avatarInitials),
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
@@ -82,7 +85,7 @@ fun AvatarImage(
         } else if (avatarUrl?.isNotEmpty() == true) {
             SubcomposeAsyncImage(
                 model = avatarUrl,
-                contentDescription = "$avatarInitials avatar"
+                contentDescription = stringResource(MR.string.avatar_person, avatarInitials)
             ) {
                 val state by painter.state.collectAsStateWithLifecycle()
                 if (state is AsyncImagePainter.State.Success) {

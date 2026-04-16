@@ -55,6 +55,8 @@ import id.homebase.resources.chat_no_contacts_found
 import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.contacts
 import id.homebase.resources.done
+import id.homebase.resources.menu_back
+import id.homebase.resources.remove
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
@@ -122,7 +124,7 @@ fun AddGroupMembersUi(
                     IconButton(onClick = { onUiAction(AddGroupMembersUiAction.BackClicked) }) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
-                            contentDescription = "Back"
+                            contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
                 },
@@ -191,7 +193,7 @@ fun AddGroupMembersUi(
                                         onUiAction(AddGroupMembersUiAction.ContactClicked(contact))
                                     },
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Remove",
+                                    contentDescription = stringResource(MR.string.remove),
                                 )
                             }
                         )

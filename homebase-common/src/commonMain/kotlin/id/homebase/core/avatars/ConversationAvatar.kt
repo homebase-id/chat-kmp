@@ -10,6 +10,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import id.homebase.core.image.HomebaseImage
+import id.homebase.resources.MR
+import id.homebase.resources.avatar_conversation
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun ConversationAvatar(
@@ -27,7 +30,7 @@ fun ConversationAvatar(
                 modifier = modifier
                     .size(options.size)
                     .clip(CircleShape),
-                contentDescription = "Conversation Avatar",
+                contentDescription = stringResource(MR.string.avatar_conversation),
                 contentScale = options.contentScale,
                 onClick = options.onClick,
                 sharedTransitionScope = sharedTransitionScope,

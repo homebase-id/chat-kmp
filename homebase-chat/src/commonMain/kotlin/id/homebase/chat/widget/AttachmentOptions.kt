@@ -62,6 +62,10 @@ import id.homebase.resources.chat_message_attachment_file
 import id.homebase.resources.chat_message_attachment_gallery
 import id.homebase.resources.chat_message_needs_gallery_permission
 import id.homebase.resources.chat_message_needs_gallery_permission_button_text
+import id.homebase.resources.chat_no_gallery_items
+import id.homebase.resources.chat_select_more_photos
+import id.homebase.resources.go_to_settings
+import id.homebase.resources.manage
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -130,7 +134,7 @@ fun AttachmentGallery(
                     .height(160.dp)
             ) {
                 if (galleryItems.isEmpty()) {
-                    Text("No items", modifier = Modifier.align(Alignment.Center))
+                    Text(stringResource(MR.string.chat_no_gallery_items), modifier = Modifier.align(Alignment.Center))
                 } else {
                     LazyRow(
                         modifier = Modifier
@@ -177,7 +181,7 @@ fun AttachmentGallery(
                             ) {
                                 Icon(Icons.Default.Settings, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Manage")
+                                Text(stringResource(MR.string.manage))
 
                             }
                         }
@@ -192,7 +196,7 @@ fun AttachmentGallery(
                                     leadingIcon = {
                                         Icon(Icons.Default.Image, contentDescription = null)
                                     },
-                                    text = { Text("Select more photos") },
+                                    text = { Text(stringResource(MR.string.chat_select_more_photos)) },
                                     onClick = {
                                         showMenu = false
                                         galleryPermissionState.requestPartialGalleryPermission()
@@ -202,7 +206,7 @@ fun AttachmentGallery(
                                     leadingIcon = {
                                         Icon(Icons.Default.Settings, contentDescription = null)
                                     },
-                                    text = { Text("Go to settings") },
+                                    text = { Text(stringResource(MR.string.go_to_settings)) },
                                     onClick = {
                                         showMenu = false
                                         galleryPermissionState.launchSettings()

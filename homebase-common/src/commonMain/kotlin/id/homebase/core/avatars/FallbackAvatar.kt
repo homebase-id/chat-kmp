@@ -17,6 +17,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import id.homebase.resources.MR
+import id.homebase.resources.avatar_default
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun FallbackAvatar(
@@ -54,7 +57,7 @@ fun FallbackAvatar(
             Icon(
                 modifier = Modifier.size(options.size / 2),
                 imageVector = imageVector,
-                contentDescription = "Default Avatar",
+                contentDescription = stringResource(MR.string.avatar_default),
                 tint = Color.White
             )
         }
