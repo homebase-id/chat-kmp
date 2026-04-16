@@ -73,8 +73,12 @@ class DriveSyncManager(
                         // Only update progress count during an active sync (Started already fired).
                         // Don't let stray BatchReceived from OptimisticWriter transition
                         // a Completed/Failed drive back to Synchronizing.
+                        // Ignore events whose totalCount is below the count we've already
+                        // shown — real-time WebSocket pushes and optimistic writes emit
+                        // totalCount=1 and would otherwise snap the progress bar backwards
+                        // mid-backfill.
                         val current = _driveStatuses.value[event.driveId]?.state
-                        if (current is DriveState.Synchronizing) {
+                        if (current is DriveState.Synchronizing && event.totalCount >= current.count) {
                             updateState(event.driveId) {
                                 it.copy(state = DriveState.Synchronizing(count = event.totalCount))
                             }
