@@ -93,6 +93,12 @@ val appModule = module {
                     conversationService.recoverConversation(conversationId, originalAuthor)
                 }
                 // endregion
+
+                // region Auto-unarchive: incoming message for archived conversation
+                conversationStream.onUnarchiveConversation = { conversationId ->
+                    conversationService.unarchiveConversation(conversationId)
+                }
+                // endregion
             }
         )
     }

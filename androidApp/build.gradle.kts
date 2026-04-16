@@ -145,6 +145,8 @@ dependencies {
     implementation(libs.smart.exception.java)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.filekit.dialogs.compose)
+    implementation(libs.richeditor.compose)
+    implementation(libs.jetbrains.compose.resources)
     implementation(libs.kermit)
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.sharetarget)

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -102,6 +103,7 @@ fun FullScreenAttachmentEditor(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
+            .statusBarsPadding()
     ) {
         Box(
             modifier = Modifier.weight(1f)
@@ -215,6 +217,7 @@ fun FullScreenAttachmentEditor(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(16.dp)
+                    .fillMaxWidth(0.6f)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -222,7 +225,12 @@ fun FullScreenAttachmentEditor(
             ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(data.conversationTitle, style = MaterialTheme.typography.labelSmall)
+                Text(
+                    text = data.conversationTitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
             }
 
         }

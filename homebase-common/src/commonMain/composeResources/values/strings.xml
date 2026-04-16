@@ -280,6 +280,11 @@
     <string name="chat_message_delete_for_me">Delete for me</string>
     <string name="chat_message_options">Message options</string>
     <string name="chat_message_attachment_options">Attachment options</string>
+    <string name="chat_message_camera">Camera</string>
+    <string name="chat_message_take_photo">Take photo</string>
+    <string name="chat_message_record_video">Record video</string>
+    <string name="share_picker_next">Next</string>
+    <string name="share_picker_send">Send</string>
     <string name="chat_message_emoji_options">Emoji options</string>
     <string name="chat_message_edited">Edited</string>
     <string name="chat_message_deleted">🚫 This message was deleted</string>

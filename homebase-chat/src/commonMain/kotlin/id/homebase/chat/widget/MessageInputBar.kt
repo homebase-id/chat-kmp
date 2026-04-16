@@ -43,6 +43,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.FormatListNumbered
@@ -109,6 +112,9 @@ import id.homebase.core.util.keyboardAsState
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
+import id.homebase.resources.chat_message_camera
+import id.homebase.resources.chat_message_record_video
+import id.homebase.resources.chat_message_take_photo
 import id.homebase.resources.chat_message_edit_message
 import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_hide_keyboard
@@ -141,6 +147,7 @@ fun MessageInputBar(
     onFocused: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
+    onVideoRecordClick: () -> Unit,
     onRecordingStarted: () -> Unit,
     onRecordingStopped: () -> Unit,
     onRecordingCancelled: () -> Unit,
@@ -269,6 +276,7 @@ fun MessageInputBar(
                 onKeyboardClick = onKeyboardClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 onCameraClick = onCameraClick,
+                onVideoRecordClick = onVideoRecordClick,
                 onRecordingStarted = onRecordingStarted,
                 onRecordingStopped = onRecordingStopped,
                 onRecordingCancelled = onRecordingCancelled,
@@ -439,6 +447,7 @@ fun MessageTextFieldCompact(
     onKeyboardClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onCameraClick: () -> Unit,
+    onVideoRecordClick: () -> Unit,
     onRecordingStarted: () -> Unit,
     onRecordingStopped: () -> Unit,
     onRecordingCancelled: () -> Unit,
@@ -630,12 +639,39 @@ fun MessageTextFieldCompact(
                                             )
                                         }
                                     } else if (isMobile()) {
-                                        // Camera only; mic has moved to the right-side button below.
-                                        IconButton(onClick = onCameraClick) {
-                                            Icon(
-                                                imageVector = Icons.Default.PhotoCamera,
-                                                contentDescription = "Camera"
-                                            )
+                                        var showCameraMenu by remember { mutableStateOf(false) }
+                                        Box {
+                                            IconButton(onClick = { showCameraMenu = true }) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PhotoCamera,
+                                                    contentDescription = stringResource(MR.string.chat_message_camera)
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = showCameraMenu,
+                                                onDismissRequest = { showCameraMenu = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(MR.string.chat_message_take_photo)) },
+                                                    onClick = {
+                                                        showCameraMenu = false
+                                                        onCameraClick()
+                                                    },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(stringResource(MR.string.chat_message_record_video)) },
+                                                    onClick = {
+                                                        showCameraMenu = false
+                                                        onVideoRecordClick()
+                                                    },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Default.Videocam, contentDescription = null)
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }

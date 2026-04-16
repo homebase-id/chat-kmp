@@ -70,6 +70,12 @@ class ConversationStream(
     var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
     // endregion
 
+    // region Auto-unarchive: incoming message for archived conversation
+    /** Called when a message arrives for an archived conversation.
+     *  Wired in AppModule to ConversationService.unarchiveConversation(). */
+    var onUnarchiveConversation: (suspend (conversationId: Uuid) -> Unit)? = null
+    // endregion
+
 
     // The full conversation list is loaded once from the local DB on authentication
     // (via start(), called from onPostAuthenticated in AppModule).
@@ -159,6 +165,27 @@ class ConversationStream(
             if (matchingConversation?.conversationState == ConversationState.Left
                 || matchingConversation?.conversationState == ConversationState.Removed
             ) continue
+
+            // region Auto-unarchive: Signal-style unarchive on incoming message
+            if (matchingConversation?.conversationState == ConversationState.Archived) {
+                // Only unarchive for messages from others, not our own synced messages
+                if (!m.isAuthoredBy(credentialsManager.getActiveDomain())) {
+                    Logger.i("ConversationStream: unarchiving conversation ${m.conversationId} due to incoming message from ${m.originalAuthor}")
+                    val unarchived = matchingConversation.copy(conversationState = ConversationState.Active)
+                    _conversations.value = ConversationsData(
+                        items = _conversations.value.items.map { if (it.id == unarchived.id) unarchived else it }
+                    )
+                    scope.launch {
+                        try {
+                            onUnarchiveConversation?.invoke(m.conversationId)
+                        } catch (e: Exception) {
+                            Logger.e(e) { "ConversationStream: failed to unarchive conversation ${m.conversationId}: ${e.message}" }
+                        }
+                    }
+                }
+                // Fall through to updateConversationFromNewMessage below (don't continue)
+            }
+            // endregion
 
             // region Recovery: revive deleted conversation on new incoming message
             // Compare server-stamped *created* timestamp against the conversation's
