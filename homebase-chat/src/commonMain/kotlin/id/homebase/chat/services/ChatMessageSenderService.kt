@@ -160,7 +160,14 @@ class ChatMessageSenderService(
         val recipients = conversationStream.getRecipients(conversationId, additionalRecipients)
         val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
-        Logger.d(tag = TAG) { "sendMessageInternal: encrypting message=$messageUniqueId recipients=${recipients.size}" }
+        Logger.d(tag = TAG) {
+            "sendMessageInternal: encrypting message=$messageUniqueId " +
+                "conversation=$conversationId " +
+                "recipients=${recipients.size} " +
+                "recipientIds=${recipients.map { it.domainName }} " +
+                "isLocalOnly=$isLocalOnly " +
+                "payloads=${payloadBundle?.payloads?.size ?: 0}"
+        }
         val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
             messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
         )

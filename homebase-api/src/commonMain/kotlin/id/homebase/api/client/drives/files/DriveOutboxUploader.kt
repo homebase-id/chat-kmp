@@ -57,13 +57,19 @@ class DriveOutboxUploader(
 
                     else -> {
                         Logger.e(
-                            "Non-recoverable 400 for outbox item ${outboxRecord.uniqueId} " +
-                                    "uploadType=${outboxRecord.uploadType} errorCode=${e.errorCode} — " +
-                                    "rethrowing for retry: ${e.message}"
+                            "$TAG upload: 400 for outbox item ${outboxRecord.uniqueId} " +
+                                    "uploadType=${outboxRecord.uploadType} errorCode=${e.errorCode} " +
+                                    "— will retry (server message: ${e.message})"
                         )
+                        throw e
                     }
                 }
             }
+            Logger.e(
+                "$TAG upload: failing outbox item ${outboxRecord.uniqueId} " +
+                        "uploadType=${outboxRecord.uploadType} status=${e.status} " +
+                        "errorCode=${e.errorCode} message=${e.message}"
+            )
             throw e
         }
     }
@@ -72,11 +78,23 @@ class DriveOutboxUploader(
         val request = OdinSystemSerializer.deserialize<UploadFileRequest>(outboxRecord.json.decodeToString())
         Logger.d("$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} fileType=${request.metadata.appData.fileType} driveId=${request.driveId}")
         try {
-            driveUploadProvider.uploadFile(request, onProgress = { sent, total ->
+            val result = driveUploadProvider.uploadFile(request, onProgress = { sent, total ->
                 val percent = percentOf(sent, total)
                 eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
             })
-            Logger.d("$TAG uploadNewFile: success uniqueId=${request.metadata.appData.uniqueId}")
+            val rStatus = result?.recipientStatus
+            if (rStatus.isNullOrEmpty()) {
+                Logger.d(
+                    "$TAG uploadNewFile: success uniqueId=${request.metadata.appData.uniqueId} " +
+                            "fileId=${result?.fileId} (no recipients)"
+                )
+            } else {
+                Logger.i(
+                    "$TAG uploadNewFile: success uniqueId=${request.metadata.appData.uniqueId} " +
+                            "fileId=${result.fileId} " +
+                            "recipientStatus=${rStatus.entries.joinToString { "${it.key}=${it.value}" }}"
+                )
+            }
         // region Recovery: missing conversation file
         // If the server already has a file with this uniqueId (e.g. stale/archived
         // from a previous install), convert the failed UploadNewFile into an
@@ -157,21 +175,45 @@ class DriveOutboxUploader(
         )
 
         Logger.d("$TAG retryAsUpdate: sending update for uniqueId=$uniqueId versionTag=$versionTag")
-        driveUploadProvider.updateFileByUniqueId(updateRequest, onProgress = { sent, total ->
+        val updateResult = driveUploadProvider.updateFileByUniqueId(updateRequest, onProgress = { sent, total ->
             val percent = percentOf(sent, total)
             eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
         })
-        Logger.i("$TAG retryAsUpdate: SUCCESS — uniqueId=$uniqueId updated on server (was ExistingFileWithUniqueId)")
+        val rStatus = updateResult?.recipientStatus
+        if (rStatus.isNullOrEmpty()) {
+            Logger.i(
+                "$TAG retryAsUpdate: SUCCESS — uniqueId=$uniqueId updated on server " +
+                        "(was ExistingFileWithUniqueId) fileId=${updateResult?.fileId} (no recipients)"
+            )
+        } else {
+            Logger.i(
+                "$TAG retryAsUpdate: SUCCESS — uniqueId=$uniqueId updated on server " +
+                        "(was ExistingFileWithUniqueId) fileId=${updateResult.fileId} " +
+                        "recipientStatus=${rStatus.entries.joinToString { "${it.key}=${it.value}" }}"
+            )
+        }
     }
     // endregion
 
     private suspend fun updateFile(outboxRecord: Outbox, eventBus: EventBus) {
         val request = OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(outboxRecord.json.decodeToString())
-        driveUploadProvider.updateFileByUniqueId(request, onProgress = { sent, total ->
+        val result = driveUploadProvider.updateFileByUniqueId(request, onProgress = { sent, total ->
             val percent = percentOf(sent, total)
             eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, percent, sent))
-//            println("Upload: $percent%")
         })
+        val rStatus = result?.recipientStatus
+        if (rStatus.isNullOrEmpty()) {
+            Logger.d(
+                "$TAG updateFile: success uniqueId=${request.uniqueId} " +
+                        "fileId=${result?.fileId} (no recipients)"
+            )
+        } else {
+            Logger.i(
+                "$TAG updateFile: success uniqueId=${request.uniqueId} " +
+                        "fileId=${result.fileId} " +
+                        "recipientStatus=${rStatus.entries.joinToString { "${it.key}=${it.value}" }}"
+            )
+        }
     }
 
     private suspend fun deleteFile(outboxRecord: Outbox) {
