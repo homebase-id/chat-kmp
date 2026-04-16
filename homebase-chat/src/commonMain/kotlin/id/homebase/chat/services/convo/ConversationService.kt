@@ -854,6 +854,14 @@ class ConversationService(
      */
     suspend fun recoverConversation(conversationId: Uuid, originalAuthor: OdinId) {
         val domain = credentialsManager.requireActiveDomain()
+        val isNoteToSelf = conversationId == ChatProtocol.ConversationWithYourselfId
+
+        if (isNoteToSelf) {
+            Logger.i("ConversationService: recoverConversation($conversationId) — note-to-self, delegating to ensureNoteToSelfExists()")
+            ensureNoteToSelfExists()
+            return
+        }
+
         val isOneToOne = conversationId == XorIdUtil.getNewXorId(
             domain.domainName, originalAuthor.domainName
         )
