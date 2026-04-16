@@ -91,6 +91,7 @@ kotlin {
             }
             implementation(libs.sqlite.jdbc.crypt)
             implementation(libs.composenativetray)
+            implementation(libs.vlcj)
         }
 
         commonTest.dependencies {
