@@ -170,13 +170,6 @@ fun FullScreenVideoPlayer(
             )
         }
 
-        if (isDownloading) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = Color.White,
-            )
-        }
-
         TopAppBar(
             modifier = Modifier.align(Alignment.TopStart),
             title = {},
@@ -190,6 +183,15 @@ fun FullScreenVideoPlayer(
                 }
             },
             actions = {
+                if (isDownloading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                    )
+                }
                 if (uploadStatus != null) {
                     val statusText = when (uploadStatus) {
                         UploadStatus.Preparing -> stringResource(MR.string.upload_preparing)
