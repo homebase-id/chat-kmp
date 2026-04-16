@@ -35,8 +35,11 @@ import coil3.request.ImageRequest
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.Warning
+import id.homebase.resources.MR
+import id.homebase.resources.error
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -222,7 +225,7 @@ fun HomebaseImage(
                         // Default error icon if no custom error composable provided
                         Icon(
                             imageVector = HomebaseIcons.Warning,
-                            contentDescription = "Error",
+                            contentDescription = stringResource(MR.string.error),
                             tint = Color.Gray,
                             modifier = Modifier.size(24.dp)
                         )

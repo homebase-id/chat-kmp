@@ -25,7 +25,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.resources.MR
+import id.homebase.resources.chat_new_conversation
+import id.homebase.resources.chat_new_conversation_search_placeholder
+import id.homebase.resources.contacts
+import id.homebase.resources.menu_back
+import id.homebase.resources.search
 import kotlinx.collections.immutable.ImmutableList
+import org.jetbrains.compose.resources.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,7 +56,7 @@ fun NewConversationPane(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = "New Chat",
+                        text = stringResource(MR.string.chat_new_conversation),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -58,7 +65,7 @@ fun NewConversationPane(
                     IconButton(onClick = onBackClick) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
                 },
@@ -80,11 +87,11 @@ fun NewConversationPane(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search contacts") },
+                placeholder = { Text(stringResource(MR.string.chat_new_conversation_search_placeholder)) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
-                        contentDescription = "Search"
+                        contentDescription = stringResource(MR.string.search)
                     )
                 },
                 shape = RoundedCornerShape(24.dp),
@@ -93,7 +100,7 @@ fun NewConversationPane(
 
             // Contacts section
             Text(
-                text = "CONTACTS",
+                text = stringResource(MR.string.contacts),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)

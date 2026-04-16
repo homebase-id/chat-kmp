@@ -83,6 +83,8 @@ import id.homebase.resources.chat_search_empty_description
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.loading
+import id.homebase.resources.menu_back
+import id.homebase.resources.remove
 import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -127,7 +129,7 @@ fun ConversationListPane(
                             IconButton(onClick = { onUiAction(ConversationListUiAction.ArchiveBackClicked) }) {
                                 Icon(
                                     imageVector = Icons.Default.ChevronLeft,
-                                    contentDescription = "Back"
+                                    contentDescription = stringResource(MR.string.menu_back)
                                 )
                             }
                         },
@@ -324,7 +326,7 @@ fun ConversationListPane(
                                     trailingIcon = {
                                         Icon(
                                             Icons.Default.Close,
-                                            contentDescription = "Localized description",
+                                            contentDescription = stringResource(MR.string.remove),
                                             // Modifier.size(InputChipDefaults.AvatarSize)
                                         )
                                     },

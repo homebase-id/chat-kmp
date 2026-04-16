@@ -37,6 +37,7 @@ import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived_chats
 import id.homebase.resources.chat_archived_chats_empty
+import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -111,7 +112,7 @@ fun ArchivedConversationsUi(
                     IconButton(onClick = { onUiAction(ArchivedConversationsUiAction.BackClicked) }) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
-                            contentDescription = "Back"
+                            contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
                 },

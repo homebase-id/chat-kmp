@@ -41,6 +41,7 @@ import id.homebase.core.widget.MinimalTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_group_edit
 import id.homebase.resources.chat_group_name_placeholder
+import id.homebase.resources.menu_back
 import id.homebase.resources.save
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -136,7 +137,7 @@ fun EditConversationGroupUi(
                     IconButton(onClick = { onUiAction(EditConversationGroupUiAction.BackClicked) }) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
-                            contentDescription = "Back"
+                            contentDescription = stringResource(MR.string.menu_back)
                         )
                     }
                 },

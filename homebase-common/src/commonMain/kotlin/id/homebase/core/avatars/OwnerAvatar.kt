@@ -20,6 +20,9 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.util.ifTrue
+import id.homebase.resources.MR
+import id.homebase.resources.avatar_owner
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun OwnerAvatar(
@@ -49,7 +52,7 @@ fun OwnerAvatar(
                             it.clickable { options.onClick.invoke() }
                         } else it
                     },
-                contentDescription = "Owner Avatar",
+                contentDescription = stringResource(MR.string.avatar_owner),
                 contentScale = options.contentScale,
                 onClick = options.onClick,
                 sharedTransitionScope = sharedTransitionScope,

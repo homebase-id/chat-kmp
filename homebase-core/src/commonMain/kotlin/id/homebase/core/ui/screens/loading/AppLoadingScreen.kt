@@ -29,6 +29,7 @@ import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
+import id.homebase.resources.homebase_logo
 import id.homebase.resources.loading
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -92,7 +93,7 @@ fun AppLoadingUi(
             ) {
                 SquircleIcon(
                     imageVector = HomebaseIcons.Homebase,
-                    contentDescription = "Homebase Logo",
+                    contentDescription = stringResource(MR.string.homebase_logo),
                     modifier = Modifier.size(72.dp)
                 )
                 Spacer(modifier = Modifier.height(24.dp))

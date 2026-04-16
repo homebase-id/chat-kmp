@@ -17,6 +17,9 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import id.homebase.api.common.OdinId
+import id.homebase.resources.MR
+import id.homebase.resources.avatar_public
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun PublicAvatar(
@@ -41,7 +44,7 @@ fun PublicAvatar(
 
     SubcomposeAsyncImage(
         model = imageUrl,
-        contentDescription = "Public Avatar",
+        contentDescription = stringResource(MR.string.avatar_public),
         contentScale = options.contentScale,
         modifier = clickableModifier
     ) {

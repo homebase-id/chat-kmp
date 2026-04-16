@@ -49,6 +49,9 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.resources.MR
+import id.homebase.resources.audio_waveform
+import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
@@ -291,7 +294,7 @@ private fun WaveformImage(
         // Display the waveform image
         HomebaseImage(
             imageData = imageData,
-            contentDescription = "Audio waveform",
+            contentDescription = stringResource(MR.string.audio_waveform),
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.FillBounds,
             colorFilter = ColorFilter.tint(

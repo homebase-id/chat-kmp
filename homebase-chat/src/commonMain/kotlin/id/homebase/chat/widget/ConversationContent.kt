@@ -131,6 +131,7 @@ import id.homebase.resources.chat_message_block_confirm_title
 import id.homebase.resources.chat_message_forward_to
 import id.homebase.resources.chat_message_search_no_results
 import id.homebase.resources.chat_message_search_result_count
+import id.homebase.resources.chat_next_result
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_not_connected_description
 import id.homebase.resources.chat_not_connected_incoming_description
@@ -140,6 +141,8 @@ import id.homebase.resources.chat_not_connected_send_request
 import id.homebase.resources.chat_not_connected_view_request
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
+import id.homebase.resources.chat_previous_result
+import id.homebase.resources.chat_scroll_to_bottom
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.connect
@@ -693,7 +696,7 @@ fun ConversationContent(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Scroll to bottom",
+                                    contentDescription = stringResource(MR.string.chat_scroll_to_bottom),
                                 )
                             }
                         }
@@ -741,7 +744,7 @@ fun ConversationContent(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowUp,
-                                contentDescription = "Previous result",
+                                contentDescription = stringResource(MR.string.chat_previous_result),
                             )
                         }
                         IconButton(
@@ -750,7 +753,7 @@ fun ConversationContent(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Next result",
+                                contentDescription = stringResource(MR.string.chat_next_result),
                             )
                         }
                     }

@@ -54,6 +54,7 @@ import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.contacts
 import id.homebase.resources.menu_back
 import id.homebase.resources.next
+import id.homebase.resources.remove
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
@@ -193,7 +194,7 @@ fun SelectMembersUi(
                                     onUiAction(SelectMembersUiAction.ContactClicked(contact))
                                 },
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Remove",
+                                contentDescription = stringResource(MR.string.remove),
                             )
                         }
                     )

@@ -36,6 +36,10 @@ import id.homebase.core.ui.assets.Pdf
 import id.homebase.core.ui.assets.WordFile
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.formatFileSize
+import id.homebase.resources.MR
+import id.homebase.resources.chat_message_download_file
+import id.homebase.resources.chat_message_file_type_icon
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun DocumentMediaItem(
@@ -78,7 +82,7 @@ fun DocumentMediaItem(
         ) {
             Icon(
                 imageVector = fileIcon,
-                contentDescription = "File Type Icon",
+                contentDescription = stringResource(MR.string.chat_message_file_type_icon),
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(24.dp)
             )
@@ -117,7 +121,7 @@ fun DocumentMediaItem(
             } else {
                 Icon(
                     imageVector = Icons.Default.Download,
-                    contentDescription = "Download File",
+                    contentDescription = stringResource(MR.string.chat_message_download_file),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
