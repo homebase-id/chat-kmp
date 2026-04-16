@@ -30,8 +30,8 @@ object DriveFileHelpers {
      * - Rounds the chunk end up to the nearest 16-byte boundary
      * - Calculates the offset to skip in decrypted content
      *
-     * @param chunkStart Optional start byte of the requested range
-     * @param chunkLength Optional end byte of the requested range
+     * @param chunkStart Optional start byte offset of the requested range
+     * @param chunkLength Optional number of bytes to read from chunkStart
      * @return RangeHeaderResult containing adjusted range and offset information
      */
     fun getRangeHeader(chunkStart: Long? = null, chunkLength: Long? = null): RangeHeaderResult {
@@ -56,7 +56,7 @@ object DriveFileHelpers {
         // End of range is inclusive, so we need to subtract 1
         val updatedChunkEnd =
                 if (chunkLength != null) {
-                    roundToLargerMultipleOf16(chunkLength) - 1
+                    roundToLargerMultipleOf16(chunkStart + chunkLength) - 1
                 } else {
                     null
                 }

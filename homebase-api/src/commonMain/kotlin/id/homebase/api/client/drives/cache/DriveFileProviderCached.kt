@@ -192,13 +192,7 @@ class DriveFileProviderCached(
                                         chunkStart = (chunkStart ?: 0).toInt()
                                 )
 
-                        val sliceEnd =
-                                if (chunkLength != null && chunkStart != null) {
-                                    (chunkLength - chunkStart).toInt()
-                                } else {
-                                    decrypted.size
-                                }
-
+                        val sliceEnd = chunkLength?.toInt() ?: decrypted.size
                         decrypted.sliceArray(0 until minOf(sliceEnd, decrypted.size))
                     } else {
                         delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
