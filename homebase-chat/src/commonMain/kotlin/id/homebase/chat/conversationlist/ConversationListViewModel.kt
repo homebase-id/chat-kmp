@@ -511,6 +511,14 @@ class ConversationListViewModel(
                 }
             }
 
+            is ConversationListUiAction.ClearScrollTrigger -> {
+                _messagesUiState.update {
+                    it.copy(
+                        scrollPosition = it.scrollPosition?.copy(triggerScroll = false)
+                    )
+                }
+            }
+
             is ConversationListUiAction.EditMessage -> {
                 viewModelScope.launch {
                     try {

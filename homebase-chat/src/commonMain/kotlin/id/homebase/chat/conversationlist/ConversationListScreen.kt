@@ -488,14 +488,14 @@ fun ConversationListUi(
                     PaneExpansionAnchor.Offset.fromStart(480.dp),
                 ),
             ),
-            paneExpansionDragHandle = { state ->
-                val interactionSource = remember { MutableInteractionSource() }
-                VerticalDragHandle(
-                    modifier = Modifier.paneExpansionDraggable(
-                        state, LocalMinimumInteractiveComponentSize.current, interactionSource
-                    ), interactionSource = interactionSource
-                )
-            })
+            // IMPORTANT: paneExpansionDragHandle with VerticalDragHandle is intentionally
+            // omitted here. On Compose Desktop (Skiko), the VerticalDragHandle's pointer/hover
+            // tracking causes the rendering loop to run at ~164 fps continuously — even when the
+            // app is completely idle — pinning the GPU at ~15%. This is a known limitation of
+            // Compose Multiplatform's pointer input handling on desktop. The drag handle can be
+            // re-enabled once the upstream issue is resolved.
+            // See: paneExpansionDragHandle = { state -> VerticalDragHandle(...) }
+            )
     }
 }
 

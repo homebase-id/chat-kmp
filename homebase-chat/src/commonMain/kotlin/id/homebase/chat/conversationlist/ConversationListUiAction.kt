@@ -83,6 +83,8 @@ sealed interface ConversationListUiAction {
         val firstVisibleItemScrollOffset: Int
     ) : ConversationListUiAction
 
+    data object ClearScrollTrigger : ConversationListUiAction
+
     data class ShowConversationSettings(val conversation: ConversationUiModel) :
         ConversationListUiAction
 

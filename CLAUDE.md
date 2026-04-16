@@ -129,6 +129,28 @@ adb logcat -d --pid=$(adb shell pidof id.homebase.feed.dev)
 adb logcat -c
 ```
 
+## Desktop App Logs (JVM / Android Studio `desktopApp:run`)
+
+The Desktop App writes its `homebase.log` to the platform-specific app data directory
+(determined by `JvmFileSystemUtil.getAppDataDirectory()`).
+
+**Debug build** folder name = `HomebaseChatDev`, **Release** = `HomebaseChat`.
+
+| OS      | Path                                                        |
+|---------|-------------------------------------------------------------|
+| Windows | `%APPDATA%\HomebaseChatDev\logs\homebase.log`               |
+| macOS   | `~/Library/Application Support/HomebaseChatDev/logs/homebase.log` |
+| Linux   | `~/.homebase-chat-dev/logs/homebase.log`                    |
+
+```bash
+# Windows (Git Bash / MSYS2)
+cat "$APPDATA/HomebaseChatDev/logs/homebase.log"
+
+# macOS / Linux
+cat ~/Library/Application\ Support/HomebaseChatDev/logs/homebase.log   # macOS
+cat ~/.homebase-chat-dev/logs/homebase.log                              # Linux
+```
+
 ## CI/CD
 
 GitHub Actions workflows in `.github/workflows/`:
