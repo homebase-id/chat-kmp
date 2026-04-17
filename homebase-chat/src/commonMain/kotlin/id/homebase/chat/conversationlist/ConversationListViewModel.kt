@@ -2389,6 +2389,11 @@ class ConversationListViewModel(
             // Store a local preview context per attachment (keyed by the payload key the
             // MessageAttachmentBuilder will emit), so both the placeholder and the eventual
             // real bubble can render the local preview without fetching from the server.
+            // Populate local contexts synchronously with what we have on hand, so the
+            // placeholder shows immediately. For videos the thumbnail bytes give us the
+            // aspect for free; for images we compute aspect asynchronously below and
+            // re-put once we have it — avoids blocking the placeholder on image I/O.
+            val imagePathsToRefine = mutableListOf<Pair<String, String>>()
             files.forEachIndexed { index, file ->
                 val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
                 val ctx: LocalAttachmentContext? = when (file) {
@@ -2408,21 +2413,43 @@ class ConversationListViewModel(
                             )
                         } else null
                     }
-                    is AttachmentPendingFile.FileImage ->
-                        LocalAttachmentContext.Image(
-                            localFilePath = file.file.toString(),
-                            aspectRatio = null,
-                        )
-                    is AttachmentPendingFile.Gallery ->
-                        LocalAttachmentContext.Image(
-                            localFilePath = file.image.file.toString(),
-                            aspectRatio = null,
-                        )
+                    is AttachmentPendingFile.FileImage -> {
+                        val path = file.file.toString()
+                        imagePathsToRefine += payloadKey to path
+                        LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
+                    }
+                    is AttachmentPendingFile.Gallery -> {
+                        val path = file.image.file.toString()
+                        imagePathsToRefine += payloadKey to path
+                        LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
+                    }
                     is AttachmentPendingFile.File -> null
                     is AttachmentPendingFile.Audio -> null
                 }
                 if (ctx != null) {
                     localVideoContextStore.put(newMessageId, payloadKey, ctx)
+                }
+            }
+
+            // Refine image aspect ratios off the main path.
+            if (imagePathsToRefine.isNotEmpty()) {
+                viewModelScope.launch {
+                    imagePathsToRefine.forEach { (payloadKey, path) ->
+                        val aspect = runCatching {
+                            val bytes = fileOperationsProvider.readFileBytes(path)
+                            val size = ImageUtils.getNaturalSize(bytes)
+                            if (size.pixelWidth > 0 && size.pixelHeight > 0)
+                                size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
+                            else null
+                        }.getOrNull()
+                        if (aspect != null) {
+                            localVideoContextStore.put(
+                                newMessageId,
+                                payloadKey,
+                                LocalAttachmentContext.Image(localFilePath = path, aspectRatio = aspect),
+                            )
+                        }
+                    }
                 }
             }
 

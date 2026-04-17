@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.conversationlist.PendingOutgoingMessage
 import id.homebase.chat.conversationlist.UploadStatus
@@ -105,10 +106,19 @@ private fun MediaPlaceholderBubble(
                     is LocalAttachmentContext.Video -> "video/mp4"
                     is LocalAttachmentContext.Image -> "image/jpeg"
                 }
+                // Fabricate a previewThumbnail so MediaItem can compute the aspect ratio
+                // (it reads pixelWidth/pixelHeight off the descriptor). Real pixel values
+                // don't matter — only the ratio does.
+                val aspectDescriptor = ctx.aspectRatio?.let { ratio ->
+                    val w = 1000
+                    val h = (w / ratio).toInt().coerceAtLeast(1)
+                    ThumbnailDescriptor(pixelWidth = w, pixelHeight = h)
+                }
                 PayloadDescriptor(
                     key = payloadKey,
                     contentType = contentType,
                     iv = null,
+                    previewThumbnail = aspectDescriptor,
                 )
             }
     }
