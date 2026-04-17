@@ -12,10 +12,8 @@ sealed interface VaultUiAction {
 }
 
 sealed interface VaultUiEvent {
-    /** Activation state and biometric-toggle state are known — navigate to the Vault screen. */
-    data object NavigateToVault : VaultUiEvent
-    /** Not activated — show the onboarding screen. */
-    data object NavigateToOnboarding : VaultUiEvent
-    /** Authentication failed / cancelled — go back to the prior screen. */
-    data object Back : VaultUiEvent
+    /** User completed the permission extension — navigate onboarding → Vault. */
+    data object Activated : VaultUiEvent
+    /** User dismissed onboarding — leave the onboarding screen. */
+    data object CloseOnboarding : VaultUiEvent
 }

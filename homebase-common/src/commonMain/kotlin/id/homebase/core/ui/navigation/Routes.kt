@@ -92,4 +92,8 @@ sealed class Route {
     @Serializable
     @SerialName("vault-onboarding")
     data object VaultOnboarding : Route()
+
+    @Serializable
+    @SerialName("vault-settings")
+    data object VaultSettings : Route()
 }

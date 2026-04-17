@@ -76,15 +76,11 @@ import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import id.homebase.core.ui.screens.vault.VaultOnboardingScreen
 import id.homebase.core.ui.screens.vault.VaultScreen
+import id.homebase.core.ui.screens.vault.VaultSettingsScreen
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
-import id.homebase.resources.MR
-import id.homebase.resources.vault_biometric_prompt_subtitle
-import id.homebase.resources.vault_biometric_prompt_title
-import id.homebase.resources.vault_label
-import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
@@ -113,12 +109,10 @@ fun AppNavHost(
     val topLevelRoutes = remember(vaultIconVisible) {
         buildList {
             add(TopLevelRoute.Chat)
-            add(TopLevelRoute.Home)
             if (vaultIconVisible) add(TopLevelRoute.Vault)
+            add(TopLevelRoute.Home)
         }
     }
-    val biometricTitle = stringResource(MR.string.vault_biometric_prompt_title)
-    val biometricSubtitle = stringResource(MR.string.vault_biometric_prompt_subtitle)
     val uriHandler = getUriHandler()
 
     var hasNotificationPermission by remember { mutableStateOf(false) }
@@ -131,8 +125,10 @@ fun AppNavHost(
     // Track if we're showing only the detail pane (list hidden) in a top level screen
     var showingOnlyDetailPane by remember { mutableStateOf(false) }
 
-    // Check if current destination is a top-level route
-    val isTopLevelRoute = topLevelRoutes.any { topLevelRoute ->
+    // Check if current destination is a top-level route. Uses the static route-type
+    // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
+    // when the user has hidden the Vault icon from the nav bar.
+    val isTopLevelRoute = currentDestination.isTopLevelRoute() || topLevelRoutes.any { topLevelRoute ->
         currentDestination?.hasRoute(topLevelRoute.route::class) == true
     }
 
@@ -181,24 +177,35 @@ fun AppNavHost(
         }
     }
 
-    // Route Vault activation/biometric events to navigation
+    // Route Vault activation/dismiss events to navigation
     LaunchedEffect(Unit) {
         vaultViewModel.events.collect { event ->
             when (event) {
-                VaultUiEvent.NavigateToOnboarding -> navController.navigate(Route.VaultOnboarding)
-                VaultUiEvent.NavigateToVault -> {
-                    // Pop onboarding if present so back from Vault returns to prior top-level
-                    val popped = navController.popBackStack(Route.VaultOnboarding, inclusive = true)
-                    if (!popped && navController.currentDestination?.hasRoute(Route.Vault::class) == true) {
-                        // Already on Vault — nothing to do
-                    } else {
-                        navController.navigate(Route.Vault)
+                VaultUiEvent.Activated -> {
+                    navController.popBackStack(Route.VaultOnboarding, inclusive = true)
+                    navController.navigate(Route.Vault) {
+                        popUpTo(Route.ChatList) { saveState = true }
+                        launchSingleTop = true
                     }
                 }
-                VaultUiEvent.Back -> {
+                VaultUiEvent.CloseOnboarding -> {
                     navController.popBackStack()
                 }
             }
+        }
+    }
+
+    // Open-Vault helper — if activated, go straight to the Vault screen (which gates on
+    // biometrics internally); otherwise kick off the onboarding flow.
+    val openVault: () -> Unit = {
+        if (vaultPreferences.activated.value) {
+            navController.navigate(Route.Vault) {
+                popUpTo(Route.ChatList) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        } else {
+            navController.navigate(Route.VaultOnboarding)
         }
     }
 
@@ -240,7 +247,7 @@ fun AppNavHost(
                             ) == true,
                             onClick = {
                                 if (topLevelRoute is TopLevelRoute.Vault) {
-                                    vaultViewModel.onOpenVault(biometricTitle, biometricSubtitle)
+                                    openVault()
                                 } else {
                                     navController.navigate(topLevelRoute.route) {
                                         popUpTo(Route.ChatList) { saveState = true }
@@ -268,7 +275,7 @@ fun AppNavHost(
                             selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                             onClick = {
                                 if (topLevelRoute is TopLevelRoute.Vault) {
-                                    vaultViewModel.onOpenVault(biometricTitle, biometricSubtitle)
+                                    openVault()
                                 } else {
                                     navController.navigate(topLevelRoute.route) {
                                         popUpTo(Route.ChatList) { saveState = true }
@@ -568,8 +575,8 @@ fun AppNavHost(
                                 onNavigateToHelp = {
                                     navController.navigate(Route.Help)
                                 },
-                                onOpenVault = {
-                                    vaultViewModel.onOpenVault(biometricTitle, biometricSubtitle)
+                                onNavigateToVaultSettings = {
+                                    navController.navigate(Route.VaultSettings)
                                 },
                             )
                         }
@@ -626,6 +633,16 @@ fun AppNavHost(
                         if (isAuthenticated) {
                             VaultScreen(
                                 onNavigateBack = { navController.popBackStack() },
+                            )
+                        }
+                    }
+
+                    composable<Route.VaultSettings> {
+                        if (isAuthenticated) {
+                            VaultSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() },
+                                onOpenVault = openVault,
                             )
                         }
                     }

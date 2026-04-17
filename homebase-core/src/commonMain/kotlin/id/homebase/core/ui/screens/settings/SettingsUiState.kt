@@ -13,9 +13,6 @@ data class SettingsUiState(
     val ownerSession: OwnerSession? = null,
     val notificationStatus: NotificationVerificationStatus = NotificationVerificationStatus.CHECKING,
 
-    val vaultIconVisible: Boolean = true,
-    val vaultBiometricsEnabled: Boolean = true,
-
     val uiEvent: SettingsUiEvent? = null,
     val uiDialog: SettingsUiDialog? = null,
 )
@@ -27,9 +24,6 @@ sealed interface SettingsUiAction {
     data object OpenOwnerConsoleClicked : SettingsUiAction
     data object ProfileInfoClicked : SettingsUiAction
     data object SecuritySetupClicked : SettingsUiAction
-    data object OpenVaultClicked : SettingsUiAction
-    data class SetVaultIconVisible(val visible: Boolean) : SettingsUiAction
-    data class SetVaultBiometricsEnabled(val enabled: Boolean) : SettingsUiAction
 }
 
 /** One-off events for side effects (navigation). */

@@ -22,13 +22,11 @@ import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
-import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Security
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -36,7 +34,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -82,10 +79,7 @@ import id.homebase.resources.settings_notifications_issue
 import id.homebase.resources.settings_open_owner_console
 import id.homebase.resources.settings_profile_info
 import id.homebase.resources.settings_security_setup
-import id.homebase.resources.vault_settings_biometrics
-import id.homebase.resources.vault_settings_open
 import id.homebase.resources.vault_settings_section
-import id.homebase.resources.vault_settings_show_icon
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -96,7 +90,7 @@ fun SettingsScreen(
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToHelp: () -> Unit,
-    onOpenVault: () -> Unit,
+    onNavigateToVaultSettings: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -151,7 +145,7 @@ fun SettingsScreen(
         onNavigateToNotifications = onNavigateToNotifications,
         onNavigateToAppearance = onNavigateToAppearance,
         onNavigateToHelp = onNavigateToHelp,
-        onOpenVault = onOpenVault,
+        onNavigateToVaultSettings = onNavigateToVaultSettings,
     )
 }
 
@@ -165,7 +159,7 @@ fun SettingsUi(
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToHelp: () -> Unit,
-    onOpenVault: () -> Unit = {},
+    onNavigateToVaultSettings: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
 
@@ -299,42 +293,10 @@ fun SettingsUi(
                 onClick = onNavigateToHelp
             )
             Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(MR.string.vault_settings_section),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-            )
             SettingsItemAction(
                 imageVector = Icons.Outlined.Lock,
-                text = stringResource(MR.string.vault_settings_open),
-                onClick = onOpenVault,
-            )
-            SettingsItemAction(
-                imageVector = Icons.Outlined.Visibility,
-                text = stringResource(MR.string.vault_settings_show_icon),
-                onClick = { onAction(SettingsUiAction.SetVaultIconVisible(!uiState.vaultIconVisible)) },
-                trailingContent = {
-                    Switch(
-                        checked = uiState.vaultIconVisible,
-                        onCheckedChange = { onAction(SettingsUiAction.SetVaultIconVisible(it)) },
-                    )
-                },
-            )
-            SettingsItemAction(
-                imageVector = Icons.Outlined.Fingerprint,
-                text = stringResource(MR.string.vault_settings_biometrics),
-                onClick = { onAction(SettingsUiAction.SetVaultBiometricsEnabled(!uiState.vaultBiometricsEnabled)) },
-                trailingContent = {
-                    Switch(
-                        checked = uiState.vaultBiometricsEnabled,
-                        onCheckedChange = { onAction(SettingsUiAction.SetVaultBiometricsEnabled(it)) },
-                    )
-                },
+                text = stringResource(MR.string.vault_settings_section),
+                onClick = onNavigateToVaultSettings,
             )
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
@@ -387,7 +349,7 @@ fun SettingsUiPreview() {
             onNavigateToNotifications = {},
             onNavigateToAppearance = {},
             onNavigateToHelp = {},
-            onOpenVault = {},
+            onNavigateToVaultSettings = {},
         )
     }
 }

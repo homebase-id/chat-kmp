@@ -14,19 +14,44 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import id.homebase.core.vault.BiometricResult
+import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.vault.authenticateBiometric
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
+import id.homebase.resources.vault_biometric_prompt_subtitle
+import id.homebase.resources.vault_biometric_prompt_title
 import id.homebase.resources.vault_label
 import id.homebase.resources.vault_welcome
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultScreen(
     onNavigateBack: () -> Unit,
 ) {
+    val vaultPreferences = koinInject<VaultPreferences>()
+    val biometricTitle = stringResource(MR.string.vault_biometric_prompt_title)
+    val biometricSubtitle = stringResource(MR.string.vault_biometric_prompt_subtitle)
+
+    var authorized by remember { mutableStateOf(!vaultPreferences.biometricsEnabled.value) }
+
+    LaunchedEffect(Unit) {
+        if (authorized) return@LaunchedEffect
+        when (authenticateBiometric(biometricTitle, biometricSubtitle)) {
+            BiometricResult.Success, BiometricResult.Unavailable -> authorized = true
+            BiometricResult.Failure -> onNavigateBack()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -49,10 +74,12 @@ fun VaultScreen(
                 .padding(innerPadding),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = stringResource(MR.string.vault_welcome),
-                style = MaterialTheme.typography.headlineMedium,
-            )
+            if (authorized) {
+                Text(
+                    text = stringResource(MR.string.vault_welcome),
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+            }
         }
     }
 }

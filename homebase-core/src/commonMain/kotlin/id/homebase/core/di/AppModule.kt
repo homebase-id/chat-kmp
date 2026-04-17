@@ -36,6 +36,7 @@ import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.activeSyncLabeledDrives
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.ui.screens.vault.VaultSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
@@ -148,7 +149,6 @@ val appModule = module {
     viewModelOf(::EditConversationGroupViewModel)
     viewModelOf(::ExtendPermissionViewModel)
     viewModelOf(::SettingsViewModel)
-    // VaultPreferences is injected into SettingsViewModel — registered above as a `single`.
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::HelpViewModel)
@@ -157,6 +157,7 @@ val appModule = module {
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
     viewModelOf(::VaultViewModel)
+    viewModelOf(::VaultSettingsViewModel)
 }
 
 // Common module that each platform will implement
