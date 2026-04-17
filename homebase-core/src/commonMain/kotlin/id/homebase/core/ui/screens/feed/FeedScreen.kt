@@ -112,7 +112,10 @@ private fun FeedWebView(
         if (!webViewState.isLoading && injectionScript != null && !credentialsInjected) {
             credentialsInjected = true
             webViewNavigator.evaluateJavaScript(injectionScript) {
-                webViewNavigator.reload()
+                // Navigate explicitly rather than reload(): the SPA may have
+                // client-side-redirected to /owner/login before our injection ran,
+                // and reload() would reload the login page instead of /apps/feed.
+                webViewNavigator.loadUrl(url)
             }
         }
     }
