@@ -162,6 +162,8 @@
     <string name="settings_notifications_disabled_title">Push-notifikationer er deaktiveret</string>
     <string name="settings_notifications_disabled_body">Aktivér notifikationer for at modtage beskeder, når appen er lukket.</string>
     <string name="settings_enable_notifications">Aktivér notifikationer</string>
+    <string name="settings_notifications_denied_body">Notifikationer er blevet afvist. Aktivér dem i dine enhedsindstillinger.</string>
+    <string name="settings_open_settings">Åbn indstillinger</string>
     <string name="settings_sounds">Lyde</string>
     <string name="settings_message_sound">Beskedlyd</string>
     <string name="settings_sound_system_default">Systemstandard</string>
