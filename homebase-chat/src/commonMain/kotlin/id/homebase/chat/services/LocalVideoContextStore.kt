@@ -10,6 +10,7 @@ import kotlin.uuid.Uuid
 data class LocalVideoContext(
     val thumbnailBytes: ByteArray,
     val localFilePath: String,
+    val aspectRatio: Float? = null,
 )
 
 class LocalVideoContextStore {
