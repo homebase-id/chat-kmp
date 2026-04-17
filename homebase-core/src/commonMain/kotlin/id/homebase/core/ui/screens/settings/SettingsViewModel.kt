@@ -10,6 +10,7 @@ import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.SubscriptionVerificationStatus
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.util.PlatformInfo
+import id.homebase.core.vault.VaultPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +22,7 @@ class SettingsViewModel(
     private val ownerSessionRepository: OwnerSessionRepository,
     private val notificationService: NotificationService,
     private val shareCacheStorage: ShareCacheStorage,
+    private val vaultPreferences: VaultPreferences,
     platformInfo: PlatformInfo,
 ) : ViewModel() {
 
@@ -28,12 +30,28 @@ class SettingsViewModel(
         appVersion = platformInfo.versionName,
         appBuild = platformInfo.versionCode.toString(),
         appBuildDate = BuildConfig.APP_BUILD_TIME,
+        vaultIconVisible = vaultPreferences.iconVisible.value,
+        vaultBiometricsEnabled = vaultPreferences.biometricsEnabled.value,
     ))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
         loadSettings()
         verifyNotificationSubscription()
+        observeVaultPreferences()
+    }
+
+    private fun observeVaultPreferences() {
+        viewModelScope.launch {
+            vaultPreferences.iconVisible.collect { value ->
+                _uiState.update { it.copy(vaultIconVisible = value) }
+            }
+        }
+        viewModelScope.launch {
+            vaultPreferences.biometricsEnabled.collect { value ->
+                _uiState.update { it.copy(vaultBiometricsEnabled = value) }
+            }
+        }
     }
 
     private fun loadSettings() {
@@ -87,6 +105,18 @@ class SettingsViewModel(
 
             SettingsUiAction.DeleteAccount -> {
                 _uiState.update { it.copy(uiDialog = SettingsUiDialog.DeleteAccount) }
+            }
+
+            SettingsUiAction.OpenVaultClicked -> {
+                // Navigation handled in the screen (SettingsScreen dispatches to VaultViewModel).
+            }
+
+            is SettingsUiAction.SetVaultIconVisible -> {
+                viewModelScope.launch { vaultPreferences.setIconVisible(action.visible) }
+            }
+
+            is SettingsUiAction.SetVaultBiometricsEnabled -> {
+                viewModelScope.launch { vaultPreferences.setBiometricsEnabled(action.enabled) }
             }
         }
     }

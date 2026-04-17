@@ -34,7 +34,9 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
-import id.homebase.core.config.syncLabeledDrives
+import id.homebase.core.config.activeSyncLabeledDrives
+import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
@@ -59,10 +61,13 @@ import org.koin.dsl.module
 
 val appModule = module {
     single { UserPreferences(get()) }
+    single { VaultPreferences(get()) }
 
     single {
+        val vaultPrefs = get<VaultPreferences>()
+        val drives = activeSyncLabeledDrives(includeVault = vaultPrefs.activated.value)
         DriveSyncManager(get(), get(), get(), get(), get(),
-            syncLabeledDrives.associate { it.drive.alias to it.label })
+            drives.associate { it.drive.alias to it.label })
     }
 
     single {
@@ -74,6 +79,7 @@ val appModule = module {
             outboxSync = get(),
             eventBus = get(),
             databaseManager = get(),
+            vaultPreferences = get(),
             onPostAuthenticated = {
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
@@ -142,6 +148,7 @@ val appModule = module {
     viewModelOf(::EditConversationGroupViewModel)
     viewModelOf(::ExtendPermissionViewModel)
     viewModelOf(::SettingsViewModel)
+    // VaultPreferences is injected into SettingsViewModel — registered above as a `single`.
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::HelpViewModel)
@@ -149,6 +156,7 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
+    viewModelOf(::VaultViewModel)
 }
 
 // Common module that each platform will implement

@@ -12,8 +12,9 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
-import id.homebase.core.config.syncLabeledDrives
+import id.homebase.core.config.activeSyncLabeledDrives
 import id.homebase.core.avatars.AppConnectionStatus
+import id.homebase.core.vault.VaultPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +35,7 @@ class AuthConnectionCoordinator(
     private val outboxSync: OutboxSync,
     private val eventBus: EventBus,
     private val databaseManager: DatabaseManager,
+    private val vaultPreferences: VaultPreferences,
     private val onPostAuthenticated: () -> Unit = {},
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
@@ -122,7 +124,7 @@ class AuthConnectionCoordinator(
                 scope = scope,
                 eventBus = eventBus,
                 databaseManager = databaseManager,
-                drives = syncLabeledDrives.map { it.drive },
+                drives = activeSyncLabeledDrives(vaultPreferences.activated.value).map { it.drive },
                 // Fires asynchronously once the server handshake has completed.
                 // We mark the connection state and then run post-connect setup in a
                 // background coroutine:

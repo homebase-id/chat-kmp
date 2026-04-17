@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -73,7 +74,18 @@ import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
+import id.homebase.core.ui.screens.vault.VaultOnboardingScreen
+import id.homebase.core.ui.screens.vault.VaultScreen
+import id.homebase.core.ui.screens.vault.VaultUiEvent
+import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.widget.RichTextExample
+import id.homebase.core.vault.VaultPreferences
+import id.homebase.resources.MR
+import id.homebase.resources.vault_biometric_prompt_subtitle
+import id.homebase.resources.vault_biometric_prompt_title
+import id.homebase.resources.vault_label
+import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
@@ -95,7 +107,18 @@ fun AppNavHost(
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val topLevelRoutes = remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Home) }
+    val vaultPreferences = koinInject<VaultPreferences>()
+    val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
+    val vaultViewModel: VaultViewModel = koinViewModel()
+    val topLevelRoutes = remember(vaultIconVisible) {
+        buildList {
+            add(TopLevelRoute.Chat)
+            add(TopLevelRoute.Home)
+            if (vaultIconVisible) add(TopLevelRoute.Vault)
+        }
+    }
+    val biometricTitle = stringResource(MR.string.vault_biometric_prompt_title)
+    val biometricSubtitle = stringResource(MR.string.vault_biometric_prompt_subtitle)
     val uriHandler = getUriHandler()
 
     var hasNotificationPermission by remember { mutableStateOf(false) }
@@ -158,6 +181,27 @@ fun AppNavHost(
         }
     }
 
+    // Route Vault activation/biometric events to navigation
+    LaunchedEffect(Unit) {
+        vaultViewModel.events.collect { event ->
+            when (event) {
+                VaultUiEvent.NavigateToOnboarding -> navController.navigate(Route.VaultOnboarding)
+                VaultUiEvent.NavigateToVault -> {
+                    // Pop onboarding if present so back from Vault returns to prior top-level
+                    val popped = navController.popBackStack(Route.VaultOnboarding, inclusive = true)
+                    if (!popped && navController.currentDestination?.hasRoute(Route.Vault::class) == true) {
+                        // Already on Vault — nothing to do
+                    } else {
+                        navController.navigate(Route.Vault)
+                    }
+                }
+                VaultUiEvent.Back -> {
+                    navController.popBackStack()
+                }
+            }
+        }
+    }
+
     // Handle notification tap navigation (needs navController, stays in composable)
     LaunchedEffect(Unit) {
         viewModel.navigationEvents.collect { event ->
@@ -195,10 +239,14 @@ fun AppNavHost(
                                 topLevelRoute.route::class
                             ) == true,
                             onClick = {
-                                navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                if (topLevelRoute is TopLevelRoute.Vault) {
+                                    vaultViewModel.onOpenVault(biometricTitle, biometricSubtitle)
+                                } else {
+                                    navController.navigate(topLevelRoute.route) {
+                                        popUpTo(Route.ChatList) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             },
                         )
@@ -219,10 +267,14 @@ fun AppNavHost(
                             // label = { Text(topLevelRoute.label) },
                             selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                             onClick = {
-                                navController.navigate(topLevelRoute.route) {
-                                    popUpTo(Route.ChatList) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                if (topLevelRoute is TopLevelRoute.Vault) {
+                                    vaultViewModel.onOpenVault(biometricTitle, biometricSubtitle)
+                                } else {
+                                    navController.navigate(topLevelRoute.route) {
+                                        popUpTo(Route.ChatList) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             })
                     }
@@ -516,6 +568,9 @@ fun AppNavHost(
                                 onNavigateToHelp = {
                                     navController.navigate(Route.Help)
                                 },
+                                onOpenVault = {
+                                    vaultViewModel.onOpenVault(biometricTitle, biometricSubtitle)
+                                },
                             )
                         }
                     }
@@ -557,6 +612,23 @@ fun AppNavHost(
                                 onBackClick = { navController.popBackStack() })
                         }
                     }
+
+                    composable<Route.VaultOnboarding> {
+                        if (isAuthenticated) {
+                            VaultOnboardingScreen(
+                                viewModel = vaultViewModel,
+                                onNavigateBack = { navController.popBackStack() },
+                            )
+                        }
+                    }
+
+                    composable<Route.Vault> {
+                        if (isAuthenticated) {
+                            VaultScreen(
+                                onNavigateBack = { navController.popBackStack() },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -582,7 +654,8 @@ private fun NavHostController.selectConversationOnChatList(conversationId: Uuid,
 // Helper to check if a destination is a top-level route
 private fun NavDestination?.isTopLevelRoute(): Boolean {
     return this?.hasRoute(Route.ChatList::class) == true ||
-            this?.hasRoute(Route.Home::class) == true
+            this?.hasRoute(Route.Home::class) == true ||
+            this?.hasRoute(Route.Vault::class) == true
 }
 
 // Helper to check if we're navigating between top-level routes
@@ -596,4 +669,5 @@ sealed class TopLevelRoute(
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
     data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
+    data object Vault : TopLevelRoute(Route.Vault, "Vault", Icons.Outlined.Lock)
 }

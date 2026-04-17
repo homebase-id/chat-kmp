@@ -109,6 +109,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.appcompat)
+            implementation(libs.androidx.biometric)
             implementation(libs.androidx.browser)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.accompanist.permissions)

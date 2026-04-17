@@ -6,6 +6,7 @@ import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
+import kotlin.uuid.Uuid
 
 data class LabeledDrive(val drive: TargetDrive, val label: String)
 
@@ -50,6 +51,15 @@ const val COMMUNITY_APP_ID = "77ed6136-6b33-4654-8088-3d89c91e6065"
 val chatLabeledDrive = LabeledDrive(drive = SystemDriveConstants.chatDrive, label = "Chat")
 val contactLabeledDrive = LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
+
+// Placeholder Vault drive — real GUIDs will replace these once the server feature ships.
+val vaultLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("f47ac10b-58cc-4372-a567-0e02b2c3d479"),
+        type = Uuid.parse("00000000-0000-0000-0000-000000000001"),
+    ),
+    label = "Vault",
+)
 
 // Backward-compatible aliases — all existing consumers remain unaffected
 val chatTargetDrive    = chatLabeledDrive.drive
@@ -100,6 +110,10 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
 
 // Drives we listen to for sockets and synchronization
 val syncLabeledDrives: List<LabeledDrive> = listOf(chatLabeledDrive, contactLabeledDrive, feedLabeledDrive)
+
+/** Returns the active list of sync drives, optionally including the Vault drive. */
+fun activeSyncLabeledDrives(includeVault: Boolean): List<LabeledDrive> =
+    if (includeVault) syncLabeledDrives + vaultLabeledDrive else syncLabeledDrives
 
 // Circle drive requests
 val circleDriveTargetRequest: List<TargetDriveAccessRequest> =

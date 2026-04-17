@@ -401,4 +401,23 @@
     <string name="upload_finalizing">Finalizing\u2026</string>
     <string name="upload_done">Done</string>
 
+    <!-- Vault -->
+    <string name="vault_label">Vault</string>
+    <string name="vault_onboarding_title">Your personal document vault</string>
+    <string name="vault_onboarding_body_1">Here you can safely store images of your passports, driver\u2019s license, certificates, credit cards, or any other important documents.</string>
+    <string name="vault_onboarding_body_2">Your documents are zero-knowledge encrypted on your personal private Homebase cloud server. They are additionally protected by your device biometrics.</string>
+    <string name="vault_onboarding_setup">Set it up</string>
+    <string name="vault_onboarding_dismiss">Dismiss</string>
+    <string name="vault_permission_dialog_title">Extend Permissions</string>
+    <string name="vault_permission_dialog_text">To set up your Vault we need to extend permissions for secure storage and cloud sync.</string>
+    <string name="vault_permission_extend">Extend</string>
+    <string name="vault_permission_cancel">Cancel</string>
+    <string name="vault_welcome">Welcome to the vault</string>
+    <string name="vault_settings_section">Vault</string>
+    <string name="vault_settings_open">Open Vault</string>
+    <string name="vault_settings_show_icon">Show Vault icon in bottom bar</string>
+    <string name="vault_settings_biometrics">Biometrics protection</string>
+    <string name="vault_biometric_prompt_title">Unlock Vault</string>
+    <string name="vault_biometric_prompt_subtitle">Authenticate to access your documents</string>
+
 </resources>
