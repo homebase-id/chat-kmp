@@ -2,8 +2,14 @@ package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
 import kotlinx.io.files.Path
 import platform.Foundation.NSDocumentDirectory
+import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
@@ -75,7 +81,7 @@ actual fun getUriHandler(): FileSystemHandler {
             }
         }
 
-        @OptIn(ExperimentalForeignApi::class)
+        @OptIn(ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
         override fun saveFile(
             file: Path,
             suggestedName: String,
@@ -103,6 +109,7 @@ actual fun getUriHandler(): FileSystemHandler {
                 }
             } else {
                 // Save other files to Documents directory
+                val scoped = fileUrl.startAccessingSecurityScopedResource()
                 try {
                     val safeName = suggestedName
                         .replace('/', '_')
@@ -117,19 +124,29 @@ actual fun getUriHandler(): FileSystemHandler {
                     val documentsDir = paths.firstOrNull() as? String
                         ?: throw Exception("Could not find Documents directory")
                     val destPath = "$documentsDir/$safeName"
+                    val sourcePath = fileUrl.path
+                        ?: throw Exception("Source URL has no filesystem path: $fileUrl")
 
-                    // Remove existing file if present
-                    if (fileManager.fileExistsAtPath(destPath)) {
-                        if (!fileManager.removeItemAtPath(destPath, null)) {
-                            throw Exception("Failed to remove existing file at $destPath")
+                    memScoped {
+                        // Remove existing file if present
+                        if (fileManager.fileExistsAtPath(destPath)) {
+                            val removeErr = alloc<ObjCObjectVar<NSError?>>()
+                            if (!fileManager.removeItemAtPath(destPath, removeErr.ptr)) {
+                                val msg = removeErr.value?.localizedDescription ?: "unknown error"
+                                throw Exception("Failed to remove existing file at $destPath: $msg")
+                            }
                         }
-                    }
-                    if (!fileManager.copyItemAtPath(file.toString(), destPath, null)) {
-                        throw Exception("Failed to copy file to $destPath")
+                        val copyErr = alloc<ObjCObjectVar<NSError?>>()
+                        if (!fileManager.copyItemAtPath(sourcePath, destPath, copyErr.ptr)) {
+                            val msg = copyErr.value?.localizedDescription ?: "unknown error"
+                            throw Exception("Failed to copy file to $destPath: $msg")
+                        }
                     }
                     onSuccess("Documents")
                 } catch (e: Exception) {
                     onError(e)
+                } finally {
+                    if (scoped) fileUrl.stopAccessingSecurityScopedResource()
                 }
             }
         }
@@ -140,6 +157,7 @@ actual fun getUriHandler(): FileSystemHandler {
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
         ) {
+            val scoped = fileUrl.startAccessingSecurityScopedResource()
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
                 changeBlock = {
                     if (isVideo) {
@@ -149,6 +167,7 @@ actual fun getUriHandler(): FileSystemHandler {
                     }
                 },
                 completionHandler = { success, error ->
+                    if (scoped) fileUrl.stopAccessingSecurityScopedResource()
                     if (success) {
                         onSuccess("Photos")
                     } else {
