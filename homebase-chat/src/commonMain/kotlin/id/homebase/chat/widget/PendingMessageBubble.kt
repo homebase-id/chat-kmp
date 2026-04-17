@@ -1,16 +1,10 @@
 package id.homebase.chat.widget
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,32 +17,50 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import id.homebase.api.image.toImageBitmap
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.conversationlist.PendingOutgoingMessage
 import id.homebase.chat.conversationlist.UploadStatus
-import id.homebase.chat.services.LocalVideoContextStore
+import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
-import id.homebase.resources.chat_message_video_thumbnail
 import id.homebase.resources.pending_attachment_many
 import id.homebase.resources.pending_attachment_one
 import id.homebase.resources.upload_preparing
+import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
+/**
+ * Placeholder bubble shown between "tap send" and the real optimistic-write bubble appearing.
+ *
+ * For messages with local attachment previews (video thumbnails / image files), we synthesize
+ * [PayloadDescriptor]s and defer to [MediaMessage] — the same composable the real bubble uses.
+ * This guarantees the placeholder and the real bubble render identically at identical sizes,
+ * so there's no pop/resize/flicker when the real bubble takes over.
+ */
 @Composable
 fun PendingMessageBubble(
     message: PendingOutgoingMessage,
     uploadStatus: UploadStatus? = null,
     modifier: Modifier = Modifier,
 ) {
+    val store = koinInject<LocalAttachmentContextStore>()
+    val contexts by store.observeAll(message.id)
+        .collectAsStateWithLifecycle(initialValue = store.getAll(message.id))
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -56,8 +68,12 @@ fun PendingMessageBubble(
             .padding(top = 4.dp),
         horizontalArrangement = Arrangement.End,
     ) {
-        if (message.isVideo) {
-            VideoPendingBubble(message = message, uploadStatus = uploadStatus)
+        if (contexts.isNotEmpty()) {
+            MediaPlaceholderBubble(
+                message = message,
+                uploadStatus = uploadStatus,
+                contexts = contexts,
+            )
         } else {
             GenericPendingBubble(message = message)
         }
@@ -65,61 +81,67 @@ fun PendingMessageBubble(
 }
 
 @Composable
-private fun VideoPendingBubble(
+private fun MediaPlaceholderBubble(
     message: PendingOutgoingMessage,
     uploadStatus: UploadStatus?,
+    contexts: Map<String, LocalAttachmentContext>,
 ) {
-    val store = koinInject<LocalVideoContextStore>()
-    val ctx = remember(message.id) { store.get(message.id) }
-    val bitmap = remember(ctx?.thumbnailBytes) { ctx?.thumbnailBytes?.toImageBitmap() }
-
     val hasText = message.text.isNotEmpty()
-    val shape = RoundedCornerShape(
+    val bubbleShape = RoundedCornerShape(
         topStart = Dimens.Message.cornerRadius,
         topEnd = Dimens.Message.cornerRadius,
         bottomStart = Dimens.Message.cornerRadius,
         bottomEnd = if (hasText) 4.dp else Dimens.Message.cornerRadius,
     )
-    val mediaShape = if (hasText) {
-        RoundedCornerShape(
-            topStart = Dimens.Message.cornerRadius,
-            topEnd = Dimens.Message.cornerRadius,
-        )
-    } else {
-        shape
+
+    // Synthesize payload descriptors from the local contexts, in payload-key order so the
+    // ordering matches what MessageAttachmentBuilder produces and what MediaMessage/Gallery
+    // will show once the real bubble lands.
+    val syntheticPayloads = remember(contexts) {
+        contexts.entries
+            .sortedBy { it.key }
+            .map { (payloadKey, ctx) ->
+                val contentType = when (ctx) {
+                    is LocalAttachmentContext.Video -> "video/mp4"
+                    is LocalAttachmentContext.Image -> "image/jpeg"
+                }
+                PayloadDescriptor(
+                    key = payloadKey,
+                    contentType = contentType,
+                    iv = null,
+                )
+            }
+    }
+    val fakeKeyHeader = remember {
+        KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(32)))
     }
 
     Surface(
-        modifier = Modifier.clip(shape),
-        shape = shape,
+        modifier = Modifier.clip(bubbleShape),
+        shape = bubbleShape,
         color = HomebaseTheme.extendedColors.bubbleSentSurface,
     ) {
         Column {
-            val mediaBoxModifier = Modifier
-                .heightIn(min = Dimens.MediaBubble.minHeight, max = Dimens.MediaBubble.maxHeight)
-                .let { base ->
-                    ctx?.aspectRatio?.let { ratio -> base.aspectRatio(ratio) } ?: base
-                }
-                .clip(mediaShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-
-            Box(modifier = mediaBoxModifier) {
-                if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap,
-                        contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
+            MediaMessage(
+                payloads = syntheticPayloads,
+                decryptedFiles = persistentMapOf(),
+                fileId = message.id,
+                driveId = chatTargetDrive.alias,
+                keyHeader = fakeKeyHeader,
+                shape = if (hasText) {
+                    RoundedCornerShape(
+                        topStart = Dimens.Message.cornerRadius,
+                        topEnd = Dimens.Message.cornerRadius,
                     )
-                }
-
-                if (uploadStatus != null) {
-                    UploadProgressOverlay(
-                        status = uploadStatus,
-                        modifier = Modifier.matchParentSize(),
-                    )
-                }
-            }
+                } else {
+                    bubbleShape
+                },
+                sharedTransitionScope = null,
+                animatedVisibilityScope = null,
+                messageId = message.id,
+                downloadingFiles = emptySet(),
+                uploadStatus = uploadStatus ?: UploadStatus.Preparing,
+            )
 
             if (hasText) {
                 Text(
