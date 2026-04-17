@@ -155,7 +155,7 @@ fun MediaMessage(
 }
 
 @Composable
-private fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Modifier) {
+internal fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier.background(Color.Black.copy(alpha = 0.35f)),
         contentAlignment = Alignment.Center,

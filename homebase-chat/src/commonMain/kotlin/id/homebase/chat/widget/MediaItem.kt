@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -238,13 +239,20 @@ fun MediaItem(
                         false
                     }
                 }
+                val localContext = if (messageId != null) {
+                    val ctx by localVideoContextStore.observe(messageId)
+                        .collectAsStateWithLifecycle(initialValue = localVideoContextStore.get(messageId))
+                    ctx
+                } else null
                 var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
                 var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
-                VideoPreloadEffect(
-                    data = videoPlayerData,
-                    onPreloading = { isPreloading = it },
-                    onProgress = { preloadProgress = it },
-                )
+                if (localContext == null) {
+                    VideoPreloadEffect(
+                        data = videoPlayerData,
+                        onPreloading = { isPreloading = it },
+                        onProgress = { preloadProgress = it },
+                    )
+                }
                 val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
                     HomebaseImageData(
                         driveId = driveId,
@@ -259,34 +267,50 @@ fun MediaItem(
                     )
                 }
                 Box(modifier = finalModifier) {
-                    HomebaseImage(
-                        imageData = imageData,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                        contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                        onClick = onClick,
-                        onLongPress = onLongPress,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                    )
-                    Icon(
-                        imageVector = Icons.Default.PlayCircle,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .align(Alignment.Center),
-                        tint = Color.White.copy(alpha = 0.85f)
-                    )
-                    Text(
-                        text = if (isHls) "HLS" else "MP4",
-                        color = Color.White,
-                        fontSize = 9.sp,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                            .padding(horizontal = 3.dp, vertical = 1.dp),
-                    )
-                    if (isPreloading) {
+                    if (localContext != null) {
+                        val uploadBitmap = remember(localContext.thumbnailBytes) {
+                            localContext.thumbnailBytes.toImageBitmap()
+                        }
+                        if (uploadBitmap != null) {
+                            Image(
+                                bitmap = uploadBitmap,
+                                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        }
+                    } else {
+                        HomebaseImage(
+                            imageData = imageData,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                            contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                            onClick = onClick,
+                            onLongPress = onLongPress,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                        )
+                    }
+                    if (localContext == null) {
+                        Icon(
+                            imageVector = Icons.Default.PlayCircle,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .align(Alignment.Center),
+                            tint = Color.White.copy(alpha = 0.85f)
+                        )
+                        Text(
+                            text = if (isHls) "HLS" else "MP4",
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
+                                .padding(horizontal = 3.dp, vertical = 1.dp),
+                        )
+                    }
+                    if (isPreloading && localContext == null) {
                         Box(
                             modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.4f)),
                             contentAlignment = Alignment.Center,

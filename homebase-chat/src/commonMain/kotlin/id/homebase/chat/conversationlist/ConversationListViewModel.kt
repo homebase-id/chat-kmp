@@ -13,6 +13,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
@@ -2385,19 +2386,26 @@ class ConversationListViewModel(
             Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
 
             // Store local video context for thumbnail preview during upload
-            files.filterIsInstance<AttachmentPendingFile.FileVideo>()
-                .firstOrNull()?.let { videoFile ->
-                    val thumbBytes = videoFile.thumbnailBytes
-                    if (thumbBytes != null) {
-                        localVideoContextStore.put(
-                            newMessageId,
-                            LocalVideoContext(
-                                thumbnailBytes = thumbBytes,
-                                localFilePath = videoFile.file.toString(),
-                            )
+            val primaryVideo = files.filterIsInstance<AttachmentPendingFile.FileVideo>().firstOrNull()
+            primaryVideo?.let { videoFile ->
+                val thumbBytes = videoFile.thumbnailBytes
+                if (thumbBytes != null) {
+                    val aspect = runCatching {
+                        val size = ImageUtils.getNaturalSize(thumbBytes)
+                        if (size.pixelWidth > 0 && size.pixelHeight > 0) {
+                            size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
+                        } else null
+                    }.getOrNull()
+                    localVideoContextStore.put(
+                        newMessageId,
+                        LocalVideoContext(
+                            thumbnailBytes = thumbBytes,
+                            localFilePath = videoFile.file.toString(),
+                            aspectRatio = aspect,
                         )
-                    }
+                    )
                 }
+            }
 
             pendingMessageId = newMessageId
 
@@ -2406,6 +2414,7 @@ class ConversationListViewModel(
                 conversationId = conversationId,
                 text = content,
                 attachmentCount = files.size,
+                isVideo = primaryVideo?.thumbnailBytes != null,
             )
 
             // Register the placeholder, register upload progress, clear the

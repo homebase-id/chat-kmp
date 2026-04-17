@@ -679,7 +679,10 @@ fun ConversationContent(
                             }
                         }
                         items(pendingForConvo, key = { "pending-${it.id}" }) { pending ->
-                            PendingMessageBubble(message = pending)
+                            PendingMessageBubble(
+                                message = pending,
+                                uploadStatus = uiState.uploadProgress[pending.id],
+                            )
                         }
                         // If only one message item (the header) show no messages info
                         if (uiState.messages.size == 1 && pendingForConvo.isEmpty()) {
