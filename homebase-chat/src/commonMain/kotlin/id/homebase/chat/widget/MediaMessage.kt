@@ -132,7 +132,8 @@ fun MediaMessage(
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     messageId = messageId,
-                    downloadingFiles = downloadingFiles
+                    downloadingFiles = downloadingFiles,
+                    isUploading = uploadStatus != null,
                 )
             }
         }

@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
+import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -44,7 +45,8 @@ import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.LocalVideoContextStore
+import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -110,7 +112,12 @@ fun MediaItem(
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
-    val localVideoContextStore = koinInject<LocalVideoContextStore>()
+    val localVideoContextStore = koinInject<LocalAttachmentContextStore>()
+    val localContext = if (messageId != null) {
+        val ctx by localVideoContextStore.observe(messageId, payload.key)
+            .collectAsStateWithLifecycle(initialValue = localVideoContextStore.get(messageId, payload.key))
+        ctx
+    } else null
 
     // Calculate aspect ratio if available
     val aspectRatioThumbnail = payload.thumbnails?.lastOrNull() ?: payload.previewThumbnail
@@ -176,40 +183,50 @@ fun MediaItem(
         }
 
         contentType.startsWith("image/") -> {
-            // Render image via HomebaseImage
-            // Remember the image data to avoid creating a new instance on every recomposition,
-            // which would cause Coil to restart the image loading pipeline and cause flickering.
-            val imageData =
-                remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
-                    val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
-                    HomebaseImageData(
-                        driveId = driveId,
-                        fileId = fileId,
-                        payloadKey = payload.key,
-                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
-                            ?: previewThumbnail,
-                        requestedSize = imageSize,
-                        lastModified = payload.lastModified,
-                        isEncrypted = true,
-                        keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
-                    )
-                }
-
-            if (imageData != null) {
-                HomebaseImage(
-                    imageData = imageData,
+            val imageLocalContext = localContext as? LocalAttachmentContext.Image
+            if (imageLocalContext != null) {
+                AsyncImage(
+                    model = imageLocalContext.localFilePath,
+                    contentDescription = stringResource(MR.string.chat_message_image_attachment),
                     modifier = finalModifier,
                     contentScale = imageContentScale,
-                    contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    onClick = onClick,
-                    onLongPress = onLongPress,
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
                 )
             } else {
-                // IV not yet available (placeholder during upload prep).
-                // Use a plain box respecting parent constraints — the upload overlay covers it.
-                Box(modifier = finalModifier)
+                // Render image via HomebaseImage
+                // Remember the image data to avoid creating a new instance on every recomposition,
+                // which would cause Coil to restart the image loading pipeline and cause flickering.
+                val imageData =
+                    remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
+                        val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
+                        HomebaseImageData(
+                            driveId = driveId,
+                            fileId = fileId,
+                            payloadKey = payload.key,
+                            previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                                ?: previewThumbnail,
+                            requestedSize = imageSize,
+                            lastModified = payload.lastModified,
+                            isEncrypted = true,
+                            keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
+                        )
+                    }
+
+                if (imageData != null) {
+                    HomebaseImage(
+                        imageData = imageData,
+                        modifier = finalModifier,
+                        contentScale = imageContentScale,
+                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
+                        onClick = onClick,
+                        onLongPress = onLongPress,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                    )
+                } else {
+                    // IV not yet available (placeholder during upload prep).
+                    // Use a plain box respecting parent constraints — the upload overlay covers it.
+                    Box(modifier = finalModifier)
+                }
             }
         }
 
@@ -240,11 +257,6 @@ fun MediaItem(
                         false
                     }
                 }
-                val localContext = if (messageId != null) {
-                    val ctx by localVideoContextStore.observe(messageId)
-                        .collectAsStateWithLifecycle(initialValue = localVideoContextStore.get(messageId))
-                    ctx
-                } else null
                 var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
                 var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
                 if (!isUploading) {
@@ -267,10 +279,11 @@ fun MediaItem(
                         keyHeader = perPayloadKeyHeader,
                     )
                 }
+                val videoLocalContext = localContext as? LocalAttachmentContext.Video
                 Box(modifier = finalModifier) {
-                    if (localContext != null) {
-                        val uploadBitmap = remember(localContext.thumbnailBytes) {
-                            localContext.thumbnailBytes.toImageBitmap()
+                    if (videoLocalContext != null) {
+                        val uploadBitmap = remember(videoLocalContext.thumbnailBytes) {
+                            videoLocalContext.thumbnailBytes.toImageBitmap()
                         }
                         if (uploadBitmap != null) {
                             Image(
@@ -334,23 +347,19 @@ fun MediaItem(
                     }
                 }
             } else {
-                // Check for local video context (available during upload)
-                val localContext = messageId?.let { localVideoContextStore.get(it) }
-                if (localContext != null) {
-                    val imageBitmap = remember(localContext.thumbnailBytes) {
-                        localContext.thumbnailBytes.toImageBitmap()
-                    }
-                    if (imageBitmap != null) {
-                        Box(modifier = finalModifier) {
-                            Image(
-                                bitmap = imageBitmap,
-                                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
-                            )
-                        }
-                    } else {
-                        MediaPlaceholder(emoji = "📹", label = "Video", modifier = baseModifier)
+                // No IV yet: fall back to local preview if we have one, else placeholder.
+                val videoCtx = localContext as? LocalAttachmentContext.Video
+                val imageBitmap = videoCtx?.thumbnailBytes?.let { bytes ->
+                    remember(bytes) { bytes.toImageBitmap() }
+                }
+                if (imageBitmap != null) {
+                    Box(modifier = finalModifier) {
+                        Image(
+                            bitmap = imageBitmap,
+                            contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
                     }
                 } else {
                     MediaPlaceholder(emoji = "📹", label = "Video", modifier = baseModifier)

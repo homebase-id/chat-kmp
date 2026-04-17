@@ -73,7 +73,6 @@ data class PendingOutgoingMessage(
     val conversationId: Uuid,
     val text: String,
     val attachmentCount: Int,
-    val isVideo: Boolean = false,
 )
 
 sealed interface MessageListUiSheet {

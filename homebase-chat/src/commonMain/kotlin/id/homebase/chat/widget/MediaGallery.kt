@@ -69,6 +69,7 @@ fun MediaGallery(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
     downloadingFiles: Set<String>,
+    isUploading: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
 
@@ -89,7 +90,9 @@ fun MediaGallery(
                     onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
-                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}")
+                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}"),
+                    messageId = messageId,
+                    isUploading = isUploading,
                 )
             }
 
@@ -104,7 +107,8 @@ fun MediaGallery(
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     messageId = messageId,
-                    downloadingFiles = downloadingFiles
+                    downloadingFiles = downloadingFiles,
+                    isUploading = isUploading,
                 )
 
             3 ->
@@ -118,7 +122,8 @@ fun MediaGallery(
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     messageId = messageId,
-                    downloadingFiles = downloadingFiles
+                    downloadingFiles = downloadingFiles,
+                    isUploading = isUploading,
                 )
 
             else ->
@@ -132,7 +137,8 @@ fun MediaGallery(
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     messageId = messageId,
-                    downloadingFiles = downloadingFiles
+                    downloadingFiles = downloadingFiles,
+                    isUploading = isUploading,
                 )
         }
     }
@@ -151,6 +157,7 @@ private fun TwoImageLayout(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
     downloadingFiles: Set<String>,
+    isUploading: Boolean,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().height(Dimens.Album.twoTotalHeight),
@@ -170,7 +177,9 @@ private fun TwoImageLayout(
                 onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
-                isDownloading = downloadingFiles.contains("${messageId}_${payload.key}")
+                isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
+                messageId = messageId,
+                isUploading = isUploading,
             )
         }
     }
@@ -189,6 +198,7 @@ private fun ThreeImageLayout(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
     downloadingFiles: Set<String>,
+    isUploading: Boolean,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -213,7 +223,9 @@ private fun ThreeImageLayout(
                     onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
-                    isDownloading = downloadingFiles.contains("${messageId}_${payload.key}")
+                    isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
+                    messageId = messageId,
+                    isUploading = isUploading,
                 )
             }
         }
@@ -232,7 +244,9 @@ private fun ThreeImageLayout(
             onLongPress = { offset -> onMediaLongPress?.invoke(payloads[2], offset) },
             sharedTransitionScope = sharedTransitionScope,
             animatedVisibilityScope = animatedVisibilityScope,
-            isDownloading = downloadingFiles.contains("${messageId}_${payloads[2].key}")
+            isDownloading = downloadingFiles.contains("${messageId}_${payloads[2].key}"),
+            messageId = messageId,
+            isUploading = isUploading,
         )
     }
 }
@@ -250,6 +264,7 @@ private fun FourPlusImageLayout(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     messageId: Uuid,
     downloadingFiles: Set<String>,
+    isUploading: Boolean,
 ) {
     val remainingCount = payloads.size - 4
 
@@ -276,7 +291,9 @@ private fun FourPlusImageLayout(
                     onLongPress = { offset -> onMediaLongPress?.invoke(payload, offset) },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
-                    isDownloading = downloadingFiles.contains("${messageId}_${payload.key}")
+                    isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
+                    messageId = messageId,
+                    isUploading = isUploading,
                 )
             }
         }
@@ -300,7 +317,9 @@ private fun FourPlusImageLayout(
                 onLongPress = { offset -> onMediaLongPress?.invoke(payloads[2], offset) },
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
-                isDownloading = downloadingFiles.contains("${messageId}_${payloads[2].key}")
+                isDownloading = downloadingFiles.contains("${messageId}_${payloads[2].key}"),
+                messageId = messageId,
+                isUploading = isUploading,
             )
 
             // Fourth image with optional overlay
@@ -323,7 +342,9 @@ private fun FourPlusImageLayout(
                     onLongPress = { offset -> onMediaLongPress?.invoke(payloads[3], offset) },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
-                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[3].key}")
+                    isDownloading = downloadingFiles.contains("${messageId}_${payloads[3].key}"),
+                    messageId = messageId,
+                    isUploading = isUploading,
                 )
 
                 // Overlay showing remaining count

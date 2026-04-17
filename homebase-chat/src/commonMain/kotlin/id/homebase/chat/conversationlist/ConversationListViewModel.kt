@@ -39,8 +39,8 @@ import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.LocalVideoContext
-import id.homebase.chat.services.LocalVideoContextStore
+import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
@@ -139,7 +139,7 @@ class ConversationListViewModel(
     private val connectionRequestService: ConnectionRequestService,
     private val driveFileProvider: DriveFileProvider,
     private val shareContentProcessor: ShareContentProcessor,
-    private val localVideoContextStore: LocalVideoContextStore,
+    private val localVideoContextStore: LocalAttachmentContextStore,
 ) : ViewModel() {
 
     companion object {
@@ -1178,7 +1178,7 @@ class ConversationListViewModel(
                             }
 
                             contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
-                                val localContext = localVideoContextStore.get(action.message.id)
+                                val localContext = localVideoContextStore.get(action.message.id, selectedPayload.key)
                                 val ivBytes = selectedPayload.iv?.let { Base64.decode(it) }
 
                                 if (ivBytes != null || localContext != null) {
@@ -2386,25 +2386,43 @@ class ConversationListViewModel(
             val newMessageId = Uuid.random()
             Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
 
-            // Store local video context for thumbnail preview during upload
-            val primaryVideo = files.filterIsInstance<AttachmentPendingFile.FileVideo>().firstOrNull()
-            primaryVideo?.let { videoFile ->
-                val thumbBytes = videoFile.thumbnailBytes
-                if (thumbBytes != null) {
-                    val aspect = runCatching {
-                        val size = ImageUtils.getNaturalSize(thumbBytes)
-                        if (size.pixelWidth > 0 && size.pixelHeight > 0) {
-                            size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
+            // Store a local preview context per attachment (keyed by the payload key the
+            // MessageAttachmentBuilder will emit), so both the placeholder and the eventual
+            // real bubble can render the local preview without fetching from the server.
+            files.forEachIndexed { index, file ->
+                val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+                val ctx: LocalAttachmentContext? = when (file) {
+                    is AttachmentPendingFile.FileVideo -> {
+                        val bytes = file.thumbnailBytes
+                        if (bytes != null) {
+                            val aspect = runCatching {
+                                val size = ImageUtils.getNaturalSize(bytes)
+                                if (size.pixelWidth > 0 && size.pixelHeight > 0)
+                                    size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
+                                else null
+                            }.getOrNull()
+                            LocalAttachmentContext.Video(
+                                thumbnailBytes = bytes,
+                                localFilePath = file.file.toString(),
+                                aspectRatio = aspect,
+                            )
                         } else null
-                    }.getOrNull()
-                    localVideoContextStore.put(
-                        newMessageId,
-                        LocalVideoContext(
-                            thumbnailBytes = thumbBytes,
-                            localFilePath = videoFile.file.toString(),
-                            aspectRatio = aspect,
+                    }
+                    is AttachmentPendingFile.FileImage ->
+                        LocalAttachmentContext.Image(
+                            localFilePath = file.file.toString(),
+                            aspectRatio = null,
                         )
-                    )
+                    is AttachmentPendingFile.Gallery ->
+                        LocalAttachmentContext.Image(
+                            localFilePath = file.image.file.toString(),
+                            aspectRatio = null,
+                        )
+                    is AttachmentPendingFile.File -> null
+                    is AttachmentPendingFile.Audio -> null
+                }
+                if (ctx != null) {
+                    localVideoContextStore.put(newMessageId, payloadKey, ctx)
                 }
             }
 
@@ -2415,7 +2433,6 @@ class ConversationListViewModel(
                 conversationId = conversationId,
                 text = content,
                 attachmentCount = files.size,
-                isVideo = primaryVideo?.thumbnailBytes != null,
             )
 
             // Register the placeholder, register upload progress, clear the
