@@ -403,4 +403,7 @@
     <string name="upload_finalizing">Finalizing\u2026</string>
     <string name="upload_done">Done</string>
 
+    <string name="pending_attachment_one">1 attachment</string>
+    <string name="pending_attachment_many">%1$d attachments</string>
+
 </resources>

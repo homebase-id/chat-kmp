@@ -64,6 +64,15 @@ data class MessageListUiState(
     val recordingData: RecordingData? = null,
     val uiSheet: MessageListUiSheet? = null,
     val isSendingMessage: Boolean = false,
+    val pendingOutgoing: ImmutableList<PendingOutgoingMessage> = persistentListOf(),
+)
+
+@Immutable
+data class PendingOutgoingMessage(
+    val id: Uuid,
+    val conversationId: Uuid,
+    val text: String,
+    val attachmentCount: Int,
 )
 
 sealed interface MessageListUiSheet {

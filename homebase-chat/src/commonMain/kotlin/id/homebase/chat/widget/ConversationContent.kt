@@ -583,6 +583,18 @@ fun ConversationContent(
                 }
             }
 
+            val realMessageIds = remember(uiState.messages) {
+                uiState.messages
+                    .filterIsInstance<MessageListContentModel.Message>()
+                    .mapTo(HashSet()) { it.message.id }
+            }
+            val pendingForConvo = remember(uiState.pendingOutgoing, realMessageIds, conversation.conversation.id) {
+                uiState.pendingOutgoing.filter {
+                    it.conversationId == conversation.conversation.id &&
+                            it.id !in realMessageIds
+                }
+            }
+
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
@@ -666,8 +678,11 @@ fun ConversationContent(
                                 }
                             }
                         }
+                        items(pendingForConvo, key = { "pending-${it.id}" }) { pending ->
+                            PendingMessageBubble(message = pending)
+                        }
                         // If only one message item (the header) show no messages info
-                        if (uiState.messages.size == 1) {
+                        if (uiState.messages.size == 1 && pendingForConvo.isEmpty()) {
                             item { EmptyListItem(stringResource(MR.string.chat_no_messages)) }
                         }
                     }

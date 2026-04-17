@@ -2384,12 +2384,6 @@ class ConversationListViewModel(
             val newMessageId = Uuid.random()
             Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
 
-            _messagesUiState.update { state ->
-                state.copy(
-                    uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
-                )
-            }
-
             // Store local video context for thumbnail preview during upload
             files.filterIsInstance<AttachmentPendingFile.FileVideo>()
                 .firstOrNull()?.let { videoFile ->
@@ -2407,44 +2401,69 @@ class ConversationListViewModel(
 
             pendingMessageId = newMessageId
 
-            try {
-                val bundle = MessageAttachmentBuilder.build(
-                    attachments = attachments,
-                    fileOperationsProvider = fileOperationsProvider,
-                    payloadKeyFactory = { index, _ ->
-                        "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                    })
+            val placeholder = PendingOutgoingMessage(
+                id = newMessageId,
+                conversationId = conversationId,
+                text = content,
+                attachmentCount = files.size,
+            )
 
-                chatMessageSenderService.sendNewMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    messageText = content,
-                    previousMessageUniqueId = null,
-                    payloadBundle = bundle,
+            // Register the placeholder, register upload progress, clear the
+            // composer, and close the overlay BEFORE the heavy work so the
+            // user sees a "Preparing…" bubble in the chat immediately.
+            _messagesUiState.update { state ->
+                state.copy(
+                    uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap(),
+                    pendingOutgoing = (state.pendingOutgoing + placeholder).toPersistentList(),
+                    fullScreenOverlay = null,
+                    isSendingMessage = false,
                 )
-                messageInputTextState.clear()
-                _messagesUiState.update {
-                    it.copy(
-                        fullScreenOverlay = null,
-                        isSendingMessage = false
+            }
+            messageInputTextState.clear()
+
+            viewModelScope.launch {
+                try {
+                    val bundle = MessageAttachmentBuilder.build(
+                        attachments = attachments,
+                        fileOperationsProvider = fileOperationsProvider,
+                        payloadKeyFactory = { index, _ ->
+                            "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+                        })
+
+                    chatMessageSenderService.sendNewMessage(
+                        messageUniqueId = newMessageId,
+                        conversationId = conversationId,
+                        messageText = content,
+                        previousMessageUniqueId = null,
+                        payloadBundle = bundle,
+                    )
+                    // Real optimistic bubble has landed — drop the placeholder.
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            pendingOutgoing = state.pendingOutgoing
+                                .filterNot { it.id == newMessageId }
+                                .toPersistentList(),
+                        )
+                    }
+                } catch (e: Exception) {
+                    Logger.e(
+                        throwable = e,
+                        tag = TAG
+                    ) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap(),
+                            pendingOutgoing = state.pendingOutgoing
+                                .filterNot { it.id == newMessageId }
+                                .toPersistentList(),
+                        )
+                    }
+                    sendEvent(
+                        ShowErrorMessage(
+                            "Failed to send file(s): ${e.message}"
+                        )
                     )
                 }
-            } catch (e: Exception) {
-                Logger.e(
-                    throwable = e,
-                    tag = TAG
-                ) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
-                _messagesUiState.update { state ->
-                    state.copy(
-                        uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap(),
-                        isSendingMessage = false
-                    )
-                }
-                sendEvent(
-                    ShowErrorMessage(
-                        "Failed to send file(s): ${e.message}"
-                    )
-                )
             }
         }
     }
