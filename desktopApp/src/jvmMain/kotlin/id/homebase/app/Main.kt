@@ -44,6 +44,11 @@ import org.koin.core.context.GlobalContext.startKoin
 import java.io.File
 
 fun main() {
+    // Force JNA to load its bundled native library. Without this, Windows may resolve
+    // a mismatched jnidispatch.dll from the system path, causing Native.<clinit> to throw.
+    // Must be set before any JNA-using class (FileKit, compose-native-tray) loads.
+    System.setProperty("jna.nosys", "true")
+
     // Initialize file logging
     try {
         // Use user's home directory for logs
