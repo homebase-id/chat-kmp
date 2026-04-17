@@ -101,9 +101,23 @@ actual fun getUriHandler(): FileSystemHandler {
                     .replace('\\', '_')
                     .replace('\u0000', '_')
 
+                // kotlinx.io.files.Path collapses `content://` to `content:/`; restore it.
+                val rawPath = file.toString()
+                val sourceUri = when {
+                    rawPath.startsWith("content://") -> rawPath.toUri()
+                    rawPath.startsWith("content:/") ->
+                        "content://${rawPath.removePrefix("content:/")}".toUri()
+                    else -> null
+                }
+
                 Thread {
                     try {
-                        val sourceFile = File(file.toString())
+                        fun openSource(): java.io.InputStream = if (sourceUri != null) {
+                            context.contentResolver.openInputStream(sourceUri)
+                                ?: throw Exception("Failed to open source URI: $sourceUri")
+                        } else {
+                            File(rawPath).inputStream()
+                        }
                         val mimeType = detectContentTypeFromExtensionOrHint(safeName)
 
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -135,7 +149,7 @@ actual fun getUriHandler(): FileSystemHandler {
 
                             try {
                                 resolver.openOutputStream(uri)?.use { outputStream ->
-                                    sourceFile.inputStream().use { it.copyTo(outputStream) }
+                                    openSource().use { it.copyTo(outputStream) }
                                 } ?: throw Exception("Failed to open output stream")
 
                                 values.clear()
@@ -171,7 +185,9 @@ actual fun getUriHandler(): FileSystemHandler {
                             val destDir = Environment.getExternalStoragePublicDirectory(directory)
                             destDir.mkdirs()
                             val destFile = File(destDir, safeName)
-                            sourceFile.copyTo(destFile, overwrite = true)
+                            destFile.outputStream().use { out ->
+                                openSource().use { it.copyTo(out) }
+                            }
 
                             MediaScannerConnection.scanFile(
                                 context,
