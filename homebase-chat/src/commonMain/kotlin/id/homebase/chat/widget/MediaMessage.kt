@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -87,15 +86,7 @@ fun MediaMessage(
     Box(modifier = Modifier.animateContentSize()) {
         when (payloads.size) {
             1 -> {
-                // Lock width to maxWidth while uploading so the bubble doesn't jump
-                // horizontally when the placeholder transitions to real content.
-                val widthModifier = if (uploadStatus != null) {
-                    modifier
-                        .width(Dimens.MediaBubble.maxWidth)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                } else {
-                    modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                }
+                val widthModifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 MediaItem(
                     payload = payloads[0],
                     fileId = fileId,
@@ -122,6 +113,7 @@ fun MediaMessage(
                     animatedVisibilityScope = animatedVisibilityScope,
                     isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}"),
                     messageId = messageId,
+                    isUploading = uploadStatus != null,
                 )
             }
 

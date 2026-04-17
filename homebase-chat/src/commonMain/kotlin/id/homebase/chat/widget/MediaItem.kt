@@ -106,6 +106,7 @@ fun MediaItem(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     isDownloading: Boolean = false,
     messageId: Uuid? = null,
+    isUploading: Boolean = false,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
@@ -246,7 +247,7 @@ fun MediaItem(
                 } else null
                 var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
                 var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
-                if (localContext == null) {
+                if (!isUploading) {
                     VideoPreloadEffect(
                         data = videoPlayerData,
                         onPreloading = { isPreloading = it },
@@ -291,7 +292,7 @@ fun MediaItem(
                             animatedVisibilityScope = animatedVisibilityScope,
                         )
                     }
-                    if (localContext == null) {
+                    if (!isUploading) {
                         Icon(
                             imageVector = Icons.Default.PlayCircle,
                             contentDescription = null,
@@ -310,7 +311,7 @@ fun MediaItem(
                                 .padding(horizontal = 3.dp, vertical = 1.dp),
                         )
                     }
-                    if (isPreloading && localContext == null) {
+                    if (isPreloading && !isUploading) {
                         Box(
                             modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.4f)),
                             contentAlignment = Alignment.Center,

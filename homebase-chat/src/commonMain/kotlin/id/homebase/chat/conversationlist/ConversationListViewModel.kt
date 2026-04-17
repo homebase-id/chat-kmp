@@ -308,7 +308,8 @@ class ConversationListViewModel(
                                 uploadProgress = (state.uploadProgress - event.uniqueId).toPersistentMap()
                             )
                         }
-                        localVideoContextStore.remove(event.uniqueId)
+                        // Keep the local video thumbnail for the rest of the session so the
+                        // bubble never swaps to HomebaseImage (avoids progressive load + resize).
                     }
                 }
         }

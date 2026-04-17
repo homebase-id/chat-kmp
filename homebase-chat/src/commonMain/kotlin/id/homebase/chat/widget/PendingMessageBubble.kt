@@ -95,22 +95,20 @@ private fun VideoPendingBubble(
         color = HomebaseTheme.extendedColors.bubbleSentSurface,
     ) {
         Column {
-            Box(
-                modifier = Modifier
-                    .width(Dimens.MediaBubble.maxWidth)
-                    .heightIn(min = Dimens.MediaBubble.minHeight, max = Dimens.MediaBubble.maxHeight)
-                    .clip(mediaShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-            ) {
-                val aspectModifier = ctx?.aspectRatio?.let { ratio ->
-                    Modifier.fillMaxWidth().then(Modifier.aspectRatio(ratio))
-                } ?: Modifier.fillMaxSize()
+            val mediaBoxModifier = Modifier
+                .heightIn(min = Dimens.MediaBubble.minHeight, max = Dimens.MediaBubble.maxHeight)
+                .let { base ->
+                    ctx?.aspectRatio?.let { ratio -> base.aspectRatio(ratio) } ?: base
+                }
+                .clip(mediaShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
 
+            Box(modifier = mediaBoxModifier) {
                 if (bitmap != null) {
                     Image(
                         bitmap = bitmap,
                         contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                        modifier = aspectModifier,
+                        modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
                     )
                 }
