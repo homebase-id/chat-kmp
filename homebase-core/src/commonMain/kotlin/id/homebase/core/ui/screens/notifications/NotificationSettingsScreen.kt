@@ -60,8 +60,10 @@ import id.homebase.resources.settings_notification_content
 import id.homebase.resources.settings_notification_locked_screen_note
 import id.homebase.resources.settings_notification_show
 import id.homebase.resources.settings_notifications
+import id.homebase.resources.settings_notifications_denied_body
 import id.homebase.resources.settings_notifications_disabled_body
 import id.homebase.resources.settings_notifications_disabled_title
+import id.homebase.resources.settings_open_settings
 import id.homebase.resources.settings_play_while_app_open
 import id.homebase.resources.settings_push_notification_status
 import id.homebase.resources.settings_re_register_failure
@@ -91,9 +93,12 @@ fun NotificationSettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val openSystemSettings = rememberOpenSystemNotificationSettings()
 
-    val permissionManager = createPermissionsManager { type, status, _ ->
+    val permissionManager = createPermissionsManager { type, status, isPermanentlyDenied ->
         if (type == PermissionType.NOTIFICATION) {
-            viewModel.updatePermissionStatus(status == PermissionStatus.GRANTED)
+            viewModel.updatePermissionStatus(
+                isGranted = status == PermissionStatus.GRANTED,
+                isPermanentlyDenied = isPermanentlyDenied
+            )
         }
     }
 
@@ -104,10 +109,12 @@ fun NotificationSettingsScreen(
 
     NotificationSettingsUi(
         uiState = uiState, onAction = { action ->
-            if (action is NotificationSettingsUiAction.RequestPermission) {
-                permissionManager.askPermission(PermissionType.NOTIFICATION)
-            } else {
-                viewModel.onAction(action)
+            when (action) {
+                is NotificationSettingsUiAction.RequestPermission ->
+                    permissionManager.askPermission(PermissionType.NOTIFICATION)
+                is NotificationSettingsUiAction.OpenSystemNotificationSettings ->
+                    permissionManager.launchSettings()
+                else -> viewModel.onAction(action)
             }
         }, onBackClick = onBackClick, onOpenSystemSettings = openSystemSettings
     )
@@ -156,15 +163,26 @@ fun NotificationSettingsUi(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = stringResource(MR.string.settings_notifications_disabled_body),
+                            text = if (uiState.isPermissionPermanentlyDenied)
+                                stringResource(MR.string.settings_notifications_denied_body)
+                            else
+                                stringResource(MR.string.settings_notifications_disabled_body),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = {
-                                onAction(NotificationSettingsUiAction.RequestPermission)
-                            }) { Text(stringResource(MR.string.settings_enable_notifications)) }
+                        if (uiState.isPermissionPermanentlyDenied) {
+                            Button(onClick = {
+                                onAction(NotificationSettingsUiAction.OpenSystemNotificationSettings)
+                            }) {
+                                Text(stringResource(MR.string.settings_open_settings))
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    onAction(NotificationSettingsUiAction.RequestPermission)
+                                }) { Text(stringResource(MR.string.settings_enable_notifications)) }
+                        }
                     }
                 }
             }

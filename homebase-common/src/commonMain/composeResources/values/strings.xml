@@ -174,6 +174,8 @@
     <string name="settings_notifications_disabled_title">Push Notifications are disabled</string>
     <string name="settings_notifications_disabled_body">Enable notifications to receive messages when the app is closed.</string>
     <string name="settings_enable_notifications">Enable Notifications</string>
+    <string name="settings_notifications_denied_body">Notifications have been denied. Please enable them in your device settings.</string>
+    <string name="settings_open_settings">Open Settings</string>
     <string name="settings_sounds">Sounds</string>
     <string name="settings_message_sound">Message Sound</string>
     <string name="settings_sound_system_default">System Default</string>
