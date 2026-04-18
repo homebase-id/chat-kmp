@@ -5,13 +5,19 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlin.test.*
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 class TestUploader : OutboxUploader {
@@ -269,6 +275,91 @@ class OutboxSyncTest {
             assertEquals(uniqueId, dropped.uniqueId)
             assertEquals(driveId, dropped.driveId)
             assertEquals(20, dropped.attempts)
+        }
+        db.close()
+    }
+
+    /**
+     * Regression: pressing Send on partial connectivity must not hang.
+     *
+     * Bug (homebase.log 2026-04-17 15:14:56): text-message send suspended between the
+     * "encrypting" and "outbox enqueued" log lines. The only suspending step in between
+     * is `OutboxSync.tryEnqueue`'s `eventBus.emit(ItemEnqueued)`. On partial connectivity
+     * other EventBus subscribers (AuthConnectionCoordinator, ConnectionRequestService,
+     * DriveContactService) do slow network IO synchronously inside `collect { … }`; the
+     * 11-slot SharedFlow buffer fills up, and the default SUSPEND overflow parks every
+     * subsequent emit — including the one from tryEnqueue — so the Send coroutine never
+     * returns and the UI's Send button stays disabled.
+     *
+     * Contract under test: tryEnqueue must complete within a bounded time regardless of
+     * whether the bus is saturated. The outbox is the durable queue; notifying listeners
+     * is a best-effort side-effect that must not gate enqueue completion.
+     */
+    @Test
+    fun testTryEnqueueDoesNotBlockOnSaturatedEventBus() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+
+        runTest {
+            val eventBus = EventBus()
+            val uploader = TestUploader()
+
+            val sync = OutboxSync(
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+            )
+
+            // Simulate a subscriber that blocks inside `collect { … }` the way the real
+            // ConnectionRequestService / AuthConnectionCoordinator / DriveContactService
+            // subscribers do when they call a suspending network fetch on partial
+            // connectivity: the first event is picked up, the collect body never returns,
+            // and further emissions pile up in the 11-slot buffer.
+            val blocker = CompletableDeferred<Unit>()
+            val collectorJob = backgroundScope.launch {
+                eventBus.events.collect {
+                    blocker.await()
+                }
+            }
+            testScheduler.runCurrent()
+
+            // Saturate the bus buffer. We launch each emit so emits that can't fit don't
+            // suspend the test body itself — they stay parked inside their own launched
+            // coroutine, leaving the bus in a "next emit will suspend" state.
+            repeat(20) { i ->
+                backgroundScope.launch {
+                    eventBus.emit(BackendEvent.OutboxEvent.Failed("saturate-$i"))
+                }
+            }
+            testScheduler.runCurrent()
+
+            // Now exercise the enqueue path. On `main` the `eventBus.emit(ItemEnqueued)`
+            // inside tryEnqueue will park behind the full buffer → withTimeout fires →
+            // test fails with TimeoutCancellationException. After the fix (tryEmit /
+            // fire-and-forget) tryEnqueue completes promptly.
+            //
+            // We use a REAL-time timeout (withContext(Dispatchers.Default)) because the
+            // inner DB insert hops to Dispatchers.Default.limitedParallelism(1) and
+            // runTest's virtual-time auto-advance can fire the deadline before the real
+            // DB work returns, which would create a false positive on the fix branch.
+            val driveId = Uuid.random()
+            val uniqueId = Uuid.random()
+            val enqueued = withContext(Dispatchers.Default) {
+                withTimeout(3.seconds) {
+                    sync.tryEnqueue(
+                        driveId = driveId,
+                        uniqueId = uniqueId,
+                        dependencyUniqueId = null,
+                        priority = 1,
+                        uploadType = 0,
+                        json = ""
+                    )
+                }
+            }
+
+            assertTrue(enqueued, "tryEnqueue should report success")
+            assertEquals(1L, db.outbox.count(), "record should be durably inserted in outbox")
+
+            // Clean up — release the blocked collector so backgroundScope can finish.
+            blocker.complete(Unit)
+            collectorJob.cancel()
         }
         db.close()
     }

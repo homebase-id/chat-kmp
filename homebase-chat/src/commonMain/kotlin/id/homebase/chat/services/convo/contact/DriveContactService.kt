@@ -73,7 +73,10 @@ class DriveContactService(
                     event.result is BackendEvent.DriveResult.Success &&
                     event.driveId == contactDrive
                 ) {
-                    refresh()
+                    // Never do blocking IO inside a SharedFlow collect body: refresh()
+                    // calls QueryBatch which hangs on partial connectivity, parking the
+                    // 11-slot EventBus buffer and cascading to stall the chat Send path.
+                    scope.launch { refresh() }
                 }
             }
         }

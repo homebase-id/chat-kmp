@@ -57,22 +57,32 @@ class ConnectionRequestService(
     init {
         scope.launch {
             eventBus.events.collect { event ->
+                // Never do blocking IO inside a SharedFlow collect body: on partial
+                // connectivity `refresh()` hangs in an HTTP call, which parks the
+                // 11-slot EventBus buffer and cascades to stall the chat Send path
+                // (OutboxSync.tryEnqueue emits ItemEnqueued on the same bus).
                 when (event) {
                     is BackendEvent.CircleNetworkEvent.ConnectionRequestReceived -> {
-                        markIncomingOptimistically(event.sender)
-                        refresh()
+                        scope.launch {
+                            markIncomingOptimistically(event.sender)
+                            refresh()
+                        }
                     }
                     is BackendEvent.CircleNetworkEvent.ConnectionRequestAccepted -> {
                         // This outgoing request was accepted — drop it from the pending list
-                        removeFromOutgoing(event.acceptedBy)
-                        refresh()
+                        scope.launch {
+                            removeFromOutgoing(event.acceptedBy)
+                            refresh()
+                        }
                     }
                     is BackendEvent.CircleNetworkEvent.ConnectionRequestFinalized -> {
                         // The incoming request we accepted is now finalized — clear it.
-                        removeFromIncoming(event.identity)
-                        refresh()
+                        scope.launch {
+                            removeFromIncoming(event.identity)
+                            refresh()
+                        }
                     }
-                    is BackendEvent.ConnectionOnline -> refresh()
+                    is BackendEvent.ConnectionOnline -> scope.launch { refresh() }
                     else -> {}
                 }
             }
