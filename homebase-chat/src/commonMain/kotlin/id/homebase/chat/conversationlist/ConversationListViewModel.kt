@@ -12,6 +12,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
@@ -1955,26 +1956,20 @@ class ConversationListViewModel(
                                 }
                             })
 
-                            // Scroll handling, either use new message id, click message id or null
-                            val newMessageId =
-                                messages.firstOrNull { it.id == pendingMessageId }?.id
+                            // Scroll handling: navigate to a specific message (search results,
+                            // cross-conversation jumps, etc.). The user's own just-sent messages
+                            // are handled by the LazyColumn auto-follow effect in ConversationContent.kt,
+                            // which only scrolls when the user was already at the bottom. Forcing
+                            // a scroll-to-new-message here would yank the user out of history.
                             pendingMessageId = null
-                            val indexOfMessageForScroll = if (newMessageId != null) {
-                                val index = messagesModels.indexOfLast {
-                                    it is MessageListContentModel.Message && it.message.id == newMessageId
+                            val indexOfMessageForScroll = if (messageIdForScrollNullable != null) {
+                                val messageIndex = messagesModels.indexOfLast {
+                                    it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
                                 }
-                                Logger.i("Resetting scroll position, new message seen, index: $index")
-                                index
+                                messageIdForScrollNullable = null
+                                messageIndex
                             } else {
-                                if (messageIdForScrollNullable == null) {
-                                    null
-                                } else {
-                                    val messageIndex = messagesModels.indexOfLast {
-                                        it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
-                                    }
-                                    messageIdForScrollNullable = null
-                                    messageIndex
-                                }
+                                null
                             }
 
                             val newScroll = if (indexOfMessageForScroll == null) {
@@ -2283,6 +2278,7 @@ class ConversationListViewModel(
         content: String,
         files: List<AttachmentPendingFile>
     ) {
+        val sentAt = UnixTimeUtc.now()
         viewModelScope.launch {
             val attachments = mutableListOf<AttachmentInput>()
             files.forEach { attachment ->
@@ -2460,6 +2456,7 @@ class ConversationListViewModel(
                 conversationId = conversationId,
                 text = content,
                 attachmentCount = files.size,
+                sentAt = kotlin.time.Instant.fromEpochMilliseconds(sentAt.milliseconds),
             )
 
             // Register the placeholder, register upload progress, clear the
@@ -2490,6 +2487,7 @@ class ConversationListViewModel(
                         messageText = content,
                         previousMessageUniqueId = null,
                         payloadBundle = bundle,
+                        userDate = sentAt,
                     )
                     // Real optimistic bubble has landed — drop the placeholder.
                     _messagesUiState.update { state ->

@@ -93,6 +93,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.MessageListContentModel
+import id.homebase.chat.conversationlist.PendingOutgoingMessage
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.conversationlist.RecipientGroupModel
@@ -225,6 +226,26 @@ fun ConversationContent(
                 ?: return@snapshotFlow false
             lastVisibleIndex < totalItems - 1
         }.collect { showScrollToBottom = it }
+    }
+
+    // Auto-follow: when the list grows (new sent or received message) and the
+    // user was already at the bottom, scroll to the new last item. If the user
+    // is reading history further up, leave them alone.
+    LaunchedEffect(listState, conversation.conversation.id) {
+        var previousTotal = 0
+        var wasAtBottom = false
+        snapshotFlow {
+            listState.layoutInfo.totalItemsCount to listState.canScrollForward
+        }.collect { (total, canScrollForward) ->
+            if (total > previousTotal && previousTotal > 0 && wasAtBottom) {
+                listState.animateScrollToItem(total - 1)
+            }
+            // canScrollForward == false means the user is at the absolute end
+            // of the list. Record this BEFORE the next snapshot so a subsequent
+            // growth sees the pre-growth scroll state.
+            wasAtBottom = total > 0 && !canScrollForward
+            previousTotal = total
+        }
     }
 
     // Add this state to track keyboard height
@@ -594,6 +615,31 @@ fun ConversationContent(
                             it.id !in realMessageIds
                 }
             }
+            // Merge pending placeholders into the messages list at the right
+            // chronological position (sorted by sentAt vs. message.userDate).
+            // This matters when a video is still processing — any text or
+            // incoming messages with a later timestamp must render BELOW the
+            // video placeholder, not above it.
+            val mergedItems = remember(uiState.messages, pendingForConvo) {
+                if (pendingForConvo.isEmpty()) {
+                    uiState.messages.toList<Any>()
+                } else {
+                    val pending = pendingForConvo.sortedBy { it.sentAt }.toMutableList()
+                    val result = mutableListOf<Any>()
+                    for (item in uiState.messages) {
+                        if (item is MessageListContentModel.Message) {
+                            while (pending.isNotEmpty() &&
+                                pending.first().sentAt <= item.message.userDate
+                            ) {
+                                result += pending.removeAt(0)
+                            }
+                        }
+                        result += item
+                    }
+                    result.addAll(pending)
+                    result.toList()
+                }
+            }
 
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -608,8 +654,17 @@ fun ConversationContent(
                             bottom = 24.dp,
                         )
                     ) {
-                        items(uiState.messages, key = { message -> message.id }) { messageItem ->
-                            when (messageItem) {
+                        items(
+                            mergedItems,
+                            key = { item ->
+                                when (item) {
+                                    is MessageListContentModel -> item.id
+                                    is PendingOutgoingMessage -> "pending-${item.id}"
+                                    else -> item.hashCode().toString()
+                                }
+                            },
+                        ) { item ->
+                            when (item) {
                                 is MessageListContentModel.Header -> {
                                     Column {
                                         AvatarNameDisplay(
@@ -647,19 +702,19 @@ fun ConversationContent(
                                 }
 
                                 is MessageListContentModel.Section -> {
-                                    MessagesSection(text = getDateSectionLabel(messageItem.date))
+                                    MessagesSection(text = getDateSectionLabel(item.date))
                                 }
 
                                 is MessageListContentModel.System -> {
-                                    MessagesSystemMessage(text = messageItem.text)
+                                    MessagesSystemMessage(text = item.text)
                                 }
 
                                 is MessageListContentModel.Message -> {
                                     val isFocused = uiState.searchResultMessageIds.getOrNull(
                                         uiState.currentSearchResultIndex
-                                    ) == messageItem.message.id
+                                    ) == item.message.id
                                     MessageItem(
-                                        message = messageItem.message,
+                                        message = item.message,
                                         userDefaultReactions = uiState.userDefaultReactions,
                                         decryptedFiles = uiState.decryptedFiles,
                                         currentOdinId = uiState.ownerSession?.odinId?.domainName
@@ -670,19 +725,20 @@ fun ConversationContent(
                                         sharedTransitionScope = sharedTransitionScope,
                                         onUiAction = onUiAction,
                                         downloadingFiles = uiState.downloadingFiles,
-                                        uploadStatus = uiState.uploadProgress[messageItem.message.id],
+                                        uploadStatus = uiState.uploadProgress[item.message.id],
                                         replyMessages = replyMessages,
                                         searchQuery = uiState.searchQuery,
                                         isCurrentSearchResult = isFocused,
                                     )
                                 }
+
+                                is PendingOutgoingMessage -> {
+                                    PendingMessageBubble(
+                                        message = item,
+                                        uploadStatus = uiState.uploadProgress[item.id],
+                                    )
+                                }
                             }
-                        }
-                        items(pendingForConvo, key = { "pending-${it.id}" }) { pending ->
-                            PendingMessageBubble(
-                                message = pending,
-                                uploadStatus = uiState.uploadProgress[pending.id],
-                            )
                         }
                         // If only one message item (the header) show no messages info
                         if (uiState.messages.size == 1 && pendingForConvo.isEmpty()) {
