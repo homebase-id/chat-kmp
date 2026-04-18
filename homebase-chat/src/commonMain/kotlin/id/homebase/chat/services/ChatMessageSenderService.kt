@@ -333,7 +333,7 @@ class ChatMessageSenderService(
                 payloads = payloads,
                 toDeletePayloads = toDeletePayloads,
                 thumbnails = null,
-                generatePayloadIv = false
+                generatePayloadIv = unecryptedMetadata.isEncrypted
             )
 
         val request = UpdateFileByUniqueIdRequest(
@@ -355,7 +355,7 @@ class ChatMessageSenderService(
 
         try {
 
-            val enqueued = outboxSync.tryEnqueue(
+            val enqueued = outboxSync.replaceEnqueue(
                 request,
                 priority = 1,
                 dependencyUniqueId = null,

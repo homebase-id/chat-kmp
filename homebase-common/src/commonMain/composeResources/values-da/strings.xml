@@ -43,6 +43,8 @@
     <string name="leave">Forlad</string>
     <string name="export_log">Eksportér log</string>
     <string name="clear_log">Ryd log</string>
+    <string name="log_cleared">Log ryddet</string>
+    <string name="log_clear_failed">Kunne ikke rydde loggen</string>
     <string name="send">Send</string>
     <string name="media">Medie</string>
     <string name="about_homebase">Om Homebase</string>

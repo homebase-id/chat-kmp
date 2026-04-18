@@ -364,6 +364,112 @@ class OutboxSyncTest {
         db.close()
     }
 
+    /**
+     * Regression: re-enqueueing a request for the same `(driveId, uniqueId)` while a stale
+     * row is still retrying used to crash the edit-message flow.
+     *
+     * Bug (homebase.log 2026-04-18 12:09:51): after the server returned 400 on `UpdateFile(2)`,
+     * the outbox kept the row for retry. A second `tryEnqueue` for the same message then hit
+     * `SQLiteException: [SQLITE_CONSTRAINT_UNIQUE] A UNIQUE constraint failed (UNIQUE constraint
+     * failed: Outbox.driveId, Outbox.uniqueId)` — because the INSERT statement is a plain insert,
+     * not an upsert. The exception was caught, `tryEnqueue` returned false, and
+     * `ChatMessageSenderService.updateMessage` re-threw as `IllegalStateException: Failed to
+     * update chat message`, which surfaced as a user-visible toast on every retry attempt.
+     *
+     * Contract under test: `tryEnqueue` on a duplicate `(driveId, uniqueId)` reports failure
+     * (doesn't throw) and leaves the original row untouched. Callers that want the new request
+     * to supersede the old one must use `replaceEnqueue`.
+     */
+    @Test
+    fun testTryEnqueueDuplicateReturnsFalseAndKeepsOriginal() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+
+        runTest {
+            val eventBus = EventBus()
+            val uploader = TestUploader()
+            val sync = OutboxSync(
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+            )
+
+            val driveId = Uuid.random()
+            val uniqueId = Uuid.random()
+
+            val firstOk = sync.tryEnqueue(
+                driveId = driveId,
+                uniqueId = uniqueId,
+                dependencyUniqueId = null,
+                priority = 1,
+                uploadType = 2, // UpdateFile
+                json = "original"
+            )
+            assertTrue(firstOk, "first enqueue should succeed")
+            assertEquals(1L, db.outbox.count())
+
+            val secondOk = sync.tryEnqueue(
+                driveId = driveId,
+                uniqueId = uniqueId,
+                dependencyUniqueId = null,
+                priority = 1,
+                uploadType = 2,
+                json = "superseding"
+            )
+            assertFalse(secondOk, "duplicate tryEnqueue should report failure, not throw")
+            assertEquals(1L, db.outbox.count(), "original row must remain")
+
+            val row = db.outbox.checkout()
+            assertNotNull(row)
+            assertEquals("original", row.json.decodeToString(), "original row's payload must be preserved")
+        }
+        db.close()
+    }
+
+    /**
+     * Regression for the fix of the above: when the caller *wants* the new request to supersede
+     * the stale one (as `ChatMessageSenderService.updateMessage` does for every edit), using
+     * `replaceEnqueue` must not throw, must leave exactly one row, and must replace the payload.
+     */
+    @Test
+    fun testReplaceEnqueueSupersedesExistingRow() {
+        val db = DatabaseManager { createInMemoryDatabase() }
+
+        runTest {
+            val eventBus = EventBus()
+            val uploader = TestUploader()
+            val sync = OutboxSync(
+                databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+            )
+
+            val driveId = Uuid.random()
+            val uniqueId = Uuid.random()
+
+            val firstOk = sync.tryEnqueue(
+                driveId = driveId,
+                uniqueId = uniqueId,
+                dependencyUniqueId = null,
+                priority = 1,
+                uploadType = 2,
+                json = "stale"
+            )
+            assertTrue(firstOk)
+
+            val replacedOk = sync.replaceEnqueue(
+                driveId = driveId,
+                uniqueId = uniqueId,
+                dependencyUniqueId = null,
+                priority = 1,
+                uploadType = 2,
+                json = "fresh"
+            )
+            assertTrue(replacedOk, "replaceEnqueue must succeed even when a row already exists")
+            assertEquals(1L, db.outbox.count(), "exactly one row should remain after replace")
+
+            val row = db.outbox.checkout()
+            assertNotNull(row)
+            assertEquals("fresh", row.json.decodeToString(), "new payload must win over the stale one")
+        }
+        db.close()
+    }
+
     @Test
     fun testEmptyOutbox() {
         val db = DatabaseManager { createInMemoryDatabase() }
