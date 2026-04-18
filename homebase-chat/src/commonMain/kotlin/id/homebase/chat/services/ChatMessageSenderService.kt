@@ -59,7 +59,8 @@ class ChatMessageSenderService(
         conversationId: Uuid,
         messageText: String,
         previousMessageUniqueId: Uuid?,
-        payloadBundle: PayloadBundle?
+        payloadBundle: PayloadBundle?,
+        userDate: UnixTimeUtc? = null,
     ): SendMessageResult {
         val messageData = MessageAppData(
             replyId = null,
@@ -75,12 +76,13 @@ class ChatMessageSenderService(
         )
 
         return sendMessageInternal(
-            messageUniqueId,
-            conversationId,
-            built.headerContent,
-            "You have a new message",
-            previousMessageUniqueId,
-            built.payloadBundle
+            messageUniqueId = messageUniqueId,
+            conversationId = conversationId,
+            content = built.headerContent,
+            notificationText = "You have a new message",
+            previousMessageUniqueId = previousMessageUniqueId,
+            payloadBundle = built.payloadBundle,
+            userDate = userDate,
         )
     }
 
@@ -91,7 +93,8 @@ class ChatMessageSenderService(
         replyTo: ReplyPreview,
         messageText: String,
         previousMessageUniqueId: Uuid?,
-        payloadBundle: PayloadBundle?
+        payloadBundle: PayloadBundle?,
+        userDate: UnixTimeUtc? = null,
     ): SendMessageResult {
         val messageData = MessageAppData(
             replyPreview = replyTo,
@@ -106,12 +109,13 @@ class ChatMessageSenderService(
         )
 
         return sendMessageInternal(
-            messageUniqueId,
-            conversationId,
-            built.headerContent,
-            "You have a new reply",
-            previousMessageUniqueId,
-            built.payloadBundle
+            messageUniqueId = messageUniqueId,
+            conversationId = conversationId,
+            content = built.headerContent,
+            notificationText = "You have a new reply",
+            previousMessageUniqueId = previousMessageUniqueId,
+            payloadBundle = built.payloadBundle,
+            userDate = userDate,
         )
     }
 
@@ -142,7 +146,8 @@ class ChatMessageSenderService(
         previousMessageUniqueId: Uuid?,
         payloadBundle: PayloadBundle?,
         isStatusMessage: Boolean = false,
-        additionalRecipients: List<OdinId> = emptyList()
+        additionalRecipients: List<OdinId> = emptyList(),
+        userDate: UnixTimeUtc? = null,
     ): SendMessageResult {
         Logger.d(tag = TAG) { "sendMessageInternal: starting message=$messageUniqueId conversation=$conversationId" }
 
@@ -172,6 +177,7 @@ class ChatMessageSenderService(
             messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
         )
 
+        val effectiveUserDate = userDate ?: UnixTimeUtc.now()
         val unecryptedMetadata =
             UploadFileMetadata(
                 allowDistribution = !isLocalOnly,
@@ -181,7 +187,7 @@ class ChatMessageSenderService(
                     groupId = conversationId,
                     fileType = ChatProtocol.MessageFileType,
                     dataType = if (isStatusMessage) ChatProtocol.ChatStatusMessageDataType else 0,
-                    userDate = UnixTimeUtc.now().milliseconds,
+                    userDate = effectiveUserDate.milliseconds,
                     content = content,
                     previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
                         it.pixelWidth

@@ -12,6 +12,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
@@ -468,7 +469,17 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.SendMessage -> {
+                val textLen = messageInputTextState.annotatedString.text.length
+                val wasSending = _messagesUiState.value.isSendingMessage
                 val hasMessage = !messageInputTextState.annotatedString.isBlank()
+                val pendingCount = _messagesUiState.value.pendingOutgoing.size
+                val uploadingCount = _messagesUiState.value.uploadProgress.size
+                Logger.d(tag = TAG) {
+                    "SendMessage action: conversation=${action.conversationId} " +
+                        "textLen=$textLen hasMessage=$hasMessage " +
+                        "wasSendingMessage=$wasSending pendingOutgoing=$pendingCount " +
+                        "uploadProgress=$uploadingCount"
+                }
                 if (hasMessage) {
                     _messagesUiState.update { it.copy(isSendingMessage = true) }
                     val content = messageInputTextState.toMarkdown().trimEnd()
@@ -489,6 +500,11 @@ class ConversationListViewModel(
                     }
                     // Input is cleared inside addMessage/replyToMessage after
                     // the send is successfully queued.
+                } else {
+                    Logger.w(tag = TAG) {
+                        "SendMessage action: SKIPPED because hasMessage=false " +
+                            "(input was blank when send fired)"
+                    }
                 }
             }
 
@@ -2086,7 +2102,12 @@ class ConversationListViewModel(
         content: String,
         linkPreview: LinkPreview? = null
     ) {
+        Logger.d(tag = TAG) {
+            "addMessage: entry conversation=$conversationId contentLen=${content.length} " +
+                "hasLinkPreview=${linkPreview != null}"
+        }
         viewModelScope.launch {
+            Logger.d(tag = TAG) { "addMessage: coroutine launched conversation=$conversationId" }
             try {
                 val payloadBundle = linkPreview?.let {
                     LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
@@ -2096,6 +2117,7 @@ class ConversationListViewModel(
                 pendingMessageId = newMessageId
                 Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
 
+                Logger.d(tag = TAG) { "addMessage: calling sendNewMessage message=$newMessageId" }
                 chatMessageSenderService.sendNewMessage(
                     messageUniqueId = newMessageId,
                     conversationId = conversationId,
@@ -2103,6 +2125,7 @@ class ConversationListViewModel(
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle,
                 )
+                Logger.d(tag = TAG) { "addMessage: sendNewMessage returned message=$newMessageId — clearing input" }
                 messageInputTextState.clear()
                 Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
@@ -2112,6 +2135,7 @@ class ConversationListViewModel(
                 ) { "addMessage failed for conversation=$conversationId" }
                 sendEvent(ShowErrorMessage("Failed to send message: ${e.message}"))
             } finally {
+                Logger.d(tag = TAG) { "addMessage: finally — clearing isSendingMessage" }
                 _messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }
@@ -2123,7 +2147,12 @@ class ConversationListViewModel(
         content: String,
         linkPreview: LinkPreview? = null
     ) {
+        Logger.d(tag = TAG) {
+            "replyToMessage: entry conversation=$conversationId replyTo=${replyTo.id} " +
+                "contentLen=${content.length} hasLinkPreview=${linkPreview != null}"
+        }
         viewModelScope.launch {
+            Logger.d(tag = TAG) { "replyToMessage: coroutine launched conversation=$conversationId" }
             try {
                 val payloadBundle = linkPreview?.let {
                     LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
@@ -2139,6 +2168,7 @@ class ConversationListViewModel(
                 pendingMessageId = newMessageId
                 Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
 
+                Logger.d(tag = TAG) { "replyToMessage: calling replyToMessage service message=$newMessageId" }
                 chatMessageSenderService.replyToMessage(
                     messageUniqueId = newMessageId,
                     conversationId = conversationId,
@@ -2147,6 +2177,7 @@ class ConversationListViewModel(
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle
                 )
+                Logger.d(tag = TAG) { "replyToMessage: service returned message=$newMessageId — clearing input" }
                 messageInputTextState.clear()
                 _messagesUiState.update { it.copy(replyToMessage = null) }
                 Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }
@@ -2157,6 +2188,7 @@ class ConversationListViewModel(
                 ) { "replyToMessage failed for conversation=$conversationId" }
                 sendEvent(ShowErrorMessage("Failed to send reply: ${e.message}"))
             } finally {
+                Logger.d(tag = TAG) { "replyToMessage: finally — clearing isSendingMessage" }
                 _messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }
@@ -2283,6 +2315,7 @@ class ConversationListViewModel(
         content: String,
         files: List<AttachmentPendingFile>
     ) {
+        val sentAt = UnixTimeUtc.now()
         viewModelScope.launch {
             val attachments = mutableListOf<AttachmentInput>()
             files.forEach { attachment ->
@@ -2460,6 +2493,7 @@ class ConversationListViewModel(
                 conversationId = conversationId,
                 text = content,
                 attachmentCount = files.size,
+                sentAt = kotlin.time.Instant.fromEpochMilliseconds(sentAt.milliseconds),
             )
 
             // Register the placeholder, register upload progress, clear the
@@ -2490,6 +2524,7 @@ class ConversationListViewModel(
                         messageText = content,
                         previousMessageUniqueId = null,
                         payloadBundle = bundle,
+                        userDate = sentAt,
                     )
                     // Real optimistic bubble has landed — drop the placeholder.
                     _messagesUiState.update { state ->
