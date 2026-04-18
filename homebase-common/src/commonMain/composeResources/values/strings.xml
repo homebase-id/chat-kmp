@@ -60,6 +60,8 @@
     <string name="leave">Leave</string>
     <string name="export_log">Export log</string>
     <string name="clear_log">Clear log</string>
+    <string name="log_cleared">Log cleared</string>
+    <string name="log_clear_failed">Failed to clear log</string>
     <string name="send">Send</string>
     <string name="media">Media</string>
     <string name="about_homebase">About Homebase</string>

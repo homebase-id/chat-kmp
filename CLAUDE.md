@@ -151,6 +151,23 @@ cat ~/Library/Application\ Support/HomebaseChatDev/logs/homebase.log   # macOS
 cat ~/.homebase-chat-dev/logs/homebase.log                              # Linux
 ```
 
+### Windows — installed (MSIX / Microsoft Store) build
+
+The installed desktop app runs in an MSIX container, so `%APPDATA%` is redirected into the package's sandbox. The inner folder is still named `HomebaseChatDev` (the installed build uses the dev `buildConfigField`). Start from `%LOCALAPPDATA%\Packages` and search — the publisher-hash portion of the package name may change with re-signing:
+
+```bash
+# Git Bash / MSYS2 — find it from the stable root:
+find "$LOCALAPPDATA/Packages" -iname "homebase.log" 2>/dev/null
+
+# Example current path on this machine (publisher hash may differ):
+cat "$LOCALAPPDATA/Packages/HomebaseChat_6x99c57gn1sg8/LocalCache/Roaming/HomebaseChatDev/logs/homebase.log"
+```
+
+```powershell
+# PowerShell equivalent
+Get-ChildItem -Path "$env:LOCALAPPDATA\Packages" -Filter homebase.log -Recurse -ErrorAction SilentlyContinue
+```
+
 ## CI/CD
 
 GitHub Actions workflows in `.github/workflows/`:

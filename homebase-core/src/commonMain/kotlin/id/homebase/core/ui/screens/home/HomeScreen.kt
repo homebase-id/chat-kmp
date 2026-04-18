@@ -12,10 +12,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -32,6 +36,7 @@ import id.homebase.resources.app_version
 import id.homebase.resources.clear_log
 import id.homebase.resources.export_log
 import id.homebase.resources.homebase_logo
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -41,6 +46,16 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Pre-resolve StringResource events at composition time — stringResource() cannot
+    // be called inside LaunchedEffect.
+    val snackbarText = when (val event = uiState.uiEvent) {
+        is HomeUiEvent.ShowInfoMessage -> stringResource(event.res)
+        is HomeUiEvent.ShowErrorMessage -> stringResource(event.res)
+        else -> ""
+    }
 
     LaunchedEffect(uiState.uiEvent) {
         when (val event = uiState.uiEvent) {
@@ -63,12 +78,19 @@ fun HomeScreen(
                 viewModel.eventConsumed()
                 onNavigateToExamples()
             }
+
+            is HomeUiEvent.ShowInfoMessage,
+            is HomeUiEvent.ShowErrorMessage -> {
+                viewModel.eventConsumed()
+                scope.launch { snackbarHostState.showSnackbar(snackbarText) }
+            }
         }
     }
 
 
     HomeUi(
         uiState = uiState,
+        snackbarHostState = snackbarHostState,
         onAction = viewModel::onAction
     )
 }
@@ -76,10 +98,13 @@ fun HomeScreen(
 @Composable
 fun HomeUi(
     uiState: HomeUiState,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onAction: (HomeUiAction) -> Unit
 ) {
     val scrollState = rememberScrollState()
-    Scaffold { innerPadding ->
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
