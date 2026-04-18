@@ -3,7 +3,6 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -323,12 +322,7 @@ private fun FourPlusImageLayout(
             )
 
             // Fourth image with optional overlay
-            Box(
-                modifier =
-                    Modifier.weight(1f).fillMaxSize().clickable {
-                        onMediaClick?.invoke(payloads[3])
-                    },
-            ) {
+            Box(modifier = Modifier.weight(1f).fillMaxSize()) {
                 MediaItem(
                     payload = payloads[3],
                     fileId = fileId,
@@ -338,7 +332,7 @@ private fun FourPlusImageLayout(
                     modifier = Modifier.fillMaxSize(),
                     imageSize = ImageSize.THUMB_SMALL,
                     shape = RectangleShape,
-                    onClick = null, // Handled by parent Box
+                    onClick = { onMediaClick?.invoke(payloads[3]) },
                     onLongPress = { offset -> onMediaLongPress?.invoke(payloads[3], offset) },
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
