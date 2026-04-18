@@ -13,4 +13,10 @@ class EventBus(
     val events: SharedFlow<BackendEvent> = _events.asSharedFlow()
 
     suspend fun emit(event: BackendEvent) = _events.emit(event)
+
+    /** Non-suspending emit. Returns false (and drops the event) when the buffer is full
+     *  because a subscriber is slow. Use in paths that must not park on a slow collector —
+     *  e.g. the outbox enqueue, which must return immediately so the chat Send button
+     *  re-enables regardless of downstream subscriber state. */
+    fun tryEmit(event: BackendEvent): Boolean = _events.tryEmit(event)
 }

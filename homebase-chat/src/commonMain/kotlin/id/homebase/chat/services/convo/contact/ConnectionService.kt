@@ -44,18 +44,25 @@ class ConnectionService(
         // refresh or app-foreground event.
         scope.launch {
             eventBus.events.collect { event ->
+                // Never do blocking IO inside a SharedFlow collect body: refresh() does
+                // HTTP calls that hang on partial connectivity, parking the 11-slot
+                // EventBus buffer and cascading to stall the chat Send path.
                 when (event) {
                     is BackendEvent.CircleNetworkEvent.ConnectionRequestAccepted -> {
-                        markConnectedOptimistically(event.acceptedBy)
-                        refresh()
+                        scope.launch {
+                            markConnectedOptimistically(event.acceptedBy)
+                            refresh()
+                        }
                     }
                     is BackendEvent.CircleNetworkEvent.ConnectionRequestFinalized -> {
-                        markConnectedOptimistically(event.identity)
-                        refresh()
+                        scope.launch {
+                            markConnectedOptimistically(event.identity)
+                            refresh()
+                        }
                     }
                     // When the websocket comes back after an offline window, reconcile
                     // against the server — covers the airplane-mode-off case.
-                    is BackendEvent.ConnectionOnline -> refresh()
+                    is BackendEvent.ConnectionOnline -> scope.launch { refresh() }
                     else -> {}
                 }
             }
