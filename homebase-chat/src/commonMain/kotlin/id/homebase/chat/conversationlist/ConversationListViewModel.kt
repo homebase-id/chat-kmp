@@ -469,17 +469,7 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.SendMessage -> {
-                val textLen = messageInputTextState.annotatedString.text.length
-                val wasSending = _messagesUiState.value.isSendingMessage
                 val hasMessage = !messageInputTextState.annotatedString.isBlank()
-                val pendingCount = _messagesUiState.value.pendingOutgoing.size
-                val uploadingCount = _messagesUiState.value.uploadProgress.size
-                Logger.d(tag = TAG) {
-                    "SendMessage action: conversation=${action.conversationId} " +
-                        "textLen=$textLen hasMessage=$hasMessage " +
-                        "wasSendingMessage=$wasSending pendingOutgoing=$pendingCount " +
-                        "uploadProgress=$uploadingCount"
-                }
                 if (hasMessage) {
                     _messagesUiState.update { it.copy(isSendingMessage = true) }
                     val content = messageInputTextState.toMarkdown().trimEnd()
@@ -500,11 +490,6 @@ class ConversationListViewModel(
                     }
                     // Input is cleared inside addMessage/replyToMessage after
                     // the send is successfully queued.
-                } else {
-                    Logger.w(tag = TAG) {
-                        "SendMessage action: SKIPPED because hasMessage=false " +
-                            "(input was blank when send fired)"
-                    }
                 }
             }
 
@@ -1971,26 +1956,20 @@ class ConversationListViewModel(
                                 }
                             })
 
-                            // Scroll handling, either use new message id, click message id or null
-                            val newMessageId =
-                                messages.firstOrNull { it.id == pendingMessageId }?.id
+                            // Scroll handling: navigate to a specific message (search results,
+                            // cross-conversation jumps, etc.). The user's own just-sent messages
+                            // are handled by the LazyColumn auto-follow effect in ConversationContent.kt,
+                            // which only scrolls when the user was already at the bottom. Forcing
+                            // a scroll-to-new-message here would yank the user out of history.
                             pendingMessageId = null
-                            val indexOfMessageForScroll = if (newMessageId != null) {
-                                val index = messagesModels.indexOfLast {
-                                    it is MessageListContentModel.Message && it.message.id == newMessageId
+                            val indexOfMessageForScroll = if (messageIdForScrollNullable != null) {
+                                val messageIndex = messagesModels.indexOfLast {
+                                    it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
                                 }
-                                Logger.i("Resetting scroll position, new message seen, index: $index")
-                                index
+                                messageIdForScrollNullable = null
+                                messageIndex
                             } else {
-                                if (messageIdForScrollNullable == null) {
-                                    null
-                                } else {
-                                    val messageIndex = messagesModels.indexOfLast {
-                                        it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
-                                    }
-                                    messageIdForScrollNullable = null
-                                    messageIndex
-                                }
+                                null
                             }
 
                             val newScroll = if (indexOfMessageForScroll == null) {
@@ -2102,12 +2081,7 @@ class ConversationListViewModel(
         content: String,
         linkPreview: LinkPreview? = null
     ) {
-        Logger.d(tag = TAG) {
-            "addMessage: entry conversation=$conversationId contentLen=${content.length} " +
-                "hasLinkPreview=${linkPreview != null}"
-        }
         viewModelScope.launch {
-            Logger.d(tag = TAG) { "addMessage: coroutine launched conversation=$conversationId" }
             try {
                 val payloadBundle = linkPreview?.let {
                     LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
@@ -2117,7 +2091,6 @@ class ConversationListViewModel(
                 pendingMessageId = newMessageId
                 Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
 
-                Logger.d(tag = TAG) { "addMessage: calling sendNewMessage message=$newMessageId" }
                 chatMessageSenderService.sendNewMessage(
                     messageUniqueId = newMessageId,
                     conversationId = conversationId,
@@ -2125,7 +2098,6 @@ class ConversationListViewModel(
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle,
                 )
-                Logger.d(tag = TAG) { "addMessage: sendNewMessage returned message=$newMessageId — clearing input" }
                 messageInputTextState.clear()
                 Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
@@ -2135,7 +2107,6 @@ class ConversationListViewModel(
                 ) { "addMessage failed for conversation=$conversationId" }
                 sendEvent(ShowErrorMessage("Failed to send message: ${e.message}"))
             } finally {
-                Logger.d(tag = TAG) { "addMessage: finally — clearing isSendingMessage" }
                 _messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }
@@ -2147,12 +2118,7 @@ class ConversationListViewModel(
         content: String,
         linkPreview: LinkPreview? = null
     ) {
-        Logger.d(tag = TAG) {
-            "replyToMessage: entry conversation=$conversationId replyTo=${replyTo.id} " +
-                "contentLen=${content.length} hasLinkPreview=${linkPreview != null}"
-        }
         viewModelScope.launch {
-            Logger.d(tag = TAG) { "replyToMessage: coroutine launched conversation=$conversationId" }
             try {
                 val payloadBundle = linkPreview?.let {
                     LinkPreviewPayloadBuilder.build(it, fileOperationsProvider)
@@ -2168,7 +2134,6 @@ class ConversationListViewModel(
                 pendingMessageId = newMessageId
                 Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
 
-                Logger.d(tag = TAG) { "replyToMessage: calling replyToMessage service message=$newMessageId" }
                 chatMessageSenderService.replyToMessage(
                     messageUniqueId = newMessageId,
                     conversationId = conversationId,
@@ -2177,7 +2142,6 @@ class ConversationListViewModel(
                     previousMessageUniqueId = null,
                     payloadBundle = payloadBundle
                 )
-                Logger.d(tag = TAG) { "replyToMessage: service returned message=$newMessageId — clearing input" }
                 messageInputTextState.clear()
                 _messagesUiState.update { it.copy(replyToMessage = null) }
                 Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }
@@ -2188,7 +2152,6 @@ class ConversationListViewModel(
                 ) { "replyToMessage failed for conversation=$conversationId" }
                 sendEvent(ShowErrorMessage("Failed to send reply: ${e.message}"))
             } finally {
-                Logger.d(tag = TAG) { "replyToMessage: finally — clearing isSendingMessage" }
                 _messagesUiState.update { it.copy(isSendingMessage = false) }
             }
         }

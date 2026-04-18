@@ -228,6 +228,26 @@ fun ConversationContent(
         }.collect { showScrollToBottom = it }
     }
 
+    // Auto-follow: when the list grows (new sent or received message) and the
+    // user was already at the bottom, scroll to the new last item. If the user
+    // is reading history further up, leave them alone.
+    LaunchedEffect(listState, conversation.conversation.id) {
+        var previousTotal = 0
+        var wasAtBottom = false
+        snapshotFlow {
+            listState.layoutInfo.totalItemsCount to listState.canScrollForward
+        }.collect { (total, canScrollForward) ->
+            if (total > previousTotal && previousTotal > 0 && wasAtBottom) {
+                listState.animateScrollToItem(total - 1)
+            }
+            // canScrollForward == false means the user is at the absolute end
+            // of the list. Record this BEFORE the next snapshot so a subsequent
+            // growth sees the pre-growth scroll state.
+            wasAtBottom = total > 0 && !canScrollForward
+            previousTotal = total
+        }
+    }
+
     // Add this state to track keyboard height
     var keyboardHeight by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
