@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -185,10 +187,20 @@ fun MediaItem(
         contentType.startsWith("image/") -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
+                val gestureModifier = if (onClick != null || onLongPress != null) {
+                    finalModifier.pointerInput(onClick, onLongPress) {
+                        detectTapGestures(
+                            onTap = { onClick?.invoke() },
+                            onLongPress = { offset -> onLongPress?.invoke(offset) },
+                        )
+                    }
+                } else {
+                    finalModifier
+                }
                 AsyncImage(
                     model = imageLocalContext.localFilePath,
                     contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                    modifier = finalModifier,
+                    modifier = gestureModifier,
                     contentScale = imageContentScale,
                 )
             } else {
@@ -286,10 +298,21 @@ fun MediaItem(
                             videoLocalContext.thumbnailBytes.toImageBitmap()
                         }
                         if (uploadBitmap != null) {
+                            val thumbBaseModifier = Modifier.fillMaxSize()
+                            val thumbModifier = if (onClick != null || onLongPress != null) {
+                                thumbBaseModifier.pointerInput(onClick, onLongPress) {
+                                    detectTapGestures(
+                                        onTap = { onClick?.invoke() },
+                                        onLongPress = { offset -> onLongPress?.invoke(offset) },
+                                    )
+                                }
+                            } else {
+                                thumbBaseModifier
+                            }
                             Image(
                                 bitmap = uploadBitmap,
                                 contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = thumbModifier,
                                 contentScale = ContentScale.Crop,
                             )
                         }
