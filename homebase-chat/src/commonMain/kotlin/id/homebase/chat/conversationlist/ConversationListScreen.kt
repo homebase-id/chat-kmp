@@ -405,9 +405,16 @@ fun ConversationListUi(
     var lastNavigatedConversationId by remember { mutableStateOf<Uuid?>(null) }
     LaunchedEffect(uiState.selectedConversationId) {
         val selectedId = uiState.selectedConversationId
-        if (selectedId != null && selectedId != lastNavigatedConversationId && scaffoldDirective.maxHorizontalPartitions == 1) {
+        if (selectedId != null && selectedId != lastNavigatedConversationId) {
             Logger.i(tag = "ConversationListUi") { "Restore detail pane for $selectedId" }
             lastNavigatedConversationId = selectedId
+            val cur = scaffoldNavigator.currentDestination
+            // If we're already on Detail with a stale contentKey (e.g. warm notification
+            // tap while viewing a different conversation), pop first so navigateTo
+            // actually updates the content key rather than being treated as a no-op.
+            if (cur?.pane == ListDetailPaneScaffoldRole.Detail && cur.contentKey != selectedId) {
+                scaffoldNavigator.navigateBack()
+            }
             scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, selectedId)
         } else if (selectedId == null) {
             lastNavigatedConversationId = null
