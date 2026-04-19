@@ -220,6 +220,9 @@ class ConversationListViewModel(
                     )
                 })
             }.debounce(50).collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
+                Logger.i(tag = "ConversationListViewModel") {
+                    "conversationStream emit: dataReady=$dataReady enrichedCount=${enriched.size}"
+                }
                 if (dataReady) {
                     _uiState.update {
                         it.copy(
