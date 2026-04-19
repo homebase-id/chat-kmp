@@ -22,7 +22,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.services.outbox.OptimisticWriter
-import id.homebase.chat.data.ReactionContent
+import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.config.chatTargetDrive

@@ -395,6 +395,9 @@ class ChatMessageStream(
                     ?: false
 
             val localReadTimestamp = metadata.localAppData?.readTime
+            val ownReactions = metadata.localAppData?.localReactions
+                .orEmpty()
+                .toPersistentList()
 
             try {
                 require(appData.fileType == ChatProtocol.MessageFileType)
@@ -421,6 +424,7 @@ class ChatMessageStream(
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         localReadTimestamp = localReadTimestamp,
+                        ownReactions = ownReactions,
                         isEdited = false,
                         content = "Deleted File",
                         messageAppData = MessageAppData(),
@@ -513,6 +517,7 @@ class ChatMessageStream(
                     displayName = displayName,
                     isEdited = messageAppData.isEdited,
                     localReadTimestamp = localReadTimestamp,
+                    ownReactions = ownReactions,
                     messageAppData = messageAppData,
                     reactionPreview = metadata.reactionPreview,
                     previewThumbnail = metadata.appData.previewThumbnail,
@@ -544,6 +549,7 @@ class ChatMessageStream(
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         messageAppData = MessageAppData(),
                         localReadTimestamp = localReadTimestamp,
+                        ownReactions = ownReactions,
                         reactionPreview = metadata.reactionPreview,
                         previewThumbnail = metadata.appData.previewThumbnail,
                         payloads = metadata.payloads?.toPersistentList(),

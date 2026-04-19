@@ -9,6 +9,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.services.MessageAppData
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -30,6 +31,10 @@ data class MessageUiModel(
 
     /** The timestamp when this file was marked as read for current user's identity */
     val localReadTimestamp: UnixTimeUtc? = null,
+
+    /** Raw JSON-encoded reactions the current identity has applied to this
+     *  message (mirrors server `localAppData.localReactions`). */
+    val ownReactions: ImmutableList<String> = persistentListOf(),
 
     val isEdited: Boolean = false,
     val messageAppData: MessageAppData, // TODO: Should we copy these up into the message?
