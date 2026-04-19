@@ -16,7 +16,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -34,7 +34,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -56,7 +56,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "2.5.3"),
+                    uiState = SettingsUiState(appVersion = "2.5.3", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -76,9 +76,10 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = {},
                     onBackClick = {},
+                    onNavigateToConnections = {},
                     onNavigateToNotifications = { navigated = true },
                     onNavigateToAppearance = {},
                     onNavigateToHelp = {},
@@ -95,7 +96,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -115,7 +116,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = { action ->
                         if (action is SettingsUiAction.LogoutClicked) {
                             loggedOut = true
@@ -139,7 +140,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = { action ->
                         if (action is SettingsUiAction.DeleteAccount) {
                             deleteClicked = true
