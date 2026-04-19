@@ -159,6 +159,29 @@ public class DriveFileProvider(
         driveCache.getPayloadBytesRaw(driveId, fileId, key, onDownloadProgress = onDownloadProgress)
     }
 
+    /** Downloads a single byterange of a payload into the encrypted disk cache without decrypting.
+     *  The cache is keyed by (chunkStart, chunkLength), so a later player request with the
+     *  identical range will hit this entry. Used to warm the first HLS segment. */
+    suspend fun prefetchPayloadChunk(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        chunkStart: Long,
+        chunkLength: Long,
+        onDownloadProgress: ((Float) -> Unit)? = null,
+    ) {
+        driveCache.getPayloadBytesRaw(
+            driveId = driveId,
+            fileId = fileId,
+            key = key,
+            options = PayloadOperationOptions(
+                chunkStart = chunkStart,
+                chunkLength = chunkLength,
+            ),
+            onDownloadProgress = onDownloadProgress,
+        )
+    }
+
     suspend fun getPayloadBytesDecrypted(
         driveId: Uuid,
         fileId: Uuid,

@@ -3,7 +3,6 @@ package id.homebase.api.video
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okio.FileSystem
@@ -30,31 +29,68 @@ class VideoPreloader(
      * which hits the warm cache and decrypts in memory only.
      *
      * Safe to call multiple times — duplicate in-progress calls are no-ops.
-     * HLS streams are skipped; their segments are fetched on demand by the player.
+     * For HLS, only the first segment is pre-cached (encrypted, on disk); later segments are
+     * fetched on demand by the player.
      */
     suspend fun preload(data: VideoPlayerData, onProgress: ((Float) -> Unit)? = null) {
         val key = cacheKey(data.fileId, data.payloadKey)
         val mutex = mapLock.withLock { mutexMap.getOrPut(key) { Mutex() } }
         if (!mutex.tryLock()) return
         try {
-            val stubMetadata = data.descriptorContent?.let {
-                OdinSystemSerializer.deserialize<VideoMetadata>(it)
-            } ?: return
+            val metadata = try {
+                resolveVideoMetadata(data, driveFileProvider)
+            } catch (e: Exception) {
+                Logger.d(tag = "VideoIO") { "preload skipped — no metadata for ${data.fileId}/${data.payloadKey}: ${e.message}" }
+                return
+            }
 
-            if (stubMetadata.isSegmented) return  // HLS: segments are streamed on demand
-
-            driveFileProvider.prefetchPayload(
-                driveId = data.driveId,
-                fileId = data.fileId,
-                key = data.payloadKey,
-                onDownloadProgress = onProgress,
-            )
-            Logger.d(tag = "VideoIO") { "preload complete (encrypted cache): ${data.fileId}/${data.payloadKey}" }
+            if (metadata.isSegmented) {
+                preloadFirstHlsSegment(data, metadata)
+            } else {
+                driveFileProvider.prefetchPayload(
+                    driveId = data.driveId,
+                    fileId = data.fileId,
+                    key = data.payloadKey,
+                    onDownloadProgress = onProgress,
+                )
+                Logger.d(tag = "VideoIO") { "preload complete (mp4, encrypted cache): ${data.fileId}/${data.payloadKey}" }
+            }
         } catch (e: Exception) {
             Logger.w(tag = "VideoIO") { "preload failed for ${data.fileId}/${data.payloadKey}: ${e.message}" }
         } finally {
             mutex.unlock()
         }
+    }
+
+    private suspend fun preloadFirstHlsSegment(data: VideoPlayerData, metadata: VideoMetadata) {
+        val playlist = metadata.hlsPlaylist
+        if (playlist == null) {
+            Logger.d(tag = "VideoIO") { "hls preload skipped — no playlist in metadata for ${data.fileId}/${data.payloadKey}" }
+            return
+        }
+        // FFmpeg always emits the explicit `<len>@<offset>` form for segment 0. The implicit
+        // `<len>` form only appears for segments that follow another segment contiguously.
+        val match = FIRST_BYTERANGE_REGEX.find(playlist)
+        if (match == null) {
+            Logger.d(tag = "VideoIO") { "hls preload skipped — no #EXT-X-BYTERANGE in playlist for ${data.fileId}/${data.payloadKey}" }
+            return
+        }
+        val length = match.groupValues[1].toLong()
+        val offset = match.groupValues[2].toLong()
+
+        Logger.d(tag = "VideoIO") { "hls preload seg0 start: fileId=${data.fileId} key=${data.payloadKey} offset=$offset length=$length" }
+        driveFileProvider.prefetchPayloadChunk(
+            driveId = data.driveId,
+            fileId = data.fileId,
+            key = data.payloadKey,
+            chunkStart = offset,
+            chunkLength = length,
+        )
+        Logger.d(tag = "VideoIO") { "hls preload seg0 complete: fileId=${data.fileId} key=${data.payloadKey} offset=$offset length=$length" }
+    }
+
+    private companion object {
+        private val FIRST_BYTERANGE_REGEX = Regex("""#EXT-X-BYTERANGE:(\d+)@(\d+)""")
     }
 
     /**

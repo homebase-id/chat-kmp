@@ -99,7 +99,7 @@ class DriveFileProviderCached(
         // 2️⃣ Peek in disk cache and return result if it's there
         payloadDiskKache().get(cacheKey)?.let { filePath ->
             val (result, elapsed) = measureTimedValue { readBytesResponse(filePath) }
-            Logger.d(tag = "VideoIO") { "payload cache-hit: read ${result.bytes.size} bytes in $elapsed" }
+            Logger.d(tag = "VideoIO") { "payload cache-hit: ${result.bytes.size} bytes in $elapsed key=$cacheKey" }
             return result
         }
 
@@ -115,7 +115,7 @@ class DriveFileProviderCached(
             }
             payloadDiskKache().get(cacheKey)?.let { filePath ->
                 val (result, elapsed) = measureTimedValue { readBytesResponse(filePath) }
-                Logger.d(tag = "VideoIO") { "payload cache-hit (post-lock): read ${result.bytes.size} bytes in $elapsed" }
+                Logger.d(tag = "VideoIO") { "payload cache-hit (post-lock): ${result.bytes.size} bytes in $elapsed key=$cacheKey" }
                 return@withLock result
             }
 
@@ -125,7 +125,7 @@ class DriveFileProviderCached(
                     val (networkResult, elapsed) = measureTimedValue {
                         delegate.getPayloadBytesRawNetwork(driveId, fileId, key, options, onDownloadProgress)
                     }
-                    Logger.d(tag = "VideoIO") { "payload network-fetch: ${networkResult.bytes.size} bytes in $elapsed" }
+                    Logger.d(tag = "VideoIO") { "payload network-fetch: ${networkResult.bytes.size} bytes in $elapsed key=$cacheKey" }
                     val result = networkResult
 
                     if (result.status == 404) {
@@ -139,7 +139,7 @@ class DriveFileProviderCached(
                                 writeBytesResponse(filePath, result)
                             }
                         }
-                        Logger.d(tag = "VideoIO") { "payload cache-write: ${result.bytes.size} bytes in $cacheWriteElapsed" }
+                        Logger.d(tag = "VideoIO") { "payload cache-write: ${result.bytes.size} bytes in $cacheWriteElapsed key=$cacheKey" }
                         result
                     }
                 } catch (e: NotFoundException) {

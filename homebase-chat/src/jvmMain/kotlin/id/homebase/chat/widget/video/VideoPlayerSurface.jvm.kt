@@ -134,6 +134,7 @@ actual fun VideoPlayerSurface(
                                 end = totalSize - 1
                             }
                             val length = end - start + 1
+                            Logger.d(tag = "VideoHLS") { "vlc chunk request: fileId=${data.fileId} key=${data.payloadKey} chunkStart=$start chunkLength=$length name=$name" }
                             val bytes = runBlocking {
                                 driveFileProvider.getPayloadBytesDecrypted(
                                     driveId = data.driveId,
