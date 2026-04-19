@@ -46,6 +46,9 @@ internal data object TestAppLoading
 @Serializable
 internal data object TestChatList
 
+@Serializable
+internal data object TestDetail
+
 @OptIn(ExperimentalTestApi::class)
 class NotificationTapColdStartTest {
 
@@ -157,6 +160,186 @@ class NotificationTapColdStartTest {
         kotlin.test.assertTrue(
             thrown.message?.contains("back stack") == true,
             "Expected back-stack IAE, got: ${thrown.message}"
+        )
+    }
+
+    /**
+     * Regression test for the warm-path drop captured in homebase.log lines 222+:
+     *
+     *   (MainActivity) Notification intent detected (conversation: b185a5ed-…)
+     *   — then silence; no navigation occurs.
+     *
+     * Scenario: app is warm, user is currently on a conversation Detail screen.
+     * A notification tap for a *different* conversation arrives.
+     *
+     * PR #322 gated the collector on
+     *   currentBackStackEntryFlow.first { it.destination.hasRoute(ChatList::class) }
+     * which checks the *top* back-stack entry. When the user is on Detail, that
+     * predicate never matches (top is Detail; ChatList sits underneath), so
+     * `first {}` suspends forever and the notification is silently dropped.
+     *
+     * The correct gate is membership in the back stack, not top-of-stack:
+     *   currentBackStack.first { stack -> stack.any { it.destination.hasRoute(ChatList::class) } }
+     * which returns immediately when ChatList is anywhere in the stack. The
+     * subsequent popBackStack(ChatList, inclusive=false) then brings ChatList
+     * back to the top, which reads pendingConversationId and routes.
+     */
+    @Test
+    fun warm_start_notification_tap_from_detail_navigates_via_chatlist() = runComposeUiTest {
+        val events = Channel<NotificationNavigationEvent>(Channel.BUFFERED)
+        val authReady = mutableStateOf(false)
+        val navigateToDetail = Channel<Unit>(Channel.BUFFERED)
+        var navControllerRef: androidx.navigation.NavHostController? = null
+
+        setContent {
+            val navController = rememberNavController()
+            navControllerRef = navController
+
+            LaunchedEffect(Unit) {
+                events.consumeAsFlow().collect { event ->
+                    if (event is NotificationNavigationEvent.OpenConversation) {
+                        val id = Uuid.parseOrNull(event.conversationId) ?: return@collect
+                        // The fix under test: wait for ChatList to be *anywhere*
+                        // in the stack, not for it to be the top entry.
+                        navController.currentBackStack
+                            .first { stack -> stack.any { it.destination.hasRoute(TestChatList::class) } }
+                        navController.getBackStackEntry<TestChatList>()
+                            .savedStateHandle["pendingConversationId"] = id.toString()
+                        navController.popBackStack(TestChatList, inclusive = false)
+                    }
+                }
+            }
+
+            LaunchedEffect(Unit) {
+                navigateToDetail.consumeAsFlow().collect {
+                    navController.navigate(TestDetail)
+                }
+            }
+
+            NavHost(navController, startDestination = TestAppLoading) {
+                composable<TestAppLoading> {
+                    LaunchedEffect(authReady.value) {
+                        if (authReady.value) {
+                            navController.navigate(TestChatList) {
+                                popUpTo(TestAppLoading) { inclusive = true }
+                            }
+                        }
+                    }
+                    Text("loading")
+                }
+                composable<TestChatList> { backStackEntry ->
+                    val pending by backStackEntry.savedStateHandle
+                        .getStateFlow<String?>("pendingConversationId", null)
+                        .collectAsState()
+                    Text("chatlist pending=${pending ?: "null"}")
+                }
+                composable<TestDetail> {
+                    Text("detail")
+                }
+            }
+        }
+
+        // Warm app up through to Detail.
+        authReady.value = true
+        waitForIdle()
+        navigateToDetail.trySend(Unit)
+        waitForIdle()
+        onNodeWithText("detail").assertExists()
+
+        // Notification tap arrives while on Detail. With the top-only gate this
+        // suspends forever; with the membership gate it proceeds immediately.
+        events.trySend(
+            NotificationNavigationEvent.OpenConversation(
+                "cc0577d2-2c92-4843-b08d-166e05ad4c19"
+            )
+        )
+        waitForIdle()
+
+        onNodeWithText("chatlist pending=cc0577d2-2c92-4843-b08d-166e05ad4c19")
+            .assertExists()
+        kotlin.test.assertNotNull(navControllerRef)
+    }
+
+    @Test
+    fun broken_top_only_gate_hangs_when_on_detail() = runComposeUiTest {
+        // Negative control: same warm-on-Detail scenario as the test above,
+        // but with the pre-fix top-only gate. Asserts that pendingConversationId
+        // is NOT applied to ChatList's savedStateHandle (the collector is
+        // suspended on `first{}` that can never match the top entry). If this
+        // test ever starts applying the pending id, the positive test above
+        // isn't actually exercising the regression.
+        val events = Channel<NotificationNavigationEvent>(Channel.BUFFERED)
+        val authReady = mutableStateOf(false)
+        val navigateToDetail = Channel<Unit>(Channel.BUFFERED)
+        var navControllerRef: androidx.navigation.NavHostController? = null
+
+        setContent {
+            val navController = rememberNavController()
+            navControllerRef = navController
+
+            LaunchedEffect(Unit) {
+                events.consumeAsFlow().collect { event ->
+                    if (event is NotificationNavigationEvent.OpenConversation) {
+                        val id = Uuid.parseOrNull(event.conversationId) ?: return@collect
+                        // The BROKEN top-only gate from PR #322.
+                        navController.currentBackStackEntryFlow
+                            .first { it.destination.hasRoute(TestChatList::class) }
+                        navController.getBackStackEntry<TestChatList>()
+                            .savedStateHandle["pendingConversationId"] = id.toString()
+                    }
+                }
+            }
+
+            LaunchedEffect(Unit) {
+                navigateToDetail.consumeAsFlow().collect {
+                    navController.navigate(TestDetail)
+                }
+            }
+
+            NavHost(navController, startDestination = TestAppLoading) {
+                composable<TestAppLoading> {
+                    LaunchedEffect(authReady.value) {
+                        if (authReady.value) {
+                            navController.navigate(TestChatList) {
+                                popUpTo(TestAppLoading) { inclusive = true }
+                            }
+                        }
+                    }
+                    Text("loading")
+                }
+                composable<TestChatList> {
+                    Text("chatlist")
+                }
+                composable<TestDetail> {
+                    Text("detail")
+                }
+            }
+        }
+
+        authReady.value = true
+        waitForIdle()
+        navigateToDetail.trySend(Unit)
+        waitForIdle()
+        onNodeWithText("detail").assertExists()
+
+        events.trySend(
+            NotificationNavigationEvent.OpenConversation(
+                "cc0577d2-2c92-4843-b08d-166e05ad4c19"
+            )
+        )
+        waitForIdle()
+
+        // With the broken gate the collector is suspended on `first {}` waiting
+        // for the top entry to be ChatList — which never happens while the user
+        // is on Detail. Peek directly into ChatList's savedStateHandle to prove
+        // the pending id was never written.
+        val controller = navControllerRef
+            ?: kotlin.test.fail("NavController not captured")
+        val chatListEntry = controller.getBackStackEntry<TestChatList>()
+        val pending = chatListEntry.savedStateHandle.get<String?>("pendingConversationId")
+        kotlin.test.assertNull(
+            pending,
+            "Broken top-only gate must leave pendingConversationId unset while user is on Detail — this is the warm-path regression we're guarding against"
         )
     }
 }
