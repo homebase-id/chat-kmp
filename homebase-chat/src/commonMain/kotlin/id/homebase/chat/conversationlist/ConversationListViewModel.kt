@@ -370,6 +370,9 @@ class ConversationListViewModel(
         messageId: Uuid? = null,
         scrollToBottom: Boolean = false
     ) {
+        Logger.i(tag = "ConversationListViewModel") {
+            "selectConversation id=$conversationId scrollToBottom=$scrollToBottom"
+        }
         // Check for pending shared content (from iOS share extension or other handoff)
         viewModelScope.launch {
             processPendingSharedContent(conversationId)
@@ -1895,6 +1898,9 @@ class ConversationListViewModel(
         val loadStart = TimeSource.Monotonic.markNow()
 
         val hasCachedMessages = chatMessageStream.hasCachedMessages(conversationId)
+        Logger.i(tag = "ConversationListViewModel") {
+            "loadMessagesForConversation id=$conversationId hasCached=$hasCachedMessages"
+        }
 
         _messagesUiState.update {
             it.copy(scrollPosition = null, isLoadingMessages = !hasCachedMessages)
@@ -1999,6 +2005,9 @@ class ConversationListViewModel(
                                 )
                             }
 
+                            Logger.i(tag = "ConversationListViewModel") {
+                                "selectedConversationId flip id=$conversationId messageCount=${messages.size}"
+                            }
                             _uiState.value = _uiState.value.copy(
                                 selectedConversationId = conversationId,
                             )

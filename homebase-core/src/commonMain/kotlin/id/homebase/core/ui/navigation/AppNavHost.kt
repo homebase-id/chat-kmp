@@ -339,6 +339,9 @@ fun AppNavHost(
                             LaunchedEffect(pendingConversationId) {
                                 pendingConversationId?.let { idStr ->
                                     Uuid.parseOrNull(idStr)?.let {
+                                        Logger.i(tag = "AppNavHost") {
+                                            "ChatList observed pendingConversationId=$idStr, calling selectConversation"
+                                        }
                                         conversationListViewModel.selectConversation(it, scrollToBottom = pendingScrollToBottom)
                                         backStackEntry.savedStateHandle["pendingConversationId"] = null
                                         backStackEntry.savedStateHandle["pendingScrollToBottom"] = false
