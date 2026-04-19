@@ -80,6 +80,7 @@ import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.uuid.Uuid
 
@@ -163,9 +164,14 @@ fun AppNavHost(
         viewModel.navigationEvents.collect { event ->
             when (event) {
                 is NotificationNavigationEvent.OpenConversation -> {
-                    Uuid.parseOrNull(event.conversationId)?.let {
-                        navController.selectConversationOnChatList(it, scrollToBottom = true)
-                    }
+                    val id = Uuid.parseOrNull(event.conversationId) ?: return@collect
+                    // Cold-start: NavController may still be on AppLoading while the
+                    // buffered event is drained. Wait for the AppLoading -> ChatList
+                    // transition before touching the ChatList saved state, otherwise
+                    // getBackStackEntry<Route.ChatList>() throws IllegalArgumentException.
+                    navController.currentBackStackEntryFlow
+                        .first { it.destination.hasRoute(Route.ChatList::class) }
+                    navController.selectConversationOnChatList(id, scrollToBottom = true)
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 }
                 is NotificationNavigationEvent.OpenUrl ->
@@ -574,9 +580,11 @@ fun AppNavHost(
     }
 }
 
-private fun NavHostController.selectConversationOnChatList(conversationId: Uuid, scrollToBottom: Boolean = false) {
-    getBackStackEntry<Route.ChatList>().savedStateHandle["pendingConversationId"] = conversationId.toString()
-    getBackStackEntry<Route.ChatList>().savedStateHandle["pendingScrollToBottom"] = scrollToBottom
+private fun NavHostController.selectConversationOnChatList(conversationId: Uuid, scrollToBottom: Boolean = false): Boolean {
+    val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull() ?: return false
+    entry.savedStateHandle["pendingConversationId"] = conversationId.toString()
+    entry.savedStateHandle["pendingScrollToBottom"] = scrollToBottom
+    return true
 }
 
 // Helper to check if a destination is a top-level route
