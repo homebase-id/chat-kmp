@@ -45,6 +45,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.window.core.layout.WindowSizeClass
+import co.touchlab.kermit.Logger
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
@@ -165,14 +166,25 @@ fun AppNavHost(
             when (event) {
                 is NotificationNavigationEvent.OpenConversation -> {
                     val id = Uuid.parseOrNull(event.conversationId) ?: return@collect
-                    // Cold-start: NavController may still be on AppLoading while the
-                    // buffered event is drained. Wait for the AppLoading -> ChatList
-                    // transition before touching the ChatList saved state, otherwise
-                    // getBackStackEntry<Route.ChatList>() throws IllegalArgumentException.
-                    navController.currentBackStackEntryFlow
-                        .first { it.destination.hasRoute(Route.ChatList::class) }
-                    navController.selectConversationOnChatList(id, scrollToBottom = true)
-                    navController.popBackStack(Route.ChatList, inclusive = false)
+                    val topRoute = navController.currentBackStackEntry?.destination?.route
+                    Logger.i(tag = "AppNavHost") {
+                        "OpenConversation received: id=$id, currentDest=$topRoute"
+                    }
+                    // Gate on ChatList being *anywhere* in the back stack, not just
+                    // on top. Top-of-stack gating (currentBackStackEntryFlow) hangs
+                    // forever when the user is warm on Detail/Settings/etc. —
+                    // regression introduced by PR #322. currentBackStack returns
+                    // immediately here because ChatList sits underneath the current
+                    // top entry; the subsequent popBackStack pops back to it.
+                    val stack = navController.currentBackStack
+                        .first { stack -> stack.any { it.destination.hasRoute(Route.ChatList::class) } }
+                    Logger.i(tag = "AppNavHost") {
+                        "ChatList present in stack (size=${stack.size}), dispatching"
+                    }
+                    val ok = navController.selectConversationOnChatList(id, scrollToBottom = true)
+                    Logger.i(tag = "AppNavHost") { "selectConversationOnChatList result=$ok" }
+                    val popped = navController.popBackStack(Route.ChatList, inclusive = false)
+                    Logger.i(tag = "AppNavHost") { "popBackStack(ChatList)=$popped" }
                 }
                 is NotificationNavigationEvent.OpenUrl ->
                     uriHandler.openUrl(event.url)
@@ -581,7 +593,13 @@ fun AppNavHost(
 }
 
 private fun NavHostController.selectConversationOnChatList(conversationId: Uuid, scrollToBottom: Boolean = false): Boolean {
-    val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull() ?: return false
+    val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull()
+    if (entry == null) {
+        Logger.w(tag = "AppNavHost") {
+            "ChatList missing from stack — dropping pending conversation $conversationId"
+        }
+        return false
+    }
     entry.savedStateHandle["pendingConversationId"] = conversationId.toString()
     entry.savedStateHandle["pendingScrollToBottom"] = scrollToBottom
     return true

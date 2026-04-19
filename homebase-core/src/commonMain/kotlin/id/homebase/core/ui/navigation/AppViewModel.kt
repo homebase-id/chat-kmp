@@ -88,6 +88,7 @@ class AppViewModel(
     private fun collectNotificationEvents() {
         viewModelScope.launch {
             notificationService.navigationEvents.collect { event ->
+                Logger.i(tag = "AppViewModel") { "navigationEvent forwarded: $event" }
                 _navigationEvents.trySend(event)
             }
         }
