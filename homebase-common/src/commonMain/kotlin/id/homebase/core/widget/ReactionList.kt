@@ -27,12 +27,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_emoji_options
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
-import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -59,9 +59,6 @@ fun ReactionList(
         }
     }
 }
-
-@Serializable
-data class ReactionContent(val emoji: String)
 
 private fun extractEmoji(reactionContent: String): String? {
     return try {
