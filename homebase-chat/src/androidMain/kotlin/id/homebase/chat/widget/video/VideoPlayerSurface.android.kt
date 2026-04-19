@@ -199,6 +199,7 @@ private class HomebaseVideoDataSource(
         } else {
             val chunkStart = dataSpec.position
             val chunkLength = if (dataSpec.length == C.LENGTH_UNSET.toLong()) null else dataSpec.length
+            Logger.d(tag = "VideoHLS") { "exo chunk request: fileId=$fileId key=$payloadKey chunkStart=$chunkStart chunkLength=$chunkLength path=$path" }
             runBlocking(Dispatchers.IO) {
                 driveFileProvider.getPayloadBytesDecrypted(
                     driveId = driveId,

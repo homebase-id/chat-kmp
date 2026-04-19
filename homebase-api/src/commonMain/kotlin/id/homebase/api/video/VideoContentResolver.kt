@@ -10,35 +10,41 @@ sealed interface VideoContent {
     data class Mp4(val metadata: VideoMetadata, val bytes: ByteArray) : VideoContent
 }
 
+/** Resolves the full [VideoMetadata], fetching the descriptor payload if the stub is incomplete.
+ *  Fetches go through the payload cache, so later calls (including [resolveVideoContent]) are warm. */
+suspend fun resolveVideoMetadata(
+    data: VideoPlayerData,
+    driveFileProvider: DriveFileProvider,
+): VideoMetadata {
+    val stubMetadata = data.descriptorContent?.let {
+        OdinSystemSerializer.deserialize<VideoMetadata>(it)
+    } ?: error("Missing video metadata")
+
+    if (stubMetadata.isDescriptorContentComplete) return stubMetadata
+
+    val (metadata, elapsed) = measureTimedValue {
+        val json = driveFileProvider.getPayloadBytesDecrypted(
+            driveId = data.driveId,
+            fileId = data.fileId,
+            key = stubMetadata.key,
+            keyHeader = data.keyHeader,
+        )?.bytes?.decodeToString() ?: error("Failed to fetch video metadata")
+        try {
+            OdinSystemSerializer.deserialize<VideoMetadata>(json)
+        } catch (e: Exception) {
+            error("Failed to deserialize video metadata for ${data.fileId}/${data.payloadKey}: ${json.take(200)}, cause=${e.message}")
+        }
+    }
+    Logger.d(tag = "VideoIO") { "metadata fetch: $elapsed" }
+    return metadata
+}
+
 suspend fun resolveVideoContent(
     data: VideoPlayerData,
     driveFileProvider: DriveFileProvider,
     onDownloadProgress: ((Float) -> Unit)? = null,
 ): VideoContent {
-    val stubMetadata = data.descriptorContent?.let {
-        OdinSystemSerializer.deserialize<VideoMetadata>(it)
-    } ?: error("Missing video metadata")
-
-    val (metadata, metadataElapsed) = measureTimedValue {
-        if (!stubMetadata.isDescriptorContentComplete) {
-            val json = driveFileProvider.getPayloadBytesDecrypted(
-                driveId = data.driveId,
-                fileId = data.fileId,
-                key = stubMetadata.key,
-                keyHeader = data.keyHeader,
-            )?.bytes?.decodeToString() ?: error("Failed to fetch video metadata")
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(json)
-            } catch (e: Exception) {
-                error("Failed to deserialize video metadata for ${data.fileId}/${data.payloadKey}: ${json.take(200)}, cause=${e.message}")
-            }
-        } else {
-            stubMetadata
-        }
-    }
-    if (!stubMetadata.isDescriptorContentComplete) {
-        Logger.d(tag = "VideoIO") { "metadata fetch: $metadataElapsed" }
-    }
+    val metadata = resolveVideoMetadata(data, driveFileProvider)
 
     val hlsPlaylist = metadata.hlsPlaylist
     return if (metadata.isSegmented && hlsPlaylist != null) {

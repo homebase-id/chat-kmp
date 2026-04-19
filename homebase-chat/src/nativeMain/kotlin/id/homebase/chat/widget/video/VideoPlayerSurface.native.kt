@@ -222,7 +222,7 @@ private class HomebaseResourceLoaderDelegate(
                         } else {
                             dataRequest.requestedLength
                         }
-                        Logger.d(tag = "VideoHLS") { "Fetching .ts chunk: start=$start, length=$length, totalFileSize=$totalFileSize" }
+                        Logger.d(tag = "VideoHLS") { "avplayer chunk request: fileId=$fileId key=$payloadKey chunkStart=$start chunkLength=$length totalFileSize=$totalFileSize" }
                         val encrypted = driveFileProvider!!.getPayloadBytesEncryptedChunk(
                             driveId = driveId!!,
                             fileId = fileId!!,
