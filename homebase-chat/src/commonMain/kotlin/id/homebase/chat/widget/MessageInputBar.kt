@@ -77,6 +77,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -104,6 +105,7 @@ import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.core.audio.rememberRecordAudioPermissionState
+import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
@@ -239,7 +241,8 @@ fun MessageInputBar(
         if (showExpanded) {
             MessageTextFieldExpanded(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp).focusRequester(focusRequester),
+                    .padding(bottom = 16.dp),
+                focusRequester = focusRequester,
                 state = textFieldState,
                 linkPreviewData = linkPreviewData,
                 onCancelLinkPreview = {
@@ -262,7 +265,8 @@ fun MessageInputBar(
         } else {
             MessageTextFieldCompact(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp).focusRequester(focusRequester),
+                    .padding(bottom = 16.dp),
+                focusRequester = focusRequester,
                 state = textFieldState,
                 editExistingMode = editExistingMode,
                 linkPreviewData = linkPreviewData,
@@ -297,6 +301,7 @@ fun MessageInputBar(
 @Composable
 fun MessageTextFieldExpanded(
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester,
     state: RichTextState,
     editExistingMode: Boolean,
     linkPreviewData: LinkPreview?,
@@ -330,9 +335,16 @@ fun MessageTextFieldExpanded(
                 onCancel = onCancelLinkPreview
             )
         }
+        val pasteModifier = if (onPasteImage != null) {
+            clipboardImageReceiverModifier { bytes -> onPasteImage.invoke(bytes) }
+        } else {
+            Modifier
+        }
         RichTextEditor(
             state = state,
             modifier = Modifier.fillMaxWidth()
+                .then(pasteModifier)
+                .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
                     if (focusState.isFocused) {
                         onFocused()
@@ -351,7 +363,7 @@ fun MessageTextFieldExpanded(
                                 true
                             }
 
-                            keyEvent.key == Key.V && keyEvent.isCtrlPressed && onPasteImage != null -> {
+                            keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed) && onPasteImage != null -> {
                                 val imageBytes = getImageFromClipboard()
                                 if (imageBytes != null) {
                                     onPasteImage.invoke(imageBytes)
@@ -440,6 +452,7 @@ fun MessageTextFieldExpanded(
 @Composable
 fun MessageTextFieldCompact(
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester,
     state: RichTextState,
     linkPreviewData: LinkPreview?,
     recordingData: RecordingData?,
@@ -573,10 +586,17 @@ fun MessageTextFieldCompact(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        val pasteModifier = if (onPasteImage != null) {
+                            clipboardImageReceiverModifier { bytes -> onPasteImage.invoke(bytes) }
+                        } else {
+                            Modifier
+                        }
                         RichTextEditor(
                             state = state,
                             modifier = Modifier
                                 .weight(1f)
+                                .then(pasteModifier)
+                                .focusRequester(focusRequester)
                                 .onFocusChanged { focusState ->
                                     isKeyboardFocused = focusState.isFocused
                                     if (focusState.isFocused) {
@@ -596,7 +616,7 @@ fun MessageTextFieldCompact(
                                                 true
                                             }
 
-                                            keyEvent.key == Key.V && keyEvent.isCtrlPressed && onPasteImage != null -> {
+                                            keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed) && onPasteImage != null -> {
                                                 val imageBytes = getImageFromClipboard()
                                                 if (imageBytes != null) {
                                                     onPasteImage.invoke(imageBytes)

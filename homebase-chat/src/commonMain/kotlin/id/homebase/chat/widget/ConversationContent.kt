@@ -72,6 +72,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -107,6 +108,7 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
@@ -204,6 +206,14 @@ fun ConversationContent(
     LaunchedEffect(uiState.isSearchActive) {
         if (uiState.isSearchActive) {
             focusRequesterSearch.requestFocus()
+        }
+    }
+
+    LaunchedEffect(uiState.replyToMessage) {
+        if (uiState.replyToMessage != null) {
+            withFrameNanos {}
+            focusRequester.requestFocus()
+            keyboardController?.show()
         }
     }
 
@@ -582,6 +592,7 @@ fun ConversationContent(
                         IntOffset(0, -sheetOffset)
                     }
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                    .dismissKeyboardOnTap()
             ) {
             if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
                 Row(
@@ -1253,6 +1264,7 @@ fun ConversationContentSheets(
                                             )
                                         )
                                     },
+                                    enabled = !uiState.isSendingMessage,
                                     imageVector = Icons.AutoMirrored.Filled.Send,
                                     contentDescription = stringResource(MR.string.chat_send_message_button),
                                 )

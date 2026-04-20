@@ -74,10 +74,18 @@ object SharedContentExtractor {
         return try {
             tempDir.mkdirs()
 
+            val rawName = queryDisplayName(uri, contentResolver)
             val mimeType = contentResolver.getType(uri) ?: fallbackMimeType
-            val extension = mimeTypeToExtension(mimeType)
-            val fileName = "share_${System.currentTimeMillis()}_${(0..9999).random()}.$extension"
-            val tempFile = File(tempDir, fileName)
+            val extension = rawName?.substringAfterLast('.', "")
+                ?.takeIf { it.isNotEmpty() && it != rawName }
+                ?: mimeTypeToExtension(mimeType)
+            val safeName = rawName
+                ?.replace(Regex("[/\\\\]"), "_")
+                ?.trimStart('.')
+                ?.takeIf { it.isNotEmpty() }
+            val baseName = safeName?.substringBeforeLast('.') ?: "share"
+            val uniqueName = "${baseName}_${System.currentTimeMillis()}.$extension"
+            val tempFile = File(tempDir, uniqueName)
 
             contentResolver.openInputStream(uri)?.use { input ->
                 tempFile.outputStream().use { output ->
@@ -88,7 +96,7 @@ object SharedContentExtractor {
             SharedFile(
                 path = tempFile.absolutePath,
                 mimeType = mimeType,
-                displayName = queryDisplayName(uri, contentResolver) ?: fileName,
+                displayName = safeName ?: uniqueName,
             )
         } catch (e: Exception) {
             Logger.e(tag = TAG) { "Failed to copy shared URI: ${e.message}" }
