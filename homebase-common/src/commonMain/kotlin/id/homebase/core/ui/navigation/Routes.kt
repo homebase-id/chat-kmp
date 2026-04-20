@@ -84,4 +84,8 @@ sealed class Route {
     @Serializable
     @SerialName("connections")
     data object Connections : Route()
+
+    @Serializable
+    @SerialName("feed")
+    data object Feed : Route()
 }
