@@ -124,3 +124,13 @@ kotlin {
         }
     }
 }
+
+// For JVM tests (including Desktop and Android)
+tasks.withType<Test> {
+    val isCI = System.getenv("CI")?.toBoolean() ?: false
+    if (isCI) {
+        useJUnitPlatform {
+            excludeTags("SkipOnCI")
+        }
+    }
+}
