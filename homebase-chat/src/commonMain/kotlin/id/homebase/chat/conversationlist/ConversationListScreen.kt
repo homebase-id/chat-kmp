@@ -467,8 +467,14 @@ fun ConversationListUi(
             },
             detailPane = {
                 AnimatedPane {
+                    val contentKey = scaffoldNavigator.currentDestination?.contentKey
                     val conversation =
-                        uiState.activeConversations.find { it.conversation.id == scaffoldNavigator.currentDestination?.contentKey }
+                        uiState.activeConversations.find { it.conversation.id == contentKey }
+                    LaunchedEffect(contentKey, conversation != null) {
+                        Logger.i(tag = "ConversationListUi") {
+                            "detailPane render: contentKey=$contentKey, conversationFound=${conversation != null}, activeConversationsSize=${uiState.activeConversations.size}"
+                        }
+                    }
                     if (conversation != null) {
                         key(conversation.conversation.id) {
                             ConversationMessagesPane(

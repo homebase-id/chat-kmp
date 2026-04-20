@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class ConversationStream(
@@ -90,7 +91,7 @@ class ConversationStream(
             eventBus.events.collect { event ->
 
                 if (event is BackendEvent.ConnectionOnline) {
-                    updateUnreadCounts()
+                    enrichWithUnreadCounts()
                     return@collect
                 }
 
@@ -172,7 +173,7 @@ class ConversationStream(
                 if (!m.isAuthoredBy(credentialsManager.getActiveDomain())) {
                     Logger.i("ConversationStream: unarchiving conversation ${m.conversationId} due to incoming message from ${m.originalAuthor}")
                     val unarchived = matchingConversation.copy(conversationState = ConversationState.Active)
-                    _conversations.value = ConversationsData(
+                    _conversations.value = _conversations.value.copy(
                         items = _conversations.value.items.map { if (it.id == unarchived.id) unarchived else it }
                     )
                     scope.launch {
@@ -201,7 +202,7 @@ class ConversationStream(
                 Logger.i("ConversationStream: new message for deleted conversation ${m.conversationId} from=${m.originalAuthor} (msgCreated=$messageCreated > convoUpdated=${matchingConversation.fileUpdated}), reviving")
                 // Flip state to Active in memory so it reappears in the UI immediately
                 val revived = matchingConversation.copy(conversationState = ConversationState.Active)
-                _conversations.value = ConversationsData(
+                _conversations.value = _conversations.value.copy(
                     items = _conversations.value.items.map { if (it.id == revived.id) revived else it }
                 )
                 updateConversationFromNewMessage(revived, m)
@@ -295,7 +296,7 @@ class ConversationStream(
 
         // Sort by descending timestamp (adjust based on your UI needs)
         val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
-        _conversations.value = ConversationsData(true, sortedList)
+        _conversations.value = _conversations.value.copy(dataReady = true, items = sortedList)
     }
 
     private suspend fun updateConversationFromNewMessage(
@@ -368,7 +369,7 @@ class ConversationStream(
 
         // Sort by descending timestamp (adjust based on your UI needs)
         val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
-        _conversations.value = ConversationsData(items = sortedList)
+        _conversations.value = _conversations.value.copy(items = sortedList)
     }
 
     private fun insertNewConversation(conversation: ConversationUiModel) {
@@ -376,7 +377,7 @@ class ConversationStream(
         val currentList = _conversations.value.items.toMutableList()
         currentList.add(conversation)
 
-        _conversations.value = ConversationsData(items = currentList)
+        _conversations.value = _conversations.value.copy(items = currentList)
     }
 
     private suspend fun updateConversation(
@@ -443,23 +444,210 @@ class ConversationStream(
             lastMessageIsFromActiveUser = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessageIsFromActiveUser else existing.lastMessageIsFromActiveUser,
         )
         // We should optimize later to not map the full list
-        _conversations.value =
-            ConversationsData(items = _conversations.value.items.map { if (it.id == existing.id) updatedConvo else it })
+        _conversations.value = _conversations.value.copy(
+            items = _conversations.value.items.map { if (it.id == existing.id) updatedConvo else it }
+        )
     }
 
-    private suspend fun loadConversations() {
+    // region Cold-load pipeline — MANDATORY + ENRICHMENT phases
+    //
+    // The full conversation list load is split into two layers:
+    //
+    //   1. MANDATORY — [loadBasicConversations] runs one simple SELECT and
+    //      flips `dataReady=true`. This is the fast first-paint path.
+    //
+    //   2. ENRICHMENT — three `enrichWithX` passes run sequentially after
+    //      the basic emit. Each pass patches a subset of fields on the
+    //      rows already in `_conversations`, then flips its flag on
+    //      [EnrichmentState]. Passes are independently skippable, safe to
+    //      retry, and must never block the basic emit.
+    //
+    // Orchestration lives in [start].
+
+    /**
+     * MANDATORY — basic conversation load. Runs one simple SELECT against
+     * the `DriveMainIndex` table and produces [ConversationUiModel]s with
+     * only the fields required to render the list.
+     *
+     * Flips `dataReady=true` on the StateFlow. Preserves any in-memory
+     * `Left` state for conversations that already had it (those can exist
+     * from a prior session or an optimistic update that hasn't been
+     * reconciled with the server file yet).
+     *
+     * Do not add DB calls, network calls, or per-row fan-out here —
+     * anything optional belongs in an `enrichWithX` pass. This is the
+     * fast first-paint path; every added cost here delays tap-to-render
+     * latency on cold start.
+     */
+    private suspend fun loadBasicConversations() {
+        val startedAt = Clock.System.now().toEpochMilliseconds()
+        val c = credentialsManager.requireActiveCredentials()
+
+        // Preserve any in-memory Left state across reloads — Left is sticky
+        // until an explicit rejoin.
         val leftIds = _conversations.value.items
             .filter { it.conversationState == ConversationState.Left }
             .map { it.id }
             .toSet()
 
-        val result = fetchConversations().map { convo ->
-            if (convo.id in leftIds && convo.conversationState != ConversationState.Left)
-                convo.copy(conversationState = ConversationState.Left)
-            else convo
+        val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
+        val afterQuery = Clock.System.now().toEpochMilliseconds()
+
+        val basic = files.map { file ->
+            val ui = mapper.mapToBasic(file)
+            if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
+                ui.copy(conversationState = ConversationState.Left)
+            } else ui
         }
-        _conversations.value = ConversationsData(items = result)
+
+        _conversations.value = ConversationsData(
+            dataReady = true,
+            items = basic,
+            enrichment = EnrichmentState(),
+        )
+
+        Logger.i(tag = "ConvListPerf") {
+            "loadBasicConversations end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
+                    "(query=${afterQuery - startedAt}ms map=${Clock.System.now().toEpochMilliseconds() - afterQuery}ms) " +
+                    "items=${basic.size}"
+        }
     }
+
+    /**
+     * ENRICHMENT — patches `lastMessage*` fields on the already-loaded
+     * rows by running `selectAllConversationPlusLastMessage` (JOIN against
+     * the message index) and applying each last message via
+     * [ConversationMapper.applyLastMessage].
+     *
+     * Safe to defer, safe to skip, safe to retry on failure — the result
+     * is either improved rows or no change. Never block the basic emit
+     * on this.
+     *
+     * Runs after [loadBasicConversations]. Flips `enrichment.hasLastMessages`.
+     */
+    private suspend fun enrichWithLastMessages() {
+        val startedAt = Clock.System.now().toEpochMilliseconds()
+        val c = credentialsManager.requireActiveCredentials()
+        val domain = credentialsManager.requireActiveDomain()
+
+        val rows = dbm.chatReadCount.selectAllConversationPlusLastMessage(c.getIdentityId())
+        val afterQuery = Clock.System.now().toEpochMilliseconds()
+
+        val msgByConversation = HashMap<Uuid, id.homebase.api.client.drives.HomebaseFile>(rows.size)
+        for (row in rows) {
+            val convoId = row.conversation.fileMetadata.appData.uniqueId ?: continue
+            val msg = row.message ?: continue
+            msgByConversation[convoId] = msg
+        }
+
+        val current = _conversations.value
+        val updated = current.items.map { ui ->
+            val msgFile = msgByConversation[ui.id] ?: return@map ui
+            mapper.applyLastMessage(ui, msgFile, domain)
+        }
+
+        _conversations.value = current.copy(
+            items = updated,
+            enrichment = current.enrichment.copy(hasLastMessages = true),
+        )
+
+        Logger.i(tag = "ConvListPerf") {
+            "enrichWithLastMessages end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
+                    "(query=${afterQuery - startedAt}ms map=${Clock.System.now().toEpochMilliseconds() - afterQuery}ms) " +
+                    "messages=${msgByConversation.size}/${current.items.size}"
+        }
+    }
+
+    /**
+     * ENRICHMENT — resolves admin sets for group conversations by reading
+     * the separate admin-file records in a single batched DB round-trip,
+     * then patches each row via [ConversationMapper.applyAdmins].
+     *
+     * Rows without a matching admin file keep their in-content
+     * `adminData` seed from [ConversationMapper.mapToBasic] — that's the
+     * intended fallback ordering.
+     *
+     * Safe to defer, safe to skip, safe to retry. Flips
+     * `enrichment.hasAdmins`.
+     */
+    private suspend fun enrichWithAdmins() {
+        val startedAt = Clock.System.now().toEpochMilliseconds()
+
+        val current = _conversations.value
+        val groupIds = ArrayList<Uuid>()
+        for (ui in current.items) {
+            if (ui.isGroupConversation) groupIds.add(ui.id)
+        }
+        if (groupIds.isEmpty()) {
+            _conversations.value = current.copy(
+                enrichment = current.enrichment.copy(hasAdmins = true),
+            )
+            Logger.i(tag = "ConvListPerf") {
+                "enrichWithAdmins end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms groups=0"
+            }
+            return
+        }
+
+        val adminMap = ConversationAdminInfo.queryBatchFromDb(
+            credentialsManager, dbm, chatDrive, groupIds
+        )
+
+        val updated = current.items.map { ui ->
+            val resolved = adminMap[ui.id] ?: return@map ui
+            mapper.applyAdmins(ui, resolved)
+        }
+
+        _conversations.value = current.copy(
+            items = updated,
+            enrichment = current.enrichment.copy(hasAdmins = true),
+        )
+
+        Logger.i(tag = "ConvListPerf") {
+            "enrichWithAdmins end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
+                    "hits=${adminMap.size}/${groupIds.size}"
+        }
+    }
+
+    /**
+     * ENRICHMENT — applies unread counts from the `ChatReadCount` table.
+     *
+     * Also invoked from message-read actions (see [ChatMessageActionService])
+     * and on `BackendEvent.ConnectionOnline` to resync counts after a
+     * reconnect. Flips `enrichment.hasUnreadCounts` (first call only;
+     * subsequent calls just patch counts).
+     *
+     * Safe to defer, safe to skip, safe to retry.
+     */
+    suspend fun enrichWithUnreadCounts() {
+        val startedAt = Clock.System.now().toEpochMilliseconds()
+        val c = credentialsManager.requireActiveCredentials()
+        val unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
+        val unreadMap = unread.associate { it.conversationId to it.unreadCount.toInt() }
+
+        var changed = 0
+        val current = _conversations.value
+        val updated = current.items.map { convo ->
+            val newCount = unreadMap[convo.id] ?: 0
+            if (newCount != convo.unreadCount) {
+                changed++
+                Logger.d("ConversationStream: unreadSync convo=${convo.id} ${convo.unreadCount}->${newCount}")
+                convo.copy(unreadCount = newCount)
+            } else {
+                convo
+            }
+        }
+
+        _conversations.value = current.copy(
+            items = if (changed > 0) updated else current.items,
+            enrichment = current.enrichment.copy(hasUnreadCounts = true),
+        )
+
+        Logger.i(tag = "ConvListPerf") {
+            "enrichWithUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms changedRows=$changed totalRows=${current.items.size}"
+        }
+    }
+
+    // endregion
 
     // Full conversation list load from local DB.  Idempotent (skips if already running).
     // Intended call sites — all user-initiated or startup:
@@ -472,11 +660,17 @@ class ConversationStream(
         if (loadJob?.isActive == true) return
         Logger.d("ConversationStream: start() — loading full conversation list from DB")
         loadJob = scope.launch {
-            loadConversations()
-        }
-        scope.launch {
-            _conversations.first { it.dataReady }
-            updateUnreadCounts()
+            // MANDATORY — flips dataReady=true for the UI.
+            loadBasicConversations()
+
+            // ENRICHMENT — three passes run sequentially. All three go through
+            // the single-threaded DB dispatcher anyway, so there's no benefit
+            // to parallelism and sequencing keeps the log trace readable.
+            // Ordering is deliberate: last-messages first (also drives the sort),
+            // then admins (group-settings only), then unread counts.
+            enrichWithLastMessages()
+            enrichWithAdmins()
+            enrichWithUnreadCounts()
         }
 
         // Reactively update share cache when conversations or contacts change,
@@ -497,37 +691,6 @@ class ConversationStream(
                     }
             }
         }
-    }
-
-    suspend fun updateUnreadCounts() {
-        val c = credentialsManager.requireActiveCredentials()
-        val unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
-        val unreadMap = unread.associate { it.conversationId to it.unreadCount.toInt() }
-
-        var changed = false
-
-        val updated = _conversations.value.items.map { convo ->
-            val newCount = unreadMap[convo.id] ?: 0
-            if (newCount != convo.unreadCount) {
-                changed = true
-                Logger.d("ConversationStream: unreadSync convo=${convo.id} ${convo.unreadCount}->${newCount}")
-                convo.copy(unreadCount = newCount)
-            } else {
-                convo
-            }
-        }
-
-        if (changed) {
-            _conversations.value = ConversationsData(items = updated)
-        }
-    }
-
-    suspend fun fetchConversations(): List<ConversationUiModel> {
-
-        val c = credentialsManager.requireActiveCredentials()
-        val result = dbm.chatReadCount.selectAllConversationPlusLastMessage(c.getIdentityId())
-        return result.map { mapper.mapToConversationUi(it.conversation, it.message) }
-
     }
 
     fun getConversationById(conversationId: Uuid): ConversationUiModel? {
@@ -618,4 +781,30 @@ class ConversationStream(
 data class ConversationsData(
     val dataReady: Boolean = true,
     val items: List<ConversationUiModel> = emptyList(),
+    val enrichment: EnrichmentState = EnrichmentState(),
+)
+
+/**
+ * Tracks which optional enrichment passes have completed for the current
+ * conversation list.
+ *
+ * All flags start `false`. The UI must be able to render with any
+ * combination — a basic-only emit (all flags false) is legal and expected
+ * on cold start. Each enrichment pass in [ConversationStream] flips its
+ * own flag when its data has been merged into the list.
+ *
+ * Flags never go back to false for a given [ConversationsData] instance;
+ * a new basic load (e.g. after logout / re-auth) replaces the whole value
+ * with a fresh default [EnrichmentState].
+ */
+data class EnrichmentState(
+    /** `true` once [ConversationStream.enrichWithLastMessages] has patched
+     *  `lastMessage*` fields + reordered by latest timestamp. */
+    val hasLastMessages: Boolean = false,
+    /** `true` once [ConversationStream.enrichWithAdmins] has resolved
+     *  admin sets for group conversations. */
+    val hasAdmins: Boolean = false,
+    /** `true` once [ConversationStream.enrichWithUnreadCounts] has applied
+     *  the unread counts from ChatReadCount. */
+    val hasUnreadCounts: Boolean = false,
 )

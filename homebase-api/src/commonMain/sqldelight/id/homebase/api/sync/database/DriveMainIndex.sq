@@ -95,6 +95,13 @@ selectByIdentityAndDriveAndUnique:
 SELECT * FROM DriveMainIndex
 WHERE identityId = ? AND driveId = ? AND uniqueId = ?;
 
+-- Batch variant: look up many rows by uniqueId in one round-trip. Used by the
+-- chat overview cold-load to avoid N+1 admin-file queries when mapping each
+-- group conversation.
+selectByIdentityAndDriveAndUniqueIds:
+SELECT * FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND uniqueId IN ?;
+
 -- Select by identity and drive and file (get single row)
 selectByIdentityAndDriveAndGlobal:
 SELECT * FROM DriveMainIndex

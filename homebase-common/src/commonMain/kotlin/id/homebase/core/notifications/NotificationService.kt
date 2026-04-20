@@ -437,7 +437,12 @@ class NotificationService(
             }
 
             if (event != null) {
+                Logger.i(tag = "NotificationService") { "navigationEvent emit: $event" }
                 _navigationEvents.trySend(event)
+            } else {
+                Logger.w(tag = "NotificationService") {
+                    "No navigationEvent produced from click (appId unmatched?)"
+                }
             }
         } catch (e: Exception) {
             Logger.e(tag = "NotificationService") {
