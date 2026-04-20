@@ -14,27 +14,20 @@ class ConversationEnricher {
      * Enriches a basic [ConversationUiModel] with resolved contact/
      * connection data for display.
      *
-     * Tolerates a null [ownerSession] — if the session hasn't loaded yet,
-     * the enricher falls back to `credentialsManager.requireActiveDomain()`
-     * semantics (the "other participant" filter just can't exclude the
-     * current user, which is safe for a first-paint render). The list
-     * screen pushes a null session through so that cold-load rendering
-     * never blocks on session resolution.
-     *
-     * Empty `contactMap` / `connectionMap` inputs are also tolerated —
+     * Empty `contactMap` / `connectionMap` inputs are tolerated —
      * display names fall back to `odinId.domainName` at the UI layer.
      */
     fun enrich(
         convo: ConversationUiModel,
         contactMap: Map<OdinId, ContactUiModel>,
-        ownerSession: OwnerSession?,
+        ownerSession: OwnerSession,
         connectionMap: Map<OdinId, RedactedIdentityConnectionRegistration> = emptyMap(),
         incomingRequestSenders: Set<OdinId> = emptySet(),
         outgoingRequestRecipients: Set<OdinId> = emptySet(),
         connectionStatusKnown: Boolean = true,
     ): EnrichedConversationUiModel {
 
-        val currentUser = ownerSession?.odinId
+        val currentUser = ownerSession.odinId
 
         if (convo.isWithSelf) {
             return EnrichedConversationUiModel(
@@ -44,13 +37,7 @@ class ConversationEnricher {
             )
         }
 
-        val otherParticipants = if (currentUser != null) {
-            convo.participants.filter { it != currentUser }
-        } else {
-            // Session not loaded yet — render with best-effort participants.
-            // Subsequent emits will re-enrich once the session resolves.
-            convo.participants
-        }
+        val otherParticipants = convo.participants.filter { it != currentUser }
 
         val participants = otherParticipants.mapNotNull { odinId ->
             contactMap[odinId]

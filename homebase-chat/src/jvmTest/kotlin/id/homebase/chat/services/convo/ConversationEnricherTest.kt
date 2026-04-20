@@ -15,11 +15,8 @@ import kotlin.uuid.Uuid
 /**
  * Pure unit tests for [ConversationEnricher]. No DB, no Koin, no coroutines.
  *
- * Locks down two contracts introduced by the mandatory/optional split:
- *   - [ConversationEnricher.enrich] tolerates `ownerSession = null`
- *     and renders best-effort output instead of throwing.
- *   - The `isWithSelf` branch always returns empty participants regardless
- *     of ownerSession state.
+ * Locks down the `isWithSelf` invariant: the self-branch short-circuits
+ * to empty participants before any contact/session data is consulted.
  */
 class ConversationEnricherTest {
 
@@ -58,27 +55,6 @@ class ConversationEnricherTest {
         isGroup = false,
     )
 
-    // T1: we weakened the ownerSession gate in ConversationListViewModel so that
-    // cold-load can render before the owner session resolves. The enricher is the
-    // one that must not throw on a null session — this test locks that in.
-    @Test
-    fun enrich_nullOwnerSession_rendersBestEffort() {
-        val enricher = ConversationEnricher()
-
-        val result = enricher.enrich(
-            convo = oneOnOneConvo(),
-            contactMap = emptyMap(),
-            ownerSession = null,
-        )
-
-        // Participants pass through unfiltered when we can't identify "self".
-        // The enricher documents this as the intentional degradation path.
-        assertEquals(2, result.conversation.participants.size)
-        // No contacts were provided, so the resolved participants list is empty —
-        // the UI layer falls back to odinId.domainName at render time.
-        assertTrue(result.participants.isEmpty())
-    }
-
     @Test
     fun enrich_withSelf_returnsEmptyParticipants() {
         val enricher = ConversationEnricher()
@@ -97,25 +73,5 @@ class ConversationEnricherTest {
         assertTrue(result.participants.isEmpty())
         assertTrue(result.missingConnections.isEmpty())
         assertEquals(null, result.oneOnOneConnectionStatus)
-    }
-
-    // Also verify self-branch doesn't crash without a session (edge case on top
-    // of T1 — the null-session path and the isWithSelf path run independently).
-    @Test
-    fun enrich_withSelf_nullOwnerSession_doesNotCrash() {
-        val enricher = ConversationEnricher()
-
-        val selfConvo = oneOnOneConvo().copy(
-            id = ChatProtocol.ConversationWithYourselfId,
-            participants = listOf(me),
-        )
-
-        val result = enricher.enrich(
-            convo = selfConvo,
-            contactMap = emptyMap(),
-            ownerSession = null,
-        )
-
-        assertTrue(result.participants.isEmpty())
     }
 }
