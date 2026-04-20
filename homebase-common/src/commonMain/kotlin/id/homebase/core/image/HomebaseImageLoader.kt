@@ -9,6 +9,8 @@ import id.homebase.api.file.FileOperationsProvider
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.extension
 import io.github.vinceglb.filekit.mimeType
+import kotlinx.coroutines.CancellationException
+import kotlin.uuid.Uuid
 
 /** Image data container */
 // TODO: Rename to memoryImage?
@@ -43,13 +45,15 @@ class HomebaseImageLoader(
         // Content types that don't need thumbnails (render as-is)
         val THUMBLESS_CONTENT_TYPES = setOf("image/svg+xml", "image/gif")
 
-        // Default retry configuration for image loading
+        // Default retry configuration for image loading.
+        // retryOn unwraps the RuntimeException wrapper produced below so the real
+        // cause (e.g. NotFoundException) still short-circuits retries.
         val DEFAULT_RETRY_CONFIG = RetryConfig(
             maxRetries = 3,
             initialDelayMs = 500L,
             maxDelayMs = 5000L,
             backoffMultiplier = 2.0,
-            retryOn = { e -> e !is NotFoundException }
+            retryOn = { e -> (e.cause ?: e) !is NotFoundException }
         )
     }
 
@@ -94,15 +98,32 @@ class HomebaseImageLoader(
 
         // Fetch from server with retry
         return withRetry(retryConfig, TAG) {
-            val response = driveFileProvider.getThumbBytesDecrypted(
-                driveId = data.driveId,
-                fileId = data.fileId,
-                payloadKey = data.payloadKey,
-                keyHeader = data.keyHeader,
-                width = targetSize.pixelWidth,
-                height = targetSize.pixelHeight,
-                lastModified = data.lastModified,
-            ) ?: return@withRetry null
+            val response = try {
+                driveFileProvider.getThumbBytesDecrypted(
+                    driveId = data.driveId,
+                    fileId = data.fileId,
+                    payloadKey = data.payloadKey,
+                    keyHeader = data.keyHeader,
+                    width = targetSize.pixelWidth,
+                    height = targetSize.pixelHeight,
+                    lastModified = data.lastModified,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw RuntimeException(
+                    buildImageLoadFailureMessage(
+                        kind = "thumb",
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        payloadKey = data.payloadKey,
+                        size = targetSize,
+                        lastModified = data.lastModified,
+                        causeClass = e::class.simpleName
+                    ),
+                    e
+                )
+            } ?: return@withRetry null
 
             CachedImage(
                 bytes = response.bytes, contentType = response.contentType, size = targetSize
@@ -126,12 +147,29 @@ class HomebaseImageLoader(
 
         // Fetch from server with retry
         return withRetry(retryConfig, TAG) {
-            val response = driveFileProvider.getPayloadBytesDecrypted(
-                driveId = data.driveId,
-                fileId = data.fileId,
-                key = data.payloadKey,
-                keyHeader = data.keyHeader
-            ) ?: return@withRetry null
+            val response = try {
+                driveFileProvider.getPayloadBytesDecrypted(
+                    driveId = data.driveId,
+                    fileId = data.fileId,
+                    key = data.payloadKey,
+                    keyHeader = data.keyHeader
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw RuntimeException(
+                    buildImageLoadFailureMessage(
+                        kind = "payload",
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        payloadKey = data.payloadKey,
+                        size = null,
+                        lastModified = data.lastModified,
+                        causeClass = e::class.simpleName
+                    ),
+                    e
+                )
+            } ?: return@withRetry null
 
             CachedImage(
                 bytes = response.bytes,
@@ -140,6 +178,25 @@ class HomebaseImageLoader(
             )
         }
     }
+}
+
+/**
+ * Request-level context string appended to image-load failures so the retry
+ * log identifies which drive/file/size failed. Shared by [HomebaseImageLoader]
+ * and covered by unit tests.
+ */
+internal fun buildImageLoadFailureMessage(
+    kind: String,
+    driveId: Uuid,
+    fileId: Uuid,
+    payloadKey: String,
+    size: ImageSize?,
+    lastModified: Long?,
+    causeClass: String?,
+): String {
+    val sizeStr = size?.let { "${it.pixelWidth}x${it.pixelHeight}" } ?: "full"
+    return "$kind load failed drive=$driveId file=$fileId key=$payloadKey " +
+        "size=$sizeStr lastMod=$lastModified cause=$causeClass"
 }
 
 /** Load pending/local file from filesystem */
