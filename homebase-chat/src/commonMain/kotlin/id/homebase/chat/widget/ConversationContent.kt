@@ -72,6 +72,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -210,7 +211,7 @@ fun ConversationContent(
 
     LaunchedEffect(uiState.replyToMessage) {
         if (uiState.replyToMessage != null) {
-            kotlinx.coroutines.delay(100)
+            withFrameNanos {}
             focusRequester.requestFocus()
             keyboardController?.show()
         }

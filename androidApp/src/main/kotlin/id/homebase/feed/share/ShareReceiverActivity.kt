@@ -419,7 +419,8 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
         // Method 2: EXTRA_SHORTCUT_ID set by Android's ChooserActivity (API 29+)
         // Format: "share_{uuid}" as defined in ShareShortcutPublisher
-        intent.getStringExtra("android.intent.extra.shortcut.ID")?.let { shortcutId ->
+        @Suppress("DEPRECATION")
+        intent.getStringExtra(Intent.EXTRA_SHORTCUT_ID)?.let { shortcutId ->
             return shortcutId.removePrefix("share_")
         }
 
