@@ -40,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -160,7 +161,7 @@ fun SettingsUi(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(stringResource(MR.string.settings)) }, navigationIcon = {
+            TopAppBar(title = { Text(stringResource(MR.string.settings), modifier = Modifier.testTag("settingsTitle")) }, navigationIcon = {
                 IconButton(onClick = onBackClick) {
                     Icon(
                         imageVector = Icons.Default.ChevronLeft,
@@ -231,6 +232,7 @@ fun SettingsUi(
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
+                modifier = Modifier.testTag("notificationsButton"),
                 imageVector = Icons.Outlined.Notifications,
                 text = stringResource(MR.string.settings_notifications),
                 onClick = onNavigateToNotifications,
@@ -263,6 +265,7 @@ fun SettingsUi(
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
+                modifier = Modifier.testTag("securitySetupButton"),
                 imageVector = Icons.Outlined.Security,
                 text = stringResource(MR.string.settings_security_setup),
                 onClick = { onAction(SettingsUiAction.SecuritySetupClicked) },
@@ -277,12 +280,14 @@ fun SettingsUi(
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
+                modifier = Modifier.testTag("appearanceButton"),
                 imageVector = Icons.Outlined.Brightness6,
                 text = stringResource(MR.string.settings_appearance),
                 onClick = onNavigateToAppearance
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
+                modifier = Modifier.testTag("helpButton"),
                 imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
                 text = stringResource(MR.string.settings_help),
                 onClick = onNavigateToHelp
@@ -291,11 +296,13 @@ fun SettingsUi(
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
+                modifier = Modifier.testTag("deleteAccountButton"),
                 imageVector = Icons.Outlined.Delete,
                 text = stringResource(MR.string.settings_delete_account),
                 onClick = { onAction(SettingsUiAction.DeleteAccount) }
             )
             SettingsItemAction(
+                modifier = Modifier.testTag("logoutButton"),
                 imageVector = Icons.AutoMirrored.Outlined.Logout,
                 text = stringResource(MR.string.settings_logout),
                 onClick = { onAction(SettingsUiAction.LogoutClicked) }

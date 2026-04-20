@@ -72,9 +72,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -94,9 +94,9 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.MessageListContentModel
-import id.homebase.chat.conversationlist.PendingOutgoingMessage
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.chat.conversationlist.PendingOutgoingMessage
 import id.homebase.chat.conversationlist.RecipientGroupModel
 import id.homebase.chat.conversationlist.RecipientModel
 import id.homebase.chat.conversationlist.RecipientType
@@ -439,7 +439,11 @@ fun ConversationContent(
                                         text = if (conversation.conversation.isWithSelf) stringResource(
                                             MR.string.chat_note_to_self
                                         )
-                                        else conversation.getDisplayName(youLabel = stringResource(MR.string.you)),
+                                        else conversation.getDisplayName(
+                                            youLabel = stringResource(
+                                                MR.string.you
+                                            )
+                                        ),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
@@ -582,506 +586,521 @@ fun ConversationContent(
                 modifier = Modifier.fillMaxSize()
                     .offset {
                         val imeHeight = imeInsets.getBottom(this)
-                        val sheetOffset = if (imeHeight > 0) {
-                            imeHeight
-                        } else if (showEmojiSheet || showAttachmentSheet) {
-                            keyboardHeight.coerceAtLeast(300.dp).roundToPx()
-                        } else {
-                            0
+                        val sheetHeight = keyboardHeight.coerceAtLeast(300.dp).roundToPx()
+                        val sheetOffset = when {
+                            // Emoji search: keyboard + emoji sheet both visible
+                            showEmojiSheet && imeHeight > 0 -> imeHeight + sheetHeight
+                            // Regular keyboard only
+                            imeHeight > 0 -> imeHeight
+                            // Sheet only (no keyboard)
+                            showEmojiSheet || showAttachmentSheet -> sheetHeight
+                            else -> 0
                         }
                         IntOffset(0, -sheetOffset)
                     }
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-                    .dismissKeyboardOnTap()
             ) {
-            if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(16.dp)
-                ) {
-                    Text(
-                        stringResource(MR.string.chat_group_not_connected_disclaimer),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    ElevatedButton(
-                        onClick = {
-                            onUiAction(ConversationListUiAction.ConnectIdentities(conversation.missingConnections))
-                        }) {
-                        Text(stringResource(MR.string.connect))
-                    }
-                }
-            }
-
-            val realMessageIds = remember(uiState.messages) {
-                uiState.messages
-                    .filterIsInstance<MessageListContentModel.Message>()
-                    .mapTo(HashSet()) { it.message.id }
-            }
-            val pendingForConvo = remember(uiState.pendingOutgoing, realMessageIds, conversation.conversation.id) {
-                uiState.pendingOutgoing.filter {
-                    it.conversationId == conversation.conversation.id &&
-                            it.id !in realMessageIds
-                }
-            }
-            // Merge pending placeholders into the messages list at the right
-            // chronological position (sorted by sentAt vs. message.userDate).
-            // This matters when a video is still processing — any text or
-            // incoming messages with a later timestamp must render BELOW the
-            // video placeholder, not above it.
-            val mergedItems = remember(uiState.messages, pendingForConvo) {
-                if (pendingForConvo.isEmpty()) {
-                    uiState.messages.toList<Any>()
-                } else {
-                    val pending = pendingForConvo.sortedBy { it.sentAt }.toMutableList()
-                    val result = mutableListOf<Any>()
-                    for (item in uiState.messages) {
-                        if (item is MessageListContentModel.Message) {
-                            while (pending.isNotEmpty() &&
-                                pending.first().sentAt <= item.message.userDate
-                            ) {
-                                result += pending.removeAt(0)
-                            }
-                        }
-                        result += item
-                    }
-                    result.addAll(pending)
-                    result.toList()
-                }
-            }
-
-            Box(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-            ) {
-                if (!uiState.isLoadingMessages) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        state = listState,
-                        contentPadding = PaddingValues(
-                            top = 24.dp,
-                            bottom = 24.dp,
-                        )
+                if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(16.dp)
                     ) {
-                        items(
-                            mergedItems,
-                            key = { item ->
-                                when (item) {
-                                    is MessageListContentModel -> item.id
-                                    is PendingOutgoingMessage -> "pending-${item.id}"
-                                    else -> item.hashCode().toString()
-                                }
-                            },
-                        ) { item ->
-                            when (item) {
-                                is MessageListContentModel.Header -> {
-                                    Column {
-                                        AvatarNameDisplay(
-                                            modifier = Modifier.fillMaxWidth()
-                                                .padding(horizontal = 16.dp)
-                                                .padding(bottom = 16.dp),
-                                            displayName = if (conversation.conversation.isWithSelf) stringResource(
-                                                MR.string.chat_note_to_self
-                                            ) else conversation.getDisplayName(youLabel = stringResource(MR.string.you)),
-                                            avatarModel = conversation.conversation.avatarModel,
-                                            onClick = {
-                                                onUiAction(
-                                                    ConversationListUiAction.ShowConversationSettings(
-                                                        conversation.conversation
-                                                    )
-                                                )
-                                            }
-                                        )
+                        Text(
+                            stringResource(MR.string.chat_group_not_connected_disclaimer),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        ElevatedButton(
+                            onClick = {
+                                onUiAction(ConversationListUiAction.ConnectIdentities(conversation.missingConnections))
+                            }) {
+                            Text(stringResource(MR.string.connect))
+                        }
+                    }
+                }
 
-                                        if (conversation.conversation.isGroupConversation) {
-                                            GroupMemberNamesCard(
+                val realMessageIds = remember(uiState.messages) {
+                    uiState.messages
+                        .filterIsInstance<MessageListContentModel.Message>()
+                        .mapTo(HashSet()) { it.message.id }
+                }
+                val pendingForConvo = remember(
+                    uiState.pendingOutgoing,
+                    realMessageIds,
+                    conversation.conversation.id
+                ) {
+                    uiState.pendingOutgoing.filter {
+                        it.conversationId == conversation.conversation.id &&
+                                it.id !in realMessageIds
+                    }
+                }
+                // Merge pending placeholders into the messages list at the right
+                // chronological position (sorted by sentAt vs. message.userDate).
+                // This matters when a video is still processing — any text or
+                // incoming messages with a later timestamp must render BELOW the
+                // video placeholder, not above it.
+                val mergedItems = remember(uiState.messages, pendingForConvo) {
+                    if (pendingForConvo.isEmpty()) {
+                        uiState.messages.toList<Any>()
+                    } else {
+                        val pending = pendingForConvo.sortedBy { it.sentAt }.toMutableList()
+                        val result = mutableListOf<Any>()
+                        for (item in uiState.messages) {
+                            if (item is MessageListContentModel.Message) {
+                                while (pending.isNotEmpty() &&
+                                    pending.first().sentAt <= item.message.userDate
+                                ) {
+                                    result += pending.removeAt(0)
+                                }
+                            }
+                            result += item
+                        }
+                        result.addAll(pending)
+                        result.toList()
+                    }
+                }
+
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                ) {
+                    if (!uiState.isLoadingMessages) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().dismissKeyboardOnTap(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            state = listState,
+                            contentPadding = PaddingValues(
+                                top = 24.dp,
+                                bottom = 24.dp,
+                            )
+                        ) {
+                            items(
+                                mergedItems,
+                                key = { item ->
+                                    when (item) {
+                                        is MessageListContentModel -> item.id
+                                        is PendingOutgoingMessage -> "pending-${item.id}"
+                                        else -> item.hashCode().toString()
+                                    }
+                                },
+                            ) { item ->
+                                when (item) {
+                                    is MessageListContentModel.Header -> {
+                                        Column {
+                                            AvatarNameDisplay(
                                                 modifier = Modifier.fillMaxWidth()
                                                     .padding(horizontal = 16.dp)
                                                     .padding(bottom = 16.dp),
-                                                // TODO - how to get list of nice display names
-                                                participantNames =
-                                                    conversation
-                                                        .participants
-                                                        .filter { it.odinId != uiState.ownerSession?.odinId }
-                                                        .map { it.name }
-                                                        .toPersistentList(),
+                                                displayName = if (conversation.conversation.isWithSelf) stringResource(
+                                                    MR.string.chat_note_to_self
+                                                ) else conversation.getDisplayName(
+                                                    youLabel = stringResource(
+                                                        MR.string.you
+                                                    )
+                                                ),
+                                                avatarModel = conversation.conversation.avatarModel,
+                                                onClick = {
+                                                    onUiAction(
+                                                        ConversationListUiAction.ShowConversationSettings(
+                                                            conversation.conversation
+                                                        )
+                                                    )
+                                                }
                                             )
+
+                                            if (conversation.conversation.isGroupConversation) {
+                                                GroupMemberNamesCard(
+                                                    modifier = Modifier.fillMaxWidth()
+                                                        .padding(horizontal = 16.dp)
+                                                        .padding(bottom = 16.dp),
+                                                    // TODO - how to get list of nice display names
+                                                    participantNames =
+                                                        conversation
+                                                            .participants
+                                                            .filter { it.odinId != uiState.ownerSession?.odinId }
+                                                            .map { it.name }
+                                                            .toPersistentList(),
+                                                )
+                                            }
                                         }
                                     }
-                                }
 
-                                is MessageListContentModel.Section -> {
-                                    MessagesSection(text = getDateSectionLabel(item.date))
-                                }
+                                    is MessageListContentModel.Section -> {
+                                        MessagesSection(text = getDateSectionLabel(item.date))
+                                    }
 
-                                is MessageListContentModel.System -> {
-                                    MessagesSystemMessage(text = item.text)
-                                }
+                                    is MessageListContentModel.System -> {
+                                        MessagesSystemMessage(text = item.text)
+                                    }
 
-                                is MessageListContentModel.Message -> {
-                                    val isFocused = uiState.searchResultMessageIds.getOrNull(
-                                        uiState.currentSearchResultIndex
-                                    ) == item.message.id
-                                    MessageItem(
-                                        message = item.message,
-                                        userDefaultReactions = uiState.userDefaultReactions,
-                                        decryptedFiles = uiState.decryptedFiles,
-                                        currentOdinId = uiState.ownerSession?.odinId?.domainName
-                                            ?: "",
-                                        renderAuthorName = conversation.conversation.isGroupConversation,
-                                        isGroupConversation = conversation.conversation.isGroupConversation,
-                                        animatedVisibilityScope = animatedVisibilityScope,
-                                        sharedTransitionScope = sharedTransitionScope,
-                                        onUiAction = onUiAction,
-                                        downloadingFiles = uiState.downloadingFiles,
-                                        uploadStatus = uiState.uploadProgress[item.message.id],
-                                        replyMessages = replyMessages,
-                                        searchQuery = uiState.searchQuery,
-                                        isCurrentSearchResult = isFocused,
-                                    )
-                                }
+                                    is MessageListContentModel.Message -> {
+                                        val isFocused = uiState.searchResultMessageIds.getOrNull(
+                                            uiState.currentSearchResultIndex
+                                        ) == item.message.id
+                                        MessageItem(
+                                            message = item.message,
+                                            userDefaultReactions = uiState.userDefaultReactions,
+                                            decryptedFiles = uiState.decryptedFiles,
+                                            currentOdinId = uiState.ownerSession?.odinId?.domainName
+                                                ?: "",
+                                            renderAuthorName = conversation.conversation.isGroupConversation,
+                                            isGroupConversation = conversation.conversation.isGroupConversation,
+                                            animatedVisibilityScope = animatedVisibilityScope,
+                                            sharedTransitionScope = sharedTransitionScope,
+                                            onUiAction = onUiAction,
+                                            downloadingFiles = uiState.downloadingFiles,
+                                            uploadStatus = uiState.uploadProgress[item.message.id],
+                                            replyMessages = replyMessages,
+                                            searchQuery = uiState.searchQuery,
+                                            isCurrentSearchResult = isFocused,
+                                        )
+                                    }
 
-                                is PendingOutgoingMessage -> {
-                                    PendingMessageBubble(
-                                        message = item,
-                                        uploadStatus = uiState.uploadProgress[item.id],
+                                    is PendingOutgoingMessage -> {
+                                        PendingMessageBubble(
+                                            message = item,
+                                            uploadStatus = uiState.uploadProgress[item.id],
+                                        )
+                                    }
+                                }
+                            }
+                            // If only one message item (the header) show no messages info
+                            if (uiState.messages.size == 1 && pendingForConvo.isEmpty()) {
+                                item { EmptyListItem(stringResource(MR.string.chat_no_messages)) }
+                            }
+                        }
+                        HomebaseVerticalScrollbar(
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                            state = listState
+                        )
+
+                        Column(
+                            modifier = Modifier.align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 16.dp),
+                        ) {
+                            AnimatedVisibility(
+                                visible = showScrollToBottom,
+                                enter = fadeIn() + scaleIn(),
+                                exit = fadeOut() + scaleOut(),
+                            ) {
+                                SmallFloatingActionButton(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                                        }
+                                    },
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowDown,
+                                        contentDescription = stringResource(MR.string.chat_scroll_to_bottom),
                                     )
                                 }
                             }
                         }
-                        // If only one message item (the header) show no messages info
-                        if (uiState.messages.size == 1 && pendingForConvo.isEmpty()) {
-                            item { EmptyListItem(stringResource(MR.string.chat_no_messages)) }
-                        }
-                    }
-                    HomebaseVerticalScrollbar(
-                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-                        state = listState
-                    )
 
-                    Column(
-                        modifier = Modifier.align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 16.dp),
+                    } else {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = uiState.isSearchActive,
+                    enter = fadeIn() + expandVertically(animationSpec = tween(200)),
+                    exit = fadeOut() + shrinkVertically(animationSpec = tween(150)),
+                ) {
+                    Surface(
+                        shadowElevation = 4.dp,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
-                        AnimatedVisibility(
-                            visible = showScrollToBottom,
-                            enter = fadeIn() + scaleIn(),
-                            exit = fadeOut() + scaleOut(),
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            SmallFloatingActionButton(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
-                                    }
+                            val resultCount = uiState.searchResultMessageIds.size
+                            Text(
+                                text = if (uiState.searchQuery.isEmpty()) {
+                                    ""
+                                } else if (resultCount == 0) {
+                                    stringResource(MR.string.chat_message_search_no_results)
+                                } else {
+                                    stringResource(
+                                        MR.string.chat_message_search_result_count,
+                                        resultCount - uiState.currentSearchResultIndex,
+                                        resultCount,
+                                    )
                                 },
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                contentColor = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { onUiAction(ConversationListUiAction.SearchMessagesNavigatePrevious) },
+                                enabled = uiState.currentSearchResultIndex > 0,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                    contentDescription = stringResource(MR.string.chat_previous_result),
+                                )
+                            }
+                            IconButton(
+                                onClick = { onUiAction(ConversationListUiAction.SearchMessagesNavigateNext) },
+                                enabled = uiState.currentSearchResultIndex < uiState.searchResultMessageIds.size - 1,
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = stringResource(MR.string.chat_scroll_to_bottom),
+                                    contentDescription = stringResource(MR.string.chat_next_result),
                                 )
                             }
-                        }
-                    }
-
-                } else {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-            }
-
-            AnimatedVisibility(
-                visible = uiState.isSearchActive,
-                enter = fadeIn() + expandVertically(animationSpec = tween(200)),
-                exit = fadeOut() + shrinkVertically(animationSpec = tween(150)),
-            ) {
-                Surface(
-                    shadowElevation = 4.dp,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val resultCount = uiState.searchResultMessageIds.size
-                        Text(
-                            text = if (uiState.searchQuery.isEmpty()) {
-                                ""
-                            } else if (resultCount == 0) {
-                                stringResource(MR.string.chat_message_search_no_results)
-                            } else {
-                                stringResource(
-                                    MR.string.chat_message_search_result_count,
-                                    resultCount - uiState.currentSearchResultIndex,
-                                    resultCount,
-                                )
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        IconButton(
-                            onClick = { onUiAction(ConversationListUiAction.SearchMessagesNavigatePrevious) },
-                            enabled = uiState.currentSearchResultIndex > 0,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowUp,
-                                contentDescription = stringResource(MR.string.chat_previous_result),
-                            )
-                        }
-                        IconButton(
-                            onClick = { onUiAction(ConversationListUiAction.SearchMessagesNavigateNext) },
-                            enabled = uiState.currentSearchResultIndex < uiState.searchResultMessageIds.size - 1,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = stringResource(MR.string.chat_next_result),
-                            )
                         }
                     }
                 }
-            }
 
-            Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
-                if (conversation.conversation.conversationState == ConversationState.Left) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = stringResource(MR.string.chat_group_you_left),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                } else if (conversation.conversation.conversationState == ConversationState.Removed) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = stringResource(MR.string.chat_group_you_were_removed),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                } else if (conversation.conversation.conversationState == ConversationState.RejoinPending) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = stringResource(MR.string.chat_group_rejoin_pending_description),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            ElevatedButton(onClick = {
-                                onUiAction(ConversationListUiAction.AcceptRejoin(conversation.conversation.id))
-                            }) {
-                                Text(stringResource(MR.string.chat_group_rejoin_accept))
+                Surface(shadowElevation = 8.dp, tonalElevation = 0.dp) {
+                    if (conversation.conversation.conversationState == ConversationState.Left) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(MR.string.chat_group_you_left),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else if (conversation.conversation.conversationState == ConversationState.Removed) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(MR.string.chat_group_you_were_removed),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else if (conversation.conversation.conversationState == ConversationState.RejoinPending) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(MR.string.chat_group_rejoin_pending_description),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                ElevatedButton(onClick = {
+                                    onUiAction(ConversationListUiAction.AcceptRejoin(conversation.conversation.id))
+                                }) {
+                                    Text(stringResource(MR.string.chat_group_rejoin_accept))
+                                }
+                                ElevatedButton(onClick = {
+                                    onUiAction(ConversationListUiAction.DeclineRejoin(conversation.conversation.id))
+                                }) {
+                                    Text(stringResource(MR.string.chat_group_rejoin_decline))
+                                }
                             }
+                        }
+                    } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.NotConnected) {
+                        val status = conversation.oneOnOneConnectionStatus
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(MR.string.chat_not_connected_description),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             ElevatedButton(onClick = {
-                                onUiAction(ConversationListUiAction.DeclineRejoin(conversation.conversation.id))
+                                onUiAction(
+                                    ConversationListUiAction.OpenSendConnectionRequestDialog(
+                                        status.otherOdinId
+                                    )
+                                )
                             }) {
-                                Text(stringResource(MR.string.chat_group_rejoin_decline))
+                                Text(stringResource(MR.string.chat_not_connected_send_request))
                             }
                         }
-                    }
-                } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.NotConnected) {
-                    val status = conversation.oneOnOneConnectionStatus
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = stringResource(MR.string.chat_not_connected_description),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        ElevatedButton(onClick = {
-                            onUiAction(
-                                ConversationListUiAction.OpenSendConnectionRequestDialog(
-                                    status.otherOdinId
-                                )
+                    } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.OutgoingRequestPending) {
+                        val status = conversation.oneOnOneConnectionStatus
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(MR.string.chat_not_connected_outgoing_description),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        }) {
-                            Text(stringResource(MR.string.chat_not_connected_send_request))
-                        }
-                    }
-                } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.OutgoingRequestPending) {
-                    val status = conversation.oneOnOneConnectionStatus
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = stringResource(MR.string.chat_not_connected_outgoing_description),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        ElevatedButton(onClick = {
-                            onUiAction(
-                                ConversationListUiAction.OpenConnectionRequestInOwnerConsole(
-                                    status.otherOdinId
+                            ElevatedButton(onClick = {
+                                onUiAction(
+                                    ConversationListUiAction.OpenConnectionRequestInOwnerConsole(
+                                        status.otherOdinId
+                                    )
                                 )
-                            )
-                        }) {
-                            Text(stringResource(MR.string.chat_not_connected_view_request))
+                            }) {
+                                Text(stringResource(MR.string.chat_not_connected_view_request))
+                            }
                         }
-                    }
-                } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.IncomingRequestPending) {
-                    val status = conversation.oneOnOneConnectionStatus
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = stringResource(MR.string.chat_not_connected_incoming_description),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        ElevatedButton(onClick = {
-                            onUiAction(
-                                ConversationListUiAction.OpenConnectionRequestInOwnerConsole(
-                                    status.otherOdinId
+                    } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.IncomingRequestPending) {
+                        val status = conversation.oneOnOneConnectionStatus
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(MR.string.chat_not_connected_incoming_description),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            ElevatedButton(onClick = {
+                                onUiAction(
+                                    ConversationListUiAction.OpenConnectionRequestInOwnerConsole(
+                                        status.otherOdinId
+                                    )
                                 )
-                            )
-                        }) {
-                            Text(stringResource(MR.string.chat_not_connected_review_request))
+                            }) {
+                                Text(stringResource(MR.string.chat_not_connected_review_request))
+                            }
                         }
-                    }
-                } else if (!uiState.isSearchActive) {
-                    Column(
-                        modifier = Modifier.animateContentSize()
-                            .focusProperties { canFocus = inputFocusable }) {
-                        uiState.replyToMessage?.let { msg ->
-                            ReplyPreviewBar(
-                                message = msg, onDismiss = {
-                                    onUiAction(ConversationListUiAction.CancelReplyToMessage)
-                                })
-                        }
-                        MessageInputBar(
-                            textFieldState = textFieldState,
-                            recordingData = recordingData,
-                            focusRequester = focusRequester,
-                            editExistingMode = uiState.isEditingMessageId != null,
-                            showingEmojiSheet = showEmojiSheet,
-                            isSendingMessage = uiState.isSendingMessage,
-                            onSendMessage = { text, linkPreview ->
-                                if (text.isNotBlank()) {
-                                    if (uiState.isEditingMessageId != null) {
-                                        onUiAction(
-                                            ConversationListUiAction.EditMessageSave
-                                        )
-                                    } else {
-                                        onUiAction(
-                                            ConversationListUiAction.SendMessage(
-                                                conversationId = conversation.conversation.id,
-                                                linkPreview = linkPreview,
+                    } else if (!uiState.isSearchActive) {
+                        Column(
+                            modifier = Modifier.animateContentSize()
+                                .focusProperties { canFocus = inputFocusable }) {
+                            uiState.replyToMessage?.let { msg ->
+                                ReplyPreviewBar(
+                                    message = msg, onDismiss = {
+                                        onUiAction(ConversationListUiAction.CancelReplyToMessage)
+                                    })
+                            }
+                            MessageInputBar(
+                                textFieldState = textFieldState,
+                                recordingData = recordingData,
+                                focusRequester = focusRequester,
+                                editExistingMode = uiState.isEditingMessageId != null,
+                                showingEmojiSheet = showEmojiSheet,
+                                isSendingMessage = uiState.isSendingMessage,
+                                onSendMessage = { text, linkPreview ->
+                                    if (text.isNotBlank()) {
+                                        if (uiState.isEditingMessageId != null) {
+                                            onUiAction(
+                                                ConversationListUiAction.EditMessageSave
                                             )
-                                        )
+                                        } else {
+                                            onUiAction(
+                                                ConversationListUiAction.SendMessage(
+                                                    conversationId = conversation.conversation.id,
+                                                    linkPreview = linkPreview,
+                                                )
+                                            )
+                                        }
                                     }
-                                }
-                            },
-                            onEmojiClick = {
-                                showAttachmentSheet = false
-                                if (showEmojiSheet && !isKeyboardVisible) {
-                                    showEmojiSheet = false
-                                    if (wasKeyboardVisible) {
-                                        focusRequester.requestFocus()
-                                        keyboardController?.show()
-                                    }
-                                } else {
-                                    if (isKeyboardVisible) {
-                                        wasKeyboardVisible = true
-                                        focusManager.clearFocus()
-                                        keyboardController?.hide()
-                                    } else {
-                                        wasKeyboardVisible = false
-                                    }
-                                    showEmojiSheet = true
-                                }
-                            },
-                            onKeyboardClick = {
-                                showEmojiSheet = false
-                                showAttachmentSheet = false
-                                focusRequester.requestFocus()
-                                keyboardController?.show()
-                            },
-                            onFocused = {
-                                showEmojiSheet = false
-                                showAttachmentSheet = false
-                            },
-                            onAddAttachmentClick = {
-                                showEmojiSheet = false
-                                if (showAttachmentSheet && !isKeyboardVisible) {
+                                },
+                                onEmojiClick = {
                                     showAttachmentSheet = false
-                                    if (wasKeyboardVisible) {
-                                        focusRequester.requestFocus()
-                                        keyboardController?.show()
-                                    }
-                                } else {
-                                    if (isKeyboardVisible) {
-                                        wasKeyboardVisible = true
-                                        focusManager.clearFocus()
-                                        keyboardController?.hide()
+                                    if (showEmojiSheet && !isKeyboardVisible) {
+                                        showEmojiSheet = false
+                                        if (wasKeyboardVisible) {
+                                            focusRequester.requestFocus()
+                                            keyboardController?.show()
+                                        }
                                     } else {
-                                        wasKeyboardVisible = false
+                                        if (isKeyboardVisible) {
+                                            wasKeyboardVisible = true
+                                            focusManager.clearFocus()
+                                            keyboardController?.hide()
+                                        } else {
+                                            wasKeyboardVisible = false
+                                        }
+                                        showEmojiSheet = true
                                     }
-                                    showAttachmentSheet = true
-                                }
-                            },
-                            onCameraClick = { cameraLauncher.launch() },
-                            onVideoRecordClick = { videoRecorderLauncher.launch() },
-                            onRecordingStarted = {
-                                onUiAction(
-                                    ConversationListUiAction.StartRecording(
-                                        conversation.conversation.id
+                                },
+                                onKeyboardClick = {
+                                    showEmojiSheet = false
+                                    showAttachmentSheet = false
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                },
+                                onFocused = {
+                                    showEmojiSheet = false
+                                    showAttachmentSheet = false
+                                },
+                                onAddAttachmentClick = {
+                                    showEmojiSheet = false
+                                    if (showAttachmentSheet && !isKeyboardVisible) {
+                                        showAttachmentSheet = false
+                                        if (wasKeyboardVisible) {
+                                            focusRequester.requestFocus()
+                                            keyboardController?.show()
+                                        }
+                                    } else {
+                                        if (isKeyboardVisible) {
+                                            wasKeyboardVisible = true
+                                            focusManager.clearFocus()
+                                            keyboardController?.hide()
+                                        } else {
+                                            wasKeyboardVisible = false
+                                        }
+                                        showAttachmentSheet = true
+                                    }
+                                },
+                                onCameraClick = { cameraLauncher.launch() },
+                                onVideoRecordClick = { videoRecorderLauncher.launch() },
+                                onRecordingStarted = {
+                                    onUiAction(
+                                        ConversationListUiAction.StartRecording(
+                                            conversation.conversation.id
+                                        )
                                     )
-                                )
-                            },
-                            onRecordingStopped = { onUiAction(ConversationListUiAction.StopRecording) },
-                            onRecordingCancelled = { onUiAction(ConversationListUiAction.CancelRecording) },
-                            onRecordingHelp = { onUiAction(ConversationListUiAction.ShowRecordingHelp) },
-                            onPasteImage = { imageBytes ->
-                                onUiAction(
-                                    ConversationListUiAction.AttachClipboardImage(
-                                        conversationId = conversation.conversation.id,
-                                        imageBytes = imageBytes,
+                                },
+                                onRecordingStopped = { onUiAction(ConversationListUiAction.StopRecording) },
+                                onRecordingCancelled = { onUiAction(ConversationListUiAction.CancelRecording) },
+                                onRecordingHelp = { onUiAction(ConversationListUiAction.ShowRecordingHelp) },
+                                onPasteImage = { imageBytes ->
+                                    onUiAction(
+                                        ConversationListUiAction.AttachClipboardImage(
+                                            conversationId = conversation.conversation.id,
+                                            imageBytes = imageBytes,
+                                        )
                                     )
-                                )
-                            },
-                            onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) })
-                    }
-                } // else (not Left)
-            }
+                                },
+                                onCancelEdit = { onUiAction(ConversationListUiAction.CancelEditMessage) })
+                        }
+                    } // else (not Left)
+                }
             }
 
             // Sheets live outside the offset Column so they sit flush at the screen
             // bottom without double-counting the offset.
             // Each sheet applies its modifier to its inner Column, not to the root
             // AnimatedVisibility, so we wrap in a Box to anchor them at the bottom.
-            Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
+            // Offset the emoji sheet upward by the IME height so that when the
+            // emoji search keyboard is open, the sheet sits above the keyboard.
+            Box(
+                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                    .offset { IntOffset(0, -imeInsets.getBottom(this)) }) {
                 EmojiSelectorSheet(
                     modifier = Modifier.fillMaxWidth()
                         .height(keyboardHeight.coerceAtLeast(300.dp)),
@@ -1096,28 +1115,28 @@ fun ConversationContent(
                         .height(keyboardHeight.coerceAtLeast(300.dp)),
                     visible = showAttachmentSheet && !isKeyboardVisible,
                 ) {
-                AttachmentGallery(
-                    onImageSelected = {
-                        showAttachmentSheet = false
-                        onUiAction(
-                            ConversationListUiAction.AttachGalleryItem(
-                                conversationId = conversation.conversation.id,
-                                files = listOf(it)
+                    AttachmentGallery(
+                        onImageSelected = {
+                            showAttachmentSheet = false
+                            onUiAction(
+                                ConversationListUiAction.AttachGalleryItem(
+                                    conversationId = conversation.conversation.id,
+                                    files = listOf(it)
+                                )
                             )
-                        )
-                    },
-                )
-                AttachmentOptions(onGalleryClick = {
-                    showAttachmentSheet = false
-                    galleryLauncher.launch()
-                }, onFileClick = {
-                    showAttachmentSheet = false
-                    fileLauncher.launch()
-                }, onContactClick = {
-                    showAttachmentSheet = false
-                }, onLocationClick = {
-                    showAttachmentSheet = false
-                })
+                        },
+                    )
+                    AttachmentOptions(onGalleryClick = {
+                        showAttachmentSheet = false
+                        galleryLauncher.launch()
+                    }, onFileClick = {
+                        showAttachmentSheet = false
+                        fileLauncher.launch()
+                    }, onContactClick = {
+                        showAttachmentSheet = false
+                    }, onLocationClick = {
+                        showAttachmentSheet = false
+                    })
                 }
             } // AttachmentOptionsDisplay wrapper Box
         } // Box (clipToBounds)
@@ -1189,7 +1208,9 @@ fun ConversationContentSheets(
                                     ignoreCase = true
                                 )
 
-                                is RecipientModel.Conversation -> recipient.conversation.getDisplayName(youLabel = youLabel)
+                                is RecipientModel.Conversation -> recipient.conversation.getDisplayName(
+                                    youLabel = youLabel
+                                )
                                     .contains(query, ignoreCase = true)
                             }
                         }

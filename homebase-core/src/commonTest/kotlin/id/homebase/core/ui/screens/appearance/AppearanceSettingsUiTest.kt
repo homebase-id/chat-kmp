@@ -8,6 +8,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import id.homebase.core.settings.Language
 import id.homebase.core.settings.ThemeState
+import id.homebase.core.test.setTestLocale
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -16,6 +17,7 @@ class AppearanceSettingsUiTest {
 
     @Test
     fun showsTitle() = runComposeUiTest {
+        setTestLocale("en-US")
         setContent {
             MaterialTheme {
                 AppearanceSettingsUi(
@@ -30,6 +32,7 @@ class AppearanceSettingsUiTest {
 
     @Test
     fun showsLanguageAndThemeRows() = runComposeUiTest {
+        setTestLocale("en-US")
         setContent {
             MaterialTheme {
                 AppearanceSettingsUi(
@@ -45,6 +48,7 @@ class AppearanceSettingsUiTest {
 
     @Test
     fun showsSelectedLanguage() = runComposeUiTest {
+        setTestLocale("en-US")
         setContent {
             MaterialTheme {
                 AppearanceSettingsUi(
@@ -61,6 +65,7 @@ class AppearanceSettingsUiTest {
 
     @Test
     fun showsSelectedTheme() = runComposeUiTest {
+        setTestLocale("en-US")
         setContent {
             MaterialTheme {
                 AppearanceSettingsUi(
@@ -77,6 +82,7 @@ class AppearanceSettingsUiTest {
 
     @Test
     fun languageSelectionFiresAction() = runComposeUiTest {
+        setTestLocale("en-US")
         var selectedLanguage: Language? = null
         setContent {
             MaterialTheme {
@@ -102,6 +108,7 @@ class AppearanceSettingsUiTest {
 
     @Test
     fun backClickFires() = runComposeUiTest {
+        setTestLocale("en-US")
         var backClicked = false
         setContent {
             MaterialTheme {
