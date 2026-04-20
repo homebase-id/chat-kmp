@@ -1906,7 +1906,11 @@ class ConversationListViewModel(
         }
 
         _messagesUiState.update {
-            it.copy(scrollPosition = null, isLoadingMessages = !hasCachedMessages)
+            it.copy(
+                scrollPosition = null,
+                isLoadingMessages = !hasCachedMessages,
+                replyToMessage = null,
+            )
         }
 
         // When loading message for newly selected conversation, cancel any previous job to

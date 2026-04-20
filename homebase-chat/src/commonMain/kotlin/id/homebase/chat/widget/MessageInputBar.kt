@@ -239,7 +239,8 @@ fun MessageInputBar(
         if (showExpanded) {
             MessageTextFieldExpanded(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp).focusRequester(focusRequester),
+                    .padding(bottom = 16.dp),
+                focusRequester = focusRequester,
                 state = textFieldState,
                 linkPreviewData = linkPreviewData,
                 onCancelLinkPreview = {
@@ -262,7 +263,8 @@ fun MessageInputBar(
         } else {
             MessageTextFieldCompact(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp).focusRequester(focusRequester),
+                    .padding(bottom = 16.dp),
+                focusRequester = focusRequester,
                 state = textFieldState,
                 editExistingMode = editExistingMode,
                 linkPreviewData = linkPreviewData,
@@ -297,6 +299,7 @@ fun MessageInputBar(
 @Composable
 fun MessageTextFieldExpanded(
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester,
     state: RichTextState,
     editExistingMode: Boolean,
     linkPreviewData: LinkPreview?,
@@ -333,6 +336,7 @@ fun MessageTextFieldExpanded(
         RichTextEditor(
             state = state,
             modifier = Modifier.fillMaxWidth()
+                .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
                     if (focusState.isFocused) {
                         onFocused()
@@ -440,6 +444,7 @@ fun MessageTextFieldExpanded(
 @Composable
 fun MessageTextFieldCompact(
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester,
     state: RichTextState,
     linkPreviewData: LinkPreview?,
     recordingData: RecordingData?,
@@ -577,6 +582,7 @@ fun MessageTextFieldCompact(
                             state = state,
                             modifier = Modifier
                                 .weight(1f)
+                                .focusRequester(focusRequester)
                                 .onFocusChanged { focusState ->
                                     isKeyboardFocused = focusState.isFocused
                                     if (focusState.isFocused) {

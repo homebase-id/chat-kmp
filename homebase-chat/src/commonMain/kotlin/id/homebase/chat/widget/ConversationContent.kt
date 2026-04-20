@@ -107,6 +107,7 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
@@ -204,6 +205,14 @@ fun ConversationContent(
     LaunchedEffect(uiState.isSearchActive) {
         if (uiState.isSearchActive) {
             focusRequesterSearch.requestFocus()
+        }
+    }
+
+    LaunchedEffect(uiState.replyToMessage) {
+        if (uiState.replyToMessage != null) {
+            kotlinx.coroutines.delay(100)
+            focusRequester.requestFocus()
+            keyboardController?.show()
         }
     }
 
@@ -582,6 +591,7 @@ fun ConversationContent(
                         IntOffset(0, -sheetOffset)
                     }
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                    .dismissKeyboardOnTap()
             ) {
             if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
                 Row(
