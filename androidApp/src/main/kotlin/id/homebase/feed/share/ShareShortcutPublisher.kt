@@ -91,6 +91,13 @@ class ShareShortcutPublisher(
             .setIcon(icon)
             .build()
 
+        // Share intent: receive shared content and route to the conversation
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            component = ComponentName(context, ShareReceiverActivity::class.java)
+            data = "homebase-fchat://conversation/${conversation.id}".toUri()
+            type = "*/*"
+        }
+
         // Main intent: open the conversation directly when tapped from launcher long-press
         val mainIntent = Intent(Intent.ACTION_VIEW).apply {
             component = ComponentName(context, MainActivity::class.java)
@@ -102,7 +109,7 @@ class ShareShortcutPublisher(
             .setShortLabel(conversation.displayName)
             .setLongLabel(conversation.displayName)
             .setIcon(icon)
-            .setIntent(mainIntent)
+            .setIntents(arrayOf(mainIntent, shareIntent))
             .setLongLived(true)
             .setIsConversation()
             .setRank(rank)

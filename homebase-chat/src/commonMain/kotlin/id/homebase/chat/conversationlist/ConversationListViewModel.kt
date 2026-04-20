@@ -7,6 +7,9 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.auth.ApiCredentials
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
@@ -131,6 +134,7 @@ class ConversationListViewModel(
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
+    private val credentialsManager: CredentialsManager,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val audioRecorder: AudioRecorder,
     private val audioWaveFormGenerator: AudioWaveFormGenerator,
@@ -227,10 +231,17 @@ class ConversationListViewModel(
                 conversationStream.conversations,
                 contactService.contacts,
                 ownerSessionRepository.user,
+                credentialsManager.credentialsFlow,
                 connectionStatusFlow,
-            ) { conversationState, contacts, ownerSession, connectionCtx ->
+            ) { conversationState, contacts, ownerSession, credentials, connectionCtx ->
 
-                if (ownerSession == null) return@combine Pair(false, emptyList())
+                // Synthesize a minimal OwnerSession from the active credentials
+                // when the live session hasn't loaded yet. credentialsFlow is
+                // set synchronously at login/restore, so this fills the gap
+                // before OwnerSessionRepository.load() has run — the enricher
+                // never has to deal with a null session.
+                val effectiveSession = synthesizeOwnerSession(ownerSession, credentials)
+                if (effectiveSession == null) return@combine Pair(false, emptyList())
 
                 val contactMap = contacts.associateBy { it.odinId }
 
@@ -238,7 +249,7 @@ class ConversationListViewModel(
                     enricher.enrich(
                         convo = it,
                         contactMap = contactMap,
-                        ownerSession = ownerSession,
+                        ownerSession = effectiveSession,
                         connectionMap = connectionCtx.connectionMap,
                         incomingRequestSenders = connectionCtx.incomingSenders,
                         outgoingRequestRecipients = connectionCtx.outgoingRecipients,
@@ -1404,6 +1415,7 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ForwardMessageSend -> {
+                _messagesUiState.update { it.copy(isSendingMessage = true) }
                 viewModelScope.launch {
                     try {
                         val conversationIds = action.recipients.map { recipientModel ->
@@ -1432,6 +1444,8 @@ class ConversationListViewModel(
                                 "Failed to send forward message: ${e.message}"
                             )
                         )
+                    } finally {
+                        _messagesUiState.update { it.copy(isSendingMessage = false) }
                     }
                 }
             }
@@ -1641,7 +1655,7 @@ class ConversationListViewModel(
                         val tempPath = fileOperationsProvider.writeBytesToTempFile(
                             action.imageBytes,
                             "clipboard_image",
-                            "png"
+                            ".png"
                         )
                         val platformFile = platformFileFromPath(tempPath)
                         val newFile = AttachmentPendingFile.FileImage(
@@ -1932,7 +1946,11 @@ class ConversationListViewModel(
         }
 
         _messagesUiState.update {
-            it.copy(scrollPosition = null, isLoadingMessages = !hasCachedMessages)
+            it.copy(
+                scrollPosition = null,
+                isLoadingMessages = !hasCachedMessages,
+                replyToMessage = null,
+            )
         }
 
         // When loading message for newly selected conversation, cancel any previous job to
@@ -2617,4 +2635,30 @@ class ConversationListViewModel(
             shareContentProcessor.cleanup()
         }
     }
+}
+
+/**
+ * Chooses the [OwnerSession] passed to [ConversationEnricher]: prefer the
+ * fully-resolved [live] session, fall back to a minimal one synthesized
+ * from [credentials] when the async profile load hasn't arrived yet.
+ *
+ * Returns null only when neither source is available (pre-login state).
+ * The preference order is load-bearing — inverting it would replace a
+ * resolved display name / profile image with a bare odinId.
+ */
+internal fun synthesizeOwnerSession(
+    live: OwnerSession?,
+    credentials: ApiCredentials?,
+): OwnerSession? = live ?: credentials?.let {
+    OwnerSession(
+        odinId = it.domain,
+        displayName = null,
+        firstName = null,
+        surName = null,
+        profileImageFileId = null,
+        profileImageFileKey = null,
+        profileImagePreviewThumbnail = null,
+        profileImageLastModified = null,
+        status = null,
+    )
 }

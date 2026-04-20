@@ -62,7 +62,7 @@ class ChatMessageActionService(
 
         if (unreadRecords.isEmpty()) {
             dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
-            conversationStream.updateUnreadCounts() // TODO: We can be more performant here
+            conversationStream.enrichWithUnreadCounts() // TODO: We can be more performant here
             return
         }
 
@@ -72,7 +72,7 @@ class ChatMessageActionService(
         Logger.d { "markAsRead: convo=$conversationId endTime=${endTime.toEpochMilliseconds()}" }
 
         dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
-        conversationStream.updateUnreadCounts()
+        conversationStream.enrichWithUnreadCounts()
 
         if (!isSelfConversation) {
             outboxSync.tryEnqueue(
@@ -136,7 +136,7 @@ class ChatMessageActionService(
                         dbm.chatReadCount.upsertLastReadTime(it.conversationId, newReadTime)
                     }
 
-                conversationStream.updateUnreadCounts()
+                conversationStream.enrichWithUnreadCounts()
             }
     }
 
