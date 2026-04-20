@@ -86,4 +86,44 @@ class HomebaseImageLoaderTest {
         assertTrue(HomebaseImageLoader.THUMBLESS_CONTENT_TYPES.contains("image/svg+xml"))
         assertTrue(HomebaseImageLoader.THUMBLESS_CONTENT_TYPES.contains("image/gif"))
     }
+
+    @Test
+    fun `buildImageLoadFailureMessage includes drive file key size and cause for thumbs`() {
+        val drive = Uuid.parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val file = Uuid.parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+        val msg = buildImageLoadFailureMessage(
+            kind = "thumb",
+            driveId = drive,
+            fileId = file,
+            payloadKey = "photo",
+            size = ImageSize(320, 320),
+            lastModified = 1776703690500L,
+            causeClass = "NullPointerException"
+        )
+
+        assertTrue(msg.startsWith("thumb load failed"), "kind should be first: $msg")
+        assertTrue(msg.contains("drive=$drive"), "missing drive: $msg")
+        assertTrue(msg.contains("file=$file"), "missing file: $msg")
+        assertTrue(msg.contains("key=photo"), "missing payload key: $msg")
+        assertTrue(msg.contains("size=320x320"), "missing size: $msg")
+        assertTrue(msg.contains("lastMod=1776703690500"), "missing lastModified: $msg")
+        assertTrue(msg.contains("cause=NullPointerException"), "missing cause: $msg")
+    }
+
+    @Test
+    fun `buildImageLoadFailureMessage renders full size when size is null`() {
+        val drive = Uuid.random()
+        val file = Uuid.random()
+        val msg = buildImageLoadFailureMessage(
+            kind = "payload",
+            driveId = drive,
+            fileId = file,
+            payloadKey = "photo",
+            size = null,
+            lastModified = null,
+            causeClass = "IOException"
+        )
+        assertTrue(msg.contains("size=full"), "null size must render as full: $msg")
+        assertTrue(msg.contains("lastMod=null"), "null lastModified must render as null: $msg")
+    }
 }

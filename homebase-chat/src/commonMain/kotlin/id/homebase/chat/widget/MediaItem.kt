@@ -44,6 +44,7 @@ import id.homebase.api.image.toImageBitmap
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
 import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.VideoPreloadService
 import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
@@ -434,12 +435,21 @@ private fun VideoPreloadEffect(
     onPreloading: (Boolean) -> Unit,
     onProgress: (Float) -> Unit,
 ) {
+    val preloadService = koinInject<VideoPreloadService>()
     val preloader = koinInject<VideoPreloader>()
+    // Kick off the download on an app-scoped coroutine so it survives the chat list leaving
+    // composition when the user taps into a video. Without this, the tap cancels the in-flight
+    // fetch and the full-screen surface has to restart from byte 0.
     LaunchedEffect(data.fileId, data.payloadKey) {
-        withContext(Dispatchers.Default) {
-            onPreloading(true)
-            preloader.preload(data, onProgress = onProgress)
-            onPreloading(false)
+        preloadService.requestPreload(data)
+    }
+    // Observe progress for the thumbnail's indicator. This collector is composition-scoped —
+    // when the thumbnail goes off-screen the UI stops updating, but the background download
+    // continues via the service.
+    LaunchedEffect(data.fileId, data.payloadKey) {
+        preloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
+            onProgress(p)
+            onPreloading(p < 1f)
         }
     }
 }

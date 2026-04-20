@@ -251,13 +251,12 @@ class DriveFileProviderCached(
 
         // 1️⃣ Check in-memory 404 cache first
         if (cacheKey in notFoundCache) {
+            Logger.d(tag = "ThumbIO") { "thumb notFound-cache-hit key=$cacheKey" }
             return ByteApiResponse.EMPTY_404
         }
 
         // 2️⃣ Peek in disk cache and return result if it's there
-        thumbDiskKache().get(cacheKey)?.let { filePath ->
-            return readBytesResponse(filePath)
-        }
+        readCachedThumbOrLog(cacheKey)?.let { return it }
 
         // 2️⃣ Fetch from network but lock to make sure that we don't load the same
         // resource twice over the network
@@ -269,9 +268,7 @@ class DriveFileProviderCached(
             if (cacheKey in notFoundCache) {
                 return@withLock ByteApiResponse.EMPTY_404
             }
-            thumbDiskKache().get(cacheKey)?.let { filePath ->
-                return@withLock readBytesResponse(filePath)
-            }
+            readCachedThumbOrLog(cacheKey)?.let { return@withLock it }
 
             // we allow up to 30 concurrent semaphore thumbnails over the network
             return thumbnailSemaphore.withPermit {
@@ -285,16 +282,26 @@ class DriveFileProviderCached(
                                     height,
                                     lastModified
                             )
+                    Logger.d(tag = "ThumbIO") {
+                        "thumb network-fetch: status=${result.status} ${result.bytes.size} bytes contentType=${result.contentType} key=$cacheKey"
+                    }
 
                     // 3️⃣ Store to disk (only 200/206 can reach here — throwForFailure throws for everything else).
                     // Serialise writes to avoid corrupting FileKache's journal file.
                     check(result.status in 200..299) {
                         "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
-                    thumbnailKacheWriteMutex.withLock {
-                        thumbDiskKache().put(cacheKey) { filePath ->
-                            writeBytesResponse(filePath, result)
+                    try {
+                        thumbnailKacheWriteMutex.withLock {
+                            thumbDiskKache().put(cacheKey) { filePath ->
+                                writeBytesResponse(filePath, result)
+                            }
                         }
+                        Logger.d(tag = "ThumbIO") { "thumb cache-write: ${result.bytes.size} bytes key=$cacheKey" }
+                    } catch (e: Exception) {
+                        // A write failure should not prevent the caller from getting the fetched bytes.
+                        // Surface it loudly so we can spot corrupted journals or full disks.
+                        Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-write FAILED key=$cacheKey" }
                     }
                     result
                 } catch (e: NotFoundException) {
@@ -303,10 +310,29 @@ class DriveFileProviderCached(
                     throw e
                 } catch (e: Exception) {
                     // For other errors (500, network issues, etc.), don't cache and rethrow
+                    Logger.w(tag = "ThumbIO") { "thumb network-fetch FAILED (${e::class.simpleName}): ${e.message} key=$cacheKey" }
                     throw e
                 }
             }
         } // Mutex.lock
+    }
+
+    /**
+     * Read a thumb from the disk cache. Returns null on cache miss OR when the
+     * cached file cannot be parsed (corrupted entry, truncated write, etc.) —
+     * the latter is logged as an error so the NPE/parse failure is visible
+     * instead of being swallowed into the retry loop above.
+     */
+    private suspend fun readCachedThumbOrLog(cacheKey: String): ByteApiResponse? {
+        val filePath = thumbDiskKache().get(cacheKey) ?: return null
+        return try {
+            val result = readBytesResponse(filePath)
+            Logger.d(tag = "ThumbIO") { "thumb cache-hit: status=${result.status} ${result.bytes.size} bytes key=$cacheKey" }
+            result
+        } catch (e: Exception) {
+            Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-read FAILED key=$cacheKey path=$filePath" }
+            null
+        }
     }
 
     suspend fun getThumbBytesDecrypted(
@@ -330,7 +356,21 @@ class DriveFileProviderCached(
 
         if (raw.status == 404) throw NotFoundException()
 
-        val decryptedBytes = delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
+        val payloadEncryptedHeader = raw.headers["payloadencrypted"]
+        val decryptedBytes = try {
+            delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
+        } catch (e: Exception) {
+            // Single most likely NPE site when the cache is poisoned with a
+            // non-2xx response from the pre-61ebe154 code path. Keep context
+            // so the log pins the bad key.
+            Logger.e(tag = "ThumbIO", throwable = e) {
+                "thumb decrypt FAILED (${e::class.simpleName}): status=${raw.status} " +
+                    "bytes=${raw.bytes.size} contentType=${raw.contentType} " +
+                    "payloadEncrypted=$payloadEncryptedHeader drive=$driveId file=$fileId " +
+                    "key=$payloadKey size=${width}x$height lastMod=$lastModified"
+            }
+            throw e
+        }
 
         return BytesResponse(bytes = decryptedBytes, contentType = raw.contentType)
     }

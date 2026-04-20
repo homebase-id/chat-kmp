@@ -136,10 +136,13 @@ class VideoPreloaderTest {
         assertTrue(prefetchChunkCalls.isEmpty(), "no byterange tag should leave the first-segment prefetch a no-op (calls=${fake.calls})")
     }
 
-    // -- Case 5: concurrent preload() calls for the same file should dedup — the VideoPreloader
-    //    mutex short-circuits the second caller so the network only sees one segment fetch.
+    // -- Case 5: concurrent preload() calls for the same file serialize on a per-key mutex —
+    //    both run sequentially (the second hits DriveFileProviderCached's disk cache in production,
+    //    so there's still only one network fetch). Serialization matters because the surface's
+    //    awaited preload() races with MediaItem's cancelled preload unwinding its finally; a
+    //    tryLock-and-return would leave the surface with no progress to show.
     @Test
-    fun concurrentPreloadCalls_dedup() = runTest {
+    fun concurrentPreloadCalls_serialize() = runTest {
         val stub = VideoMetadata(
             mimeType = "video/mp4",
             isDescriptorContentComplete = true,
@@ -147,7 +150,6 @@ class VideoPreloaderTest {
             key = metadataKey,
             hlsPlaylist = "#EXTM3U\n#EXT-X-BYTERANGE:512@0\n#EXTINF:2.0,\nseg.ts\n",
         )
-        // A delay on the prefetch makes the first coroutine hold the mutex while the second runs.
         val fake = FakeVideoPrefetchDriveAccess(prefetchDelayMs = 50L)
         val preloader = newPreloader(fake)
         val data = playerData(stub)
@@ -158,6 +160,6 @@ class VideoPreloaderTest {
         jobB.join()
 
         val prefetchChunkCalls = fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.PrefetchPayloadChunk>()
-        assertEquals(1, prefetchChunkCalls.size, "duplicate concurrent preloads must dedup (calls=${fake.calls})")
+        assertEquals(2, prefetchChunkCalls.size, "concurrent preloads serialize — both run (calls=${fake.calls})")
     }
 }
