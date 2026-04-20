@@ -35,7 +35,7 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Run JVM unit tests
-        run: ./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
+        run: ./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest homebase-core:jvmTest --rerun-tasks
         env:
           JDK_21: ${{ env.JAVA_HOME }}
 

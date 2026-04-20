@@ -2,7 +2,7 @@ package id.homebase.core.ui.screens.notifications
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
@@ -23,7 +23,7 @@ class NotificationSettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Notifications").assertExists()
+        onNodeWithTag("notificationsTitle").assertExists()
     }
 
     @Test
@@ -38,8 +38,8 @@ class NotificationSettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Push Notifications are disabled").assertExists()
-        onNodeWithText("Enable Notifications").assertExists()
+        onNodeWithTag("pushNotificationsDisabled").assertExists()
+        onNodeWithTag("enableNotificationsButton").assertExists()
     }
 
     @Test
@@ -54,8 +54,8 @@ class NotificationSettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Push Notifications are disabled").assertDoesNotExist()
-        onNodeWithText("Enable Notifications").assertDoesNotExist()
+        onNodeWithTag("pushNotificationsDisabled").assertDoesNotExist()
+        onNodeWithTag("enableNotificationsButton").assertDoesNotExist()
     }
 
     @Test
@@ -70,9 +70,9 @@ class NotificationSettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Sounds").assertExists()
-        onNodeWithText("Message Sound").assertExists()
-        onNodeWithText("Play While App is Open").assertExists()
+        onNodeWithTag("soundsTitle").assertExists()
+        onNodeWithTag("messageSound").assertExists()
+        onNodeWithTag("playWhileAppIsOpen").assertExists()
     }
 
     @Test
@@ -89,8 +89,8 @@ class NotificationSettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Notification Content").assertExists()
-        onNodeWithText("Name Only").assertExists()
+        onNodeWithTag("notificationContent", useUnmergedTree = true).assertExists()
+        onNodeWithTag("name_only", useUnmergedTree = true).assertExists()
     }
 
     @Test
@@ -110,7 +110,7 @@ class NotificationSettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Enable Notifications").performClick()
+        onNodeWithTag("enableNotificationsButton").performClick()
         assertTrue(requestedPermission)
     }
 
@@ -126,7 +126,7 @@ class NotificationSettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Re-register Push Notifications").assertExists()
+        onNodeWithTag("reRegisterPushNotifications", useUnmergedTree = true).assertExists()
     }
 
     @Test
@@ -141,7 +141,7 @@ class NotificationSettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Re-registering...").assertExists()
+        onNodeWithTag("reRegisterPushNotifications", useUnmergedTree = true).assertExists()
     }
 
     @Test
@@ -156,7 +156,7 @@ class NotificationSettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Badge Count").assertExists()
-        onNodeWithText("Include Muted Chats").assertExists()
+        onNodeWithTag("badgeCount").assertExists()
+        onNodeWithTag("includeMutedChats").assertExists()
     }
 }
