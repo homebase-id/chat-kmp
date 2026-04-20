@@ -10,6 +10,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -31,7 +32,12 @@ class PublicProfileProviderCached(
 
     private val lock = Mutex()
     private val keyLocks = mutableMapOf<String, Mutex>()
-    private val notFoundCache = mutableSetOf<String>()
+
+    // Immutable set — always replaced, never mutated in-place.
+    // @Volatile ensures lock-free reads always see the latest reference.
+    // Writes are serialized via notFoundCacheMutex (rare: only on 404 responses).
+    @Volatile private var notFoundCache: Set<String> = emptySet()
+    private val notFoundCacheMutex = Mutex()
 
     private val profileDiskKache by lazy {
         runBlocking {
@@ -106,7 +112,7 @@ class PublicProfileProviderCached(
     suspend fun clearCaches() {
         profileDiskKache.clear()
         imageDiskKache.clear()
-        notFoundCache.clear()
+        notFoundCache = emptySet()
     }
 
     // =========================================================
@@ -170,7 +176,7 @@ class PublicProfileProviderCached(
                 }
 
                 404 -> {
-                    notFoundCache.add(cacheKey)
+                    notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
                     null
                 }
 
