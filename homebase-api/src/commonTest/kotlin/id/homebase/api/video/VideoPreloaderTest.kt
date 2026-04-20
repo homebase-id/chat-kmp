@@ -8,7 +8,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -31,11 +30,12 @@ class VideoPreloaderTest {
         VideoPreloader(fake, FakeFileOperationsProvider())
 
     // -- Case 1: large video — descriptor stub is incomplete; the m3u8 lives in a separate payload.
-    //    Expect: prefetchPayload(metadataKey) happens BEFORE the metadata fetch,
+    //    Expect: resolveVideoMetadata fetches the metadata payload via getPayloadBytesDecrypted
+    //            (which populates DriveFileProviderCached's on-disk cache as a side effect),
     //            prefetchPayloadChunk fires for the parsed first-segment byterange,
     //            no prefetchPayload for the video payload itself.
     @Test
-    fun largeVideo_prefetchesMetadataPayload_thenFirstSegment() = runTest {
+    fun largeVideo_fetchesMetadata_thenFirstSegment() = runTest {
         val fullMetadata = VideoMetadata(
             mimeType = "video/mp4",
             isDescriptorContentComplete = true,
@@ -59,21 +59,14 @@ class VideoPreloaderTest {
         val prefetchChunkCalls = fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.PrefetchPayloadChunk>()
         val metadataFetchCalls = fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.GetPayloadBytesDecrypted>()
 
-        assertEquals(1, prefetchPayloadCalls.size, "metadata payload should be prefetched exactly once")
-        assertEquals(metadataKey, prefetchPayloadCalls.single().key)
+        assertTrue(prefetchPayloadCalls.isEmpty(), "metadata payload is cached as a side effect of getPayloadBytesDecrypted — no explicit prefetch (calls=${fake.calls})")
         assertEquals(1, prefetchChunkCalls.size)
         assertEquals(payloadKey, prefetchChunkCalls.single().key)
         assertEquals(0L, prefetchChunkCalls.single().chunkStart)
         assertEquals(1024L, prefetchChunkCalls.single().chunkLength)
 
-        // prefetchPayload for the metadata key must fire BEFORE the decrypt (which fronts the real cache).
-        val prefetchIdx = fake.calls.indexOfFirst { it is FakeVideoPrefetchDriveAccess.Call.PrefetchPayload }
-        val decryptIdx = fake.calls.indexOfFirst { it is FakeVideoPrefetchDriveAccess.Call.GetPayloadBytesDecrypted }
-        assertTrue(prefetchIdx >= 0 && decryptIdx > prefetchIdx, "prefetchPayload must precede getPayloadBytesDecrypted (calls=${fake.calls})")
-
-        // The video payload itself must not be fully prefetched for HLS.
-        assertNull(prefetchPayloadCalls.find { it.key == payloadKey })
-        assertNotNull(metadataFetchCalls.singleOrNull())
+        assertNotNull(metadataFetchCalls.singleOrNull(), "metadata descriptor payload must be fetched exactly once")
+        assertEquals(metadataKey, metadataFetchCalls.single().key)
     }
 
     // -- Case 2: small video with HLS — descriptor already carries the playlist inline, so no

@@ -2,7 +2,6 @@ package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okio.FileSystem
@@ -37,8 +36,6 @@ class VideoPreloader(
         val mutex = mapLock.withLock { mutexMap.getOrPut(key) { Mutex() } }
         if (!mutex.tryLock()) return
         try {
-            prefetchMetadataPayloadIfNeeded(data)
-
             val metadata = try {
                 resolveVideoMetadata(data, driveFileProvider)
             } catch (e: Exception) {
@@ -62,27 +59,6 @@ class VideoPreloader(
         } finally {
             mutex.unlock()
         }
-    }
-
-    /** For large videos the m3u8 playlist does not fit in the descriptor and is stored as a
-     *  separate payload keyed by [VideoMetadata.key]. Warm that payload in the on-disk Kache so
-     *  the following [resolveVideoMetadata] call (and any later player read of the playlist)
-     *  is a cache hit. No-op when the descriptor already contains the playlist. */
-    private suspend fun prefetchMetadataPayloadIfNeeded(data: VideoPlayerData) {
-        val stubMetadata = data.descriptorContent?.let {
-            try {
-                OdinSystemSerializer.deserialize<VideoMetadata>(it)
-            } catch (_: Exception) {
-                null
-            }
-        } ?: return
-        if (stubMetadata.isDescriptorContentComplete) return
-        Logger.d(tag = "VideoIO") { "hls preload metadata payload: fileId=${data.fileId} metadataKey=${stubMetadata.key}" }
-        driveFileProvider.prefetchPayload(
-            driveId = data.driveId,
-            fileId = data.fileId,
-            key = stubMetadata.key,
-        )
     }
 
     private suspend fun preloadFirstHlsSegment(data: VideoPlayerData, metadata: VideoMetadata) {
