@@ -14,6 +14,7 @@ import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.VideoPrefetchDriveAccess
 import io.ktor.client.HttpClient
 import io.ktor.client.request.options
 import io.ktor.http.Headers
@@ -62,7 +63,7 @@ public class DriveFileProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,
     private val driveCache: DriveFileProviderCached
-) : OdinApiProviderBase(httpClient, credentialsManager) {
+) : OdinApiProviderBase(httpClient, credentialsManager), VideoPrefetchDriveAccess {
 
     companion object {
         private const val TAG = "DriveFileProvider"
@@ -150,11 +151,11 @@ public class DriveFileProvider(
 
     /** Downloads the payload to the encrypted disk cache without decrypting it.
      *  Subsequent calls to [getPayloadBytesDecrypted] for the same key will be served from cache. */
-    suspend fun prefetchPayload(
+    override suspend fun prefetchPayload(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
-        onDownloadProgress: ((Float) -> Unit)? = null,
+        onDownloadProgress: ((Float) -> Unit)?,
     ) {
         driveCache.getPayloadBytesRaw(driveId, fileId, key, onDownloadProgress = onDownloadProgress)
     }
@@ -162,13 +163,13 @@ public class DriveFileProvider(
     /** Downloads a single byterange of a payload into the encrypted disk cache without decrypting.
      *  The cache is keyed by (chunkStart, chunkLength), so a later player request with the
      *  identical range will hit this entry. Used to warm the first HLS segment. */
-    suspend fun prefetchPayloadChunk(
+    override suspend fun prefetchPayloadChunk(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
         chunkStart: Long,
         chunkLength: Long,
-        onDownloadProgress: ((Float) -> Unit)? = null,
+        onDownloadProgress: ((Float) -> Unit)?,
     ) {
         driveCache.getPayloadBytesRaw(
             driveId = driveId,
@@ -182,14 +183,14 @@ public class DriveFileProvider(
         )
     }
 
-    suspend fun getPayloadBytesDecrypted(
+    override suspend fun getPayloadBytesDecrypted(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
         keyHeader: KeyHeader,
-        chunkStart: Long? = null,
-        chunkLength: Long? = null,
-        onDownloadProgress: ((Float) -> Unit)? = null,
+        chunkStart: Long?,
+        chunkLength: Long?,
+        onDownloadProgress: ((Float) -> Unit)?,
     ): BytesResponse? {
         return driveCache.getPayloadBytesDecrypted(
             driveId, fileId, key, keyHeader, chunkStart, chunkLength, onDownloadProgress

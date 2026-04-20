@@ -1,7 +1,6 @@
 package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -11,7 +10,7 @@ import okio.SYSTEM
 import kotlin.uuid.Uuid
 
 class VideoPreloader(
-    private val driveFileProvider: DriveFileProvider,
+    private val driveFileProvider: VideoPrefetchDriveAccess,
     private val fileOperationsProvider: FileOperationsProvider,
 ) {
     private val fileSystem = FileSystem.SYSTEM
