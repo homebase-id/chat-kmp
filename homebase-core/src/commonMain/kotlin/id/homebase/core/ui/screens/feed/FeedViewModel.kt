@@ -82,7 +82,14 @@ class FeedViewModel(
                 }
             } catch (e: Exception) {
                 Logger.e(e, tag = TAG) { "Failed to load feed credentials" }
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                val errorMessage = e.message?.takeIf { it.isNotBlank() } ?: "Failed to load feed credentials."
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        credentialsReady = false,
+                        error = errorMessage,
+                    )
+                }
             }
         }
     }
