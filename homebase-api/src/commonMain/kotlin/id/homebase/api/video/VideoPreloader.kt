@@ -41,7 +41,12 @@ class VideoPreloader(
      * Decryption is deferred to playback — the player calls [DriveFileProvider.getPayloadBytesDecrypted]
      * which hits the warm cache and decrypts in memory only.
      *
-     * Safe to call multiple times — duplicate in-progress calls are no-ops.
+     * Concurrent calls for the same (fileId, payloadKey) serialize on a per-key mutex: the second
+     * caller waits for the first to finish and then runs (hitting the disk cache, so it's a cheap
+     * no-op unless the first call was cancelled mid-download). This matters when the surface
+     * awaits preload() right as MediaItem's preload is unwinding from cancellation — a tryLock
+     * race would leave the surface with no real progress to show.
+     *
      * For HLS, only the first segment is pre-cached (encrypted, on disk); later segments are
      * fetched on demand by the player.
      */
@@ -50,35 +55,37 @@ class VideoPreloader(
         val (mutex, progressSink) = mapLock.withLock {
             mutexMap.getOrPut(key) { Mutex() } to progressMap.getOrPut(key) { MutableStateFlow(0f) }
         }
-        if (!mutex.tryLock()) return
         val emit: (Float) -> Unit = { v ->
+            Logger.d(tag = "VideoIO") { "preload emit: ${data.fileId}/${data.payloadKey} v=$v" }
             progressSink.value = v
             onProgress?.invoke(v)
         }
-        try {
-            val metadata = try {
-                resolveVideoMetadata(data, driveFileProvider)
-            } catch (e: Exception) {
-                Logger.d(tag = "VideoIO") { "preload skipped — no metadata for ${data.fileId}/${data.payloadKey}: ${e.message}" }
-                return
-            }
+        mutex.withLock {
+            try {
+                val metadata = try {
+                    resolveVideoMetadata(data, driveFileProvider)
+                } catch (e: Exception) {
+                    Logger.d(tag = "VideoIO") { "preload skipped — no metadata for ${data.fileId}/${data.payloadKey}: ${e.message}" }
+                    return@withLock
+                }
 
-            if (metadata.isSegmented) {
-                preloadFirstHlsSegment(data, metadata, emit)
-            } else {
-                driveFileProvider.prefetchPayload(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    key = data.payloadKey,
-                    onDownloadProgress = emit,
-                )
-                Logger.d(tag = "VideoIO") { "preload complete (mp4, encrypted cache): ${data.fileId}/${data.payloadKey}" }
+                if (metadata.isSegmented) {
+                    preloadFirstHlsSegment(data, metadata, emit)
+                } else {
+                    driveFileProvider.prefetchPayload(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        key = data.payloadKey,
+                        onDownloadProgress = emit,
+                    )
+                    Logger.d(tag = "VideoIO") { "preload complete (mp4, encrypted cache): ${data.fileId}/${data.payloadKey}" }
+                }
+                emit(1f)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(tag = "VideoIO") { "preload failed for ${data.fileId}/${data.payloadKey}: ${e.message}" }
             }
-            emit(1f)
-        } catch (e: Exception) {
-            Logger.w(tag = "VideoIO") { "preload failed for ${data.fileId}/${data.payloadKey}: ${e.message}" }
-        } finally {
-            mutex.unlock()
         }
     }
 

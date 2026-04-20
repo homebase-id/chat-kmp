@@ -107,19 +107,23 @@ actual fun VideoPlayerSurface(
 
                 when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
-                        // Mirror the preloader's real first-segment download progress into onProgress.
-                        // Idempotent — if MediaItem already kicked off a preload, the mutex no-ops the
-                        // second call but the shared progress flow still emits live bytes %.
+                        // Subscribe to the preloader's live bytes progress BEFORE kicking off the
+                        // preload, so StateFlow's initial value and every subsequent emit lands.
                         val progressJob = scope.launch {
+                            var highWater = 0f
                             videoPreloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
-                                if (p < 1f) onProgress(p)
+                                Logger.d(tag = "VideoIO") { "hls surface progress: fileId=${data.fileId} p=$p" }
+                                if (p > highWater) highWater = p
+                                if (highWater < 1f) onProgress(highWater)
                             }
                         }
-                        scope.launch {
-                            videoPreloader.preload(
-                                VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
-                            )
-                        }
+                        // Await the preload so the first segment is cached before VLC starts.
+                        // If MediaItem's preload was cancelled when the chat list left composition,
+                        // this is the only path that drives real progress — VLC's own data-source
+                        // fetches bypass onDownloadProgress entirely.
+                        videoPreloader.preload(
+                            VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
+                        )
                         File(dir, "index.m3u8").writeText(content.strippedPlaylist)
 
                         val totalSize = content.metadata.fileSize
