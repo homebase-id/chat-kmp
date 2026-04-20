@@ -13,7 +13,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import id.homebase.core.notifications.NotificationNavigationEvent
-import id.homebase.core.test.SkipOnCI
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.first
@@ -186,7 +185,6 @@ class NotificationTapColdStartTest {
      * back to the top, which reads pendingConversationId and routes.
      */
     @Test
-    @SkipOnCI
     fun warm_start_notification_tap_from_detail_navigates_via_chatlist() = runComposeUiTest {
         val events = Channel<NotificationNavigationEvent>(Channel.BUFFERED)
         val authReady = mutableStateOf(false)
@@ -263,7 +261,6 @@ class NotificationTapColdStartTest {
     }
 
     @Test
-    @SkipOnCI
     fun broken_top_only_gate_hangs_when_on_detail() = runComposeUiTest {
         // Negative control: same warm-on-Detail scenario as the test above,
         // but with the pre-fix top-only gate. Asserts that pendingConversationId
