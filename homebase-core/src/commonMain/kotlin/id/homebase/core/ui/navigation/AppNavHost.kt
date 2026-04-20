@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -70,6 +71,7 @@ import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.connections.ConnectionsScreen
 import id.homebase.core.ui.screens.help.HelpScreen
+import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
@@ -97,7 +99,7 @@ fun AppNavHost(
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val topLevelRoutes = remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Home) }
+    val topLevelRoutes = remember { listOf(TopLevelRoute.Chat, TopLevelRoute.Feed, TopLevelRoute.Home) }
     val uriHandler = getUriHandler()
 
     var hasNotificationPermission by remember { mutableStateOf(false) }
@@ -328,6 +330,12 @@ fun AppNavHost(
                                 viewModel = koinViewModel(),
                                 onNavigateToExamples = { navController.navigate(Route.Examples) }
                             )
+                        }
+                    }
+
+                    composable<Route.Feed> {
+                        if (isAuthenticated) {
+                            FeedScreen(viewModel = koinViewModel())
                         }
                     }
 
@@ -611,6 +619,7 @@ private fun NavHostController.selectConversationOnChatList(conversationId: Uuid,
 // Helper to check if a destination is a top-level route
 private fun NavDestination?.isTopLevelRoute(): Boolean {
     return this?.hasRoute(Route.ChatList::class) == true ||
+            this?.hasRoute(Route.Feed::class) == true ||
             this?.hasRoute(Route.Home::class) == true
 }
 
@@ -624,5 +633,6 @@ sealed class TopLevelRoute(
     val route: Route, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
+    data object Feed : TopLevelRoute(Route.Feed, "Feed", Icons.Default.RssFeed)
     data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
 }

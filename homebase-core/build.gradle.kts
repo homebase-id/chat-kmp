@@ -90,6 +90,7 @@ kotlin {
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.multiplatform.settings)
             implementation(libs.richeditor.compose)
+            implementation(libs.composenativewebview)
         }
         nativeMain.dependencies {
             implementation(libs.ktor.client.darwin)

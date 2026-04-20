@@ -16,6 +16,7 @@ androidx-testCore = "1.7.0"
 composeMultiplatform = "1.10.3"
 composeHotReload = "1.1.0-rc01"
 composenativetray = "1.2.0"
+composenativewebview = "1.0.0-beta-01"
 conveyor = "2.0"
 ffmpegKit = "1.0"
 vlcj = "4.8.2"
@@ -169,6 +170,7 @@ firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics", ve
 kache-file = { module = "com.mayakapps.kache:file-kache", version.ref = "kache" }
 kache = { module = "com.mayakapps.kache:kache", version.ref = "kache" }
 composenativetray = { module = "io.github.kdroidfilter:composenativetray", version.ref = "composenativetray" }
+composenativewebview = { module = "io.github.kdroidfilter:composewebview", version.ref = "composenativewebview" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
