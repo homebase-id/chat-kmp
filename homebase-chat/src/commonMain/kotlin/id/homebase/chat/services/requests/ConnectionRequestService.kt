@@ -11,6 +11,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.OutgoingConnectionRequestUiModel
+import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.DriveContactService
 import kotlinx.coroutines.CoroutineScope
@@ -20,71 +21,122 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Clock
 
 class ConnectionRequestService(
     private val connectionRequestProvider: ConnectionRequestProvider,
     private val driveContactService: DriveContactService,
     private val connectionService: ConnectionService,
     private val eventBus: EventBus,
-    scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val cache: ConnectionCacheRepository,
 ) {
     private val _incomingRequests =
         MutableStateFlow<List<IncomingConnectionRequestUiModel>>(emptyList())
     private val _outgoingRequests =
         MutableStateFlow<List<OutgoingConnectionRequestUiModel>>(emptyList())
+    private val _isLoaded = MutableStateFlow(false)
 
     val incomingRequests: StateFlow<List<IncomingConnectionRequestUiModel>> =
         _incomingRequests.asStateFlow()
     val outgoingRequests: StateFlow<List<OutgoingConnectionRequestUiModel>> =
         _outgoingRequests.asStateFlow()
 
-    suspend fun start() {
-        refresh()
+    /** True once we've loaded pending-request data (either from the cache or from the
+     *  network). Consumers combine this with [ConnectionService.connections]'s isLoaded
+     *  flag to decide whether to show "Unknown" vs. "Not connected" in the UI. */
+    val isLoaded: StateFlow<Boolean> = _isLoaded.asStateFlow()
+
+    fun start() {
+        scope.launch {
+            hydrateFromCache()
+            refresh()
+        }
     }
 
     init {
         scope.launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.CircleNetworkEvent.ConnectionRequestReceived) {
-//                    event.sender
-                    refresh()
+                // Never do blocking IO inside a SharedFlow collect body: on partial
+                // connectivity `refresh()` hangs in an HTTP call, which parks the
+                // 11-slot EventBus buffer and cascades to stall the chat Send path
+                // (OutboxSync.tryEnqueue emits ItemEnqueued on the same bus).
+                when (event) {
+                    is BackendEvent.CircleNetworkEvent.ConnectionRequestReceived -> {
+                        scope.launch {
+                            markIncomingOptimistically(event.sender)
+                            refresh()
+                        }
+                    }
+                    is BackendEvent.CircleNetworkEvent.ConnectionRequestAccepted -> {
+                        // This outgoing request was accepted — drop it from the pending list
+                        scope.launch {
+                            removeFromOutgoing(event.acceptedBy)
+                            refresh()
+                        }
+                    }
+                    is BackendEvent.CircleNetworkEvent.ConnectionRequestFinalized -> {
+                        // The incoming request we accepted is now finalized — clear it.
+                        scope.launch {
+                            removeFromIncoming(event.identity)
+                            refresh()
+                        }
+                    }
+                    is BackendEvent.ConnectionOnline -> scope.launch { refresh() }
+                    else -> {}
                 }
-
-                if (event is BackendEvent.CircleNetworkEvent.ConnectionRequestAccepted) {
-//                    event.acceptedBy
-                    refresh()
-                }
-
-                if (event is BackendEvent.CircleNetworkEvent.ConnectionRequestFinalized) {
-//                    event.identity
-                    refresh()
-                }
-
-//                if (event is BackendEvent.CircleNetworkEvent.IntroductionAccepted) {
-//                    refresh()
-//                }
-//
-//                if (event is BackendEvent.CircleNetworkEvent.IntroductionsReceived) {
-//                    refresh()
-//                }
             }
+        }
+    }
+
+    private suspend fun hydrateFromCache() {
+        try {
+            val cachedIncoming = cache.hydrateIncomingRequests()
+            val cachedOutgoing = cache.hydrateOutgoingRequests()
+            if (cachedIncoming == null && cachedOutgoing == null) return
+            cachedIncoming?.let { incoming ->
+                if (_incomingRequests.value.isEmpty()) _incomingRequests.value = incoming
+            }
+            cachedOutgoing?.let { outgoing ->
+                if (_outgoingRequests.value.isEmpty()) _outgoingRequests.value = outgoing
+            }
+            _isLoaded.value = true
+            Logger.d(tag = "ConnectionRequestService") {
+                "hydrated cache incoming=${cachedIncoming?.size ?: 0} outgoing=${cachedOutgoing?.size ?: 0}"
+            }
+        } catch (e: Exception) {
+            Logger.w(e) { "ConnectionRequestService: cache hydration failed" }
         }
     }
 
     private suspend fun refresh() {
         val incoming = fetchIncomingRequests()
         val outgoing = fetchOutgoingRequests()
+        val incomingOk = incoming != null
+        val outgoingOk = outgoing != null
         Logger.d(tag = "ConnectionRequestService") {
-            "refresh loaded incoming=${incoming.size} outgoing=${outgoing.size} " +
-                    "outgoingRecipients=${outgoing.map { it.recipientOdinId }}"
+            "refresh loaded incoming=${incoming?.size} outgoing=${outgoing?.size} " +
+                    "outgoingRecipients=${outgoing?.map { it.recipientOdinId }}"
         }
-        _incomingRequests.update { incoming }
-        _outgoingRequests.update { outgoing }
+        if (incoming != null) {
+            _incomingRequests.update { incoming }
+            runCatching {
+                cache.persistIncomingRequests(incoming.map { it.senderOdinId })
+            }.onFailure { Logger.w(it) { "ConnectionRequestService: cache persist incoming failed" } }
+        }
+        if (outgoing != null) {
+            _outgoingRequests.update { outgoing }
+            runCatching {
+                cache.persistOutgoingRequests(outgoing.map { it.recipientOdinId })
+            }.onFailure { Logger.w(it) { "ConnectionRequestService: cache persist outgoing failed" } }
+        }
+        if (incomingOk || outgoingOk) _isLoaded.value = true
     }
 
-    suspend fun fetchIncomingRequests(): List<IncomingConnectionRequestUiModel> {
+    /** Returns null on network failure so we don't clobber StateFlow/cache with empty lists
+     *  when the user is offline. */
+    suspend fun fetchIncomingRequests(): List<IncomingConnectionRequestUiModel>? {
         return try {
-
             val incomingRequests = connectionRequestProvider.getIncomingRequests(
                 pageNumber = 1,
                 pageSize = 1000
@@ -93,16 +145,14 @@ class ConnectionRequestService(
             incomingRequests.results.map { mapToIncomingModel(it) }
 
         } catch (e: CancellationException) {
-            // Never swallow coroutine cancellation
             throw e
         } catch (e: Exception) {
-            // Log it properly
-            println("Failed to fetch incoming requests: ${e.message}")
-            emptyList() // or rethrow depending on your architecture
+            Logger.w(e) { "Failed to fetch incoming requests" }
+            null
         }
     }
 
-    suspend fun fetchOutgoingRequests(): List<OutgoingConnectionRequestUiModel> {
+    suspend fun fetchOutgoingRequests(): List<OutgoingConnectionRequestUiModel>? {
         return try {
             //TODO: Paging
             val outgoing = connectionRequestProvider.getOutgoingRequests(
@@ -114,8 +164,8 @@ class ConnectionRequestService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            println("Failed to fetch outgoing requests: ${e.message}")
-            emptyList()
+            Logger.w(e) { "Failed to fetch outgoing requests" }
+            null
         }
     }
 
@@ -126,6 +176,7 @@ class ConnectionRequestService(
      */
     suspend fun sendConnectionRequest(header: ConnectionRequestHeader) {
         connectionRequestProvider.sendConnectionRequest(header)
+        markOutgoingOptimistically(header.recipient)
         refresh()
     }
 
@@ -139,8 +190,55 @@ class ConnectionRequestService(
     suspend fun acceptIncomingRequest(senderId: OdinId) {
         connectionRequestProvider.acceptIncomingRequest(senderId)
         driveContactService.saveContactForOdinId(senderId)
+        removeFromIncoming(senderId)
         refresh()
         connectionService.refresh()
+    }
+
+    private suspend fun markIncomingOptimistically(sender: OdinId) {
+        _incomingRequests.update { current ->
+            if (current.any { it.senderOdinId == sender }) current
+            else current + IncomingConnectionRequestUiModel(
+                senderName = "TODO $sender",
+                senderOdinId = sender,
+                receivedTimestampMilliseconds = UnixTimeUtc(
+                    Clock.System.now().toEpochMilliseconds()
+                ),
+            )
+        }
+        runCatching {
+            cache.upsert(sender, ConnectionCacheRepository.STATUS_INCOMING_PENDING)
+        }.onFailure { Logger.w(it) { "ConnectionRequestService: cache upsert incoming failed" } }
+    }
+
+    private suspend fun markOutgoingOptimistically(recipient: OdinId) {
+        _outgoingRequests.update { current ->
+            if (current.any { it.recipientOdinId == recipient }) current
+            else current + OutgoingConnectionRequestUiModel(
+                recipientName = "TODO ${recipient.domainName}",
+                recipientOdinId = recipient,
+                message = null,
+                introducerOdinId = null,
+                receivedTimestampMilliseconds = UnixTimeUtc(
+                    Clock.System.now().toEpochMilliseconds()
+                ),
+            )
+        }
+        runCatching {
+            cache.upsert(recipient, ConnectionCacheRepository.STATUS_OUTGOING_PENDING)
+        }.onFailure { Logger.w(it) { "ConnectionRequestService: cache upsert outgoing failed" } }
+    }
+
+    private suspend fun removeFromIncoming(sender: OdinId) {
+        _incomingRequests.update { current -> current.filterNot { it.senderOdinId == sender } }
+        runCatching { cache.remove(sender) }
+            .onFailure { Logger.w(it) { "ConnectionRequestService: cache remove incoming failed" } }
+    }
+
+    private suspend fun removeFromOutgoing(recipient: OdinId) {
+        _outgoingRequests.update { current -> current.filterNot { it.recipientOdinId == recipient } }
+        runCatching { cache.remove(recipient) }
+            .onFailure { Logger.w(it) { "ConnectionRequestService: cache remove outgoing failed" } }
     }
 
     fun mapToIncomingModel(serverResponse: IncomingConnectionRequestResponse): IncomingConnectionRequestUiModel {

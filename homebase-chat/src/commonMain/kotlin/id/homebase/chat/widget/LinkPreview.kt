@@ -39,11 +39,14 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.resources.MR
+import id.homebase.resources.cancel
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.decodeToImageBitmap
+import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
-import org.jetbrains.compose.resources.ExperimentalResourceApi
-import org.jetbrains.compose.resources.decodeToImageBitmap
 
 // ─── Shared text content ────────────────────────────────────────────────────
 
@@ -161,7 +164,7 @@ fun LinkPreviewCard(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Cancel",
+                                contentDescription = stringResource(MR.string.cancel),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -169,7 +172,7 @@ fun LinkPreviewCard(
                 }
             } else if (onCancel != null) {
                 IconButton(onClick = onCancel, modifier = Modifier.padding(8.dp)) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "Cancel")
+                    Icon(imageVector = Icons.Default.Close, contentDescription = stringResource(MR.string.cancel))
                 }
             }
         }
@@ -200,7 +203,7 @@ fun LinkPreviewCard(
                                     alpha = 0.7f
                                 )
                             )
-                        ) { Icon(imageVector = Icons.Default.Close, contentDescription = "Cancel") }
+                        ) { Icon(imageVector = Icons.Default.Close, contentDescription = stringResource(MR.string.cancel)) }
                     }
                 }
 

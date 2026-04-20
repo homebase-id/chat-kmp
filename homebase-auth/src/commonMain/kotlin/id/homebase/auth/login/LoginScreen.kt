@@ -31,7 +31,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.util.cleanDomain
 import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.assets.Homebase
@@ -66,6 +66,9 @@ import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
 import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
+import id.homebase.resources.done
+import id.homebase.resources.failed
+import id.homebase.resources.homebase_logo
 import id.homebase.resources.loading
 import id.homebase.resources.login_authenticating
 import id.homebase.resources.login_create_account_button
@@ -87,7 +90,7 @@ fun LoginScreen(
     onNavigateHome: () -> Unit,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     // Get platform-specific browser launcher via Compose context
     val launchAuthBrowser = rememberAuthBrowserLauncher()
@@ -158,7 +161,7 @@ fun LoginUi(
         ) {
             SquircleIcon(
                 imageVector = HomebaseIcons.Homebase,
-                contentDescription = "Homebase Logo",
+                contentDescription = stringResource(MR.string.homebase_logo),
                 modifier = Modifier.size(72.dp)
             )
 
@@ -281,13 +284,13 @@ private fun DriveProgressRow(
             when {
                 drive.completed -> Icon(
                     imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = "Done",
+                    contentDescription = stringResource(MR.string.done),
                     tint = successColor,
                     modifier = Modifier.size(20.dp),
                 )
                 drive.error != null -> Icon(
                     imageVector = Icons.Filled.Cancel,
-                    contentDescription = "Failed",
+                    contentDescription = stringResource(MR.string.failed),
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(20.dp),
                 )

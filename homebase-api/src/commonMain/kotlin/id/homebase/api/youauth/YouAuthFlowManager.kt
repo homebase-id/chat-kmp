@@ -255,8 +255,9 @@ class YouAuthFlowManager(
     private suspend fun completeAuth(url: String, state: String, queryParams: Map<String, String>) {
         val authCodeFlowState = callbackRegistry[state]
         if (authCodeFlowState == null) {
-            Logger.e(tag = TAG) { "No pending auth code flow state" }
-            _authState.value = YouAuthState.Error("No pending auth code flow")
+            // Duplicate or late callback — registry entry was already consumed.
+            // Don't stomp on the current _authState.
+            Logger.d(tag = TAG) { "Ignoring callback for state $state — no pending flow (likely duplicate delivery)" }
             return
         }
 

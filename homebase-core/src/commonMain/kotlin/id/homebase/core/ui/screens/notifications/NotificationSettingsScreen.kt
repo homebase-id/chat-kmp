@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import id.homebase.core.ui.theme.ExtendedColors
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -34,21 +33,54 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.notifications.rememberOpenSystemNotificationSettings
 import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
+import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
+import id.homebase.resources.not_available
+import id.homebase.resources.settings_badge_count
+import id.homebase.resources.settings_copy_token
+import id.homebase.resources.settings_device_token
+import id.homebase.resources.settings_enable_notifications
+import id.homebase.resources.settings_friendly_name
+import id.homebase.resources.settings_include_muted_chats
+import id.homebase.resources.settings_message_sound
+import id.homebase.resources.settings_notification_content
+import id.homebase.resources.settings_notification_locked_screen_note
+import id.homebase.resources.settings_notification_show
 import id.homebase.resources.settings_notifications
+import id.homebase.resources.settings_notifications_denied_body
+import id.homebase.resources.settings_notifications_disabled_body
+import id.homebase.resources.settings_notifications_disabled_title
+import id.homebase.resources.settings_open_settings
+import id.homebase.resources.settings_play_while_app_open
+import id.homebase.resources.settings_push_notification_status
+import id.homebase.resources.settings_re_register_failure
+import id.homebase.resources.settings_re_register_push
+import id.homebase.resources.settings_re_register_success
+import id.homebase.resources.settings_re_registering
+import id.homebase.resources.settings_registration_error
+import id.homebase.resources.settings_registration_not_registered
+import id.homebase.resources.settings_registration_registered
+import id.homebase.resources.settings_registration_status
+import id.homebase.resources.settings_registration_unknown
+import id.homebase.resources.settings_server_token
+import id.homebase.resources.settings_server_verification
+import id.homebase.resources.settings_sound_system_default
+import id.homebase.resources.settings_sounds
+import id.homebase.resources.settings_status
+import id.homebase.resources.settings_verifying
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -58,12 +90,15 @@ fun NotificationSettingsScreen(
     viewModel: NotificationSettingsViewModel,
     onBackClick: () -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val openSystemSettings = rememberOpenSystemNotificationSettings()
 
-    val permissionManager = createPermissionsManager { type, status, _ ->
+    val permissionManager = createPermissionsManager { type, status, isPermanentlyDenied ->
         if (type == PermissionType.NOTIFICATION) {
-            viewModel.updatePermissionStatus(status == PermissionStatus.GRANTED)
+            viewModel.updatePermissionStatus(
+                isGranted = status == PermissionStatus.GRANTED,
+                isPermanentlyDenied = isPermanentlyDenied
+            )
         }
     }
 
@@ -74,10 +109,12 @@ fun NotificationSettingsScreen(
 
     NotificationSettingsUi(
         uiState = uiState, onAction = { action ->
-            if (action is NotificationSettingsUiAction.RequestPermission) {
-                permissionManager.askPermission(PermissionType.NOTIFICATION)
-            } else {
-                viewModel.onAction(action)
+            when (action) {
+                is NotificationSettingsUiAction.RequestPermission ->
+                    permissionManager.askPermission(PermissionType.NOTIFICATION)
+                is NotificationSettingsUiAction.OpenSystemNotificationSettings ->
+                    permissionManager.launchSettings()
+                else -> viewModel.onAction(action)
             }
         }, onBackClick = onBackClick, onOpenSystemSettings = openSystemSettings
     )
@@ -120,39 +157,50 @@ fun NotificationSettingsUi(
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Push Notifications are disabled",
+                            text = stringResource(MR.string.settings_notifications_disabled_title),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Enable notifications to receive messages when the app is closed.",
+                            text = if (uiState.isPermissionPermanentlyDenied)
+                                stringResource(MR.string.settings_notifications_denied_body)
+                            else
+                                stringResource(MR.string.settings_notifications_disabled_body),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = {
-                                onAction(NotificationSettingsUiAction.RequestPermission)
-                            }) { Text("Enable Notifications") }
+                        if (uiState.isPermissionPermanentlyDenied) {
+                            Button(onClick = {
+                                onAction(NotificationSettingsUiAction.OpenSystemNotificationSettings)
+                            }) {
+                                Text(stringResource(MR.string.settings_open_settings))
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    onAction(NotificationSettingsUiAction.RequestPermission)
+                                }) { Text(stringResource(MR.string.settings_enable_notifications)) }
+                        }
                     }
                 }
             }
 
             // ── Sounds Section ──
-            SectionHeader(title = "Sounds")
+            SectionHeader(title = stringResource(MR.string.settings_sounds))
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     // Message Sound row — opens system notification settings
                     SettingsClickableRow(
-                        label = "Message Sound",
-                        value = "System Default",
+                        label = stringResource(MR.string.settings_message_sound),
+                        value = stringResource(MR.string.settings_sound_system_default),
                         onClick = onOpenSystemSettings
                     )
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     // Play While App is Open toggle
                     SettingsToggleRow(
-                        label = "Play While App is Open",
+                        label = stringResource(MR.string.settings_play_while_app_open),
                         checked = uiState.playWhileAppOpen,
                         onCheckedChange = {
                             onAction(NotificationSettingsUiAction.SetPlayWhileAppOpen(it))
@@ -161,11 +209,11 @@ fun NotificationSettingsUi(
             }
 
             // ── Notification Content Section ──
-            SectionHeader(title = "Notification Content")
+            SectionHeader(title = stringResource(MR.string.settings_notification_content))
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     SettingsClickableRow(
-                        label = "Show",
+                        label = stringResource(MR.string.settings_notification_show),
                         value = uiState.notificationContentLevel.displayName,
                         onClick = {
                             onAction(NotificationSettingsUiAction.ToggleContentLevelPicker)
@@ -187,17 +235,17 @@ fun NotificationSettingsUi(
                 }
             }
             Text(
-                text = "Call and Message notifications can appear while your phone is locked.",
+                text = stringResource(MR.string.settings_notification_locked_screen_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
 
             // ── Badge Count Section ──
-            SectionHeader(title = "Badge Count")
+            SectionHeader(title = stringResource(MR.string.settings_badge_count))
             Card(modifier = Modifier.fillMaxWidth()) {
                 SettingsToggleRow(
-                    label = "Include Muted Chats",
+                    label = stringResource(MR.string.settings_include_muted_chats),
                     checked = uiState.includeMutedChatsInBadge,
                     onCheckedChange = {
                         onAction(NotificationSettingsUiAction.SetIncludeMutedChatsInBadge(it))
@@ -215,8 +263,8 @@ fun NotificationSettingsUi(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (uiState.isReRegistering) "Re-registering..."
-                        else "Re-register Push Notifications",
+                        text = if (uiState.isReRegistering) stringResource(MR.string.settings_re_registering)
+                        else stringResource(MR.string.settings_re_register_push),
                         style = MaterialTheme.typography.bodyLarge,
                         color = if (uiState.isReRegistering) MaterialTheme.colorScheme.onSurfaceVariant
                         else MaterialTheme.colorScheme.primary
@@ -240,8 +288,8 @@ fun NotificationSettingsUi(
                 ) {
                     Text(
                         text = when (result) {
-                            is ReRegisterResult.Success -> "Push notifications re-registered successfully"
-                            is ReRegisterResult.Failure -> "Registration failed: ${result.message}"
+                            is ReRegisterResult.Success -> stringResource(MR.string.settings_re_register_success)
+                            is ReRegisterResult.Failure -> stringResource(MR.string.settings_re_register_failure, result.message)
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (isSuccess) ExtendedColors.Success
@@ -253,7 +301,7 @@ fun NotificationSettingsUi(
 
             // ── Push Notification Status (Debug — tap header 5 times to reveal) ──
             SectionHeader(
-                title = "Push Notification Status",
+                title = stringResource(MR.string.settings_push_notification_status),
                 modifier = Modifier.clickable {
                     onAction(NotificationSettingsUiAction.DebugHeaderTapped)
                 }
@@ -274,7 +322,7 @@ fun NotificationSettingsUi(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Device Token",
+                                    text = stringResource(MR.string.settings_device_token),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -282,7 +330,7 @@ fun NotificationSettingsUi(
                                     text = uiState.deviceToken?.let { token ->
                                         if (token.length > 12) "${token.take(8)}...${token.takeLast(4)}"
                                         else token
-                                    } ?: "Not available",
+                                    } ?: stringResource(MR.string.not_available),
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                             }
@@ -294,7 +342,7 @@ fun NotificationSettingsUi(
                                 }) {
                                     Icon(
                                         imageVector = Icons.Default.ContentCopy,
-                                        contentDescription = "Copy token",
+                                        contentDescription = stringResource(MR.string.settings_copy_token),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -311,16 +359,16 @@ fun NotificationSettingsUi(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Registration Status",
+                                text = stringResource(MR.string.settings_registration_status),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
                                 text = when (uiState.registrationStatus) {
-                                    RegistrationStatus.UNKNOWN -> "Unknown"
-                                    RegistrationStatus.REGISTERED -> "Registered"
-                                    RegistrationStatus.NOT_REGISTERED -> "Not Registered"
-                                    RegistrationStatus.ERROR -> "Error"
+                                    RegistrationStatus.UNKNOWN -> stringResource(MR.string.settings_registration_unknown)
+                                    RegistrationStatus.REGISTERED -> stringResource(MR.string.settings_registration_registered)
+                                    RegistrationStatus.NOT_REGISTERED -> stringResource(MR.string.settings_registration_not_registered)
+                                    RegistrationStatus.ERROR -> stringResource(MR.string.settings_registration_error)
                                 },
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = when (uiState.registrationStatus) {
@@ -339,7 +387,7 @@ fun NotificationSettingsUi(
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
                             Text(
-                                text = "Server Verification",
+                                text = stringResource(MR.string.settings_server_verification),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -355,7 +403,7 @@ fun NotificationSettingsUi(
                                         strokeWidth = 2.dp
                                     )
                                     Text(
-                                        text = "Verifying...",
+                                        text = stringResource(MR.string.settings_verifying),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -368,7 +416,7 @@ fun NotificationSettingsUi(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        text = "Status",
+                                        text = stringResource(MR.string.settings_status),
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                     Text(
@@ -385,7 +433,7 @@ fun NotificationSettingsUi(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = "Friendly Name",
+                                            text = stringResource(MR.string.settings_friendly_name),
                                             style = MaterialTheme.typography.bodyMedium
                                         )
                                         Text(
@@ -401,7 +449,7 @@ fun NotificationSettingsUi(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = "Server Token",
+                                            text = stringResource(MR.string.settings_server_token),
                                             style = MaterialTheme.typography.bodyMedium
                                         )
                                         Text(

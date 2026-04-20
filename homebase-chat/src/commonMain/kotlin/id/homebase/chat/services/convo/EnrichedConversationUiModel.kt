@@ -12,12 +12,22 @@ data class EnrichedConversationUiModel(
     val missingConnections: List<OdinId>,
     val oneOnOneConnectionStatus: OneOnOneConnectionStatus? = null,
 ) {
-    fun getDisplayName(): String {
+    fun getDisplayName(youLabel: String = "You"): String {
         if (!conversation.isGroupConversation) {
-             participants.firstOrNull()?.let {
+            participants.firstOrNull()?.let {
                 return it.name
             }
+            return conversation.getDisplayName()
         }
+
+        conversation.name.takeIf { it.isNotBlank() }?.let { return it }
+
+        // Untitled group: prepend `youLabel` so a 2-person group visually differs from
+        // a 1:1 with the same person (which would just render "Alice").
+        val names = listOf(youLabel) + participants.map { it.name }.filter { it.isNotBlank() }
+        val joined = names.joinToString(", ")
+        if (joined.isNotBlank()) return joined
+
         return conversation.getDisplayName()
     }
 }
@@ -31,4 +41,9 @@ sealed interface OneOnOneConnectionStatus {
     data class NotConnected(override val otherOdinId: OdinId) : OneOnOneConnectionStatus
     data class OutgoingRequestPending(override val otherOdinId: OdinId) : OneOnOneConnectionStatus
     data class IncomingRequestPending(override val otherOdinId: OdinId) : OneOnOneConnectionStatus
+
+    /** We have no cached or live connection data for this identity (e.g. first launch
+     *  while offline). Don't assert "Not connected" — show nothing, since a wrong
+     *  negative is worse than no pill. */
+    data class Unknown(override val otherOdinId: OdinId) : OneOnOneConnectionStatus
 }

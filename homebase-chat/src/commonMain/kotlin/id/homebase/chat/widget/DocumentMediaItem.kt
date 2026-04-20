@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -36,6 +37,10 @@ import id.homebase.core.ui.assets.Pdf
 import id.homebase.core.ui.assets.WordFile
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.formatFileSize
+import id.homebase.resources.MR
+import id.homebase.resources.chat_message_download_file
+import id.homebase.resources.chat_message_file_type_icon
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun DocumentMediaItem(
@@ -78,7 +83,7 @@ fun DocumentMediaItem(
         ) {
             Icon(
                 imageVector = fileIcon,
-                contentDescription = "File Type Icon",
+                contentDescription = stringResource(MR.string.chat_message_file_type_icon),
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(24.dp)
             )
@@ -107,7 +112,7 @@ fun DocumentMediaItem(
         Spacer(modifier = Modifier.width(8.dp))
 
         // Download Action (always visible)
-        IconButton(onClick = { onDownloadClick() }, modifier = Modifier.size(40.dp)) {
+        IconButton(onClick = { onDownloadClick() }, modifier = Modifier.size(40.dp).testTag("downloadButton")) {
             if (isDownloading) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(24.dp),
@@ -116,8 +121,9 @@ fun DocumentMediaItem(
                 )
             } else {
                 Icon(
+                    modifier = Modifier.testTag("downloadButtonIcon"),
                     imageVector = Icons.Default.Download,
-                    contentDescription = "Download File",
+                    contentDescription = stringResource(MR.string.chat_message_download_file),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }

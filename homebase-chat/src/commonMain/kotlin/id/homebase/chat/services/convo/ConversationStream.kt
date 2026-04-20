@@ -8,15 +8,16 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
-import id.homebase.api.sync.database.OutboxSync
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageLoader
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class ConversationStream(
@@ -62,6 +64,18 @@ class ConversationStream(
     val conversations: StateFlow<ConversationsData> = _conversations.asStateFlow()
     val shareableConversations: StateFlow<List<ShareableConversation>> =
         _shareableConversations.asStateFlow()
+
+    // region Recovery: missing or deleted conversation file
+    /** Called when a message arrives for a conversation that is missing or soft-deleted.
+     *  Wired in AppModule to ConversationService.recoverConversation(). */
+    var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
+    // endregion
+
+    // region Auto-unarchive: incoming message for archived conversation
+    /** Called when a message arrives for an archived conversation.
+     *  Wired in AppModule to ConversationService.unarchiveConversation(). */
+    var onUnarchiveConversation: (suspend (conversationId: Uuid) -> Unit)? = null
+    // endregion
 
 
     // The full conversation list is loaded once from the local DB on authentication
@@ -153,39 +167,128 @@ class ConversationStream(
                 || matchingConversation?.conversationState == ConversationState.Removed
             ) continue
 
+            // region Auto-unarchive: Signal-style unarchive on incoming message
+            if (matchingConversation?.conversationState == ConversationState.Archived) {
+                // Only unarchive for messages from others, not our own synced messages
+                if (!m.isAuthoredBy(credentialsManager.getActiveDomain())) {
+                    Logger.i("ConversationStream: unarchiving conversation ${m.conversationId} due to incoming message from ${m.originalAuthor}")
+                    val unarchived = matchingConversation.copy(conversationState = ConversationState.Active)
+                    _conversations.value = ConversationsData(
+                        items = _conversations.value.items.map { if (it.id == unarchived.id) unarchived else it }
+                    )
+                    scope.launch {
+                        try {
+                            onUnarchiveConversation?.invoke(m.conversationId)
+                        } catch (e: Exception) {
+                            Logger.e(e) { "ConversationStream: failed to unarchive conversation ${m.conversationId}: ${e.message}" }
+                        }
+                    }
+                }
+                // Fall through to updateConversationFromNewMessage below (don't continue)
+            }
+            // endregion
+
+            // region Recovery: revive deleted conversation on new incoming message
+            // Compare server-stamped *created* timestamp against the conversation's
+            // last-updated time. Using `created` (not `modified`) because the delete
+            // operation itself can bump `modified` on existing messages, causing a
+            // false-positive revival.
+            if (matchingConversation?.conversationState == ConversationState.Deleted) {
+                val messageCreated = m.created
+                if (messageCreated <= matchingConversation.fileUpdated) {
+                    Logger.d("ConversationStream: skipping old message for deleted conversation ${m.conversationId} (msgCreated=$messageCreated <= convoUpdated=${matchingConversation.fileUpdated})")
+                    continue
+                }
+                Logger.i("ConversationStream: new message for deleted conversation ${m.conversationId} from=${m.originalAuthor} (msgCreated=$messageCreated > convoUpdated=${matchingConversation.fileUpdated}), reviving")
+                // Flip state to Active in memory so it reappears in the UI immediately
+                val revived = matchingConversation.copy(conversationState = ConversationState.Active)
+                _conversations.value = ConversationsData(
+                    items = _conversations.value.items.map { if (it.id == revived.id) revived else it }
+                )
+                updateConversationFromNewMessage(revived, m)
+
+                // Trigger server-side revival via unified recovery
+                val revivalAuthor = m.originalAuthor
+                if (revivalAuthor != null) {
+                    scope.launch {
+                        try {
+                            onRecoverConversation?.invoke(m.conversationId, revivalAuthor)
+                            Logger.i("ConversationStream: deleted conversation ${m.conversationId} — recovery triggered successfully")
+                        } catch (e: Exception) {
+                            Logger.e(e) { "ConversationStream: deleted conversation ${m.conversationId} — recovery FAILED: ${e.message}" }
+                        }
+                    }
+                } else {
+                    Logger.w("ConversationStream: deleted conversation ${m.conversationId} — cannot recover, originalAuthor is null")
+                }
+                continue
+            }
+            // endregion
+
             if (matchingConversation == null) {
+                // Determine 1:1 vs group so the placeholder has a useful avatar
+                val activeDomain = credentialsManager.getActiveDomain()
+                val isOneToOne = activeDomain != null && m.originalAuthor != null
+                    && m.conversationId == XorIdUtil.getNewXorId(
+                        activeDomain.domainName, m.originalAuthor.domainName
+                    )
+
+                val placeholderAvatar = if (isOneToOne) {
+                    ConversationAvatarModel(
+                        type = ConversationAvatarModel.Type.Connection,
+                        odinId = m.originalAuthor
+                    )
+                } else {
+                    ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback)
+                }
+
+                val placeholderParticipants = if (isOneToOne) {
+                    listOf(activeDomain, m.originalAuthor).distinct()
+                } else {
+                    emptyList()
+                }
+
                 val emptyConversation =
                     ConversationUiModel(
                         id = m.conversationId,
-                        name = "Pending...",
+                        name = "Conversation missing...",
                         lastMessage = m.content,
                         latestMessageTimestamp = m.userDate,
                         admins = (if (m.originalAuthor == null) emptySet() else setOf(m.originalAuthor)),
                         unreadCount = 0,
                         avatarTiny = null,
-                        // Conversation has an image
-                        avatarInitials = "AxB",
+                        avatarInitials = "",
                         avatarUrl = "",
-                        participants = emptyList(),
+                        participants = placeholderParticipants,
                         lastRead = UnixTimeUtc(0).toInstant(),
-                        avatarModel =
-                            ConversationAvatarModel(
-                                type = ConversationAvatarModel.Type.GroupFallback,
-                                imageData = null,
-                                odinId = null,
-                                initials = null
-                            ),
+                        avatarModel = placeholderAvatar,
                         lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
                         lastMessageIsDeleted = m.isDeleted,
                         lastMessageFirstPayload = m.payloads?.firstOrNull(),
                         lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
                         lastMessageIsFromActiveUser =
                             m.isAuthoredBy(credentialsManager.getActiveDomain()),
-                        isGroup = false
+                        isGroup = !isOneToOne
                     )
 
-                Logger.w("ConversationStream: message arrived for unknown conversation ${m.conversationId}, creating placeholder")
+                // region Recovery: missing conversation file
+                Logger.w("ConversationStream: orphaned conversation ${m.conversationId} from=${m.originalAuthor} isOneToOne=$isOneToOne, creating placeholder")
                 insertNewConversation(emptyConversation)
+
+                if (m.originalAuthor != null) {
+                    Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — triggering recovery for author=${m.originalAuthor}")
+                    scope.launch {
+                        try {
+                            onRecoverConversation?.invoke(m.conversationId, m.originalAuthor)
+                            Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — recovery triggered successfully")
+                        } catch (e: Exception) {
+                            Logger.e(e) { "ConversationStream: orphaned conversation ${m.conversationId} — recovery FAILED: ${e.message}" }
+                        }
+                    }
+                } else {
+                    Logger.w("ConversationStream: orphaned conversation ${m.conversationId} — cannot recover, originalAuthor is null")
+                }
+                // endregion
             } else {
                 updateConversationFromNewMessage(matchingConversation, m)
             }
@@ -330,6 +433,7 @@ class ConversationStream(
             isPinned = incoming.isPinned,
             conversationState = resolvedState,
             exitedAt = resolvedExitedAt,
+            fileUpdated = incoming.fileUpdated,
             // Message preview — only overwrite if the file carries a newer last-message snapshot
             latestMessageTimestamp = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.latestMessageTimestamp else existing.latestMessageTimestamp,
             lastMessage = if (incoming.latestMessageTimestamp >= existing.latestMessageTimestamp) incoming.lastMessage else existing.lastMessage,
@@ -345,6 +449,7 @@ class ConversationStream(
     }
 
     private suspend fun loadConversations() {
+        val startedAt = Clock.System.now().toEpochMilliseconds()
         val leftIds = _conversations.value.items
             .filter { it.conversationState == ConversationState.Left }
             .map { it.id }
@@ -354,6 +459,9 @@ class ConversationStream(
             if (convo.id in leftIds && convo.conversationState != ConversationState.Left)
                 convo.copy(conversationState = ConversationState.Left)
             else convo
+        }
+        Logger.i(tag = "ConvListPerf") {
+            "loadConversations end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms items=${result.size}"
         }
         _conversations.value = ConversationsData(items = result)
     }
@@ -397,16 +505,17 @@ class ConversationStream(
     }
 
     suspend fun updateUnreadCounts() {
+        val startedAt = Clock.System.now().toEpochMilliseconds()
         val c = credentialsManager.requireActiveCredentials()
         val unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
         val unreadMap = unread.associate { it.conversationId to it.unreadCount.toInt() }
 
-        var changed = false
+        var changed = 0
 
         val updated = _conversations.value.items.map { convo ->
             val newCount = unreadMap[convo.id] ?: 0
             if (newCount != convo.unreadCount) {
-                changed = true
+                changed++
                 Logger.d("ConversationStream: unreadSync convo=${convo.id} ${convo.unreadCount}->${newCount}")
                 convo.copy(unreadCount = newCount)
             } else {
@@ -414,16 +523,37 @@ class ConversationStream(
             }
         }
 
-        if (changed) {
+        if (changed > 0) {
             _conversations.value = ConversationsData(items = updated)
+        }
+        Logger.i(tag = "ConvListPerf") {
+            "updateUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms changedRows=$changed totalRows=${updated.size}"
         }
     }
 
     suspend fun fetchConversations(): List<ConversationUiModel> {
 
         val c = credentialsManager.requireActiveCredentials()
+        val queryStart = Clock.System.now().toEpochMilliseconds()
         val result = dbm.chatReadCount.selectAllConversationPlusLastMessage(c.getIdentityId())
-        return result.map { mapper.mapToConversationUi(it.conversation, it.message) }
+        val afterQuery = Clock.System.now().toEpochMilliseconds()
+        val conversationIds = ArrayList<Uuid>(result.size)
+        for (row in result) {
+            val id = row.conversation.fileMetadata.appData.uniqueId
+            if (id != null) conversationIds.add(id)
+        }
+        val adminMap = ConversationAdminInfo.queryBatchFromDb(
+            credentialsManager, dbm, chatDrive, conversationIds
+        )
+        val afterAdmins = Clock.System.now().toEpochMilliseconds()
+        val mapped = result.map {
+            mapper.mapToConversationUi(it.conversation, it.message, adminMap)
+        }
+        val afterMap = Clock.System.now().toEpochMilliseconds()
+        Logger.i(tag = "ConvListPerf") {
+            "fetchConversations: wrapperQueryPlusHeaderMap=${afterQuery - queryStart}ms batchAdmins=${afterAdmins - afterQuery}ms(hits=${adminMap.size}/${conversationIds.size}) outerMapToUi=${afterMap - afterAdmins}ms total=${afterMap - queryStart}ms items=${mapped.size}"
+        }
+        return mapped
 
     }
 

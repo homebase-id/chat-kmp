@@ -16,13 +16,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Security
@@ -37,13 +37,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.initials
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
@@ -59,7 +59,10 @@ import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.SettingsItemAction
 import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
+import id.homebase.resources.app_build
+import id.homebase.resources.app_version
 import id.homebase.resources.cancel
+import id.homebase.resources.homebase_logo
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
@@ -70,6 +73,8 @@ import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_notifications
+import id.homebase.resources.settings_notifications_active
+import id.homebase.resources.settings_notifications_issue
 import id.homebase.resources.settings_open_owner_console
 import id.homebase.resources.settings_profile_info
 import id.homebase.resources.settings_security_setup
@@ -84,7 +89,7 @@ fun SettingsScreen(
     onNavigateToAppearance: () -> Unit,
     onNavigateToHelp: () -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
 
     LaunchedEffect(uiState.uiEvent) {
@@ -240,7 +245,7 @@ fun SettingsUi(
                         NotificationVerificationStatus.OK -> {
                             Icon(
                                 imageVector = Icons.Outlined.CheckCircle,
-                                contentDescription = "Notifications active",
+                                contentDescription = stringResource(MR.string.settings_notifications_active),
                                 tint = ExtendedColors.Success,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -248,7 +253,7 @@ fun SettingsUi(
                         NotificationVerificationStatus.ERROR -> {
                             Icon(
                                 imageVector = Icons.Outlined.Error,
-                                contentDescription = "Notifications issue",
+                                contentDescription = stringResource(MR.string.settings_notifications_issue),
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -301,15 +306,15 @@ fun SettingsUi(
             ) {
                 SquircleIcon(
                     imageVector = HomebaseIcons.Homebase,
-                    contentDescription = "Homebase Logo",
+                    contentDescription = stringResource(MR.string.homebase_logo),
                     modifier = Modifier.size(72.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(text = uiState.appName)
-                Text(text = "Version ${uiState.appVersion}")
+                Text(text = stringResource(MR.string.app_version, uiState.appVersion))
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Build ${uiState.appBuild}",
+                    text = stringResource(MR.string.app_build, uiState.appBuild),
                     style = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)),
                 )
                 Text(

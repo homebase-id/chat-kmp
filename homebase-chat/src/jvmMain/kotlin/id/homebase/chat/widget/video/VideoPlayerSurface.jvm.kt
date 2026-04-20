@@ -134,6 +134,7 @@ actual fun VideoPlayerSurface(
                                 end = totalSize - 1
                             }
                             val length = end - start + 1
+                            Logger.d(tag = "VideoHLS") { "vlc chunk request: fileId=${data.fileId} key=${data.payloadKey} chunkStart=$start chunkLength=$length name=$name" }
                             val bytes = runBlocking {
                                 driveFileProvider.getPayloadBytesDecrypted(
                                     driveId = data.driveId,
@@ -217,8 +218,10 @@ internal fun VlcjPlayer(
     // VLC delivers frames on its own thread. We park the latest frame in an AtomicReference
     // and pull it into Compose state via withFrameNanos, decoupling VLC's frame rate from
     // the recomposition rate. Bitmap and pixel buffer are reused across frames to avoid GC.
-    val pendingFrame = remember { AtomicReference<ImageBitmap?>(null) }
-    var currentFrame by remember { mutableStateOf<ImageBitmap?>(null) }
+    // Re-keyed to videoPath so stale frames don't outlive the Bitmap that backs them
+    // when the user scrolls to a different video.
+    val pendingFrame = remember(videoPath) { AtomicReference<ImageBitmap?>(null) }
+    var currentFrame by remember(videoPath) { mutableStateOf<ImageBitmap?>(null) }
     var isPlaying by remember(videoPath) { mutableStateOf(true) }
     var position by remember(videoPath) { mutableFloatStateOf(0f) }
     var duration by remember(videoPath) { mutableFloatStateOf(0f) }
@@ -287,6 +290,10 @@ internal fun VlcjPlayer(
                     val size = width * height * 4
                     if (pixelBuffer.size != size) {
                         pixelBuffer = ByteArray(size)
+                        // Close the outgoing Bitmap before dropping our only strong reference.
+                        // Any ImageBitmap that wrapped it (still held in currentFrame for a frame
+                        // or two) will error cleanly on the next draw instead of racing GC.
+                        skiaBitmap.close()
                         skiaBitmap = Bitmap().apply { allocN32Pixels(width, height) }
                     }
                     nativeBuffers[0].rewind()
@@ -318,6 +325,10 @@ internal fun VlcjPlayer(
             mediaPlayer.controls().stop()
             mediaPlayer.release()
             factory.release()
+            // release() above joins VLC's render threads, so no more display() calls can land.
+            // Safe to close the Bitmap now; also drop any pending frame that still wraps it.
+            pendingFrame.set(null)
+            skiaBitmap.close()
         }
     }
 

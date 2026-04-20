@@ -10,7 +10,9 @@ import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
+import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.requests.ConnectionRequestService
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
@@ -22,11 +24,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
+private data class ArchivedConnectionContext(
+    val connectionMap: Map<id.homebase.api.common.OdinId, id.homebase.api.client.connections.RedactedIdentityConnectionRegistration>,
+    val incomingSenders: Set<id.homebase.api.common.OdinId>,
+    val outgoingRecipients: Set<id.homebase.api.common.OdinId>,
+    val statusKnown: Boolean,
+)
+
 class ArchivedConversationsViewModel(
     private val conversationStream: ConversationStream,
     private val conversationService: ConversationService,
     private val ownerSessionRepository: OwnerSessionRepository,
-    private val contactService: ContactService
+    private val contactService: ContactService,
+    private val connectionService: ConnectionService,
+    private val connectionRequestService: ConnectionRequestService,
 ) : ViewModel() {
     private val enricher = ConversationEnricher()
     private val _uiState = MutableStateFlow(ArchivedConversationsUiState())
@@ -36,12 +47,29 @@ class ArchivedConversationsViewModel(
         viewModelScope.launch {
             contactService.start()
             conversationStream.start()
+            connectionService.start()
+            connectionRequestService.start()
+
+            val connectionStatusFlow = combine(
+                connectionService.connections,
+                connectionRequestService.incomingRequests,
+                connectionRequestService.outgoingRequests,
+                connectionRequestService.isLoaded,
+            ) { connections, incoming, outgoing, requestsLoaded ->
+                ArchivedConnectionContext(
+                    connectionMap = connections.map,
+                    incomingSenders = incoming.map { it.senderOdinId }.toSet(),
+                    outgoingRecipients = outgoing.map { it.recipientOdinId }.toSet(),
+                    statusKnown = connections.isLoaded && requestsLoaded,
+                )
+            }
 
             combine(
                 conversationStream.conversations,
                 contactService.contacts,
-                ownerSessionRepository.user
-            ) { conversationState, contacts, ownerSession ->
+                ownerSessionRepository.user,
+                connectionStatusFlow,
+            ) { conversationState, contacts, ownerSession, connectionCtx ->
 
                 if (ownerSession == null) return@combine Pair(false, emptyList())
 
@@ -51,7 +79,15 @@ class ArchivedConversationsViewModel(
                     conversationState.dataReady,
                     conversationState.items.filter { it.conversationState == ConversationState.Archived }
                         .map {
-                            enricher.enrich(it, contactMap, ownerSession)
+                            enricher.enrich(
+                                convo = it,
+                                contactMap = contactMap,
+                                ownerSession = ownerSession,
+                                connectionMap = connectionCtx.connectionMap,
+                                incomingRequestSenders = connectionCtx.incomingSenders,
+                                outgoingRequestRecipients = connectionCtx.outgoingRecipients,
+                                connectionStatusKnown = connectionCtx.statusKnown,
+                            )
                         })
             }.collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
                 if (dataReady) {

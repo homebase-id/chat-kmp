@@ -19,13 +19,14 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.LocalVideoContextStore
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.contact.DriveContactService
@@ -86,6 +87,19 @@ val appModule = module {
                     conversationStream.getConversationById(conversationId)
                         ?.conversationState.let { it == ConversationState.Left || it == ConversationState.Removed }
                 }
+
+                // region Recovery: missing or deleted conversation file
+                val conversationService = get<ConversationService>()
+                conversationStream.onRecoverConversation = { conversationId, originalAuthor ->
+                    conversationService.recoverConversation(conversationId, originalAuthor)
+                }
+                // endregion
+
+                // region Auto-unarchive: incoming message for archived conversation
+                conversationStream.onUnarchiveConversation = { conversationId ->
+                    conversationService.unarchiveConversation(conversationId)
+                }
+                // endregion
             }
         )
     }
@@ -96,8 +110,9 @@ val appModule = module {
 
     singleOf(::ShareConversationCacheWriter)
     singleOf(::ShareContentProcessor)
-    singleOf(::LocalVideoContextStore)
+    singleOf(::LocalAttachmentContextStore)
 
+    singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
     singleOf(::DriveContactService)
     singleOf(::ContactService)

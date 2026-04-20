@@ -45,6 +45,18 @@ class ConnectRequestViewModel(
             ConnectRequestAction.OpenDialog ->
                 _state.update { it.copy(showDialog = true) }
 
+            is ConnectRequestAction.OpenDialogWithRecipient -> {
+                val recipient = action.odinId.domainName
+                _state.update {
+                    it.copy(
+                        showDialog = true,
+                        recipient = recipient,
+                        message = "",
+                    )
+                }
+                startRecipientResolution(recipient)
+            }
+
             ConnectRequestAction.CloseDialog -> {
                 recipientResolveJob?.cancel()
                 _state.update {
@@ -260,6 +272,9 @@ data class ConnectRequestState(
 
 sealed interface ConnectRequestAction {
     data object OpenDialog : ConnectRequestAction
+    /** Open the dialog with the recipient field pre-populated (e.g. from a chat disclaimer
+     *  where we already know who the other party is). */
+    data class OpenDialogWithRecipient(val odinId: OdinId) : ConnectRequestAction
     data object CloseDialog : ConnectRequestAction
     data class RecipientChanged(val value: String) : ConnectRequestAction
     data class MessageChanged(val value: String) : ConnectRequestAction

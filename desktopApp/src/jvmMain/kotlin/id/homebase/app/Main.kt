@@ -12,6 +12,7 @@ import androidx.compose.ui.window.rememberWindowState
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
 import com.kdroid.composetray.tray.api.Tray
+import com.kdroid.composetray.utils.SingleInstanceManager
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.file.JvmFileSystemUtil
@@ -43,6 +44,11 @@ import org.koin.core.context.GlobalContext.startKoin
 import java.io.File
 
 fun main() {
+    // Force JNA to load its bundled native library. Without this, Windows may resolve
+    // a mismatched jnidispatch.dll from the system path, causing Native.<clinit> to throw.
+    // Must be set before any JNA-using class (FileKit, compose-native-tray) loads.
+    System.setProperty("jna.nosys", "true")
+
     // Initialize file logging
     try {
         // Use user's home directory for logs
@@ -106,6 +112,17 @@ fun main() {
             height = maxOf(config.windowHeightDp, minHeight.dp), // Minimum height
         )
         val themeLabel = uiState.theme.getStringResourceForTheme()
+
+        val isSingleInstance = SingleInstanceManager.isSingleInstance(
+            onRestoreRequest = {
+                isWindowVisible = true  // Restore the existing window
+            }
+        )
+
+        if (!isSingleInstance) {
+            exitApplication()
+            return@application
+        }
 
         Tray(
             icon = icon,

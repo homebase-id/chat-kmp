@@ -13,7 +13,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -25,12 +24,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.image.toImageBitmap
 import id.homebase.core.util.ifTrue
+import id.homebase.resources.MR
+import id.homebase.resources.avatar_person
+import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 
 @Composable
@@ -72,7 +75,7 @@ fun AvatarImage(
             if (imageBitmap != null) {
                 Image(
                     bitmap = imageBitmap,
-                    contentDescription = "$avatarInitials avatar",
+                    contentDescription = stringResource(MR.string.avatar_person, avatarInitials),
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
@@ -82,9 +85,9 @@ fun AvatarImage(
         } else if (avatarUrl?.isNotEmpty() == true) {
             SubcomposeAsyncImage(
                 model = avatarUrl,
-                contentDescription = "$avatarInitials avatar"
+                contentDescription = stringResource(MR.string.avatar_person, avatarInitials)
             ) {
-                val state by painter.state.collectAsState()
+                val state by painter.state.collectAsStateWithLifecycle()
                 if (state is AsyncImagePainter.State.Success) {
                     SubcomposeAsyncImageContent()
                 } else {

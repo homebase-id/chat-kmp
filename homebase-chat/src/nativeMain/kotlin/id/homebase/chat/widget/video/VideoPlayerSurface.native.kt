@@ -20,6 +20,7 @@ import androidx.compose.ui.viewinterop.UIKitView
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.crypto.AesCbc
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloader
@@ -203,7 +204,11 @@ private class HomebaseResourceLoaderDelegate(
                     loadingRequest.dataRequest?.respondWithData(bytes.toNSData())
                     withContext(Dispatchers.Main) { loadingRequest.finishLoading() }
                 } else {
-                    // .ts segment — serve content info and/or byte-range data on demand
+                    // .ts segment — iOS asks for the exact byterange of one HLS segment from
+                    // the playlist. FFmpeg encrypted each segment independently (AES-CBC with
+                    // PKCS7 padding, keyHeader.iv as IV), so we decrypt standalone and zero-pad
+                    // the plaintext back up to `length` to honor Range semantics. AVPlayer's TS
+                    // parser resyncs past the trailing zeros on the next 0x47.
                     loadingRequest.contentInformationRequest?.let {
                         it.contentType = "public.mpeg-2-transport-stream"
                         it.contentLength = totalFileSize
@@ -217,17 +222,29 @@ private class HomebaseResourceLoaderDelegate(
                         } else {
                             dataRequest.requestedLength
                         }
-                        Logger.d(tag = "VideoHLS") { "Fetching .ts chunk: start=$start, length=$length, totalFileSize=$totalFileSize" }
-                        val bytes = driveFileProvider!!.getPayloadBytesDecrypted(
+                        Logger.d(tag = "VideoHLS") { "avplayer chunk request: fileId=$fileId key=$payloadKey chunkStart=$start chunkLength=$length totalFileSize=$totalFileSize" }
+                        val encrypted = driveFileProvider!!.getPayloadBytesEncryptedChunk(
                             driveId = driveId!!,
                             fileId = fileId!!,
                             key = payloadKey!!,
-                            keyHeader = keyHeader!!,
                             chunkStart = start,
                             chunkLength = length,
-                        )?.bytes ?: throw Exception("Failed to fetch chunk at $start (length=$length)")
-                        Logger.d(tag = "VideoHLS") { "Got ${bytes.size} bytes for chunk at $start" }
-                        dataRequest.respondWithData(bytes.toNSData())
+                        ) ?: throw Exception("Failed to fetch chunk at $start (length=$length)")
+                        val plaintext = AesCbc.decrypt(
+                            cipherText = encrypted,
+                            key = keyHeader!!.aesKey,
+                            iv = keyHeader.iv,
+                        )
+                        val requested = length.toInt()
+                        val padded = if (plaintext.size >= requested) {
+                            plaintext.copyOfRange(0, requested)
+                        } else {
+                            ByteArray(requested).also { plaintext.copyInto(it, 0) }
+                        }
+                        Logger.d(tag = "VideoHLS") {
+                            "Segment decrypt: ${encrypted.size} cipher → ${plaintext.size} plain → ${padded.size} zero-padded at $start"
+                        }
+                        dataRequest.respondWithData(padded.toNSData())
                     }
                     withContext(Dispatchers.Main) { loadingRequest.finishLoading() }
                 }

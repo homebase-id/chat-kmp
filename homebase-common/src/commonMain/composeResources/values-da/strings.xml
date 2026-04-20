@@ -43,8 +43,41 @@
     <string name="leave">Forlad</string>
     <string name="export_log">Eksportér log</string>
     <string name="clear_log">Ryd log</string>
+    <string name="log_cleared">Log ryddet</string>
+    <string name="log_clear_failed">Kunne ikke rydde loggen</string>
     <string name="send">Send</string>
     <string name="media">Medie</string>
+    <string name="about_homebase">Om Homebase</string>
+    <string name="logging">Logning</string>
+    <string name="homebase_logo">Homebase logo</string>
+    <string name="info">Info</string>
+    <string name="manage">Administrér</string>
+    <string name="go_to_settings">Gå til indstillinger</string>
+    <string name="not_available">Ikke tilgængelig</string>
+    <string name="error">Fejl</string>
+    <string name="audio_waveform">Lydbølgeform</string>
+    <string name="read_by">Læst af</string>
+    <string name="delivered_to">Leveret til</string>
+    <string name="sending_to">Sender til</string>
+    <string name="uploaded">Uploadet</string>
+    <string name="failed">Mislykkedes</string>
+    <string name="unknown_status">Andet</string>
+    <string name="reactions">Reaktioner</string>
+    <string name="label_sent">App sendte: %1$s</string>
+    <string name="label_received">Modtaget: %1$s</string>
+    <string name="label_edited">Redigeret: %1$s</string>
+    <string name="error_server_not_responding">Serveren svarer ikke</string>
+    <string name="error_access_denied">Adgang nægtet</string>
+    <string name="error_too_many_attempts">For mange forsøg</string>
+    <string name="error_delivery_failed">Levering mislykkedes</string>
+    <string name="not_connected">Ikke forbundet</string>
+
+    <!-- Avatars -->
+    <string name="avatar_owner">Ejer avatar</string>
+    <string name="avatar_conversation">Samtale avatar</string>
+    <string name="avatar_default">Standard avatar</string>
+    <string name="avatar_public">Offentlig avatar</string>
+    <string name="avatar_person">%1$s avatar</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -74,6 +107,10 @@
     <string name="day_friday">Fredag</string>
     <string name="day_saturday">Lørdag</string>
     <string name="day_sunday">Søndag</string>
+
+    <!-- App version info -->
+    <string name="app_version">Version %1$s</string>
+    <string name="app_build">Build %1$s</string>
 
     <!-- Login screen -->
     <string name="login_title">Velkommen til Homebase</string>
@@ -106,8 +143,6 @@
     <string name="connections_request_sent">Forbindelsesanmodning sendt</string>
     <string name="connections_tab_incoming">Indgående (%1$s)</string>
     <string name="connections_tab_outgoing">Udgående (%1$s)</string>
-    <string name="connections_filter_introductions">Vis introduktioner (%1$s)</string>
-    <string name="connections_via_intro">via intro</string>
     <string name="connections_empty_incoming_title">Ingen indgående anmodninger</string>
     <string name="connections_empty_incoming_subtitle">Når nogen sender dig en forbindelsesanmodning, vises den her.</string>
     <string name="connections_empty_outgoing_title">Ingen udgående anmodninger</string>
@@ -116,11 +151,62 @@
     <string name="settings_notifications">Notifikationer</string>
     <string name="settings_profile_info">Profiloplysninger</string>
     <string name="settings_security_setup">Sikkerhedsopsætning</string>
+    <string name="settings_help">Hjælp</string>
     <string name="settings_logout">Log ud</string>
     <string name="settings_delete_account">Slet min konto</string>
     <string name="settings_delete_account_dialog_title">Slet din konto?</string>
     <string name="settings_delete_account_dialog_text">Din konto er meget mere end bare denne app. Hvis du vil slette din konto kan du gøre det i ejer konsollen.</string>
     <string name="settings_open_owner_console">Åben ejer konsol</string>
+    <string name="settings_notifications_active">Notifikationer aktive</string>
+    <string name="settings_notifications_issue">Problem med notifikationer</string>
+
+    <!-- Notification settings screen -->
+    <string name="settings_notifications_disabled_title">Push-notifikationer er deaktiveret</string>
+    <string name="settings_notifications_disabled_body">Aktivér notifikationer for at modtage beskeder, når appen er lukket.</string>
+    <string name="settings_enable_notifications">Aktivér notifikationer</string>
+    <string name="settings_notifications_denied_body">Notifikationer er blevet afvist. Aktivér dem i dine enhedsindstillinger.</string>
+    <string name="settings_open_settings">Åbn indstillinger</string>
+    <string name="settings_sounds">Lyde</string>
+    <string name="settings_message_sound">Beskedlyd</string>
+    <string name="settings_sound_system_default">Systemstandard</string>
+    <string name="settings_play_while_app_open">Afspil mens appen er åben</string>
+    <string name="settings_notification_content">Notifikationsindhold</string>
+    <string name="settings_notification_show">Vis</string>
+    <string name="settings_notification_locked_screen_note">Opkalds- og beskednotifikationer kan vises, mens din telefon er låst.</string>
+    <string name="settings_badge_count">Badge-antal</string>
+    <string name="settings_include_muted_chats">Medtag lydløse chats</string>
+    <string name="settings_re_register_push">Genregistrér push-notifikationer</string>
+    <string name="settings_re_registering">Genregistrerer\u2026</string>
+    <string name="settings_re_register_success">Push-notifikationer genregistreret</string>
+    <string name="settings_re_register_failure">Registrering mislykkedes: %1$s</string>
+    <string name="settings_push_notification_status">Push-notifikationsstatus</string>
+    <string name="settings_device_token">Enhedstoken</string>
+    <string name="settings_copy_token">Kopiér token</string>
+    <string name="settings_registration_status">Registreringsstatus</string>
+    <string name="settings_registration_unknown">Ukendt</string>
+    <string name="settings_registration_registered">Registreret</string>
+    <string name="settings_registration_not_registered">Ikke registreret</string>
+    <string name="settings_registration_error">Fejl</string>
+    <string name="settings_server_verification">Serververificering</string>
+    <string name="settings_verifying">Verificerer\u2026</string>
+    <string name="settings_status">Status</string>
+    <string name="settings_friendly_name">Venligt navn</string>
+    <string name="settings_server_token">Servertoken</string>
+
+    <!-- Permissions dialog -->
+    <string name="permissions_missing_title">Manglende tilladelser</string>
+    <string name="permissions_missing_body">%1$s-appen mangler tilladelser. Uden de nødvendige tilladelser vil funktionaliteten af %1$s være begrænset.</string>
+    <string name="permissions_extend">Udvid tilladelser</string>
+
+    <!-- Help screen -->
+    <string name="help_support_center">Supportcenter</string>
+    <string name="help_contact_us">Kontakt os</string>
+    <string name="help_submit_debug_log">Indsend fejllog</string>
+    <string name="help_enable_error_collection">Tillad automatisk fejlindsamling</string>
+    <string name="help_debug_log_description">Logs kan hjælpe Homebase med at løse problemer og nedbrud.</string>
+    <string name="help_version">Version</string>
+    <string name="help_terms_privacy">Vilkår og privatlivspolitik</string>
+    <string name="help_copyright">Copyright © 2024–2026 Homebase</string>
 
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s opdaterede samtalens titel</string>
@@ -167,6 +253,11 @@
     <string name="chat_search_result_empty">Ingen resultater fundet for '%1$s'</string>
     <string name="chat_message_search_result_count">%1$d af %2$d</string>
     <string name="chat_message_search_no_results">Ingen resultater</string>
+    <string name="chat_scroll_to_bottom">Gå til bunden</string>
+    <string name="chat_previous_result">Forrige resultat</string>
+    <string name="chat_next_result">Næste resultat</string>
+    <string name="chat_no_gallery_items">Ingen elementer</string>
+    <string name="chat_select_more_photos">Vælg flere billeder</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">Ny samtale</string>
@@ -211,6 +302,7 @@
     <string name="chat_not_connected_incoming_description">De vil gerne forbinde med dig.</string>
     <string name="chat_not_connected_view_request">Se anmodning</string>
     <string name="chat_not_connected_review_request">Gennemse anmodning</string>
+    <string name="chat_not_connected_send_request">Send forbindelsesanmodning</string>
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Besked</string>
@@ -232,6 +324,7 @@
     <string name="chat_connection_invitation_sent">Invitation sendt — venter på at de accepterer</string>
     <string name="chat_connection_invitation_received">Vil forbinde med dig</string>
     <string name="chat_connection_not_connected">Ikke forbundet</string>
+    <string name="chat_note_to_self">Note til selv</string>
     <string name="chat_group_introduce_everyone">Introducer alle</string>
     <string name="chat_group_introduce_everyone_status">Indtroduktioner er blevet afsendt</string>
 
@@ -276,6 +369,31 @@
     <string name="chat_message_discard_draft">Kassér kladde?</string>
 
     <string name="chat_message_forward_to">Videresend til</string>
+    <string name="chat_message_image_attachment">Billedvedhæftning</string>
+    <string name="chat_message_video_thumbnail">Videoeksempel</string>
+    <string name="chat_message_play_video">Afspil video</string>
+    <string name="chat_message_download_file">Download fil</string>
+    <string name="chat_message_file_type_icon">Filtypeikon</string>
+    <string name="chat_message_camera">Kamera</string>
+    <string name="chat_message_microphone">Mikrofon</string>
+    <string name="chat_message_emoji">Emoji</string>
+
+    <!-- Block / Report -->
+    <string name="chat_message_block">Blokér</string>
+    <string name="chat_message_report">Rapportér</string>
+    <string name="chat_message_block_confirm_title">Blokér bruger?</string>
+    <string name="chat_message_block_confirm_body">Er du sikker på, at du vil blokere denne bruger? Du vil ikke længere modtage beskeder fra dem.</string>
+    <string name="chat_message_report_confirm_title">Rapportér indhold?</string>
+    <string name="chat_message_report_confirm_body">Er du sikker på, at du vil rapportere dette indhold?</string>
+
+    <!-- Upload progress -->
+    <string name="upload_preparing">Forbereder\u2026</string>
+    <string name="upload_compressing">Komprimerer\u2026</string>
+    <string name="upload_segmenting">Segmenterer\u2026</string>
+    <string name="upload_encrypting">Krypterer\u2026</string>
+    <string name="upload_uploading">Uploader\u2026</string>
+    <string name="upload_finalizing">Afslutter\u2026</string>
+    <string name="upload_done">Færdig</string>
 
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Søg efter emoji</string>

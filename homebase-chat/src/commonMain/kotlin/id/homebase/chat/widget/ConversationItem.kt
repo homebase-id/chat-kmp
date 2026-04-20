@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +56,7 @@ import id.homebase.resources.chat_group_legacy
 import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
+import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -103,7 +105,7 @@ fun ConversationItem(
                 Text(
                     text = if (enrichedData.conversation.isWithSelf)
                         stringResource(MR.string.chat_note_to_self)
-                    else enrichedData.getDisplayName(),
+                    else enrichedData.getDisplayName(youLabel = stringResource(MR.string.you)),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (enrichedData.conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1,
@@ -321,8 +323,16 @@ fun ConversationMessagePreview(
         }
 
         if (text.isNotEmpty()) {
-            val textState = RichTextState().applyDefaultStyling()
-            textState.setMarkdown(text)
+            // IMPORTANT: RichTextState MUST be wrapped in remember(text).
+            // Without remember, a new RichTextState() is created on every recomposition and
+            // setMarkdown() modifies internal Compose MutableState during composition. This
+            // triggers another recomposition, which creates another RichTextState, which calls
+            // setMarkdown again — causing an infinite recomposition loop that pins the GPU at
+            // ~15-16% (one full core) permanently. The loop is invisible in logs because it
+            // happens purely in the Compose rendering layer with no app-level side effects.
+            val textState = remember(text) {
+                RichTextState().applyDefaultStyling().also { it.setMarkdown(text) }
+            }
 
             RichText(
                 state = textState,

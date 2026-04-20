@@ -17,6 +17,7 @@ class ConversationEnricher {
         connectionMap: Map<OdinId, RedactedIdentityConnectionRegistration> = emptyMap(),
         incomingRequestSenders: Set<OdinId> = emptySet(),
         outgoingRequestRecipients: Set<OdinId> = emptySet(),
+        connectionStatusKnown: Boolean = true,
     ): EnrichedConversationUiModel {
 
         val currentUser = ownerSession.odinId
@@ -59,6 +60,7 @@ class ConversationEnricher {
                     OneOnOneConnectionStatus.IncomingRequestPending(other)
                 outgoingRequestRecipients.contains(other) ->
                     OneOnOneConnectionStatus.OutgoingRequestPending(other)
+                !connectionStatusKnown -> OneOnOneConnectionStatus.Unknown(other)
                 else -> OneOnOneConnectionStatus.NotConnected(other)
             }
             if (status !is OneOnOneConnectionStatus.Connected) {

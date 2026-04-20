@@ -107,11 +107,14 @@ class ConversationService(
                 null
             }
 
+            Logger.d("createConversation: $newConversationId found existing file in local DB, state=$existingState")
+
             val needsRevive = existingState == null ||
                     existingState == ConversationState.Deleted ||
                     existingState == ConversationState.Invalid
 
             if (needsRevive) {
+                Logger.d("createConversation: $newConversationId reviving (state=$existingState)")
                 // Revive by clearing the Removed archival flag and pushing a fresh
                 // participant list from the caller. updateConversationInternal uses
                 // replaceEnqueue, so this supersedes any stale pending update.
@@ -126,6 +129,7 @@ class ConversationService(
             return CreateConversationResult(newConversationId, wasNewlyCreated = false)
         }
 
+        Logger.d("createConversation: $newConversationId no local file found — creating new (recipients=$normalizedRecipients)")
         val allParticipants = (normalizedRecipients + domain).distinct()
         val success = writeConversationFile(
             conversationId = newConversationId,
@@ -653,7 +657,11 @@ class ConversationService(
         dependencyUniqueId: Uuid? = null,
         archivalStatus: ArchivalStatus? = null,
         distribute: Boolean = true,
-        additionalDistributionRecipients: List<OdinId> = emptyList()
+        additionalDistributionRecipients: List<OdinId> = emptyList(),
+        /** When true, ensures [ChatProtocol.ConversationGroupTag] is present in the file's
+         *  tags (used by recovery/revive paths to heal legacy or untagged group files).
+         *  null = preserve existing tags as-is. */
+        isGroup: Boolean? = null
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
@@ -719,6 +727,13 @@ class ConversationService(
         }
 
         val existingAppData = conversationFile.fileMetadata.appData
+        val mergedTags = if (isGroup == true) {
+            val existing = existingAppData.tags.orEmpty()
+            if (existing.contains(ChatProtocol.ConversationGroupTag)) existing
+            else existing + ChatProtocol.ConversationGroupTag
+        } else {
+            existingAppData.tags
+        }
         val metadata =
             UploadFileMetadata(
                 allowDistribution = distribute, // conversationFile.serverMetadata.allowDistribution,
@@ -729,7 +744,7 @@ class ConversationService(
                 appData =
                     UploadAppFileMetaData(
                         uniqueId = conversationId,
-                        tags = existingAppData.tags,
+                        tags = mergedTags,
                         fileType = existingAppData.fileType,
                         dataType = existingAppData.dataType,
                         groupId = existingAppData.groupId,
@@ -829,6 +844,89 @@ class ConversationService(
     suspend fun unpinConversation(conversationId: Uuid) {
         updateConversationTags(conversationId) { it - ChatProtocol.ConversationPinnedTag }
     }
+
+    // region Recovery: unified conversation recovery
+    /**
+     * Single entry point for recovering a conversation that is missing or soft-deleted.
+     * Determines 1:1 vs group via the XOR algorithm, reads existing participants
+     * from the file when available, and either revives or creates the file using
+     * the ORIGINAL [conversationId] (never recomputes it).
+     */
+    suspend fun recoverConversation(conversationId: Uuid, originalAuthor: OdinId) {
+        val domain = credentialsManager.requireActiveDomain()
+        val isNoteToSelf = conversationId == ChatProtocol.ConversationWithYourselfId
+
+        if (isNoteToSelf) {
+            Logger.i("ConversationService: recoverConversation($conversationId) — note-to-self, delegating to ensureNoteToSelfExists()")
+            ensureNoteToSelfExists()
+            return
+        }
+
+        val isOneToOne = conversationId == XorIdUtil.getNewXorId(
+            domain.domainName, originalAuthor.domainName
+        )
+
+        Logger.i("ConversationService: recoverConversation($conversationId) author=${originalAuthor.domainName} isOneToOne=$isOneToOne")
+
+        val existingFile = getConversationHomebaseFile(conversationId)
+
+        if (existingFile != null) {
+            val existingState: ConversationState? = try {
+                mapper.mapToConversationUi(existingFile, null).conversationState
+            } catch (e: Exception) {
+                Logger.w(e) { "ConversationService: recoverConversation($conversationId) — existing file failed to map, will overwrite" }
+                null
+            }
+
+            Logger.d("ConversationService: recoverConversation($conversationId) existingState=$existingState")
+
+            val needsRevive = existingState == null
+                || existingState == ConversationState.Deleted
+                || existingState == ConversationState.Invalid
+
+            if (!needsRevive) {
+                Logger.d("ConversationService: recoverConversation($conversationId) — file exists and is $existingState, no action needed")
+                return
+            }
+
+            // Read existing participants from file if possible (preserves group membership)
+            val existingContent = existingFile.fileMetadata.appData.content?.let {
+                try {
+                    OdinSystemSerializer.deserialize<ConversationAppDataJson>(it)
+                } catch (e: Exception) { null }
+            }
+            val participants = existingContent?.recipients
+                ?.filterNotNull()?.distinct()
+                ?.takeIf { it.isNotEmpty() }
+                ?: listOf(originalAuthor, domain).distinct()
+
+            Logger.i("ConversationService: recoverConversation($conversationId) — reviving (state=$existingState) participants=${participants.map { it.domainName }}")
+
+            updateConversationInternal(
+                conversationId = conversationId,
+                title = existingContent?.title ?: "",
+                participants = participants,
+                archivalStatus = ArchivalStatus.None,
+                distribute = false,
+                isGroup = !isOneToOne
+            )
+            return
+        }
+
+        // No local file — create one with the ORIGINAL conversationId
+        val allParticipants = listOf(originalAuthor, domain).distinct()
+        Logger.i("ConversationService: recoverConversation($conversationId) — no local file, creating new (isGroup=${!isOneToOne}) participants=${allParticipants.map { it.domainName }}")
+
+        writeConversationFile(
+            conversationId = conversationId,
+            allParticipants = allParticipants,
+            transitRecipients = listOf(originalAuthor),
+            title = "",
+            isGroup = !isOneToOne,
+            payloadBundle = null
+        )
+    }
+    // endregion
 
     suspend fun deleteConversation(conversationId: Uuid) {
         val conversation = requireConversation(conversationId)

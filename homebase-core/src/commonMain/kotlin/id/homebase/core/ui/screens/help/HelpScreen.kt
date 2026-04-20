@@ -26,14 +26,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.CheckboxRow
 import id.homebase.resources.MR
+import id.homebase.resources.about_homebase
 import id.homebase.resources.help_contact_us
 import id.homebase.resources.help_copyright
 import id.homebase.resources.help_debug_log_description
@@ -42,6 +43,7 @@ import id.homebase.resources.help_submit_debug_log
 import id.homebase.resources.help_support_center
 import id.homebase.resources.help_terms_privacy
 import id.homebase.resources.help_version
+import id.homebase.resources.logging
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_help
 import org.jetbrains.compose.resources.stringResource
@@ -51,7 +53,7 @@ fun HelpScreen(
     viewModel: HelpViewModel,
     onBackClick: () -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
 
     LaunchedEffect(uiState.uiEvent) {
@@ -130,7 +132,7 @@ fun HelpUi(
             }
 
             // ── Logging Section ──
-            SectionHeader(title = "Logging")
+            SectionHeader(title = stringResource(MR.string.logging))
             Card(modifier = Modifier.fillMaxWidth()) {
                 HelpClickableRow(
                     label = stringResource(MR.string.help_submit_debug_log),
@@ -153,7 +155,7 @@ fun HelpUi(
             )
 
             // ── About Section ──
-            SectionHeader(title = "About Homebase")
+            SectionHeader(title = stringResource(MR.string.about_homebase))
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     // Version row

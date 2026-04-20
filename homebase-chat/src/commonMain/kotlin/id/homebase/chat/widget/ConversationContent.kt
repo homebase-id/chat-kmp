@@ -93,6 +93,7 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.MessageListContentModel
+import id.homebase.chat.conversationlist.PendingOutgoingMessage
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
 import id.homebase.chat.conversationlist.RecipientGroupModel
@@ -111,6 +112,7 @@ import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
+import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
@@ -130,14 +132,18 @@ import id.homebase.resources.chat_message_block_confirm_title
 import id.homebase.resources.chat_message_forward_to
 import id.homebase.resources.chat_message_search_no_results
 import id.homebase.resources.chat_message_search_result_count
+import id.homebase.resources.chat_next_result
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_not_connected_description
 import id.homebase.resources.chat_not_connected_incoming_description
 import id.homebase.resources.chat_not_connected_outgoing_description
 import id.homebase.resources.chat_not_connected_review_request
+import id.homebase.resources.chat_not_connected_send_request
 import id.homebase.resources.chat_not_connected_view_request
 import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_options
+import id.homebase.resources.chat_previous_result
+import id.homebase.resources.chat_scroll_to_bottom
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_send_message_button
 import id.homebase.resources.connect
@@ -148,6 +154,7 @@ import id.homebase.resources.recents
 import id.homebase.resources.search
 import id.homebase.resources.time_today
 import id.homebase.resources.time_yesterday
+import id.homebase.resources.you
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.persistentMapOf
@@ -219,6 +226,26 @@ fun ConversationContent(
                 ?: return@snapshotFlow false
             lastVisibleIndex < totalItems - 1
         }.collect { showScrollToBottom = it }
+    }
+
+    // Auto-follow: when the list grows (new sent or received message) and the
+    // user was already at the bottom, scroll to the new last item. If the user
+    // is reading history further up, leave them alone.
+    LaunchedEffect(listState, conversation.conversation.id) {
+        var previousTotal = 0
+        var wasAtBottom = false
+        snapshotFlow {
+            listState.layoutInfo.totalItemsCount to listState.canScrollForward
+        }.collect { (total, canScrollForward) ->
+            if (total > previousTotal && previousTotal > 0 && wasAtBottom) {
+                listState.animateScrollToItem(total - 1)
+            }
+            // canScrollForward == false means the user is at the absolute end
+            // of the list. Record this BEFORE the next snapshot so a subsequent
+            // growth sees the pre-growth scroll state.
+            wasAtBottom = total > 0 && !canScrollForward
+            previousTotal = total
+        }
     }
 
     // Add this state to track keyboard height
@@ -297,6 +324,17 @@ fun ConversationContent(
                     conversationId = conversation.conversation.id,
                     files = listOf(file),
                     isImage = true,
+                )
+            )
+        }
+    }
+    val videoRecorderLauncher = rememberVideoRecorderManager { file ->
+        file?.let {
+            onUiAction(
+                ConversationListUiAction.AttachPlatformFile(
+                    conversationId = conversation.conversation.id,
+                    files = listOf(file),
+                    isImage = false,
                 )
             )
         }
@@ -391,7 +429,7 @@ fun ConversationContent(
                                         text = if (conversation.conversation.isWithSelf) stringResource(
                                             MR.string.chat_note_to_self
                                         )
-                                        else conversation.getDisplayName(),
+                                        else conversation.getDisplayName(youLabel = stringResource(MR.string.you)),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
@@ -566,6 +604,43 @@ fun ConversationContent(
                 }
             }
 
+            val realMessageIds = remember(uiState.messages) {
+                uiState.messages
+                    .filterIsInstance<MessageListContentModel.Message>()
+                    .mapTo(HashSet()) { it.message.id }
+            }
+            val pendingForConvo = remember(uiState.pendingOutgoing, realMessageIds, conversation.conversation.id) {
+                uiState.pendingOutgoing.filter {
+                    it.conversationId == conversation.conversation.id &&
+                            it.id !in realMessageIds
+                }
+            }
+            // Merge pending placeholders into the messages list at the right
+            // chronological position (sorted by sentAt vs. message.userDate).
+            // This matters when a video is still processing — any text or
+            // incoming messages with a later timestamp must render BELOW the
+            // video placeholder, not above it.
+            val mergedItems = remember(uiState.messages, pendingForConvo) {
+                if (pendingForConvo.isEmpty()) {
+                    uiState.messages.toList<Any>()
+                } else {
+                    val pending = pendingForConvo.sortedBy { it.sentAt }.toMutableList()
+                    val result = mutableListOf<Any>()
+                    for (item in uiState.messages) {
+                        if (item is MessageListContentModel.Message) {
+                            while (pending.isNotEmpty() &&
+                                pending.first().sentAt <= item.message.userDate
+                            ) {
+                                result += pending.removeAt(0)
+                            }
+                        }
+                        result += item
+                    }
+                    result.addAll(pending)
+                    result.toList()
+                }
+            }
+
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
@@ -579,8 +654,17 @@ fun ConversationContent(
                             bottom = 24.dp,
                         )
                     ) {
-                        items(uiState.messages, key = { message -> message.id }) { messageItem ->
-                            when (messageItem) {
+                        items(
+                            mergedItems,
+                            key = { item ->
+                                when (item) {
+                                    is MessageListContentModel -> item.id
+                                    is PendingOutgoingMessage -> "pending-${item.id}"
+                                    else -> item.hashCode().toString()
+                                }
+                            },
+                        ) { item ->
+                            when (item) {
                                 is MessageListContentModel.Header -> {
                                     Column {
                                         AvatarNameDisplay(
@@ -589,7 +673,7 @@ fun ConversationContent(
                                                 .padding(bottom = 16.dp),
                                             displayName = if (conversation.conversation.isWithSelf) stringResource(
                                                 MR.string.chat_note_to_self
-                                            ) else conversation.getDisplayName(),
+                                            ) else conversation.getDisplayName(youLabel = stringResource(MR.string.you)),
                                             avatarModel = conversation.conversation.avatarModel,
                                             onClick = {
                                                 onUiAction(
@@ -618,19 +702,19 @@ fun ConversationContent(
                                 }
 
                                 is MessageListContentModel.Section -> {
-                                    MessagesSection(text = getDateSectionLabel(messageItem.date))
+                                    MessagesSection(text = getDateSectionLabel(item.date))
                                 }
 
                                 is MessageListContentModel.System -> {
-                                    MessagesSystemMessage(text = messageItem.text)
+                                    MessagesSystemMessage(text = item.text)
                                 }
 
                                 is MessageListContentModel.Message -> {
                                     val isFocused = uiState.searchResultMessageIds.getOrNull(
                                         uiState.currentSearchResultIndex
-                                    ) == messageItem.message.id
+                                    ) == item.message.id
                                     MessageItem(
-                                        message = messageItem.message,
+                                        message = item.message,
                                         userDefaultReactions = uiState.userDefaultReactions,
                                         decryptedFiles = uiState.decryptedFiles,
                                         currentOdinId = uiState.ownerSession?.odinId?.domainName
@@ -641,16 +725,23 @@ fun ConversationContent(
                                         sharedTransitionScope = sharedTransitionScope,
                                         onUiAction = onUiAction,
                                         downloadingFiles = uiState.downloadingFiles,
-                                        uploadStatus = uiState.uploadProgress[messageItem.message.id],
+                                        uploadStatus = uiState.uploadProgress[item.message.id],
                                         replyMessages = replyMessages,
                                         searchQuery = uiState.searchQuery,
                                         isCurrentSearchResult = isFocused,
                                     )
                                 }
+
+                                is PendingOutgoingMessage -> {
+                                    PendingMessageBubble(
+                                        message = item,
+                                        uploadStatus = uiState.uploadProgress[item.id],
+                                    )
+                                }
                             }
                         }
                         // If only one message item (the header) show no messages info
-                        if (uiState.messages.size == 1) {
+                        if (uiState.messages.size == 1 && pendingForConvo.isEmpty()) {
                             item { EmptyListItem(stringResource(MR.string.chat_no_messages)) }
                         }
                     }
@@ -679,7 +770,7 @@ fun ConversationContent(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Scroll to bottom",
+                                    contentDescription = stringResource(MR.string.chat_scroll_to_bottom),
                                 )
                             }
                         }
@@ -727,7 +818,7 @@ fun ConversationContent(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowUp,
-                                contentDescription = "Previous result",
+                                contentDescription = stringResource(MR.string.chat_previous_result),
                             )
                         }
                         IconButton(
@@ -736,7 +827,7 @@ fun ConversationContent(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Next result",
+                                contentDescription = stringResource(MR.string.chat_next_result),
                             )
                         }
                     }
@@ -797,17 +888,28 @@ fun ConversationContent(
                         }
                     }
                 } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.NotConnected) {
-                    Box(
+                    val status = conversation.oneOnOneConnectionStatus
+                    Column(
                         modifier = Modifier.fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
                             text = stringResource(MR.string.chat_not_connected_description),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        ElevatedButton(onClick = {
+                            onUiAction(
+                                ConversationListUiAction.OpenSendConnectionRequestDialog(
+                                    status.otherOdinId
+                                )
+                            )
+                        }) {
+                            Text(stringResource(MR.string.chat_not_connected_send_request))
+                        }
                     }
                 } else if (conversation.oneOnOneConnectionStatus is OneOnOneConnectionStatus.OutgoingRequestPending) {
                     val status = conversation.oneOnOneConnectionStatus
@@ -939,6 +1041,7 @@ fun ConversationContent(
                                 }
                             },
                             onCameraClick = { cameraLauncher.launch() },
+                            onVideoRecordClick = { videoRecorderLauncher.launch() },
                             onRecordingStarted = {
                                 onUiAction(
                                     ConversationListUiAction.StartRecording(
@@ -1016,6 +1119,7 @@ fun ConversationContentSheets(
     uiState: MessageListUiState,
     onUiAction: (ConversationListUiAction) -> Unit,
 ) {
+    val youLabel = stringResource(MR.string.you)
     when (val sheet = uiState.uiSheet) {
         null -> {}
         is MessageListUiSheet.ConnectIdentities -> {
@@ -1074,7 +1178,7 @@ fun ConversationContentSheets(
                                     ignoreCase = true
                                 )
 
-                                is RecipientModel.Conversation -> recipient.conversation.getDisplayName()
+                                is RecipientModel.Conversation -> recipient.conversation.getDisplayName(youLabel = youLabel)
                                     .contains(query, ignoreCase = true)
                             }
                         }
@@ -1231,7 +1335,7 @@ fun RecipientItem(
         is RecipientModel.Conversation -> {
             GroupOrConversationItem(
                 avatarModel = recipientModel.conversation.conversation.avatarModel,
-                name = recipientModel.conversation.getDisplayName(),
+                name = recipientModel.conversation.getDisplayName(youLabel = stringResource(MR.string.you)),
                 selectionMode = true,
                 isSelected = isSelected,
                 onContactClick = {

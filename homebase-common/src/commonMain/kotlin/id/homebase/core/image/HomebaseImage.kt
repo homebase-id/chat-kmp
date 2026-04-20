@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -26,6 +25,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
@@ -35,8 +35,11 @@ import coil3.request.ImageRequest
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.Warning
+import id.homebase.resources.MR
+import id.homebase.resources.error
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -146,7 +149,7 @@ fun HomebaseImage(
         contentScale = contentScale,
         colorFilter = colorFilter
     ) {
-        val state by painter.state.collectAsState()
+        val state by painter.state.collectAsStateWithLifecycle()
 
         // Animate blur: 10f -> 0f on success
         val blurRadius by
@@ -222,7 +225,7 @@ fun HomebaseImage(
                         // Default error icon if no custom error composable provided
                         Icon(
                             imageVector = HomebaseIcons.Warning,
-                            contentDescription = "Error",
+                            contentDescription = stringResource(MR.string.error),
                             tint = Color.Gray,
                             modifier = Modifier.size(24.dp)
                         )

@@ -11,6 +11,9 @@ import androidx.compose.ui.draw.clip
 import id.homebase.api.common.OdinId
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.resources.MR
+import id.homebase.resources.avatar_owner
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun ContactAvatar(
@@ -37,7 +40,7 @@ fun ContactAvatar(
                         it.clickable { options.onClick.invoke() }
                     } else it
                 },
-            contentDescription = "Owner Avatar",
+            contentDescription = stringResource(MR.string.avatar_owner),
             contentScale = options.contentScale,
             onClick = options.onClick,
             sharedTransitionScope = sharedTransitionScope,

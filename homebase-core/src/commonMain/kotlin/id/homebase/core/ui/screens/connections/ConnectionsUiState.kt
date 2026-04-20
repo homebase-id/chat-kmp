@@ -10,14 +10,12 @@ data class ConnectionsUiState(
     val incomingRequests: List<IncomingConnectionRequestResponse> = emptyList(),
     val outgoingRequests: List<OutgoingConnectionRequestResponse> = emptyList(),
     val identities: Map<OdinId, PublicIdentity> = emptyMap(),
-    val showIntroductionOutgoing: Boolean = false,
 
     val uiEvent: ConnectionsUiEvent? = null,
 )
 
 sealed interface ConnectionsUiAction {
     data object Refresh : ConnectionsUiAction
-    data class SetShowIntroductionOutgoing(val show: Boolean) : ConnectionsUiAction
     data object OpenOwnerConsoleClicked : ConnectionsUiAction
 }
 

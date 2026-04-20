@@ -54,7 +54,8 @@ data class LocalAppMetadata(
     val versionTag: Uuid? = null,
     val iv: String? = null,
     val content: String? = null,
-    val readTime: UnixTimeUtc? = null
+    val readTime: UnixTimeUtc? = null,
+    val localReactions: List<String>? = null,
 )
 
 /** Reaction entry for both comments and summary reactions */

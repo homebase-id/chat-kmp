@@ -332,6 +332,24 @@ actual object FFmpegUtils {
             }
         }
 
+    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val args = arrayOf(
+                "-y",
+                "-allowed_extensions", "ALL",
+                "-i", playlistPath,
+                "-c", "copy",
+                "-bsf:a", "aac_adtstoasc",
+                "-movflags", "+faststart",
+                outputPath
+            )
+            Log.d(TAG, "Remux HLS→MP4 args: ${args.joinToString(" ")}")
+            val session = FFmpegKit.executeWithArguments(args)
+            val ok = ReturnCode.isSuccess(session.returnCode)
+            if (!ok) Log.e(TAG, "Remux failed: ${session.failStackTrace}")
+            ok
+        }
+
     fun generateHlsKeyInfoFile(
         outputDir: File,
         aesKey: ByteArray,

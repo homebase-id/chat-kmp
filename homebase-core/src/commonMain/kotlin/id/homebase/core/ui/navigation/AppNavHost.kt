@@ -27,7 +27,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
@@ -46,6 +46,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.window.core.layout.WindowSizeClass
+import co.touchlab.kermit.Logger
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
@@ -82,6 +83,7 @@ import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.uuid.Uuid
 
@@ -91,8 +93,8 @@ fun AppNavHost(
     navController: NavHostController,
     youAuthFlowManager: YouAuthFlowManager
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val authState by youAuthFlowManager.authState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val authState by youAuthFlowManager.authState.collectAsStateWithLifecycle()
     val isAuthenticated = authState is YouAuthState.Authenticated
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -165,10 +167,26 @@ fun AppNavHost(
         viewModel.navigationEvents.collect { event ->
             when (event) {
                 is NotificationNavigationEvent.OpenConversation -> {
-                    Uuid.parseOrNull(event.conversationId)?.let {
-                        navController.selectConversationOnChatList(it, scrollToBottom = true)
+                    val id = Uuid.parseOrNull(event.conversationId) ?: return@collect
+                    val topRoute = navController.currentBackStackEntry?.destination?.route
+                    Logger.i(tag = "AppNavHost") {
+                        "OpenConversation received: id=$id, currentDest=$topRoute"
                     }
-                    navController.popBackStack(Route.ChatList, inclusive = false)
+                    // Gate on ChatList being *anywhere* in the back stack, not just
+                    // on top. Top-of-stack gating (currentBackStackEntryFlow) hangs
+                    // forever when the user is warm on Detail/Settings/etc. —
+                    // regression introduced by PR #322. currentBackStack returns
+                    // immediately here because ChatList sits underneath the current
+                    // top entry; the subsequent popBackStack pops back to it.
+                    val stack = navController.currentBackStack
+                        .first { stack -> stack.any { it.destination.hasRoute(Route.ChatList::class) } }
+                    Logger.i(tag = "AppNavHost") {
+                        "ChatList present in stack (size=${stack.size}), dispatching"
+                    }
+                    val ok = navController.selectConversationOnChatList(id, scrollToBottom = true)
+                    Logger.i(tag = "AppNavHost") { "selectConversationOnChatList result=$ok" }
+                    val popped = navController.popBackStack(Route.ChatList, inclusive = false)
+                    Logger.i(tag = "AppNavHost") { "popBackStack(ChatList)=$popped" }
                 }
                 is NotificationNavigationEvent.OpenUrl ->
                     uriHandler.openUrl(event.url)
@@ -324,11 +342,14 @@ fun AppNavHost(
                     composable<Route.ChatList> { backStackEntry ->
                         if (isAuthenticated) {
                             val conversationListViewModel: ConversationListViewModel = koinViewModel()
-                            val pendingConversationId by backStackEntry.savedStateHandle.getStateFlow<String?>("pendingConversationId", null).collectAsState()
-                            val pendingScrollToBottom by backStackEntry.savedStateHandle.getStateFlow("pendingScrollToBottom", false).collectAsState()
+                            val pendingConversationId by backStackEntry.savedStateHandle.getStateFlow<String?>("pendingConversationId", null).collectAsStateWithLifecycle()
+                            val pendingScrollToBottom by backStackEntry.savedStateHandle.getStateFlow("pendingScrollToBottom", false).collectAsStateWithLifecycle()
                             LaunchedEffect(pendingConversationId) {
                                 pendingConversationId?.let { idStr ->
                                     Uuid.parseOrNull(idStr)?.let {
+                                        Logger.i(tag = "AppNavHost") {
+                                            "ChatList observed pendingConversationId=$idStr, calling selectConversation"
+                                        }
                                         conversationListViewModel.selectConversation(it, scrollToBottom = pendingScrollToBottom)
                                         backStackEntry.savedStateHandle["pendingConversationId"] = null
                                         backStackEntry.savedStateHandle["pendingScrollToBottom"] = false
@@ -337,16 +358,15 @@ fun AppNavHost(
                             }
                             ConversationListScreen(
                                 viewModel = conversationListViewModel,
+                                archivedConversationsViewModel = koinViewModel(),
                                 extendPermissionViewModel = koinViewModel(),
+                                connectRequestViewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
                                 onNavigateToSettingsScreen = {
                                     navController.navigate(Route.Settings)
                                 },
                                 onNavigateToNewConversation = {
                                     navController.navigate(Route.CreateConversation)
-                                },
-                                onNavigateToArchivedConversations = {
-                                    navController.navigate(Route.ArchivedConversations)
                                 },
                                 onNavigateToContactInfo = {
                                     navController.navigate(Route.ContactInfo(it))
@@ -583,9 +603,17 @@ fun AppNavHost(
     }
 }
 
-private fun NavHostController.selectConversationOnChatList(conversationId: Uuid, scrollToBottom: Boolean = false) {
-    getBackStackEntry<Route.ChatList>().savedStateHandle["pendingConversationId"] = conversationId.toString()
-    getBackStackEntry<Route.ChatList>().savedStateHandle["pendingScrollToBottom"] = scrollToBottom
+private fun NavHostController.selectConversationOnChatList(conversationId: Uuid, scrollToBottom: Boolean = false): Boolean {
+    val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull()
+    if (entry == null) {
+        Logger.w(tag = "AppNavHost") {
+            "ChatList missing from stack — dropping pending conversation $conversationId"
+        }
+        return false
+    }
+    entry.savedStateHandle["pendingConversationId"] = conversationId.toString()
+    entry.savedStateHandle["pendingScrollToBottom"] = scrollToBottom
+    return true
 }
 
 // Helper to check if a destination is a top-level route

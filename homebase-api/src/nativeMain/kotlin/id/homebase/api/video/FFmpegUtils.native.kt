@@ -268,6 +268,21 @@ actual object FFmpegUtils {
                 }
             }
 
+    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean =
+            withContext(Dispatchers.IO) {
+                val fileManager = NSFileManager.defaultManager
+                if (fileManager.fileExistsAtPath(outputPath)) {
+                    fileManager.removeItemAtPath(outputPath, null)
+                }
+                val command =
+                        "-y -allowed_extensions ALL -i \"$playlistPath\" -c copy -bsf:a aac_adtstoasc -movflags +faststart \"$outputPath\""
+                val result = bridge.executeFFmpeg(command)
+                if (!result.isSuccess) {
+                    println("Docs: Error remuxing HLS→MP4: ${result.failStackTrace}")
+                }
+                result.isSuccess
+            }
+
     fun generateHlsKeyInfoFile(
             outputDir: String,
             aesKey: ByteArray,

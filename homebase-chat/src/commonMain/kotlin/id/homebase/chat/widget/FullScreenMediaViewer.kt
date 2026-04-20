@@ -111,8 +111,10 @@ fun FullScreenMediaViewer(
         mutableStateOf(zoomStates[selectedKey]?.second ?: Offset.Zero)
     }
 
-    val textState = remember { RichTextState().applyDefaultStyling() }
-    textState.setMarkdown(data.content)
+    // See ConversationItem.kt ConversationMessagePreview for why remember is required here
+    val textState = remember(data.content) {
+        RichTextState().applyDefaultStyling().also { it.setMarkdown(data.content) }
+    }
 
     BoxWithConstraints(
         modifier = modifier

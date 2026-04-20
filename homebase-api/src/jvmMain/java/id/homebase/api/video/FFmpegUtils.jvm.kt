@@ -405,6 +405,11 @@ actual object FFmpegUtils {
             output = output.toString()
         )
     }
+
+    actual suspend fun remuxHlsToMp4(playlistPath: String, outputPath: String): Boolean {
+        // Desktop HLS→MP4 export not implemented yet (VLC-J, no bundled FFmpeg).
+        return false
+    }
 }
 
 data class ProcessResult(

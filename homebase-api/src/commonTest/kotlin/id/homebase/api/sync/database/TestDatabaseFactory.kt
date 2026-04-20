@@ -46,6 +46,8 @@ object TestDatabaseFactory {
 
     private val chatReadCountAdapter = ChatReadCount.Adapter(groupIdAdapter = UuidAdapter)
 
+    private val connectionCacheAdapter = ConnectionCache.Adapter(identityIdAdapter = UuidAdapter)
+
     /**
      * Creates a test database with all adapters pre-configured. Uses the platform-specific
      * in-memory driver.
@@ -60,6 +62,7 @@ object TestDatabaseFactory {
             sqlDriver,
             appNotificationsAdapter,
             chatReadCountAdapter,
+            connectionCacheAdapter,
             driveLocalTagIndexAdapter,
             driveMainIndexAdapter,
             driveTagIndexAdapter,

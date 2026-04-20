@@ -20,11 +20,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.settings.Language
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.setPlatformSystemLocale
@@ -51,7 +51,7 @@ fun AppearanceSettingsScreen(
     viewModel: AppearanceSettingsViewModel,
     onBackClick: () -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(uiState.uiEvent) {
         when (val event = uiState.uiEvent) {

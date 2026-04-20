@@ -70,10 +70,10 @@ class ChatReadCountWrapper(
         val result = list.mapIndexed { index, it ->
 
             try {
-                logger.d {
-                    "Mapping row[$index] | convSize=${it.convJsonHeader.length} " +
-                            "hasMsg=${it.msgJsonHeader != null}"
-                }
+//                logger.d {
+//                    "Mapping row[$index] | convSize=${it.convJsonHeader.length} " +
+//                            "hasMsg=${it.msgJsonHeader != null}"
+//                }
 
                 val conversation =
                     OdinSystemSerializer.deserialize<HomebaseFile>(it.convJsonHeader)

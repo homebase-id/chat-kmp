@@ -29,6 +29,20 @@ interface OutboxUploader {
     suspend fun upload(outboxRecord: Outbox, eventBus: EventBus): Unit
 }
 
+private fun uploadTypeName(t: Long): String = when (t) {
+    DriveOutboxUploader.UploadNewFile -> "UploadNewFile"
+    DriveOutboxUploader.UpdateFile -> "UpdateFile"
+    DriveOutboxUploader.DeleteFile -> "DeleteFile"
+    DriveOutboxUploader.UpdateLocalMetadataTags -> "UpdateLocalMetadataTags"
+    DriveOutboxUploader.UpdateLocalMetadataContent -> "UpdateLocalMetadataContent"
+    DriveOutboxUploader.SendReadReceiptByTime -> "SendReadReceiptByTime"
+    DriveOutboxUploader.ToggleReaction -> "ToggleReaction"
+    DriveOutboxUploader.DeleteFilesByGroupId -> "DeleteFilesByGroupId"
+    else -> "Unknown"
+}
+
+private fun Outbox.uploadTypeLabel(): String = "${uploadTypeName(uploadType)}($uploadType)"
+
 class OutboxSync(
     private val databaseManager: DatabaseManager,
     private val uploader: OutboxUploader,
@@ -45,7 +59,9 @@ class OutboxSync(
     }
 
     private val MAX_SENDING_THREADS = 3
-    private val WAIT_INCREMENT_SECONDS = 30L
+    private val BASE_DELAY_SECONDS = 30L        // first retry after 30s
+    private val MAX_DELAY_SECONDS = 14400L      // 4 hours cap
+    private val MAX_RETRIES = 20                // ~48 hours total
     private val semaphore = Semaphore(MAX_SENDING_THREADS)
     private val activeThreads = atomic(0)
     private val totalSent = atomic(0)
@@ -125,12 +141,13 @@ class OutboxSync(
                         outboxRecord.uniqueId
                     )
                 )
-                Logger.i("Log the data from the outboxRecord here...")
+                Logger.i("OutboxSync: sending uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()} driveId=${outboxRecord.driveId} attempt=${outboxRecord.checkOutCount + 1}")
 
                 uploader.upload(outboxRecord, eventBus)
 
                 // if successful we remove it from the database
                 databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
+                Logger.i("OutboxSync: completed uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()}")
 
                 // We sent the item, send an event
                 eventBus.emit(
@@ -141,9 +158,30 @@ class OutboxSync(
                 )
                 totalSent.incrementAndGet()
             } catch (e: Exception) {
-                val n = WAIT_INCREMENT_SECONDS * outboxRecord.checkOutCount
+                val attempts = outboxRecord.checkOutCount + 1
+
+                if (attempts >= MAX_RETRIES) {
+                    Logger.e(
+                        "OutboxSync: DROPPING uniqueId=${outboxRecord.uniqueId} " +
+                                "uploadType=${outboxRecord.uploadTypeLabel()} after $attempts failed attempts. " +
+                                "Last error: ${e.message}",
+                        e
+                    )
+                    databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
+                    eventBus.emit(
+                        BackendEvent.OutboxEvent.OutboxItemDropped(
+                            outboxRecord.driveId,
+                            outboxRecord.uniqueId,
+                            attempts.toInt()
+                        )
+                    )
+                    continue
+                }
+
+                // Exponential backoff: 30s, 60s, 2m, 4m, 8m, 16m, 32m, 64m, 2h, 4h, 4h, ...
+                val n = minOf(BASE_DELAY_SECONDS * (1L shl minOf(outboxRecord.checkOutCount.toInt(), 30)), MAX_DELAY_SECONDS)
                 Logger.w(
-                    "Failed upload for ${outboxRecord.uniqueId}, retry in $n seconds (attempt ${outboxRecord.checkOutCount + 1})",
+                    "Failed upload for ${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()}, retry in $n seconds (attempt $attempts/$MAX_RETRIES)",
                     e
                 )
 
@@ -180,7 +218,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -202,7 +244,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -226,7 +272,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -250,7 +300,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -273,7 +327,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -297,7 +355,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -319,7 +381,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -341,7 +407,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -363,7 +433,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -403,12 +477,17 @@ class OutboxSync(
                 filePaths = null
             )
 
-            eventBus.emit(
-                BackendEvent.OutboxEvent.ItemEnqueued(
-                    driveId,
-                    uniqueId
-                )
+            // Non-suspending emit: the message is durably queued — listeners are a
+            // best-effort side-effect and must not gate the caller. A slow subscriber
+            // (doing blocking network IO inside its collect body) can saturate the
+            // 11-slot SharedFlow buffer on partial connectivity; parking here would
+            // hang the chat Send button.
+            val emitted = eventBus.tryEmit(
+                BackendEvent.OutboxEvent.ItemEnqueued(driveId, uniqueId)
             )
+            if (!emitted) {
+                Logger.w("OutboxSync: ItemEnqueued event dropped (EventBus buffer full) uniqueId=$uniqueId")
+            }
 
             return true
 

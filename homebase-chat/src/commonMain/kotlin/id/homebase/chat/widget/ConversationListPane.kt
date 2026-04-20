@@ -27,6 +27,7 @@ import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -82,6 +83,8 @@ import id.homebase.resources.chat_search_empty_description
 import id.homebase.resources.chat_search_placeholder
 import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.loading
+import id.homebase.resources.menu_back
+import id.homebase.resources.remove
 import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
@@ -117,7 +120,21 @@ fun ConversationListPane(
         val iconOnlyMode by derivedStateOf { maxWidth <= 96.dp }
         Scaffold(
             topBar = {
-                if (!iconOnlyMode) {
+                if (uiState.showArchived) {
+                    TopAppBar(
+                        title = {
+                            Text(stringResource(MR.string.chat_archived_chats))
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = { onUiAction(ConversationListUiAction.ArchiveBackClicked) }) {
+                                Icon(
+                                    imageVector = Icons.Default.ChevronLeft,
+                                    contentDescription = stringResource(MR.string.menu_back)
+                                )
+                            }
+                        },
+                    )
+                } else if (!iconOnlyMode) {
                     TopAppBar(title = {
                         Box(modifier = Modifier.fillMaxWidth()) {
                             // Title row - keep it in place but fade out
@@ -309,7 +326,7 @@ fun ConversationListPane(
                                     trailingIcon = {
                                         Icon(
                                             Icons.Default.Close,
-                                            contentDescription = "Localized description",
+                                            contentDescription = stringResource(MR.string.remove),
                                             // Modifier.size(InputChipDefaults.AvatarSize)
                                         )
                                     },
@@ -368,7 +385,19 @@ fun ConversationListPane(
                         }
 
                         is ConversationListContentState.Items -> {
-                            items(uiState.conversationsContent.list) { listItem ->
+                            items(
+                                uiState.conversationsContent.list,
+                                key = { listItem ->
+                                    when (listItem) {
+                                        is ConversationListContentModel.Conversation ->
+                                            listItem.conversation.conversation.id
+                                        is ConversationListContentModel.Message ->
+                                            listItem.message.id
+                                        is ConversationListContentModel.Header ->
+                                            listItem.resource.key
+                                    }
+                                }
+                            ) { listItem ->
                                 ConversationLisContentItem(
                                     listItem = listItem,
                                     selectedConversationId = selectedConversationId,

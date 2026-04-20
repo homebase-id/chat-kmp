@@ -109,6 +109,45 @@ public class DriveFileProvider(
         return file.asHomebaseFile(creds.secret)
     }
 
+    /**
+     * Gets a file header by its uniqueId.
+     * Used by [DriveOutboxUploader.retryAsUpdate] to fetch the server's versionTag
+     * when converting a failed UploadNewFile into an update.
+     *
+     * @param driveId The target drive id containing the file
+     * @param uniqueId The unique ID of the file
+     * @return The HomebaseFile or null if not found
+     */
+    suspend fun getFileHeaderByUid(
+        driveId: Uuid,
+        uniqueId: Uuid
+    ): HomebaseFile? {
+
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(uniqueId, "uniqueId")
+
+        val creds = requireCreds()
+        val url = apiUrl(
+            creds.domain,
+            "/drives/$driveId/files/by-uid/$uniqueId/header"
+        )
+
+        val response = encryptedGet(
+            url = url,
+            token = creds.accessToken,
+            secret = creds.secret
+        )
+
+        if (response.status == 404) {
+            return null
+        }
+
+        throwForFailure(response)
+
+        var file = deserialize<ServerFile>(response.body)
+        return file.asHomebaseFile(creds.secret)
+    }
+
     /** Downloads the payload to the encrypted disk cache without decrypting it.
      *  Subsequent calls to [getPayloadBytesDecrypted] for the same key will be served from cache. */
     suspend fun prefetchPayload(
@@ -118,6 +157,29 @@ public class DriveFileProvider(
         onDownloadProgress: ((Float) -> Unit)? = null,
     ) {
         driveCache.getPayloadBytesRaw(driveId, fileId, key, onDownloadProgress = onDownloadProgress)
+    }
+
+    /** Downloads a single byterange of a payload into the encrypted disk cache without decrypting.
+     *  The cache is keyed by (chunkStart, chunkLength), so a later player request with the
+     *  identical range will hit this entry. Used to warm the first HLS segment. */
+    suspend fun prefetchPayloadChunk(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        chunkStart: Long,
+        chunkLength: Long,
+        onDownloadProgress: ((Float) -> Unit)? = null,
+    ) {
+        driveCache.getPayloadBytesRaw(
+            driveId = driveId,
+            fileId = fileId,
+            key = key,
+            options = PayloadOperationOptions(
+                chunkStart = chunkStart,
+                chunkLength = chunkLength,
+            ),
+            onDownloadProgress = onDownloadProgress,
+        )
     }
 
     suspend fun getPayloadBytesDecrypted(
@@ -132,6 +194,31 @@ public class DriveFileProvider(
         return driveCache.getPayloadBytesDecrypted(
             driveId, fileId, key, keyHeader, chunkStart, chunkLength, onDownloadProgress
         )
+    }
+
+    /**
+     * Fetch the raw (still-encrypted) bytes for a specific byterange of a payload, going through
+     * the disk cache. Used by the iOS HLS resource loader, which decrypts each HLS segment as a
+     * standalone AES-CBC blob (FFmpeg encrypts each segment independently with PKCS7 padding).
+     */
+    suspend fun getPayloadBytesEncryptedChunk(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        chunkStart: Long,
+        chunkLength: Long,
+    ): ByteArray? {
+        val response = driveCache.getPayloadBytesRaw(
+            driveId = driveId,
+            fileId = fileId,
+            key = key,
+            options = id.homebase.api.client.drives.files.PayloadOperationOptions(
+                chunkStart = chunkStart,
+                chunkLength = chunkLength,
+            ),
+        )
+        if (response.status == 404) return null
+        return response.bytes
     }
 
     suspend fun streamPayloadDecryptedToPath(

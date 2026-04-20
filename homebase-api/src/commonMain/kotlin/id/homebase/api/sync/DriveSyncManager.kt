@@ -69,8 +69,20 @@ class DriveSyncManager(
                     is BackendEvent.DriveEvent.Started       -> updateState(event.driveId) {
                         it.copy(state = DriveState.Synchronizing())
                     }
-                    is BackendEvent.DriveEvent.BatchReceived -> updateState(event.driveId) {
-                        it.copy(state = DriveState.Synchronizing(count = event.totalCount))
+                    is BackendEvent.DriveEvent.BatchReceived -> {
+                        // Only update progress count during an active sync (Started already fired).
+                        // Don't let stray BatchReceived from OptimisticWriter transition
+                        // a Completed/Failed drive back to Synchronizing.
+                        // Ignore events whose totalCount is below the count we've already
+                        // shown — real-time WebSocket pushes and optimistic writes emit
+                        // totalCount=1 and would otherwise snap the progress bar backwards
+                        // mid-backfill.
+                        val current = _driveStatuses.value[event.driveId]?.state
+                        if (current is DriveState.Synchronizing && event.totalCount >= current.count) {
+                            updateState(event.driveId) {
+                                it.copy(state = DriveState.Synchronizing(count = event.totalCount))
+                            }
+                        }
                     }
                     is BackendEvent.DriveEvent.Stopped -> when (val r = event.result) {
                         is BackendEvent.DriveResult.Success -> updateState(event.driveId) {
@@ -80,8 +92,10 @@ class DriveSyncManager(
                             updateState(event.driveId) {
                                 it.copy(state = DriveState.Failed(r.errorMessage))
                             }
+                            Logger.w { "DriveSyncManager: drive ${event.driveId} failed: ${r.errorMessage}, scheduling retry in 1s" }
                             scope.launch {
                                 delay(1000L)
+                                Logger.i { "DriveSyncManager: retrying drive ${event.driveId}" }
                                 driveSyncsMutex.withLock { driveSyncs[event.driveId] }?.sync()
                             }
                         }
@@ -160,6 +174,13 @@ class DriveSyncManager(
     fun pause() {
         isRunning = false
         driveSyncs.values.forEach { it.cancel() }
+        _driveStatuses.update { statuses ->
+            statuses.mapValues { (_, status) ->
+                if (status.state is DriveState.Synchronizing)
+                    status.copy(state = DriveState.Completed())
+                else status
+            }
+        }
     }
 
     suspend fun stop() {

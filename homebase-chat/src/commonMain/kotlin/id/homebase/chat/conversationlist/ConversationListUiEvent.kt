@@ -1,12 +1,12 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.common.OdinId
 import id.homebase.chat.data.MessageUiModel
 import org.jetbrains.compose.resources.StringResource
 
 sealed interface ConversationListUiEvent {
     data object NavigateBack : ConversationListUiEvent
     data object NavigateToNewConversation : ConversationListUiEvent
-    data object NavigateToArchivedConversations : ConversationListUiEvent
     data class NavigateToContactInfo(val odinId: String) : ConversationListUiEvent
     data class NavigateToGroupSettings(val conversationId: String) : ConversationListUiEvent
     data class NavigateToConversationSettings(val conversationId: String) : ConversationListUiEvent
@@ -18,4 +18,5 @@ sealed interface ConversationListUiEvent {
     data class OpenFile(val filePath: String) : ConversationListUiEvent
     data class SaveFileToDevice(val filePath: String, val suggestedName: String) : ConversationListUiEvent
     data class OpenUrl(val url: String) : ConversationListUiEvent
+    data class OpenSendConnectionRequestDialog(val odinId: OdinId) : ConversationListUiEvent
 }

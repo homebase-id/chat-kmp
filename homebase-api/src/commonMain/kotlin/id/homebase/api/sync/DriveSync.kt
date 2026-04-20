@@ -70,9 +70,8 @@ class DriveSync(
     }
 
     fun cancel() {
-        // If we really want to cancel in the future... Something like:
-        // job?.cancel()?
-        // we probably want child jobs to be allowed to complete (write to DB)
+        killroy.value = false
+        job?.cancel()
     }
 
     // sync() spawn a thread unless it's already working. Returns a pointer to the
@@ -90,8 +89,10 @@ class DriveSync(
                 job = null
                 mutex.unlock()
             }
-            if (killroy.value)
-                sync() // If killroy was here, do it one extra time
+            if (killroy.value) {
+                Logger.i("DriveSync: killroy triggered recursive sync for drive $driveId")
+                sync()
+            }
         }
 
         return job

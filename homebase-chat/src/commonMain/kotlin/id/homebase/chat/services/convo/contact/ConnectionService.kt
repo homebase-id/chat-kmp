@@ -1,6 +1,7 @@
 package id.homebase.chat.services.convo.contact
 
 import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -11,6 +12,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import co.touchlab.kermit.Logger
@@ -23,7 +25,8 @@ data class ConnectionState(
 class ConnectionService(
     private val provider: ConnectionNetworkProvider,
     private val eventBus: EventBus,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val cache: ConnectionCacheRepository,
 ) {
 
     private val _connections =
@@ -41,10 +44,26 @@ class ConnectionService(
         // refresh or app-foreground event.
         scope.launch {
             eventBus.events.collect { event ->
-                if (event is BackendEvent.CircleNetworkEvent.ConnectionRequestAccepted ||
-                    event is BackendEvent.CircleNetworkEvent.ConnectionRequestFinalized
-                ) {
-                    refresh()
+                // Never do blocking IO inside a SharedFlow collect body: refresh() does
+                // HTTP calls that hang on partial connectivity, parking the 11-slot
+                // EventBus buffer and cascading to stall the chat Send path.
+                when (event) {
+                    is BackendEvent.CircleNetworkEvent.ConnectionRequestAccepted -> {
+                        scope.launch {
+                            markConnectedOptimistically(event.acceptedBy)
+                            refresh()
+                        }
+                    }
+                    is BackendEvent.CircleNetworkEvent.ConnectionRequestFinalized -> {
+                        scope.launch {
+                            markConnectedOptimistically(event.identity)
+                            refresh()
+                        }
+                    }
+                    // When the websocket comes back after an offline window, reconcile
+                    // against the server — covers the airplane-mode-off case.
+                    is BackendEvent.ConnectionOnline -> scope.launch { refresh() }
+                    else -> {}
                 }
             }
         }
@@ -53,7 +72,23 @@ class ConnectionService(
     fun start() {
         if (startJob?.isActive == true) return
         startJob = scope.launch {
+            hydrateFromCache()
             refresh()
+        }
+    }
+
+    private suspend fun hydrateFromCache() {
+        try {
+            val hydrated = cache.hydrateConnections() ?: return
+            _connections.update { current ->
+                // Cache hydration is a non-authoritative fallback: only apply it if we
+                // haven't already loaded fresh data from the network.
+                if (current.isLoaded) current
+                else ConnectionState(isLoaded = true, map = hydrated.connectionMap)
+            }
+            Logger.d { "ConnectionService hydrated ${hydrated.connectionMap.size} cached rows" }
+        } catch (e: Exception) {
+            Logger.w(e) { "ConnectionService cache hydration failed" }
         }
     }
 
@@ -70,17 +105,45 @@ class ConnectionService(
                     isLoaded = true,
                     map = (connected.results + blocked.results).associateBy { it.odinId }
                 )
+                runCatching {
+                    cache.persistConnections(
+                        connected = connected.results.map { it.odinId },
+                        blocked = blocked.results.map { it.odinId },
+                    )
+                }.onFailure { Logger.w(it) { "ConnectionService: cache persist failed" } }
             }
         } catch (e: Exception) {
             Logger.e(e) {
                 "ConnectionService.refresh failed: ${e.message}"
             }
-            // still mark as loaded so UI doesn't stay in "loading" forever
-            _connections.value = ConnectionState(
+            // Leave any previously-loaded or cache-hydrated state in place — clobbering it
+            // with an empty map would misleadingly flip every 1:1 chip to "Not connected"
+            // on every network hiccup (including airplane mode on a cold start).
+        }
+    }
+
+    private suspend fun markConnectedOptimistically(odinId: OdinId) {
+        _connections.update { current ->
+            val synthesized = RedactedIdentityConnectionRegistration(
+                odinId = odinId,
+                status = ConnectionStatus.Connected,
+                accessGrant = null,
+                created = 0L,
+                lastUpdated = 0L,
+                originalContactData = null,
+                introducerOdinId = null,
+                connectionRequestOrigin = id.homebase.api.client.connections.ConnectionRequestOrigin.None,
+                hasVerificationHash = false,
+                rku = false,
+            )
+            ConnectionState(
                 isLoaded = true,
-                map = emptyMap()
+                map = current.map + (odinId to synthesized),
             )
         }
+        runCatching {
+            cache.upsert(odinId, ConnectionCacheRepository.STATUS_CONNECTED)
+        }.onFailure { Logger.w(it) { "ConnectionService: optimistic cache upsert failed" } }
     }
 
     fun get(odinId: OdinId): RedactedIdentityConnectionRegistration? {

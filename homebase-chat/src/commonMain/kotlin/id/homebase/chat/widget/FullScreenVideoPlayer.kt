@@ -11,10 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,29 +26,32 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.image.toImageBitmap
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.UploadStatus
+import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.widget.video.LocalVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
-import id.homebase.api.image.toImageBitmap
 import id.homebase.resources.MR
+import id.homebase.resources.chat_message_play_video
+import id.homebase.resources.chat_message_video_thumbnail
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
-import id.homebase.resources.upload_preparing
 import id.homebase.resources.upload_compressing
-import id.homebase.resources.upload_uploading
 import id.homebase.resources.upload_done
-import id.homebase.chat.services.LocalVideoContextStore
+import id.homebase.resources.upload_preparing
+import id.homebase.resources.upload_uploading
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 
@@ -138,19 +141,21 @@ fun FullScreenVideoPlayer(
                     imageData = imageData,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
-                    contentDescription = "Video thumbnail",
+                    contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
                 )
             } else if (isLocalPlayback) {
                 // Show local thumbnail when paused during local playback
-                val localVideoContextStore = org.koin.compose.koinInject<LocalVideoContextStore>()
-                val localContext = data.uploadMessageId?.let { localVideoContextStore.get(it) }
+                val localVideoContextStore = org.koin.compose.koinInject<LocalAttachmentContextStore>()
+                val localContext = data.uploadMessageId?.let {
+                    localVideoContextStore.get(it, data.payloadKey) as? LocalAttachmentContext.Video
+                }
                 val localBitmap = localContext?.thumbnailBytes?.let { bytes ->
                     remember(bytes) { bytes.toImageBitmap() }
                 }
                 if (localBitmap != null) {
                     androidx.compose.foundation.Image(
                         bitmap = localBitmap,
-                        contentDescription = "Video thumbnail",
+                        contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
                     )
@@ -159,19 +164,12 @@ fun FullScreenVideoPlayer(
 
             Icon(
                 imageVector = Icons.Default.PlayCircle,
-                contentDescription = "Play video",
+                contentDescription = stringResource(MR.string.chat_message_play_video),
                 modifier = Modifier
                     .size(72.dp)
                     .align(Alignment.Center)
                     .clickable { isPlaying = true },
                 tint = Color.White.copy(alpha = 0.85f)
-            )
-        }
-
-        if (isDownloading) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = Color.White,
             )
         }
 
@@ -188,6 +186,15 @@ fun FullScreenVideoPlayer(
                 }
             },
             actions = {
+                if (isDownloading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                    )
+                }
                 if (uploadStatus != null) {
                     val statusText = when (uploadStatus) {
                         UploadStatus.Preparing -> stringResource(MR.string.upload_preparing)

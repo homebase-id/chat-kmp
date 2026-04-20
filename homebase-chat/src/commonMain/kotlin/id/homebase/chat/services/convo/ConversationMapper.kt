@@ -21,6 +21,7 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import kotlin.io.encoding.Base64
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class ConversationMapper(
@@ -33,10 +34,14 @@ class ConversationMapper(
 
     suspend fun mapToConversationUi(
         conversationFile: HomebaseFile,
-        lastMsg: HomebaseFile?
+        lastMsg: HomebaseFile?,
+        preloadedAdmins: Map<Uuid, Set<OdinId>>? = null,
     ): ConversationUiModel {
 
-        return try {
+        val startedAt = Clock.System.now().toEpochMilliseconds()
+        val rowId = conversationFile.fileMetadata.appData.uniqueId
+        try {
+            return try {
 
             val domain = credentialsManager.requireActiveDomain()
             val metadata = conversationFile.fileMetadata
@@ -73,13 +78,15 @@ class ConversationMapper(
             val isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
             val isLegacyGroup = !isGroup && participants.size > 2
             val isAnyGroup = isGroup || isLegacyGroup
-            val displayNames = participants.map { it.domainName }
 
             val title =
                 if (conversationId == ChatProtocol.ConversationWithYourselfId) {
                     "" // Display name resolved via string resource at UI layer
                 } else if (isAnyGroup) {
-                    conversationData.title?.takeIf { it.isNotBlank() } ?: displayNames.joinToString(", ")
+                    // Leave blank when no explicit title; the UI layer builds a fallback from
+                    // resolved contact names (EnrichedConversationUiModel). Building it here
+                    // would bake in raw domain names, bypassing contact resolution.
+                    conversationData.title?.takeIf { it.isNotBlank() } ?: ""
                 } else {
                     val other = participants.first { it != domain }
                     other.domainName
@@ -87,7 +94,12 @@ class ConversationMapper(
 
             val admins: Set<OdinId> =
                 if (isAnyGroup) {
-                    queryAdmins(conversationId)
+                    val adminFileResult = if (preloadedAdmins != null) {
+                        preloadedAdmins[conversationId]
+                    } else {
+                        queryAdmins(conversationId)
+                    }
+                    adminFileResult
                     // Backward compat: fall back to conversation content, then originalAuthor
                         ?: (conversationData.adminData?.admins?.toSet())
                         ?: setOf(
@@ -103,7 +115,8 @@ class ConversationMapper(
                 conversationFile,
                 participants,
                 domain,
-                conversationId
+                conversationId,
+                isAnyGroup
             )
 
             val localTags = metadata.localAppData?.tags ?: emptyList()
@@ -148,7 +161,8 @@ class ConversationMapper(
                     conversationState = conversationState,
                     isGroup = isGroup,
                     isLegacyGroup = isLegacyGroup,
-                    exitedAt = exitedAt
+                    exitedAt = exitedAt,
+                    fileUpdated = metadata.updated.toInstant()
                 )
 
             if (lastMsg != null) {
@@ -182,8 +196,17 @@ class ConversationMapper(
                 avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
                 admins = emptySet(),
                 conversationState = ConversationState.Invalid,
-                isGroup = false
+                isGroup = false,
+                fileUpdated = conversationFile.fileMetadata.updated.toInstant()
             )
+        }
+        } finally {
+            val elapsed = Clock.System.now().toEpochMilliseconds() - startedAt
+            if (elapsed > 20) {
+                Logger.w(tag = "ConvListPerf") {
+                    "mapToConversationUi slow row=$rowId in ${elapsed}ms"
+                }
+            }
         }
     }
 
@@ -210,7 +233,8 @@ class ConversationMapper(
             avatarModel = ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback),
             admins = setOf(domain),
             conversationState = ConversationState.Deleted,
-            isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
+            isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true,
+            fileUpdated = metadata.updated.toInstant()
         )
 
         if (lastMsg != null) {
@@ -225,14 +249,20 @@ class ConversationMapper(
     }
 
     private suspend fun queryAdmins(conversationId: Uuid): Set<OdinId>? {
-        return ConversationAdminInfo.queryFromDb(credentialsManager, dbm, chatDrive, conversationId)
+        val startedAt = Clock.System.now().toEpochMilliseconds()
+        val result = ConversationAdminInfo.queryFromDb(credentialsManager, dbm, chatDrive, conversationId)
+        Logger.i(tag = "ConvListPerf") {
+            "queryAdmins=${Clock.System.now().toEpochMilliseconds() - startedAt}ms groupId=$conversationId hit=${result != null}"
+        }
+        return result
     }
 
     private suspend fun buildConversationAvatarModel(
         conversation: HomebaseFile,
         participants: List<OdinId>,
         domain: OdinId,
-        conversationId: Uuid
+        conversationId: Uuid,
+        isAnyGroup: Boolean
     ): ConversationAvatarModel {
 
         val metadata = conversation.fileMetadata
@@ -277,7 +307,10 @@ class ConversationMapper(
 
         val others = participants.filter { it != domain }
 
-        if (others.size == 1) {
+        // Any group (tagged or legacy) gets the group avatar, even at 2 participants.
+        // Otherwise a 2-person group would be indistinguishable from a 1:1 with the same
+        // person — both in title and avatar.
+        if (!isAnyGroup && others.size == 1) {
             return ConversationAvatarModel(
                 type = ConversationAvatarModel.Type.Connection,
                 odinId = others.first()

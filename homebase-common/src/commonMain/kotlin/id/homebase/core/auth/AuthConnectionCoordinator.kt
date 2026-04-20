@@ -174,6 +174,10 @@ class AuthConnectionCoordinator(
             ).also { it.start() }
     }
 
+    fun setForeground(foreground: Boolean) {
+        wsClient?.isInForeground = foreground
+    }
+
     private suspend fun disconnect() {
         outboxSync.setOnline(false)
         // Keep isConnecting = true so the next login cycle correctly starts in

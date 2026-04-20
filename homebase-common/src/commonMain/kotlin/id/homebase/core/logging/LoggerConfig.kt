@@ -66,30 +66,38 @@ object LoggerConfig {
         isInitialized = true
     }
 
-    fun purgeLogs() {
-        logDirectoryPath?.let { path ->
-            try {
-                val files = SystemFileSystem.list(path)
-                    .filter { it.name.startsWith("homebase") && it.name.endsWith(".log") }
-                    .sortedByDescending { it.name }
+    /**
+     * Delete all `homebase*.log` files in the log directory and restart file logging.
+     *
+     * Returns true if every matching file was deleted, false otherwise.
+     *
+     * On Windows the active log file is held open with an exclusive lock by
+     * [RollingFileLogWriter], so we drop it from the Logger's writer list before
+     * attempting to delete; the file handle is released when the writer is GC'd.
+     * Callers that care about the user-visible outcome (e.g. a "Clear log" button)
+     * should use the return value rather than assume success.
+     */
+    fun purgeLogs(): Boolean {
+        val path = logDirectoryPath ?: return false
 
-                if (files.isEmpty()) {
-                    Logger.w(tag = TAG) { "No log files found in $logDirectory" }
-                    null
-                } else {
-                    files.forEach { file ->
-                        SystemFileSystem.delete(file, mustExist = false)
-                    }
-                }
+        // Release the file writer so the active log file is no longer locked.
+        Logger.setLogWriters(listOf(platformLogWriter()))
+        isInitialized = false
 
-                // Reset initialization flag to allow re-initialization
-                isInitialized = false
-
-                // Reinitialize the logger to recreate file writers
-                initialize(logDirectory = path)
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) { "Failed to delete log files in $logDirectory" }
-            }
+        val deleted = try {
+            val files = SystemFileSystem.list(path)
+                .filter { it.name.startsWith("homebase") && it.name.endsWith(".log") }
+            files.forEach { SystemFileSystem.delete(it, mustExist = false) }
+            true
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) { "Failed to delete log files in $path" }
+            false
         }
+
+        // Restore file logging regardless of outcome — we don't want the rest of the
+        // session running with console-only logging if the delete failed.
+        initialize(logDirectory = path)
+
+        return deleted
     }
 }

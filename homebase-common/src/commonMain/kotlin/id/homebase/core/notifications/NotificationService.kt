@@ -5,6 +5,7 @@ import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.PayloadData
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.notifications.PushNotificationApi
+import id.homebase.api.client.notifications.PushSubscriptionResponse
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -17,10 +18,13 @@ import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.Platform
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.random.Random
@@ -60,8 +64,11 @@ class NotificationService(
     private val ALERT_COOLDOWN = 15.minutes
     private var lastAlertMark = TimeSource.Monotonic.markNow() - ALERT_COOLDOWN
 
-    private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 5)
-    val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
+    // Channel (not SharedFlow) so a notification tap on cold start is queued until the
+    // UI collector attaches, rather than dropped (MutableSharedFlow with replay=0 discards
+    // emissions that happen before the first subscriber subscribes).
+    private val _navigationEvents = Channel<NotificationNavigationEvent>(Channel.BUFFERED)
+    val navigationEvents: Flow<NotificationNavigationEvent> = _navigationEvents.receiveAsFlow()
 
     private val _inAppNotificationEvents =
         MutableSharedFlow<RichNotificationData>(extraBufferCapacity = 1)
@@ -430,7 +437,12 @@ class NotificationService(
             }
 
             if (event != null) {
-                _navigationEvents.tryEmit(event)
+                Logger.i(tag = "NotificationService") { "navigationEvent emit: $event" }
+                _navigationEvents.trySend(event)
+            } else {
+                Logger.w(tag = "NotificationService") {
+                    "No navigationEvent produced from click (appId unmatched?)"
+                }
             }
         } catch (e: Exception) {
             Logger.e(tag = "NotificationService") {
@@ -441,7 +453,7 @@ class NotificationService(
 
     /** Navigate to a specific conversation (used for deep links and share shortcuts). */
     fun navigateToConversation(conversationId: String) {
-        _navigationEvents.tryEmit(NotificationNavigationEvent.OpenConversation(conversationId))
+        _navigationEvents.trySend(NotificationNavigationEvent.OpenConversation(conversationId))
     }
 
     /** Displays a rich notification using platform-specific APIs. */
@@ -473,22 +485,58 @@ class NotificationService(
         )
     }
 
-    /** Verifies the server-side push subscription against the local FCM token. */
+    /** Verifies the server-side push subscription against the local FCM token.
+     *  Self-healing: if a token mismatch is detected (e.g. FCM rotated the token
+     *  after the last registration), the current local token is re-registered
+     *  and verification is retried once. */
     suspend fun verifySubscription(): SubscriptionVerificationDetail {
         val localToken = getToken()
         val subscription = api.getSubscription()
-        val status = when {
-            subscription == null -> SubscriptionVerificationStatus.NOT_REGISTERED
-            localToken == null -> SubscriptionVerificationStatus.NO_LOCAL_TOKEN
-            subscription.firebaseDeviceToken != localToken -> SubscriptionVerificationStatus.TOKEN_MISMATCH
-            else -> SubscriptionVerificationStatus.OK
+
+        val status = checkSubscription(subscription, localToken)
+
+        // Only self-heal when the server has a stale token (value mismatch).
+        // If the server returned null, that's a server-side bug — don't retry.
+        if (status == SubscriptionVerificationStatus.TOKEN_MISMATCH
+            && localToken != null
+            && subscription?.firebaseDeviceToken != null
+        ) {
+            Logger.i(tag = "NotificationService") {
+                "Subscription verification: TOKEN_MISMATCH — re-registering local token"
+            }
+            try {
+                registerTokenSuspend(localToken)
+                val updatedLocal = getToken()
+                val updated = api.getSubscription()
+                val healedStatus = checkSubscription(updated, updatedLocal)
+                Logger.i(tag = "NotificationService") { "Subscription verification after re-register: $healedStatus" }
+                return SubscriptionVerificationDetail(
+                    status = healedStatus,
+                    serverToken = updated?.firebaseDeviceToken,
+                    friendlyName = updated?.friendlyName,
+                )
+            } catch (e: Exception) {
+                Logger.e(tag = "NotificationService") { "Re-register failed: ${e.message}" }
+            }
         }
+
         Logger.i(tag = "NotificationService") { "Subscription verification: $status" }
         return SubscriptionVerificationDetail(
             status = status,
             serverToken = subscription?.firebaseDeviceToken,
             friendlyName = subscription?.friendlyName,
         )
+    }
+
+    private fun checkSubscription(
+        subscription: PushSubscriptionResponse?,
+        localToken: String?
+    ): SubscriptionVerificationStatus = when {
+        subscription == null -> SubscriptionVerificationStatus.NOT_REGISTERED
+        localToken == null -> SubscriptionVerificationStatus.NO_LOCAL_TOKEN
+        subscription.firebaseDeviceToken == null -> SubscriptionVerificationStatus.TOKEN_MISMATCH
+        subscription.firebaseDeviceToken != localToken -> SubscriptionVerificationStatus.TOKEN_MISMATCH
+        else -> SubscriptionVerificationStatus.OK
     }
 
     /** Gets the current push notification token, or null if not available. */

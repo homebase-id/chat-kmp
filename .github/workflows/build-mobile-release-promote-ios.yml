@@ -33,11 +33,17 @@ jobs:
       - name: Install jq for JSON parsing
         run: brew install jq
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install PyJWT cryptography
+
       - name: Generate JWT token for App Store Connect API
         id: jwt
         run: |
-          # Install jwt-cli or use Python/Node to generate JWT
-          # For simplicity, using a Python one-liner
           cat > /tmp/generate_jwt.py << 'EOF'
           import jwt
           import time
@@ -63,9 +69,7 @@ jobs:
           )
           print(token)
           EOF
-          
-          pip3 install PyJWT cryptography
-          
+                   
           TOKEN=$(python3 /tmp/generate_jwt.py \
             "${{ secrets.APPSTORE_API_KEY_ID }}" \
             "${{ secrets.APPSTORE_API_ISSUER_ID }}" \
@@ -104,20 +108,47 @@ jobs:
         run: |
           if [ -n "${{ github.event.inputs.build_number }}" ]; then
             BUILD_NUMBER="${{ github.event.inputs.build_number }}"
+            echo "Using specified build number: $BUILD_NUMBER"
           else
             # Get the latest pre-release build
             BUILDS=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
               "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=${{ steps.app.outputs.app_id }}&filter[preReleaseVersion.platform]=IOS&sort=-uploadedDate&limit=1")
-          
+
+            # Check for API errors
+            if echo "$BUILDS" | jq -e '.errors' > /dev/null; then
+              echo "❌ API Error fetching builds:"
+              echo "$BUILDS" | jq '.errors'
+              exit 1
+            fi
+
             BUILD_NUMBER=$(echo "$BUILDS" | jq -r '.data[0].attributes.version')
+
+            if [ -z "$BUILD_NUMBER" ] || [ "$BUILD_NUMBER" == "null" ]; then
+              echo "❌ No builds found"
+              exit 1
+            fi
+
+            echo "Latest build number: $BUILD_NUMBER"
           fi
-          
+
           # Get build ID by version number
           BUILDS=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
             "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=${{ steps.app.outputs.app_id }}&filter[version]=$BUILD_NUMBER")
-          
+
+          # Check for API errors
+          if echo "$BUILDS" | jq -e '.errors' > /dev/null; then
+            echo "❌ API Error fetching build by version:"
+            echo "$BUILDS" | jq '.errors'
+            exit 1
+          fi
+
           BUILD_ID=$(echo "$BUILDS" | jq -r '.data[0].id')
-          
+
+          if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" == "null" ]; then
+            echo "❌ Build not found for version: $BUILD_NUMBER"
+            exit 1
+          fi
+
           echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
           echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
           echo "Promoting build: $BUILD_NUMBER (ID: $BUILD_ID)"
@@ -179,7 +210,7 @@ jobs:
 
       - name: Attach build to App Store version
         run: |
-          curl -X PATCH \
+          RESPONSE=$(curl -s -X PATCH \
             -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
             -H "Content-Type: application/json" \
             "https://api.appstoreconnect.apple.com/v1/appStoreVersions/${{ steps.version.outputs.version_id }}" \
@@ -196,15 +227,22 @@ jobs:
                   }
                 }
               }
-            }'
-          
-          echo "Build attached to App Store version"
+            }')
+
+          # Check for errors
+          if echo "$RESPONSE" | jq -e '.errors' > /dev/null; then
+            echo "❌ Failed to attach build to version:"
+            echo "$RESPONSE" | jq '.errors'
+            exit 1
+          fi
+
+          echo "✅ Build attached to App Store version"
 
       - name: Submit for review (optional - uncomment to auto-submit)
         if: false  # Change to true to enable auto-submission
         run: |
           # Create submission
-          curl -X POST \
+          RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
             -H "Content-Type: application/json" \
             "https://api.appstoreconnect.apple.com/v1/appStoreVersionSubmissions" \
@@ -220,9 +258,16 @@ jobs:
                   }
                 }
               }
-            }'
+            }')
           
-          echo "Submitted for App Store review"
+          # Check for errors
+          if echo "$RESPONSE" | jq -e '.errors' > /dev/null; then
+            echo "❌ Failed to submit for review:"
+            echo "$RESPONSE" | jq '.errors'
+            exit 1
+          fi
+          
+          echo "✅ Submitted for App Store review"
 
       - name: Summary
         run: |

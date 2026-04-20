@@ -12,15 +12,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
@@ -28,8 +32,11 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
+import id.homebase.resources.app_version
 import id.homebase.resources.clear_log
 import id.homebase.resources.export_log
+import id.homebase.resources.homebase_logo
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -37,8 +44,18 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onNavigateToExamples: () -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Pre-resolve StringResource events at composition time — stringResource() cannot
+    // be called inside LaunchedEffect.
+    val snackbarText = when (val event = uiState.uiEvent) {
+        is HomeUiEvent.ShowInfoMessage -> stringResource(event.res)
+        is HomeUiEvent.ShowErrorMessage -> stringResource(event.res)
+        else -> ""
+    }
 
     LaunchedEffect(uiState.uiEvent) {
         when (val event = uiState.uiEvent) {
@@ -61,12 +78,19 @@ fun HomeScreen(
                 viewModel.eventConsumed()
                 onNavigateToExamples()
             }
+
+            is HomeUiEvent.ShowInfoMessage,
+            is HomeUiEvent.ShowErrorMessage -> {
+                viewModel.eventConsumed()
+                scope.launch { snackbarHostState.showSnackbar(snackbarText) }
+            }
         }
     }
 
 
     HomeUi(
         uiState = uiState,
+        snackbarHostState = snackbarHostState,
         onAction = viewModel::onAction
     )
 }
@@ -74,10 +98,13 @@ fun HomeScreen(
 @Composable
 fun HomeUi(
     uiState: HomeUiState,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onAction: (HomeUiAction) -> Unit
 ) {
     val scrollState = rememberScrollState()
-    Scaffold { innerPadding ->
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -89,12 +116,12 @@ fun HomeUi(
             Spacer(modifier = Modifier.height(32.dp))
             SquircleIcon(
                 imageVector = HomebaseIcons.Homebase,
-                contentDescription = "Homebase Logo",
+                contentDescription = stringResource(MR.string.homebase_logo),
                 modifier = Modifier.size(72.dp)
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(uiState.appName)
-            Text("Version ${uiState.appVersion}", style = MaterialTheme.typography.labelMedium)
+            Text(stringResource(MR.string.app_version, uiState.appVersion), style = MaterialTheme.typography.labelMedium)
             Spacer(modifier = Modifier.height(32.dp))
             NavigationButton(stringResource(MR.string.export_log)) { onAction(HomeUiAction.ExportLogClicked) }
             NavigationButton(stringResource(MR.string.clear_log)) { onAction(HomeUiAction.ClearLogClicked) }

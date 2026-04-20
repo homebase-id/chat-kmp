@@ -18,17 +18,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
+import id.homebase.resources.homebase_logo
 import id.homebase.resources.loading
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -39,7 +40,7 @@ fun AppLoadingScreen(
     onNavigateToMainScreen: () -> Unit,
     onNavigateToLogin: () -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -92,7 +93,7 @@ fun AppLoadingUi(
             ) {
                 SquircleIcon(
                     imageVector = HomebaseIcons.Homebase,
-                    contentDescription = "Homebase Logo",
+                    contentDescription = stringResource(MR.string.homebase_logo),
                     modifier = Modifier.size(72.dp)
                 )
                 Spacer(modifier = Modifier.height(24.dp))

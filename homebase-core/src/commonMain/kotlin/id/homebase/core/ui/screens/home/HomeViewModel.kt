@@ -8,6 +8,9 @@ import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isMobile
+import id.homebase.resources.MR
+import id.homebase.resources.log_clear_failed
+import id.homebase.resources.log_cleared
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -79,11 +82,13 @@ class HomeViewModel(
 
     private fun clearLogFile() {
         viewModelScope.launch {
-            try {
-                LoggerConfig.purgeLogs()
+            val ok = LoggerConfig.purgeLogs()
+            if (ok) {
                 Logger.i(tag = TAG) { "Log cleared by user" }
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "Failed to clear log file" }
+                sendEvent(HomeUiEvent.ShowInfoMessage(MR.string.log_cleared))
+            } else {
+                Logger.w(tag = TAG) { "Log clear requested but purgeLogs failed" }
+                sendEvent(HomeUiEvent.ShowErrorMessage(MR.string.log_clear_failed))
             }
         }
     }

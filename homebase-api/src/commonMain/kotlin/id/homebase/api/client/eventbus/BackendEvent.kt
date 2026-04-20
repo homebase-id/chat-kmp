@@ -120,6 +120,13 @@ sealed interface BackendEvent {
             val uniqueId: Uuid,
         ) : OutboxEvent
 
+        /** Fired when an item is permanently dropped after exceeding the max retry limit. */
+        data class OutboxItemDropped(
+            val driveId: Uuid,
+            val uniqueId: Uuid,
+            val attempts: Int
+        ) : OutboxEvent
+
     }
     // Add sealed interface UploadUpdate for Outbox / upload status
     // Add sealed interface VideoUpdate (or WorkUpdate) compression & segmentation & encryption

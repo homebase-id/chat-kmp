@@ -31,9 +31,6 @@ class ConnectionsViewModel(
         when (action) {
             ConnectionsUiAction.Refresh -> refresh()
 
-            is ConnectionsUiAction.SetShowIntroductionOutgoing ->
-                _uiState.update { it.copy(showIntroductionOutgoing = action.show) }
-
             ConnectionsUiAction.OpenOwnerConsoleClicked -> {
                 val owner = ownerSessionRepository.user.value ?: return
                 _uiState.update {
@@ -64,7 +61,10 @@ class ConnectionsViewModel(
                 }
                 val needed = buildSet {
                     incoming.results.forEach { add(it.senderOdinId) }
-                    outgoing.results.forEach { add(it.recipient) }
+                    outgoing.results.forEach {
+                        add(it.recipient)
+                        it.introducerOdinId?.let { introducer -> add(introducer) }
+                    }
                 }
                 loadIdentities(needed)
             } catch (e: CancellationException) {
