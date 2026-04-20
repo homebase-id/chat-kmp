@@ -86,9 +86,14 @@ class GroupSettingsViewModel(
                 viewModelScope.launch {
                     try {
                         uiState.value.conversation?.let { conversation ->
-                            uiState.value.currentOdinId?.let { _ ->
+                            uiState.value.currentOdinId?.let { currentUser ->
+                                val isSoleAdmin = conversation.isCurrentUserAdmin(currentUser)
+                                        && conversation.admins.size == 1
+                                val forceLocalOnly =
+                                    isSoleAdmin && !hasReachableNonAdmin(conversation)
                                 conversationService.leaveGroup(
-                                    conversationId = conversation.id
+                                    conversationId = conversation.id,
+                                    forceLocalOnly = forceLocalOnly
                                 )
                                 conversationStream.onConversationLeft(conversation.id)
                                 _uiState.update { it.copy(uiEvent = Back) }
@@ -104,7 +109,13 @@ class GroupSettingsViewModel(
             is GroupSettingsUiAction.LeaveGroupClicked -> {
                 uiState.value.conversation?.let { conversation ->
                     uiState.value.currentOdinId?.let { currentUser ->
-                        if (conversation.isCurrentUserAdmin(currentUser) && conversation.admins.size == 1 && conversation.isGroupConversation) {
+                        val isSoleAdmin = conversation.isCurrentUserAdmin(currentUser)
+                                && conversation.admins.size == 1
+                                && conversation.isGroupConversation
+                        // Only force the "choose new admin" dialog when there IS someone
+                        // reachable to promote. If the caller has no connected non-admin,
+                        // fall through to ConfirmLeave — leaveGroup will mark locally only.
+                        if (isSoleAdmin && hasReachableNonAdmin(conversation)) {
                             _uiState.update { it.copy(uiDialog = GroupSettingsUiDialog.LeaveChooseAdmin) }
                         } else {
                             _uiState.update { it.copy(uiDialog = GroupSettingsUiDialog.ConfirmLeave) }
@@ -195,6 +206,17 @@ class GroupSettingsViewModel(
 
     fun bottomSheetDismissed() {
         _uiState.update { it.copy(uiSheet = null) }
+    }
+
+    /**
+     * True when at least one loaded participant is both Connected (transit-reachable)
+     * and not already an admin — i.e. someone the sole admin could promote and hand off to.
+     */
+    private fun hasReachableNonAdmin(conversation: ConversationUiModel): Boolean {
+        return uiState.value.contacts.any { contact ->
+            contact.connectionState == ContactConnectionState.Connected &&
+                    !conversation.isCurrentUserAdmin(contact.odinId)
+        }
     }
 
     private fun loadData(conversation: ConversationUiModel) {
