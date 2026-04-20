@@ -94,7 +94,23 @@ actual fun VideoPlayerSurface(
             try {
                 when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
-                        onProgress(0.5f)
+                        // Subscribe to the preloader's live bytes progress BEFORE kicking off the
+                        // preload, so StateFlow's initial value and every subsequent emit lands.
+                        val progressJob = scope.launch {
+                            var highWater = 0f
+                            videoPreloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
+                                Logger.d(tag = "VideoIO") { "hls surface progress: fileId=${data.fileId} p=$p" }
+                                if (p > highWater) highWater = p
+                                if (highWater < 1f) onProgress(highWater)
+                            }
+                        }
+                        // Await the preload so the first segment is cached before AVPlayer starts.
+                        // If MediaItem's preload was cancelled when the chat list left composition,
+                        // this is the only path that drives real progress — AVPlayer's resource loader
+                        // delegate bypasses onDownloadProgress entirely.
+                        videoPreloader.preload(
+                            VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
+                        )
                         val delegate = HomebaseResourceLoaderDelegate(
                             strippedPlaylist = content.strippedPlaylist,
                             totalFileSize = content.metadata.fileSize,
@@ -110,7 +126,7 @@ actual fun VideoPlayerSurface(
                         val loaderQueue = dispatch_queue_create("id.homebase.video.loader", null)
                         asset.resourceLoader.setDelegate(delegate, queue = loaderQueue)
                         val player = AVPlayer(playerItem = AVPlayerItem(asset = asset))
-                        onProgress(0.8f)
+                        progressJob.cancel()
                         state = VpsState.Playing(player = player, delegate = delegate)
                         onProgress(1f)
                     }

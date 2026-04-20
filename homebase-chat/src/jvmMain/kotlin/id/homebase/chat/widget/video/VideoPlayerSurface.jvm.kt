@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -52,6 +53,7 @@ import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Bitmap
@@ -83,6 +85,7 @@ actual fun VideoPlayerSurface(
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
+    val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
     var httpServer by remember(data) { mutableStateOf<HttpServer?>(null) }
@@ -104,7 +107,23 @@ actual fun VideoPlayerSurface(
 
                 when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
-                        onProgress(0.5f)
+                        // Subscribe to the preloader's live bytes progress BEFORE kicking off the
+                        // preload, so StateFlow's initial value and every subsequent emit lands.
+                        val progressJob = scope.launch {
+                            var highWater = 0f
+                            videoPreloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
+                                Logger.d(tag = "VideoIO") { "hls surface progress: fileId=${data.fileId} p=$p" }
+                                if (p > highWater) highWater = p
+                                if (highWater < 1f) onProgress(highWater)
+                            }
+                        }
+                        // Await the preload so the first segment is cached before VLC starts.
+                        // If MediaItem's preload was cancelled when the chat list left composition,
+                        // this is the only path that drives real progress — VLC's own data-source
+                        // fetches bypass onDownloadProgress entirely.
+                        videoPreloader.preload(
+                            VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
+                        )
                         File(dir, "index.m3u8").writeText(content.strippedPlaylist)
 
                         val totalSize = content.metadata.fileSize
@@ -158,7 +177,7 @@ actual fun VideoPlayerSurface(
                         start()
                     }
                         httpServer = server
-                        onProgress(0.8f)
+                        progressJob.cancel()
                         state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                     }
                     is VideoContent.Mp4 -> {
