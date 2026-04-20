@@ -23,12 +23,25 @@ import kotlinx.serialization.json.jsonObject
 import kotlin.uuid.Uuid
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
+import id.homebase.api.client.drives.TargetDrive
 
 /** Drive query provider for querying files from a drive */
 class DriveQueryProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
+
+    /** GET /drives/metadata/channel-drives — returns the feed channel drives the caller can read. */
+    suspend fun getChannelDrives(): PagedResult<ClientDriveData> {
+        val creds = requireCreds()
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "/drives/metadata/channel-drives"),
+            token = creds.accessToken,
+            secret = creds.secret,
+        )
+        throwForFailure(response)
+        return deserialize(response.body)
+    }
 
     suspend fun queryBatch(
         driveId: Uuid,
@@ -171,4 +184,11 @@ data class QueryBatchResponseInternalRaw(
     val cursorState: String? = null,
     val searchResults: List<JsonObject> = emptyList(),
     val hasMoreRows: Boolean = false
+)
+
+@Serializable
+data class ClientDriveData(
+    val targetDrive: TargetDrive,
+    val name: String? = null,
+    val attributes: Map<String, String>? = null,
 )
