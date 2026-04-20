@@ -230,8 +230,9 @@ class ConversationListViewModel(
                 connectionStatusFlow,
             ) { conversationState, contacts, ownerSession, connectionCtx ->
 
-                if (ownerSession == null) return@combine Pair(false, emptyList())
-
+                // Do NOT gate on ownerSession here — the enricher tolerates
+                // null and falls back to best-effort rendering. Gating would
+                // serialise cold-start paint behind session resolution.
                 val contactMap = contacts.associateBy { it.odinId }
 
                 Pair(conversationState.dataReady, conversationState.items.map {
