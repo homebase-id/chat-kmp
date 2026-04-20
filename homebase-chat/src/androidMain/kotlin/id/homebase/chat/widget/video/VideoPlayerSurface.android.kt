@@ -15,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,7 @@ import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlin.time.TimeSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
@@ -64,6 +66,7 @@ actual fun VideoPlayerSurface(
     val context = LocalContext.current
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
+    val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
     var exoPlayer by remember(data) { mutableStateOf<ExoPlayer?>(null) }
@@ -91,7 +94,19 @@ actual fun VideoPlayerSurface(
             try {
                 when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
-                        onProgress(0.5f)
+                        // Mirror the preloader's real first-segment download progress into onProgress.
+                        // Idempotent — if MediaItem already kicked off a preload, the mutex no-ops the
+                        // second call but the shared progress flow still emits live bytes %.
+                        val progressJob = scope.launch {
+                            videoPreloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
+                                if (p < 1f) onProgress(p)
+                            }
+                        }
+                        scope.launch {
+                            videoPreloader.preload(
+                                VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
+                            )
+                        }
                         val dataSourceFactory = DataSource.Factory {
                             HomebaseVideoDataSource(
                                 strippedPlaylist = content.strippedPlaylist,
@@ -106,12 +121,12 @@ actual fun VideoPlayerSurface(
                             .createMediaSource(MediaItem.fromUri("homebase://video/index.m3u8"))
                         withContext(Dispatchers.Main) {
                             player.setMediaSource(mediaSource)
-                            onProgress(0.8f)
                             val prepareStart = TimeSource.Monotonic.markNow()
                             player.addListener(object : Player.Listener {
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     if (playbackState == Player.STATE_READY) {
                                         Logger.d(tag = "VideoIO") { "HLS prepare→STATE_READY: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
+                                        progressJob.cancel()
                                         onProgress(1f)
                                         player.removeListener(this)
                                     }

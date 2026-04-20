@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -52,6 +53,7 @@ import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Bitmap
@@ -83,6 +85,7 @@ actual fun VideoPlayerSurface(
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
+    val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
     var httpServer by remember(data) { mutableStateOf<HttpServer?>(null) }
@@ -104,7 +107,19 @@ actual fun VideoPlayerSurface(
 
                 when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
-                        onProgress(0.5f)
+                        // Mirror the preloader's real first-segment download progress into onProgress.
+                        // Idempotent — if MediaItem already kicked off a preload, the mutex no-ops the
+                        // second call but the shared progress flow still emits live bytes %.
+                        val progressJob = scope.launch {
+                            videoPreloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
+                                if (p < 1f) onProgress(p)
+                            }
+                        }
+                        scope.launch {
+                            videoPreloader.preload(
+                                VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
+                            )
+                        }
                         File(dir, "index.m3u8").writeText(content.strippedPlaylist)
 
                         val totalSize = content.metadata.fileSize
@@ -158,7 +173,7 @@ actual fun VideoPlayerSurface(
                         start()
                     }
                         httpServer = server
-                        onProgress(0.8f)
+                        progressJob.cancel()
                         state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                     }
                     is VideoContent.Mp4 -> {

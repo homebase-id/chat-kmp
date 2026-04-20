@@ -94,7 +94,19 @@ actual fun VideoPlayerSurface(
             try {
                 when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
-                        onProgress(0.5f)
+                        // Mirror the preloader's real first-segment download progress into onProgress.
+                        // Idempotent — if MediaItem already kicked off a preload, the mutex no-ops the
+                        // second call but the shared progress flow still emits live bytes %.
+                        val progressJob = scope.launch {
+                            videoPreloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
+                                if (p < 1f) onProgress(p)
+                            }
+                        }
+                        scope.launch {
+                            videoPreloader.preload(
+                                VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
+                            )
+                        }
                         val delegate = HomebaseResourceLoaderDelegate(
                             strippedPlaylist = content.strippedPlaylist,
                             totalFileSize = content.metadata.fileSize,
@@ -110,7 +122,7 @@ actual fun VideoPlayerSurface(
                         val loaderQueue = dispatch_queue_create("id.homebase.video.loader", null)
                         asset.resourceLoader.setDelegate(delegate, queue = loaderQueue)
                         val player = AVPlayer(playerItem = AVPlayerItem(asset = asset))
-                        onProgress(0.8f)
+                        progressJob.cancel()
                         state = VpsState.Playing(player = player, delegate = delegate)
                         onProgress(1f)
                     }
