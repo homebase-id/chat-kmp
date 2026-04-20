@@ -21,6 +21,7 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import kotlin.io.encoding.Base64
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class ConversationMapper(
@@ -33,10 +34,14 @@ class ConversationMapper(
 
     suspend fun mapToConversationUi(
         conversationFile: HomebaseFile,
-        lastMsg: HomebaseFile?
+        lastMsg: HomebaseFile?,
+        preloadedAdmins: Map<Uuid, Set<OdinId>>? = null,
     ): ConversationUiModel {
 
-        return try {
+        val startedAt = Clock.System.now().toEpochMilliseconds()
+        val rowId = conversationFile.fileMetadata.appData.uniqueId
+        try {
+            return try {
 
             val domain = credentialsManager.requireActiveDomain()
             val metadata = conversationFile.fileMetadata
@@ -89,7 +94,12 @@ class ConversationMapper(
 
             val admins: Set<OdinId> =
                 if (isAnyGroup) {
-                    queryAdmins(conversationId)
+                    val adminFileResult = if (preloadedAdmins != null) {
+                        preloadedAdmins[conversationId]
+                    } else {
+                        queryAdmins(conversationId)
+                    }
+                    adminFileResult
                     // Backward compat: fall back to conversation content, then originalAuthor
                         ?: (conversationData.adminData?.admins?.toSet())
                         ?: setOf(
@@ -190,6 +200,14 @@ class ConversationMapper(
                 fileUpdated = conversationFile.fileMetadata.updated.toInstant()
             )
         }
+        } finally {
+            val elapsed = Clock.System.now().toEpochMilliseconds() - startedAt
+            if (elapsed > 20) {
+                Logger.w(tag = "ConvListPerf") {
+                    "mapToConversationUi slow row=$rowId in ${elapsed}ms"
+                }
+            }
+        }
     }
 
     private suspend fun mapDeletedConversation(
@@ -231,7 +249,12 @@ class ConversationMapper(
     }
 
     private suspend fun queryAdmins(conversationId: Uuid): Set<OdinId>? {
-        return ConversationAdminInfo.queryFromDb(credentialsManager, dbm, chatDrive, conversationId)
+        val startedAt = Clock.System.now().toEpochMilliseconds()
+        val result = ConversationAdminInfo.queryFromDb(credentialsManager, dbm, chatDrive, conversationId)
+        Logger.i(tag = "ConvListPerf") {
+            "queryAdmins=${Clock.System.now().toEpochMilliseconds() - startedAt}ms groupId=$conversationId hit=${result != null}"
+        }
+        return result
     }
 
     private suspend fun buildConversationAvatarModel(

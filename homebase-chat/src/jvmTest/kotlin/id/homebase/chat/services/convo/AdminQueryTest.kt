@@ -559,6 +559,143 @@ class AdminQueryTest {
     // the same logic as ConversationMapper.queryAdmins(), we'll cover it after the refactor
     // extracts the shared logic into a testable unit.
 
+    // ---- Group 2b: ConversationAdminInfo.queryBatchFromDb() ----
+
+    @Test
+    fun queryBatchFromDb_emptyInput_returnsEmptyMap() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+            val result = ConversationAdminInfo.queryBatchFromDb(cm, dbm, chatDriveId, emptyList())
+            assertTrue(result.isEmpty())
+        }
+    }
+
+    @Test
+    fun queryBatchFromDb_returnsAdminsForAllPresentFiles() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+
+            val convo1 = Uuid.random()
+            val convo2 = Uuid.random()
+            val convo3 = Uuid.random()
+
+            insertFile(dbm, buildConversationFileJson(
+                fileId = Uuid.random(), uniqueId = convo1,
+                participants = listOf(testDomain, alice, bob),
+                originalAuthor = testDomain, isGroup = true
+            ))
+            insertFile(dbm, buildConversationFileJson(
+                fileId = Uuid.random(), uniqueId = convo2,
+                participants = listOf(testDomain, alice, bob),
+                originalAuthor = testDomain, isGroup = true
+            ))
+            insertFile(dbm, buildConversationFileJson(
+                fileId = Uuid.random(), uniqueId = convo3,
+                participants = listOf(testDomain, alice, bob),
+                originalAuthor = testDomain, isGroup = true
+            ))
+
+            insertFile(dbm, buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convo1),
+                groupId = convo1,
+                admins = listOf(alice),
+                originalAuthor = testDomain
+            ))
+            insertFile(dbm, buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convo2),
+                groupId = convo2,
+                admins = listOf(alice, bob),
+                originalAuthor = testDomain
+            ))
+            // convo3 intentionally has no admin file
+
+            val result = ConversationAdminInfo.queryBatchFromDb(
+                cm, dbm, chatDriveId, listOf(convo1, convo2, convo3)
+            )
+
+            assertEquals(2, result.size)
+            assertEquals(setOf(OdinId(alice)), result[convo1])
+            assertEquals(setOf(OdinId(alice), OdinId(bob)), result[convo2])
+            assertTrue(result[convo3] == null, "convo3 has no admin file — must be absent")
+        }
+    }
+
+    @Test
+    fun queryBatchFromDb_skipsCorruptAndEmptyAdminFiles() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+
+            val convoGood = Uuid.random()
+            val convoCorrupt = Uuid.random()
+            val convoEmpty = Uuid.random()
+
+            insertFile(dbm, buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convoGood),
+                groupId = convoGood,
+                admins = listOf(bob),
+                originalAuthor = testDomain
+            ))
+            insertFile(dbm, buildAdminFileJsonWithRawContent(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convoCorrupt),
+                groupId = convoCorrupt,
+                rawContent = "not valid json",
+                originalAuthor = testDomain
+            ))
+            insertFile(dbm, buildAdminFileJsonWithRawContent(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convoEmpty),
+                groupId = convoEmpty,
+                rawContent = "",
+                originalAuthor = testDomain
+            ))
+
+            val result = ConversationAdminInfo.queryBatchFromDb(
+                cm, dbm, chatDriveId, listOf(convoGood, convoCorrupt, convoEmpty)
+            )
+
+            assertEquals(1, result.size)
+            assertEquals(setOf(OdinId(bob)), result[convoGood])
+        }
+    }
+
+    @Test
+    fun queryBatchFromDb_matchesPerRowQueryResults() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+
+            val convo1 = Uuid.random()
+            val convo2 = Uuid.random()
+
+            insertFile(dbm, buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convo1),
+                groupId = convo1,
+                admins = listOf(alice, bob),
+                originalAuthor = testDomain
+            ))
+            insertFile(dbm, buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convo2),
+                groupId = convo2,
+                admins = listOf(bob),
+                originalAuthor = testDomain
+            ))
+
+            val singleRow1 = ConversationAdminInfo.queryFromDb(cm, dbm, chatDriveId, convo1)
+            val singleRow2 = ConversationAdminInfo.queryFromDb(cm, dbm, chatDriveId, convo2)
+            val batch = ConversationAdminInfo.queryBatchFromDb(
+                cm, dbm, chatDriveId, listOf(convo1, convo2)
+            )
+
+            assertEquals(singleRow1, batch[convo1])
+            assertEquals(singleRow2, batch[convo2])
+        }
+    }
+
     // ---- Group 3: Additional mapping correctness ----
 
     @Test

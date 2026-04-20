@@ -176,6 +176,7 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
+            val vmInitMark = TimeSource.Monotonic.markNow()
             contactService.start()
             conversationStream.start()
             connectionService.start()
@@ -196,6 +197,31 @@ class ConversationListViewModel(
                     statusKnown = connections.isLoaded && requestsLoaded,
                 )
             }.distinctUntilChanged()
+
+            viewModelScope.launch {
+                conversationStream.conversations.first { it.dataReady }
+                Logger.i(tag = "ConvListPerf") {
+                    "combineSource firstEmit=conversations(dataReady) at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+                }
+            }
+            viewModelScope.launch {
+                contactService.contacts.first { it.isNotEmpty() }
+                Logger.i(tag = "ConvListPerf") {
+                    "combineSource firstEmit=contacts(nonEmpty) at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+                }
+            }
+            viewModelScope.launch {
+                ownerSessionRepository.user.first { it != null }
+                Logger.i(tag = "ConvListPerf") {
+                    "combineSource firstEmit=ownerSession(nonNull) at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+                }
+            }
+            viewModelScope.launch {
+                connectionStatusFlow.first { it.statusKnown }
+                Logger.i(tag = "ConvListPerf") {
+                    "combineSource firstEmit=connectionStatus(known) at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+                }
+            }
 
             combine(
                 conversationStream.conversations,
