@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.settings
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -26,7 +27,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Settings").assertExists()
+        onNodeWithTag("settingsTitle").assertExists()
     }
 
     @Test
@@ -44,11 +45,12 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Notifications").assertExists()
-        onNodeWithText("Appearance").assertExists()
-        onNodeWithText("Help").assertExists()
-        onNodeWithText("Delete my account").assertExists()
-        onNodeWithText("Log out").assertExists()
+        onNodeWithTag("notificationsButton").assertExists()
+        onNodeWithTag("securitySetupButton").assertExists()
+        onNodeWithTag("appearanceButton").assertExists()
+        onNodeWithTag("helpButton").assertExists()
+        onNodeWithTag("deleteAccountButton").assertExists()
+        onNodeWithTag("logoutButton").assertExists()
     }
 
     @Test
@@ -86,7 +88,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Notifications").performClick()
+        onNodeWithTag("notificationsButton").performClick()
         assertTrue(navigated)
     }
 
@@ -106,7 +108,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Appearance").performClick()
+        onNodeWithTag("appearanceButton").performClick()
         assertTrue(navigated)
     }
 
@@ -130,7 +132,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Log out").performClick()
+        onNodeWithTag("logoutButton").performClick()
         assertTrue(loggedOut)
     }
 
@@ -154,7 +156,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Delete my account").performClick()
+        onNodeWithTag("deleteAccountButton").performClick()
         assertTrue(deleteClicked)
     }
 }

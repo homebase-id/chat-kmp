@@ -49,6 +49,6 @@ Configure signing and user in Xcode.
 **Run all tests (JVM)**
 Currently only tests found in chat, common and api module.
 ```
-./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest --rerun-tasks
+./gradlew homebase-chat:jvmTest homebase-auth:jvmTest homebase-common:jvmTest homebase-api:jvmTest homebase-core:jvmTest --rerun-tasks
 ```
 To add to IDE as run option in menu, click "Edit configurations" in Run/debug menu, add gradle task, name it "AllTests" and paste above line, minus the .gradlew part.

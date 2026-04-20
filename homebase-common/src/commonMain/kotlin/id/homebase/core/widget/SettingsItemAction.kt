@@ -21,13 +21,14 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun SettingsItemAction(
+    modifier: Modifier = Modifier,
     imageVector: ImageVector,
     text: String,
     onClick: () -> Unit,
     trailingContent: @Composable (() -> Unit)? = null,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(8.dp))
