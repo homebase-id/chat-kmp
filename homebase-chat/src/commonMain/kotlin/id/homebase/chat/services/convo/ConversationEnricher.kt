@@ -10,6 +10,13 @@ import id.homebase.chat.services.convo.contact.ContactConnectionState
 
 class ConversationEnricher {
 
+    /**
+     * Enriches a basic [ConversationUiModel] with resolved contact/
+     * connection data for display.
+     *
+     * Empty `contactMap` / `connectionMap` inputs are tolerated —
+     * display names fall back to `odinId.domainName` at the UI layer.
+     */
     fun enrich(
         convo: ConversationUiModel,
         contactMap: Map<OdinId, ContactUiModel>,
@@ -30,8 +37,7 @@ class ConversationEnricher {
             )
         }
 
-        val otherParticipants = convo.participants
-            .filter { it != currentUser }
+        val otherParticipants = convo.participants.filter { it != currentUser }
 
         val participants = otherParticipants.mapNotNull { odinId ->
             contactMap[odinId]
