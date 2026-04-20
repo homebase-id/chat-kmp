@@ -93,24 +93,15 @@ private fun FeedWebView(
     val webViewState = rememberWebViewState(url)
     val webViewNavigator = rememberWebViewNavigator()
     val uriHandler = getUriHandler()
-    // Extract scheme + host (e.g., "https://user.homebase.id") for origin comparison
-    val feedOrigin = remember(url) {
-        val protocolEnd = url.indexOf("//")
-        if (protocolEnd >= 0) {
-            val pathStart = url.indexOf('/', startIndex = protocolEnd + 2)
-            if (pathStart >= 0) url.substring(0, pathStart) else url
-        } else {
-            url
-        }
-    }
-    var credentialsInjected by remember { mutableStateOf(false) }
+    val feedHost = remember(url) { extractHost(url) }
+    var lastInjectedScript by remember { mutableStateOf<String?>(null) }
 
     // On first load completion: inject credentials into localStorage, then reload.
     // evaluateJavaScript is async (callback-based, not suspend), so we reload
     // in the callback to ensure localStorage is populated before the page reloads.
-    LaunchedEffect(webViewState.isLoading, injectionScript, credentialsInjected) {
-        if (!webViewState.isLoading && injectionScript != null && !credentialsInjected) {
-            credentialsInjected = true
+    LaunchedEffect(webViewState.isLoading, injectionScript) {
+        if (!webViewState.isLoading && injectionScript != null && injectionScript != lastInjectedScript) {
+            lastInjectedScript = injectionScript
             webViewNavigator.evaluateJavaScript(injectionScript) {
                 // Navigate explicitly rather than reload(): the SPA may have
                 // client-side-redirected to /owner/login before our injection ran,
@@ -120,19 +111,17 @@ private fun FeedWebView(
         }
     }
 
-    // Track loading state from WebView
     LaunchedEffect(webViewState.isLoading) {
         if (webViewState.isLoading) {
             onAction(FeedUiAction.PageStarted)
-        } else if (credentialsInjected) {
+        } else if (lastInjectedScript != null) {
             onAction(FeedUiAction.PageFinished)
         }
     }
 
-    // Intercept external links — open in system browser
     LaunchedEffect(webViewState.lastLoadedUrl) {
         val lastUrl = webViewState.lastLoadedUrl ?: return@LaunchedEffect
-        if (lastUrl != url && !lastUrl.startsWith(feedOrigin)) {
+        if (lastUrl != url && extractHost(lastUrl) != feedHost) {
             webViewNavigator.stopLoading()
             webViewNavigator.navigateBack()
             uriHandler.openUrl(lastUrl)
@@ -184,4 +173,13 @@ private fun FeedErrorView(
             Text(stringResource(MR.string.feed_error_retry))
         }
     }
+}
+
+private fun extractHost(url: String): String? {
+    val protocolEnd = url.indexOf("//")
+    if (protocolEnd < 0) return null
+    val hostStart = protocolEnd + 2
+    val hostEnd = url.indexOfAny(charArrayOf('/', ':', '?', '#'), startIndex = hostStart)
+    return if (hostEnd >= 0) url.substring(hostStart, hostEnd).lowercase()
+    else url.substring(hostStart).lowercase()
 }
