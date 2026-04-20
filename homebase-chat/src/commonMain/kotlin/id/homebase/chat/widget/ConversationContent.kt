@@ -94,9 +94,9 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.MessageListContentModel
-import id.homebase.chat.conversationlist.PendingOutgoingMessage
 import id.homebase.chat.conversationlist.MessageListUiSheet
 import id.homebase.chat.conversationlist.MessageListUiState
+import id.homebase.chat.conversationlist.PendingOutgoingMessage
 import id.homebase.chat.conversationlist.RecipientGroupModel
 import id.homebase.chat.conversationlist.RecipientModel
 import id.homebase.chat.conversationlist.RecipientType
@@ -582,12 +582,15 @@ fun ConversationContent(
                 modifier = Modifier.fillMaxSize()
                     .offset {
                         val imeHeight = imeInsets.getBottom(this)
-                        val sheetOffset = if (imeHeight > 0) {
-                            imeHeight
-                        } else if (showEmojiSheet || showAttachmentSheet) {
-                            keyboardHeight.coerceAtLeast(300.dp).roundToPx()
-                        } else {
-                            0
+                        val sheetHeight = keyboardHeight.coerceAtLeast(300.dp).roundToPx()
+                        val sheetOffset = when {
+                            // Emoji search: keyboard + emoji sheet both visible
+                            showEmojiSheet && imeHeight > 0 -> imeHeight + sheetHeight
+                            // Regular keyboard only
+                            imeHeight > 0 -> imeHeight
+                            // Sheet only (no keyboard)
+                            showEmojiSheet || showAttachmentSheet -> sheetHeight
+                            else -> 0
                         }
                         IntOffset(0, -sheetOffset)
                     }
@@ -1081,7 +1084,10 @@ fun ConversationContent(
             // bottom without double-counting the offset.
             // Each sheet applies its modifier to its inner Column, not to the root
             // AnimatedVisibility, so we wrap in a Box to anchor them at the bottom.
-            Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
+            // Offset the emoji sheet upward by the IME height so that when the
+            // emoji search keyboard is open, the sheet sits above the keyboard.
+            Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                .offset { IntOffset(0, -imeInsets.getBottom(this)) }) {
                 EmojiSelectorSheet(
                     modifier = Modifier.fillMaxWidth()
                         .height(keyboardHeight.coerceAtLeast(300.dp)),

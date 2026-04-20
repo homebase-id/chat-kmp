@@ -33,7 +33,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.model.RichTextState
-import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
@@ -334,8 +333,8 @@ fun ConversationMessagePreview(
                 RichTextState().applyDefaultStyling().also { it.setMarkdown(text) }
             }
 
-            RichText(
-                state = textState,
+            Text(
+                text = textState.annotatedString,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                     alpha = if (isDeleted) 0.5f else 1f
