@@ -65,6 +65,7 @@ import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.navigation.ActiveConversation
+import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
@@ -145,6 +146,7 @@ class ConversationListViewModel(
     private val driveFileProvider: DriveFileProvider,
     private val shareContentProcessor: ShareContentProcessor,
     private val localVideoContextStore: LocalAttachmentContextStore,
+    private val pendingNotificationTap: PendingNotificationTap,
 ) : ViewModel() {
 
     companion object {
@@ -403,6 +405,42 @@ class ConversationListViewModel(
                     }
                 }
         }
+
+        // Deferred notification-tap resolution. NotificationService sets a
+        // PendingNotificationTap(conversationId, messageId) when the push
+        // payload carries both ids. If the conversation hasn't synced yet,
+        // conversationStream.conversations will re-emit as soon as drive
+        // sync lands it — this collector picks that up and fires
+        // selectConversation once. A user-initiated tap on a different
+        // conversation (onAction.ConversationClicked) clears the pending
+        // tap so a stale notification can't yank them away.
+        viewModelScope.launch {
+            combine(
+                pendingNotificationTap.state,
+                conversationStream.conversations,
+            ) { tap, convos -> tap to convos }
+                .collect { (tap, convosState) ->
+                    val resolved = resolveNotificationTap(
+                        tap = tap,
+                        dataReady = convosState.dataReady,
+                        conversationIds = convosState.items.map { it.id }.toSet(),
+                    ) ?: return@collect
+                    Logger.i(tag = "ConversationListViewModel") {
+                        "pendingNotificationTap resolved convo=${resolved.conversationId} msg=${resolved.messageId}"
+                    }
+                    selectConversation(
+                        conversationId = resolved.conversationId,
+                        messageId = resolved.messageId,
+                        scrollToBottom = true,
+                    )
+                    pendingNotificationTap.clearIfMatches(resolved.conversationId)
+                }
+        }
+    }
+
+    override fun onCleared() {
+        pendingNotificationTap.clear()
+        super.onCleared()
     }
 
     fun selectConversation(
@@ -433,6 +471,10 @@ class ConversationListViewModel(
     fun onAction(action: ConversationListUiAction) {
         when (action) {
             is ConversationListUiAction.ConversationClicked -> {
+                // User explicitly picked a conversation — drop any pending
+                // notification tap so a late-arriving sync can't yank them
+                // to a different one.
+                pendingNotificationTap.clear()
                 ActiveConversation.selectConversation(action.conversationId)
                 loadMessagesForConversation(action.conversationId, action.messageId)
             }
@@ -2008,12 +2050,21 @@ class ConversationListViewModel(
                             // which only scrolls when the user was already at the bottom. Forcing
                             // a scroll-to-new-message here would yank the user out of history.
                             pendingMessageId = null
+                            // If the target message hasn't synced yet, keep
+                            // messageIdForScrollNullable set so the next
+                            // ChatMessagesData.Messages emission retries the
+                            // lookup (messages stream re-emits on each sync
+                            // batch). Clear only once the message is found.
                             val indexOfMessageForScroll = if (messageIdForScrollNullable != null) {
                                 val messageIndex = messagesModels.indexOfLast {
                                     it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
                                 }
-                                messageIdForScrollNullable = null
-                                messageIndex
+                                if (messageIndex >= 0) {
+                                    messageIdForScrollNullable = null
+                                    messageIndex
+                                } else {
+                                    null
+                                }
                             } else {
                                 null
                             }
@@ -2654,4 +2705,23 @@ internal fun synthesizeOwnerSession(
         profileImageLastModified = null,
         status = null,
     )
+}
+
+/**
+ * Decides whether a pending notification tap is ready to be resolved
+ * against the current conversation list snapshot. Returns the tap
+ * when the conversation list is ready AND contains the tap's
+ * conversation id — caller then routes to the conversation + message.
+ * Returns null when there's nothing to do yet (sync still pending).
+ *
+ * Pure function so unit tests can exercise the resolution policy
+ * without spinning up a VM.
+ */
+internal fun resolveNotificationTap(
+    tap: PendingNotificationTap.Tap?,
+    dataReady: Boolean,
+    conversationIds: Set<Uuid>,
+): PendingNotificationTap.Tap? {
+    if (tap == null || !dataReady) return null
+    return tap.takeIf { conversationIds.contains(it.conversationId) }
 }
