@@ -1378,6 +1378,7 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ForwardMessageSend -> {
+                _messagesUiState.update { it.copy(isSendingMessage = true) }
                 viewModelScope.launch {
                     try {
                         val conversationIds = action.recipients.map { recipientModel ->
@@ -1406,6 +1407,8 @@ class ConversationListViewModel(
                                 "Failed to send forward message: ${e.message}"
                             )
                         )
+                    } finally {
+                        _messagesUiState.update { it.copy(isSendingMessage = false) }
                     }
                 }
             }
@@ -1615,7 +1618,7 @@ class ConversationListViewModel(
                         val tempPath = fileOperationsProvider.writeBytesToTempFile(
                             action.imageBytes,
                             "clipboard_image",
-                            "png"
+                            ".png"
                         )
                         val platformFile = platformFileFromPath(tempPath)
                         val newFile = AttachmentPendingFile.FileImage(

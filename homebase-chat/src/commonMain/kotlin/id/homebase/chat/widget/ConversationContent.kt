@@ -1263,6 +1263,7 @@ fun ConversationContentSheets(
                                             )
                                         )
                                     },
+                                    enabled = !uiState.isSendingMessage,
                                     imageVector = Icons.AutoMirrored.Filled.Send,
                                     contentDescription = stringResource(MR.string.chat_send_message_button),
                                 )
