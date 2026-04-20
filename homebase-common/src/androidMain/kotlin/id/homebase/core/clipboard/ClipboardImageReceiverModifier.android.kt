@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import co.touchlab.kermit.Logger
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -22,13 +23,19 @@ actual fun clipboardImageReceiverModifier(onImagePasted: (ByteArray) -> Unit): M
                 transferableContent.consume { item ->
                     val uri = item.uri
                     if (uri != null) {
-                        val bytes = context.contentResolver
-                            .openInputStream(uri)
-                            ?.use { it.readBytes() }
-                        if (bytes != null) {
-                            onImagePasted(bytes)
-                            true
-                        } else {
+                        try {
+                            val bytes = context.contentResolver
+                                .openInputStream(uri)
+                                ?.use { it.readBytes() }
+                            if (bytes != null) {
+                                onImagePasted(bytes)
+                                true
+                            } else {
+                                Logger.w("ClipboardImageReceiver") { "Failed to read bytes from URI: $uri" }
+                                false
+                            }
+                        } catch (e: Exception) {
+                            Logger.e("ClipboardImageReceiver", e) { "Error reading pasted image" }
                             false
                         }
                     } else {
