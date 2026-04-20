@@ -49,7 +49,7 @@ class DriveFileProviderCached(
     // Immutable set — always replaced, never mutated in-place.
     // @Volatile ensures lock-free reads always see the latest reference.
     // Writes are serialized via notFoundCacheMutex (rare: only on 404 responses).
-    // Later we should cache 401,403,404,410, but not yet
+    // Only 404 (NotFoundException) is cached. Transient failures (5xx, network errors) are never cached.
     @Volatile private var notFoundCache: Set<String> = emptySet()
     private val notFoundCacheMutex = Mutex()
 
@@ -128,20 +128,17 @@ class DriveFileProviderCached(
                     Logger.d(tag = "VideoIO") { "payload network-fetch: ${networkResult.bytes.size} bytes in $elapsed key=$cacheKey" }
                     val result = networkResult
 
-                    if (result.status == 404) {
-                        // 404 case - cache that file doesn't exist in memory only
-                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
-                        ByteApiResponse.EMPTY_404
-                    } else {
-                        // 3️⃣ Store to disk
-                        val (_, cacheWriteElapsed) = measureTimedValue {
-                            payloadDiskKache().put(cacheKey) { filePath ->
-                                writeBytesResponse(filePath, result)
-                            }
-                        }
-                        Logger.d(tag = "VideoIO") { "payload cache-write: ${result.bytes.size} bytes in $cacheWriteElapsed key=$cacheKey" }
-                        result
+                    // 3️⃣ Store to disk (only 200/206 can reach here — throwForFailure throws for everything else)
+                    check(result.status in 200..299) {
+                        "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
+                    val (_, cacheWriteElapsed) = measureTimedValue {
+                        payloadDiskKache().put(cacheKey) { filePath ->
+                            writeBytesResponse(filePath, result)
+                        }
+                    }
+                    Logger.d(tag = "VideoIO") { "payload cache-write: ${result.bytes.size} bytes in $cacheWriteElapsed key=$cacheKey" }
+                    result
                 } catch (e: NotFoundException) {
                     // 404 thrown by network layer — cache it so future calls skip the network
                     notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
@@ -289,20 +286,17 @@ class DriveFileProviderCached(
                                     lastModified
                             )
 
-                    if (result.status == 404) {
-                        // 404 case - cache that file doesn't exist in memory only
-                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
-                        ByteApiResponse.EMPTY_404
-                    } else {
-                        // 3️⃣ Store to disk; only allow one writer per GPT indicating
-                        // many writers can corrupt the journal file
-                        thumbnailKacheWriteMutex.withLock {
-                            thumbDiskKache().put(cacheKey) { filePath ->
-                                writeBytesResponse(filePath, result)
-                            }
-                        }
-                        result
+                    // 3️⃣ Store to disk (only 200/206 can reach here — throwForFailure throws for everything else).
+                    // Serialise writes to avoid corrupting FileKache's journal file.
+                    check(result.status in 200..299) {
+                        "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
+                    thumbnailKacheWriteMutex.withLock {
+                        thumbDiskKache().put(cacheKey) { filePath ->
+                            writeBytesResponse(filePath, result)
+                        }
+                    }
+                    result
                 } catch (e: NotFoundException) {
                     // 404 thrown by network layer — cache it so future calls skip the network
                     notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }

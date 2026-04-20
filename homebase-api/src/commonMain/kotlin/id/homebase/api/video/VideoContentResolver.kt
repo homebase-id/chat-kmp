@@ -1,7 +1,6 @@
 package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.time.measureTimedValue
 
@@ -14,7 +13,7 @@ sealed interface VideoContent {
  *  Fetches go through the payload cache, so later calls (including [resolveVideoContent]) are warm. */
 suspend fun resolveVideoMetadata(
     data: VideoPlayerData,
-    driveFileProvider: DriveFileProvider,
+    driveFileProvider: VideoPrefetchDriveAccess,
 ): VideoMetadata {
     val stubMetadata = data.descriptorContent?.let {
         OdinSystemSerializer.deserialize<VideoMetadata>(it)
@@ -41,7 +40,7 @@ suspend fun resolveVideoMetadata(
 
 suspend fun resolveVideoContent(
     data: VideoPlayerData,
-    driveFileProvider: DriveFileProvider,
+    driveFileProvider: VideoPrefetchDriveAccess,
     onDownloadProgress: ((Float) -> Unit)? = null,
 ): VideoContent {
     val metadata = resolveVideoMetadata(data, driveFileProvider)

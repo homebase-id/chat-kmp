@@ -20,6 +20,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -34,14 +36,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import id.homebase.api.util.cleanDomain
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.client.identity.initials
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.connections_already_sent_text
@@ -180,28 +185,31 @@ private fun ComposeRequestSheetContent(
         )
 
         val isError = resolution is RecipientResolution.NotFound
-        TextField(
-            value = recipient,
-            onValueChange = onRecipientChange,
+        // Local TextFieldValue stores space-encoded text; the visual transformation renders those
+        // spaces as dots. The VM's canonical `recipient` is the dotted form. The sheet is
+        // composed fresh on each open, so `remember` re-seeds from the VM's current value —
+        // no ongoing sync needed.
+        var fieldValue by remember {
+            mutableStateOf(
+                TextFieldValue(
+                    text = recipient.replace('.', ' '),
+                    selection = TextRange(recipient.length),
+                )
+            )
+        }
+        HomebaseIdField(
+            value = fieldValue,
+            onValueChange = { incoming ->
+                val normalizedSpaces = incoming.text.cleanDomain().replace('.', ' ')
+                fieldValue = incoming.copy(text = normalizedSpaces)
+                val dotted = normalizedSpaces.cleanDomain(preserveTrailingDot = false)
+                if (dotted != recipient) onRecipientChange(dotted)
+            },
             label = { Text(stringResource(MR.string.connections_recipient_label)) },
             placeholder = { Text(stringResource(MR.string.connections_recipient_placeholder)) },
-            singleLine = true,
             isError = isError,
             enabled = !isSending,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent,
-            ),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.None,
-                imeAction = ImeAction.Next,
-            ),
+            imeAction = ImeAction.Next,
         )
 
         RecipientResolutionIndicator(resolution = resolution)
