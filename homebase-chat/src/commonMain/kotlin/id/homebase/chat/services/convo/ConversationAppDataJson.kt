@@ -106,7 +106,44 @@ data class ConversationAdminInfo(
             val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
                 c.getIdentityId(), chatDrive, adminUniqueId
             ) ?: return null
-            val content = file.fileMetadata.appData.content
+            return parseAdmins(file.fileMetadata.appData.content, conversationId)
+        }
+
+        /**
+         * Batched counterpart of [queryFromDb]. Resolves admin sets for many
+         * conversations in a single DB round-trip. Conversations whose admin
+         * file is missing, empty, or malformed are omitted from the returned
+         * map — callers should treat an absent key the same as `queryFromDb`
+         * returning `null` and apply their own fallback.
+         */
+        suspend fun queryBatchFromDb(
+            credentialsManager: CredentialsManager,
+            dbm: DatabaseManager,
+            chatDrive: Uuid,
+            conversationIds: Collection<Uuid>,
+        ): Map<Uuid, Set<OdinId>> {
+            if (conversationIds.isEmpty()) return emptyMap()
+            val c = credentialsManager.requireActiveCredentials()
+            val adminUniqueToConversation = HashMap<Uuid, Uuid>(conversationIds.size)
+            for (id in conversationIds) {
+                adminUniqueToConversation[ChatProtocol.getAdminFileUniqueId(id)] = id
+            }
+            val files = dbm.driveMainIndex.selectHomebaseFilesByUniqueIds(
+                c.getIdentityId(), chatDrive, adminUniqueToConversation.keys
+            )
+            val result = HashMap<Uuid, Set<OdinId>>(files.size)
+            for (file in files) {
+                val adminUniqueId = file.fileMetadata.appData.uniqueId ?: continue
+                val conversationId = adminUniqueToConversation[adminUniqueId] ?: continue
+                val admins = parseAdmins(file.fileMetadata.appData.content, conversationId)
+                if (admins != null) {
+                    result[conversationId] = admins
+                }
+            }
+            return result
+        }
+
+        private fun parseAdmins(content: String?, conversationId: Uuid): Set<OdinId>? {
             if (content.isNullOrEmpty()) return null
             return try {
                 val adminInfo = OdinSystemSerializer.deserialize<ConversationAdminInfo>(content)

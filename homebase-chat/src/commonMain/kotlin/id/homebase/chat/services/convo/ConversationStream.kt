@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class ConversationStream(
@@ -448,6 +449,7 @@ class ConversationStream(
     }
 
     private suspend fun loadConversations() {
+        val startedAt = Clock.System.now().toEpochMilliseconds()
         val leftIds = _conversations.value.items
             .filter { it.conversationState == ConversationState.Left }
             .map { it.id }
@@ -457,6 +459,9 @@ class ConversationStream(
             if (convo.id in leftIds && convo.conversationState != ConversationState.Left)
                 convo.copy(conversationState = ConversationState.Left)
             else convo
+        }
+        Logger.i(tag = "ConvListPerf") {
+            "loadConversations end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms items=${result.size}"
         }
         _conversations.value = ConversationsData(items = result)
     }
@@ -500,16 +505,17 @@ class ConversationStream(
     }
 
     suspend fun updateUnreadCounts() {
+        val startedAt = Clock.System.now().toEpochMilliseconds()
         val c = credentialsManager.requireActiveCredentials()
         val unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
         val unreadMap = unread.associate { it.conversationId to it.unreadCount.toInt() }
 
-        var changed = false
+        var changed = 0
 
         val updated = _conversations.value.items.map { convo ->
             val newCount = unreadMap[convo.id] ?: 0
             if (newCount != convo.unreadCount) {
-                changed = true
+                changed++
                 Logger.d("ConversationStream: unreadSync convo=${convo.id} ${convo.unreadCount}->${newCount}")
                 convo.copy(unreadCount = newCount)
             } else {
@@ -517,16 +523,37 @@ class ConversationStream(
             }
         }
 
-        if (changed) {
+        if (changed > 0) {
             _conversations.value = ConversationsData(items = updated)
+        }
+        Logger.i(tag = "ConvListPerf") {
+            "updateUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms changedRows=$changed totalRows=${updated.size}"
         }
     }
 
     suspend fun fetchConversations(): List<ConversationUiModel> {
 
         val c = credentialsManager.requireActiveCredentials()
+        val queryStart = Clock.System.now().toEpochMilliseconds()
         val result = dbm.chatReadCount.selectAllConversationPlusLastMessage(c.getIdentityId())
-        return result.map { mapper.mapToConversationUi(it.conversation, it.message) }
+        val afterQuery = Clock.System.now().toEpochMilliseconds()
+        val conversationIds = ArrayList<Uuid>(result.size)
+        for (row in result) {
+            val id = row.conversation.fileMetadata.appData.uniqueId
+            if (id != null) conversationIds.add(id)
+        }
+        val adminMap = ConversationAdminInfo.queryBatchFromDb(
+            credentialsManager, dbm, chatDrive, conversationIds
+        )
+        val afterAdmins = Clock.System.now().toEpochMilliseconds()
+        val mapped = result.map {
+            mapper.mapToConversationUi(it.conversation, it.message, adminMap)
+        }
+        val afterMap = Clock.System.now().toEpochMilliseconds()
+        Logger.i(tag = "ConvListPerf") {
+            "fetchConversations: wrapperQueryPlusHeaderMap=${afterQuery - queryStart}ms batchAdmins=${afterAdmins - afterQuery}ms(hits=${adminMap.size}/${conversationIds.size}) outerMapToUi=${afterMap - afterAdmins}ms total=${afterMap - queryStart}ms items=${mapped.size}"
+        }
+        return mapped
 
     }
 
