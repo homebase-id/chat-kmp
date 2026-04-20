@@ -116,8 +116,7 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
     )
 
 // Drives we listen to for sockets and synchronization
-val syncLabeledDrives: List<LabeledDrive> =
-    listOf(chatLabeledDrive, contactLabeledDrive, feedLabeledDrive)
+val syncLabeledDrives: List<LabeledDrive> = listOf(chatLabeledDrive, contactLabeledDrive, feedLabeledDrive)
 
 // Circle drive requests
 val circleDriveTargetRequest: List<TargetDriveAccessRequest> =
