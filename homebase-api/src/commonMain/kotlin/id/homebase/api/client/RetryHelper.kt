@@ -111,13 +111,15 @@ suspend fun <T> withRetryResult(
 
             if (attempt < config.maxRetries) {
                 Logger.w(tag = logTag) {
-                    "Attempt ${attempt + 1}/${config.maxRetries + 1} failed: ${e.message}, retrying in ${currentDelay}ms"
+                    "Attempt ${attempt + 1}/${config.maxRetries + 1} failed (${e::class.simpleName}): ${e.message}, retrying in ${currentDelay}ms"
                 }
                 delay(currentDelay)
                 currentDelay = (currentDelay * config.backoffMultiplier).toLong()
                     .coerceAtMost(config.maxDelayMs)
             } else {
-                Logger.e(tag = logTag) { "All ${config.maxRetries + 1} attempts failed: ${e.message}" }
+                Logger.e(tag = logTag, throwable = e) {
+                    "All ${config.maxRetries + 1} attempts failed (${e::class.simpleName}): ${e.message}"
+                }
             }
         }
     }
