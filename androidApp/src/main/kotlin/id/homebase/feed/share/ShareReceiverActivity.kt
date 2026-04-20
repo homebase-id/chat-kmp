@@ -9,7 +9,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -82,6 +81,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private var isSending by mutableStateOf(false)
     private var isProcessing by mutableStateOf(false)
     private var screenState by mutableStateOf<ShareScreenState>(ShareScreenState.Picking)
+    private var editorAttachments by mutableStateOf<List<AttachmentPendingFile>>(emptyList())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,11 +115,14 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             return
         }
 
-        // Check for direct share target (user tapped a shortcut in the share sheet)
-        val shortcutId = intent.getStringExtra(Intent.EXTRA_SHORTCUT_ID)
-        if (shortcutId != null) {
+        // Check for direct share target (user tapped a conversation shortcut in the share sheet).
+        // Try multiple detection mechanisms since Android behavior varies by version:
+        // 1. intent.data URI (set via shortcut's setIntents)
+        // 2. EXTRA_SHORTCUT_ID (set by ChooserActivity on API 29+)
+        val directShareConvoId = extractDirectShareConversationId()
+        if (directShareConvoId != null) {
             try {
-                val conversationId = Uuid.parse(shortcutId.removePrefix("share_"))
+                val conversationId = Uuid.parse(directShareConvoId)
                 if (sharedContent.hasFiles) {
                     // Show overlay while converting files, then transition to editor
                     isProcessing = true
@@ -128,6 +131,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                             convertToAttachmentFiles(sharedContent.files)
                         }
                         val title = resolveConversationTitle(setOf(conversationId))
+                        editorAttachments = attachments
                         isProcessing = false
                         screenState = ShareScreenState.Previewing(
                             selectedConversationIds = setOf(conversationId),
@@ -151,7 +155,6 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             else prefState.theme == ThemeState.Dark
 
             // Hoisted unconditionally to satisfy Compose composition rules for ActivityResult launchers
-            var editorAttachments by remember { mutableStateOf<List<AttachmentPendingFile>>(emptyList()) }
             val fileLauncher = rememberFilePickerLauncher { file ->
                 file?.let {
                     editorAttachments = editorAttachments + AttachmentPendingFile.File(
@@ -213,13 +216,6 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                     is ShareScreenState.Previewing -> {
                         val textFieldState = remember { RichTextState() }
                         var currentPage by remember { mutableStateOf(0) }
-
-                        // Sync hoisted attachments from state on first entry
-                        LaunchedEffect(state) {
-                            if (editorAttachments.isEmpty()) {
-                                editorAttachments = state.attachments
-                            }
-                        }
 
                         if (editorAttachments.isEmpty()) {
                             // User removed all files — go back to picker
@@ -411,6 +407,24 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         } catch (_: Exception) {
             // Ignore cleanup errors
         }
+    }
+
+    private fun extractDirectShareConversationId(): String? {
+        // Method 1: Check intent data URI (homebase-fchat://conversation/{uuid})
+        intent.data?.let { uri ->
+            if (uri.scheme == "homebase-fchat" && uri.host == "conversation") {
+                uri.lastPathSegment?.let { return it }
+            }
+        }
+
+        // Method 2: EXTRA_SHORTCUT_ID set by Android's ChooserActivity (API 29+)
+        // Format: "share_{uuid}" as defined in ShareShortcutPublisher
+        @Suppress("DEPRECATION")
+        intent.getStringExtra(Intent.EXTRA_SHORTCUT_ID)?.let { shortcutId ->
+            return shortcutId.removePrefix("share_")
+        }
+
+        return null
     }
 
     private suspend fun convertToAttachmentFiles(files: List<SharedFile>): List<AttachmentPendingFile> {
