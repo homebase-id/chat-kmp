@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package id.homebase.api.sync.database
 
 import platform.Foundation.NSFileManager
