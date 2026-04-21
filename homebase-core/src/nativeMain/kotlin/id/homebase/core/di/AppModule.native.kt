@@ -45,6 +45,7 @@ actual fun platformModule(): Module = module {
                     add(HomebaseImageFetcher.Factory(get(), get()))
                     add(PublicImageFetcher.Factory(get()))
                 }
+                .diskCache(null)
                 .build()
                 .also(::assertNoCoilDiskCache)
     }

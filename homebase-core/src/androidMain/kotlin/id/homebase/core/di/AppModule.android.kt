@@ -50,6 +50,7 @@ actual fun platformModule(): Module = module {
                     .maxSizePercent(androidContext(), 0.25)
                     .build()
             }
+                .diskCache(null)
                 .build()
                 .also(::assertNoCoilDiskCache)
     }
