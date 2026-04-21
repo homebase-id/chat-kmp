@@ -47,7 +47,7 @@ class ChatMessageSenderService(
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
     private val shareSuggestionDonor: ShareSuggestionDonor = ShareSuggestionDonor(),
-) {
+) : id.homebase.chat.services.convo.StatusMessageSender {
     companion object {
         private const val TAG = "ChatMessageSenderService"
     }
@@ -120,13 +120,13 @@ class ChatMessageSenderService(
     }
 
 
-    suspend fun sendStatusMessage(
+    override suspend fun sendStatusMessage(
         messageUniqueId: Uuid,
         conversationId: Uuid,
         statusMessage: StatusMessageData,
-        previousMessageUniqueId: Uuid? = null,
-        payloadBundle: PayloadBundle? = null,
-        additionalRecipients: List<OdinId> = emptyList()
+        previousMessageUniqueId: Uuid?,
+        payloadBundle: PayloadBundle?,
+        additionalRecipients: List<OdinId>
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
