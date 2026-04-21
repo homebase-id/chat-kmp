@@ -87,24 +87,55 @@ class DriveFileProviderCached(
 
     private var _payloadDiskKache: FileKache? = null
     private var _thumbDiskKache: FileKache? = null
+    @Volatile private var payloadKacheFailure: Throwable? = null
+    @Volatile private var thumbKacheFailure: Throwable? = null
     private val kacheMutex = Mutex()
 
     // Always acquires kacheMutex — the previous lock-free fast path let a
     // reader hand out a reference to a FileKache instance that clearCaches()
     // was simultaneously disposing, producing a NPE inside FileKache's
     // internals when the reader resumed and called .get() on it.
+    //
+    // createDirectories + tombstone on construction failure: observed on one
+    // real device that FileKache(…) itself throws `getClass() on null` from
+    // mayakapps/kache internals when the managed directory is missing.
+    // We pre-create the dir to avoid the library's fragile init path, and
+    // record any construction exception so we don't spam retries for the
+    // rest of the session. clearCaches() resets the tombstone.
     private suspend fun payloadDiskKache(): FileKache = kacheMutex.withLock {
-        _payloadDiskKache ?: FileKache(
-                directory = "$directory/homebase-payloads",
-                maxSize = 200L * 1024L * 1024L // 200MB
-        ).also { _payloadDiskKache = it }
+        _payloadDiskKache?.let { return@withLock it }
+        payloadKacheFailure?.let { throw it }
+
+        val dir = "$directory/homebase-payloads"
+        try {
+            fileSystem.createDirectories(dir.toPath())
+            FileKache(directory = dir, maxSize = 200L * 1024L * 1024L) // 200MB
+                    .also { _payloadDiskKache = it }
+        } catch (e: Throwable) {
+            Logger.e(tag = "DriveFileProviderCached", throwable = e) {
+                "FileKache construction FAILED (payload) — disabling disk cache for this session"
+            }
+            payloadKacheFailure = e
+            throw e
+        }
     }
 
     private suspend fun thumbDiskKache(): FileKache = kacheMutex.withLock {
-        _thumbDiskKache ?: FileKache(
-                directory = "$directory/homebase-thumbs",
-                maxSize = 300L * 1024L * 1024L // 300MB
-        ).also { _thumbDiskKache = it }
+        _thumbDiskKache?.let { return@withLock it }
+        thumbKacheFailure?.let { throw it }
+
+        val dir = "$directory/homebase-thumbs"
+        try {
+            fileSystem.createDirectories(dir.toPath())
+            FileKache(directory = dir, maxSize = 300L * 1024L * 1024L) // 300MB
+                    .also { _thumbDiskKache = it }
+        } catch (e: Throwable) {
+            Logger.e(tag = "DriveFileProviderCached", throwable = e) {
+                "FileKache construction FAILED (thumb) — disabling disk cache for this session"
+            }
+            thumbKacheFailure = e
+            throw e
+        }
     }
 
     // ================================================================
@@ -503,6 +534,8 @@ class DriveFileProviderCached(
         kacheMutex.withLock {
             _payloadDiskKache = null
             _thumbDiskKache = null
+            payloadKacheFailure = null
+            thumbKacheFailure = null
 
             try {
                 fileSystem.deleteRecursively(payloadDir)

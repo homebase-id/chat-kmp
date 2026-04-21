@@ -76,23 +76,54 @@ class PublicProfileProviderCached(
 
     private var _profileDiskKache: FileKache? = null
     private var _imageDiskKache: FileKache? = null
+    @Volatile private var profileKacheFailure: Throwable? = null
+    @Volatile private var imageKacheFailure: Throwable? = null
     private val kacheMutex = Mutex()
 
     // Always acquires kacheMutex — the previous `by lazy { runBlocking { ... } }`
     // handed out a permanent FileKache reference that a concurrent clearCaches()
     // could poison with .clear(). Mirrors DriveFileProviderCached post-fix.
+    //
+    // createDirectories + tombstone on construction failure: observed on one
+    // Android device that FileKache(…) throws `getClass() on null` from
+    // mayakapps/kache internals when the managed directory is missing.
+    // Pre-create the dir and tombstone the first construction exception so we
+    // don't spam retries for the rest of the session. clearCaches() resets
+    // the tombstone.
     private suspend fun profileDiskKache(): FileKache = kacheMutex.withLock {
-        _profileDiskKache ?: FileKache(
-            directory = "$directory/homebase-public-profiles",
-            maxSize = 50L * 1024L * 1024L
-        ).also { _profileDiskKache = it }
+        _profileDiskKache?.let { return@withLock it }
+        profileKacheFailure?.let { throw it }
+
+        val dir = "$directory/homebase-public-profiles"
+        try {
+            fileSystem.createDirectories(dir.toPath())
+            FileKache(directory = dir, maxSize = 50L * 1024L * 1024L)
+                .also { _profileDiskKache = it }
+        } catch (e: Throwable) {
+            Logger.e(tag = "PublicProfileIO", throwable = e) {
+                "FileKache construction FAILED (profile) — disabling disk cache for this session"
+            }
+            profileKacheFailure = e
+            throw e
+        }
     }
 
     private suspend fun imageDiskKache(): FileKache = kacheMutex.withLock {
-        _imageDiskKache ?: FileKache(
-            directory = "$directory/homebase-public-images",
-            maxSize = 200L * 1024L * 1024L
-        ).also { _imageDiskKache = it }
+        _imageDiskKache?.let { return@withLock it }
+        imageKacheFailure?.let { throw it }
+
+        val dir = "$directory/homebase-public-images"
+        try {
+            fileSystem.createDirectories(dir.toPath())
+            FileKache(directory = dir, maxSize = 200L * 1024L * 1024L)
+                .also { _imageDiskKache = it }
+        } catch (e: Throwable) {
+            Logger.e(tag = "PublicProfileIO", throwable = e) {
+                "FileKache construction FAILED (image) — disabling disk cache for this session"
+            }
+            imageKacheFailure = e
+            throw e
+        }
     }
 
     // =========================================================
@@ -160,6 +191,8 @@ class PublicProfileProviderCached(
         kacheMutex.withLock {
             _profileDiskKache = null
             _imageDiskKache = null
+            profileKacheFailure = null
+            imageKacheFailure = null
 
             try {
                 fileSystem.deleteRecursively(profileDir)
