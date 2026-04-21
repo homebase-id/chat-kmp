@@ -22,6 +22,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -31,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -60,7 +63,10 @@ import id.homebase.resources.vault_settings
 import id.homebase.resources.vault_toggle_view_mode
 import id.homebase.resources.vault_rename_action
 import id.homebase.resources.vault_rename_title
+import id.homebase.core.util.getUriHandler
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlinx.coroutines.launch
+import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
@@ -73,6 +79,9 @@ fun VaultScreen(
     onNavigateToSettings: () -> Unit,
 ) {
     val vaultPreferences = koinInject<VaultPreferences>()
+    val fileSystemHandler = getUriHandler()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val biometricTitle = stringResource(MR.string.vault_biometric_prompt_title)
     val biometricSubtitle = stringResource(MR.string.vault_biometric_prompt_subtitle)
 
@@ -86,6 +95,22 @@ fun VaultScreen(
         when (authenticateBiometric(biometricTitle, biometricSubtitle)) {
             BiometricResult.Success, BiometricResult.Unavailable -> authorized = true
             BiometricResult.Failure -> onNavigateBack()
+        }
+    }
+
+    // Collect one-time events
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is VaultUiEvent.ShareFileReady -> {
+                    fileSystemHandler.shareFile(Path(event.filePath))
+                }
+                is VaultUiEvent.Error -> {
+                    scope.launch { snackbarHostState.showSnackbar(event.message) }
+                }
+                is VaultUiEvent.Activated,
+                is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
+            }
         }
     }
 
@@ -118,6 +143,7 @@ fun VaultScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (uiState.fullScreenOverlay == null) {
                 TopAppBar(

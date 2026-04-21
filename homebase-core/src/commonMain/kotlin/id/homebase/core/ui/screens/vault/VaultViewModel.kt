@@ -262,9 +262,22 @@ class VaultViewModel(
         }
     }
 
-    @Suppress("UnusedParameter")
     private fun handleShareFile(action: VaultUiAction.ShareFile) {
-        _events.tryEmit(VaultUiEvent.Error("Sharing is not yet supported"))
+        val file = action.file
+        if (file.isPending) return
+
+        viewModelScope.launch {
+            val tempPath = vaultRepository.downloadFileForShare(file)
+            if (tempPath != null) {
+                _events.tryEmit(VaultUiEvent.ShareFileReady(
+                    filePath = tempPath,
+                    fileName = file.fileName,
+                    contentType = file.contentType,
+                ))
+            } else {
+                _events.tryEmit(VaultUiEvent.Error("Failed to download file for sharing"))
+            }
+        }
     }
 
     private fun handleToggleViewMode() {

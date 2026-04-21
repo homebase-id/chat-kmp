@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
@@ -43,6 +44,7 @@ class VaultRepository(
     private val fileOperationsProvider: FileOperationsProvider,
     private val outboxSync: OutboxSync,
     private val payloadEncryptionService: PayloadBundleEncryptionService,
+    private val driveFileProvider: DriveFileProvider,
 ) {
     private val driveId = vaultLabeledDrive.drive.alias
 
@@ -177,6 +179,25 @@ class VaultRepository(
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to rename vault file: $fileId -> $newName" }
             false
+        }
+    }
+
+    suspend fun downloadFileForShare(file: VaultFileItem): String? {
+        return try {
+            val bytes = driveFileProvider.getPayloadBytesDecrypted(
+                driveId = file.driveId,
+                fileId = file.fileId,
+                key = file.payloadKey,
+                keyHeader = file.payloadKeyHeader,
+            )?.bytes ?: return null
+
+            val extension = file.contentType.substringAfter("/", "bin").let {
+                if (it == "jpeg") "jpg" else it
+            }
+            fileOperationsProvider.writeBytesToTempFile(bytes, "share_", ".$extension")
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "Failed to download vault file for share: ${file.fileId}" }
+            null
         }
     }
 
