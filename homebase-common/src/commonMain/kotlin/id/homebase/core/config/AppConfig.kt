@@ -59,6 +59,7 @@ val vaultLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("f47ac10b-58cc-4372-a567-0e02b2c3d479"),
         type = Uuid.parse("00000000-0000-0000-0000-000000000001"),
+//        type = Uuid.parse("70e92f0f94d05f5c7dcd36466094f3a5"), //Uncomment when not pushing to PROD
     ),
     label = "Vault",
 )
@@ -136,7 +137,8 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 )
 
 // Drives we listen to for sockets and synchronization
-val syncLabeledDrives: List<LabeledDrive> = listOf(chatLabeledDrive, contactLabeledDrive, feedLabeledDrive)
+val syncLabeledDrives: List<LabeledDrive> =
+    listOf(chatLabeledDrive, contactLabeledDrive, feedLabeledDrive)
 
 /** Returns the active list of sync drives, optionally including the Vault drive. */
 fun activeSyncLabeledDrives(includeVault: Boolean): List<LabeledDrive> =

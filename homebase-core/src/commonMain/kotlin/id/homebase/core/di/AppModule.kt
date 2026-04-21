@@ -36,6 +36,7 @@ import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.activeSyncLabeledDrives
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.ui.screens.vault.VaultRepository
 import id.homebase.core.ui.screens.vault.VaultSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.connections.ConnectRequestViewModel
@@ -139,6 +140,7 @@ val appModule = module {
     singleOf(::NotificationService)
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
+    single { VaultRepository(get(), get(), get(), get(), get(), get()) }
 
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
@@ -165,7 +167,7 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
-    viewModel { VaultViewModel(get(), get(VaultPermissionQualifier)) }
+    viewModel { VaultViewModel(get(), get(VaultPermissionQualifier), get(), get()) }
     viewModelOf(::VaultSettingsViewModel)
 }
 

@@ -142,7 +142,8 @@ fun AppNavHost(
     val showNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
         WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
     )
-    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail
+    val isOnVaultScreen = currentDestination?.hasRoute(Route.Vault::class) == true
+    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail && !isOnVaultScreen
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -196,6 +197,8 @@ fun AppNavHost(
                 VaultUiEvent.CloseOnboarding -> {
                     navController.popBackStack()
                 }
+                is VaultUiEvent.ShareFileReady -> Unit // TODO: implement in subsequent tasks
+                is VaultUiEvent.Error -> Unit // TODO: implement in subsequent tasks
             }
         }
     }
@@ -287,7 +290,7 @@ fun AppNavHost(
                 .padding(paddingValues)
         ) {
         Row(modifier = Modifier.fillMaxSize()) {
-            if (showNavigationRail && isAuthenticated && isOnTopLevelScreen) {
+            if (showNavigationRail && isAuthenticated && isOnTopLevelScreen && !isOnVaultScreen) {
                 NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
                     topLevelRoutes.forEach { topLevelRoute ->
                         NavigationRailItem(
@@ -663,7 +666,9 @@ fun AppNavHost(
                         if (isAuthenticated) {
                             VaultScreen(
                                 vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
+                                viewModel = vaultViewModel,
                                 onNavigateBack = { navController.popBackStack() },
+                                onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
                             )
                         }
                     }
