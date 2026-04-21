@@ -5,6 +5,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.connections.ConnectionIntroductionProvider
+import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
@@ -36,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
+import org.koin.dsl.bind
 import org.koin.dsl.module
 
 val apiModule = module {
@@ -70,7 +72,7 @@ val apiModule = module {
 
     factoryOf(::ConnectionNetworkProvider)
     factoryOf(::ConnectionRequestProvider)
-    factoryOf(::ConnectionIntroductionProvider)
+    factoryOf(::ConnectionIntroductionProvider) bind IntroductionSender::class
     singleOf(::PublicProfileProviderCached)
     factoryOf(::PublicProfileProvider)
 
