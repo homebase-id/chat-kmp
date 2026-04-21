@@ -76,6 +76,7 @@ import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
+import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
@@ -540,6 +541,9 @@ fun AppNavHost(
                                 onNavigateToAppearance = {
                                     navController.navigate(Route.AppearanceSettings)
                                 },
+                                onNavigateToStorage = {
+                                    navController.navigate(Route.StorageSettings)
+                                },
                                 onNavigateToHelp = {
                                     navController.navigate(Route.Help)
                                 },
@@ -580,6 +584,14 @@ fun AppNavHost(
                     composable<Route.Help> {
                         if (isAuthenticated) {
                             HelpScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() })
+                        }
+                    }
+
+                    composable<Route.StorageSettings> {
+                        if (isAuthenticated) {
+                            StorageSettingsScreen(
                                 viewModel = koinViewModel(),
                                 onBackClick = { navController.popBackStack() })
                         }

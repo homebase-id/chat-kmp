@@ -1,6 +1,8 @@
 package id.homebase.api.client.profile
 
+import co.touchlab.kermit.Logger
 import com.mayakapps.kache.FileKache
+import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.file.FileOperationsProvider
@@ -11,7 +13,6 @@ import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import kotlin.concurrent.Volatile
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okio.FileSystem
@@ -19,6 +20,40 @@ import okio.Path.Companion.toPath
 import okio.SYSTEM
 import kotlin.time.Clock
 
+/**
+ * Disk-backed cache for a peer identity's *public* profile data — the
+ * unauthenticated JSON and avatar image served at `https://{odinId}/pub/profile`
+ * and `https://{odinId}/pub/image`. Both endpoints are public HTTPS, so their
+ * responses are stored on disk unencrypted.
+ *
+ * Two underlying [com.mayakapps.kache.FileKache] instances back the two
+ * Storage-screen rows:
+ * - `public_profiles` — serialized [ProfileCard] JSON (display name, bio,
+ *   links, email list, avatar URL, etc.). Directory
+ *   `homebase-public-profiles`, cap 50 MB.
+ * - `public_images`   — raw avatar image bytes. Directory
+ *   `homebase-public-images`, cap 200 MB.
+ *
+ * The split is deliberate, not incidental. Profile JSON is small (~1–10 KB)
+ * and read on every ContactName render and notification hydration; avatar
+ * bytes are an order of magnitude larger and sit behind Coil's in-memory
+ * cache, so their disk hit rate is lower. A single merged FileKache would
+ * let a burst of avatar loads evict the much smaller, much hotter profile
+ * JSON under LRU pressure. Keeping them on separate caps (50 MB profiles,
+ * 200 MB images) pins the small-hot tier. It also lets the two caps be
+ * tuned independently and shows up as two distinct rows on the Storage
+ * settings screen.
+ *
+ * A separate in-memory [notFoundCache] records 404 responses so repeated
+ * lookups of missing identities skip the network. Transient failures
+ * (5xx, network errors) are never cached.
+ *
+ * Both FileKache instances are created lazily through mutex-gated accessors
+ * so that [clearCaches] cannot race with a reader: clears delete the
+ * directory recursively and null the refs, and readers re-create the
+ * FileKache on next access. See also [id.homebase.api.client.drives.cache.DriveFileProviderCached]
+ * which follows the same lifecycle pattern.
+ */
 class PublicProfileProviderCached(
     private val httpClient: HttpClient,
     fileOperationsProvider: FileOperationsProvider
@@ -39,22 +74,25 @@ class PublicProfileProviderCached(
     @Volatile private var notFoundCache: Set<String> = emptySet()
     private val notFoundCacheMutex = Mutex()
 
-    private val profileDiskKache by lazy {
-        runBlocking {
-            FileKache(
-                directory = "$directory/homebase-public-profiles",
-                maxSize = 50L * 1024L * 1024L
-            )
-        }
+    private var _profileDiskKache: FileKache? = null
+    private var _imageDiskKache: FileKache? = null
+    private val kacheMutex = Mutex()
+
+    // Always acquires kacheMutex — the previous `by lazy { runBlocking { ... } }`
+    // handed out a permanent FileKache reference that a concurrent clearCaches()
+    // could poison with .clear(). Mirrors DriveFileProviderCached post-fix.
+    private suspend fun profileDiskKache(): FileKache = kacheMutex.withLock {
+        _profileDiskKache ?: FileKache(
+            directory = "$directory/homebase-public-profiles",
+            maxSize = 50L * 1024L * 1024L
+        ).also { _profileDiskKache = it }
     }
 
-    private val imageDiskKache by lazy {
-        runBlocking {
-            FileKache(
-                directory = "$directory/homebase-public-images",
-                maxSize = 200L * 1024L * 1024L
-            )
-        }
+    private suspend fun imageDiskKache(): FileKache = kacheMutex.withLock {
+        _imageDiskKache ?: FileKache(
+            directory = "$directory/homebase-public-images",
+            maxSize = 200L * 1024L * 1024L
+        ).also { _imageDiskKache = it }
     }
 
     // =========================================================
@@ -64,7 +102,7 @@ class PublicProfileProviderCached(
     suspend fun getPublicProfile(odinId: OdinId): ProfileCard? =
         getCached(
             cacheKey = "profile:$odinId",
-            disk = profileDiskKache,
+            disk = { profileDiskKache() },
             fetch = { httpClient.get("https://${odinId}/pub/profile") },
             transform = { response ->
                 serializer.deserialize<ProfileCard>(response.bodyAsText())
@@ -87,7 +125,7 @@ class PublicProfileProviderCached(
     suspend fun getPublicImage(odinId: OdinId): ByteArray? =
         getCached(
             cacheKey = "image:$odinId",
-            disk = imageDiskKache,
+            disk = { imageDiskKache() },
             fetch = { httpClient.get("https://${odinId}/pub/image") },
             transform = { response ->
                 response.bodyAsBytes()
@@ -110,9 +148,49 @@ class PublicProfileProviderCached(
         )
 
     suspend fun clearCaches() {
-        profileDiskKache.clear()
-        imageDiskKache.clear()
+        val profileDir = "$directory/homebase-public-profiles".toPath()
+        val imageDir = "$directory/homebase-public-images".toPath()
+
+        // Serialised with the accessor functions: any in-flight reader either
+        // completed before we took the mutex or is still waiting for it (and
+        // will observe the post-teardown null and construct a fresh kache).
+        //
+        // We intentionally do NOT call FileKache.clear() — see the same-shape
+        // fix in DriveFileProviderCached.clearCaches for the reason.
+        kacheMutex.withLock {
+            _profileDiskKache = null
+            _imageDiskKache = null
+
+            try {
+                fileSystem.deleteRecursively(profileDir)
+            } catch (e: Exception) {
+                Logger.w(tag = "PublicProfileIO", throwable = e) { "profile cache dir delete failed" }
+            }
+            try {
+                fileSystem.deleteRecursively(imageDir)
+            } catch (e: Exception) {
+                Logger.w(tag = "PublicProfileIO", throwable = e) { "image cache dir delete failed" }
+            }
+        }
+
         notFoundCache = emptySet()
+    }
+
+    suspend fun getCacheStats(): List<CacheStats> {
+        val profile = profileDiskKache()
+        val image = imageDiskKache()
+        return listOf(
+            CacheStats(
+                id = "public_profiles",
+                sizeBytes = profile.size,
+                maxBytes = profile.maxSize,
+            ),
+            CacheStats(
+                id = "public_images",
+                sizeBytes = image.size,
+                maxBytes = image.maxSize,
+            ),
+        )
     }
 
     // =========================================================
@@ -121,7 +199,7 @@ class PublicProfileProviderCached(
 
     private suspend fun <T> getCached(
         cacheKey: String,
-        disk: FileKache,
+        disk: suspend () -> FileKache,
         fetch: suspend () -> HttpResponse,
         transform: suspend (HttpResponse) -> T,
         readFromDisk: (String) -> CachedEntry<T>,
@@ -130,13 +208,11 @@ class PublicProfileProviderCached(
 
         if (cacheKey in notFoundCache) return null
 
-        disk.get(cacheKey)?.let { path ->
-            val cached = readFromDisk(path)
-            if (!cached.isExpired(clock)) {
-                return cached.value
-            } else {
-                disk.remove(cacheKey)
-            }
+        // Pre-mutex peek: pure read, no remove. A hit returns immediately;
+        // a miss or expired entry falls through to the mutex where the
+        // refresh (and any remove) is serialised.
+        readCachedOrLog(disk(), cacheKey, readFromDisk)?.let { cached ->
+            if (!cached.isExpired(clock)) return cached.value
         }
 
         val mutex = getMutex(cacheKey)
@@ -145,12 +221,15 @@ class PublicProfileProviderCached(
 
             if (cacheKey in notFoundCache) return@withLock null
 
-            disk.get(cacheKey)?.let { path ->
-                val cached = readFromDisk(path)
+            readCachedOrLog(disk(), cacheKey, readFromDisk)?.let { cached ->
                 if (!cached.isExpired(clock)) {
                     return@withLock cached.value
                 } else {
-                    disk.remove(cacheKey)
+                    try {
+                        disk().remove(cacheKey)
+                    } catch (e: Exception) {
+                        Logger.w(tag = "PublicProfileIO", throwable = e) { "remove expired entry failed key=$cacheKey" }
+                    }
                 }
             }
 
@@ -166,9 +245,13 @@ class PublicProfileProviderCached(
                     val value = transform(response)
 
                     if (shouldStore(cacheControl)) {
-                        disk.put(cacheKey) { path ->
-                            writeToDisk(path, expiry, value)
-                            true
+                        try {
+                            disk().put(cacheKey) { path ->
+                                writeToDisk(path, expiry, value)
+                                true
+                            }
+                        } catch (e: Exception) {
+                            Logger.w(tag = "PublicProfileIO", throwable = e) { "cache-write failed key=$cacheKey" }
                         }
                     }
 
@@ -182,6 +265,26 @@ class PublicProfileProviderCached(
 
                 else -> throw Exception("Fetch failed: ${response.status}")
             }
+        }
+    }
+
+    /**
+     * Read a cached entry from [disk]. Returns null on cache miss OR when the
+     * FileKache layer throws (e.g. concurrent clearCaches() on another thread)
+     * OR when [readFromDisk] fails (corrupted/truncated entry). Any failure is
+     * logged so the caller can fall through to the network cleanly.
+     */
+    private suspend fun <T> readCachedOrLog(
+        disk: FileKache,
+        cacheKey: String,
+        readFromDisk: (String) -> CachedEntry<T>
+    ): CachedEntry<T>? {
+        return try {
+            val path = disk.get(cacheKey) ?: return null
+            readFromDisk(path)
+        } catch (e: Exception) {
+            Logger.e(tag = "PublicProfileIO", throwable = e) { "cache-read FAILED key=$cacheKey" }
+            null
         }
     }
 

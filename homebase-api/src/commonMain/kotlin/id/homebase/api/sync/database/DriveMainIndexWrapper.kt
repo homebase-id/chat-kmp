@@ -127,6 +127,9 @@ class DriveMainIndexWrapper(
 
     fun countAll(): Long = delegate.countAll().executeAsOne()
 
+    fun countByIdentityAndDrive(identityId: Uuid, driveId: Uuid): Long =
+        delegate.countByIdentityAndDrive(identityId, driveId).executeAsOne()
+
     suspend fun upsertDriveMainIndex(
         identityId: Uuid,
         driveId: Uuid,

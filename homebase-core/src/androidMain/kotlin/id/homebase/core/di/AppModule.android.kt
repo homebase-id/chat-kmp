@@ -1,10 +1,13 @@
 package id.homebase.core.di
 
+import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import coil3.memory.MemoryCache
 import coil3.video.VideoFrameDecoder
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.sync.database.AndroidDatabaseSizeProbe
+import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.core.audio.AndroidAudioPlayer
 import id.homebase.core.audio.AndroidAudioRecorder
 import id.homebase.core.audio.AndroidWaveFormGenerator
@@ -33,7 +36,8 @@ actual fun platformModule(): Module = module {
     single<AudioRecorder> { AndroidAudioRecorder(androidContext()) }
     single<AudioPlayer> { AndroidAudioPlayer() }
     single<AudioWaveFormGenerator> { AndroidWaveFormGenerator() }
-    single {
+    single<DatabaseSizeProbe> { AndroidDatabaseSizeProbe(androidContext()) }
+    single(createdAtStart = true) {
         ImageLoader.Builder(androidContext())
                 .components {
                     add(HomebaseImageKeyer())
@@ -46,6 +50,18 @@ actual fun platformModule(): Module = module {
                     .maxSizePercent(androidContext(), 0.25)
                     .build()
             }
+                .diskCache(null)
                 .build()
+                .also(::assertNoCoilDiskCache)
+    }
+}
+
+private fun assertNoCoilDiskCache(loader: ImageLoader) {
+    val disk = loader.diskCache
+    if (disk != null) {
+        Logger.e(tag = "ImageLoader") {
+            "Unexpected Coil disk cache enabled (max=${disk.maxSize} bytes). " +
+                    "DriveFileProviderCached handles encrypted disk caching; Coil's disk cache must stay off."
+        }
     }
 }
