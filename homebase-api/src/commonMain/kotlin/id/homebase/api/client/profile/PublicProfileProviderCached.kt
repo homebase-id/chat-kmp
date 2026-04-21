@@ -2,6 +2,7 @@ package id.homebase.api.client.profile
 
 import co.touchlab.kermit.Logger
 import com.mayakapps.kache.FileKache
+import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.file.FileOperationsProvider
@@ -19,6 +20,40 @@ import okio.Path.Companion.toPath
 import okio.SYSTEM
 import kotlin.time.Clock
 
+/**
+ * Disk-backed cache for a peer identity's *public* profile data — the
+ * unauthenticated JSON and avatar image served at `https://{odinId}/pub/profile`
+ * and `https://{odinId}/pub/image`. Both endpoints are public HTTPS, so their
+ * responses are stored on disk unencrypted.
+ *
+ * Two underlying [com.mayakapps.kache.FileKache] instances back the two
+ * Storage-screen rows:
+ * - `public_profiles` — serialized [ProfileCard] JSON (display name, bio,
+ *   links, email list, avatar URL, etc.). Directory
+ *   `homebase-public-profiles`, cap 50 MB.
+ * - `public_images`   — raw avatar image bytes. Directory
+ *   `homebase-public-images`, cap 200 MB.
+ *
+ * The split is deliberate, not incidental. Profile JSON is small (~1–10 KB)
+ * and read on every ContactName render and notification hydration; avatar
+ * bytes are an order of magnitude larger and sit behind Coil's in-memory
+ * cache, so their disk hit rate is lower. A single merged FileKache would
+ * let a burst of avatar loads evict the much smaller, much hotter profile
+ * JSON under LRU pressure. Keeping them on separate caps (50 MB profiles,
+ * 200 MB images) pins the small-hot tier. It also lets the two caps be
+ * tuned independently and shows up as two distinct rows on the Storage
+ * settings screen.
+ *
+ * A separate in-memory [notFoundCache] records 404 responses so repeated
+ * lookups of missing identities skip the network. Transient failures
+ * (5xx, network errors) are never cached.
+ *
+ * Both FileKache instances are created lazily through mutex-gated accessors
+ * so that [clearCaches] cannot race with a reader: clears delete the
+ * directory recursively and null the refs, and readers re-create the
+ * FileKache on next access. See also [id.homebase.api.client.drives.cache.DriveFileProviderCached]
+ * which follows the same lifecycle pattern.
+ */
 class PublicProfileProviderCached(
     private val httpClient: HttpClient,
     fileOperationsProvider: FileOperationsProvider
@@ -139,6 +174,23 @@ class PublicProfileProviderCached(
         }
 
         notFoundCache = emptySet()
+    }
+
+    suspend fun getCacheStats(): List<CacheStats> {
+        val profile = profileDiskKache()
+        val image = imageDiskKache()
+        return listOf(
+            CacheStats(
+                id = "public_profiles",
+                sizeBytes = profile.size,
+                maxBytes = profile.maxSize,
+            ),
+            CacheStats(
+                id = "public_images",
+                sizeBytes = image.size,
+                maxBytes = image.maxSize,
+            ),
+        )
     }
 
     // =========================================================

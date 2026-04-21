@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -79,6 +80,7 @@ import id.homebase.resources.settings_notifications_issue
 import id.homebase.resources.settings_open_owner_console
 import id.homebase.resources.settings_profile_info
 import id.homebase.resources.settings_security_setup
+import id.homebase.resources.settings_storage
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -88,6 +90,7 @@ fun SettingsScreen(
     onNavigateToConnections: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
+    onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -142,6 +145,7 @@ fun SettingsScreen(
         onNavigateToConnections = onNavigateToConnections,
         onNavigateToNotifications = onNavigateToNotifications,
         onNavigateToAppearance = onNavigateToAppearance,
+        onNavigateToStorage = onNavigateToStorage,
         onNavigateToHelp = onNavigateToHelp
     )
 }
@@ -155,6 +159,7 @@ fun SettingsUi(
     onNavigateToConnections: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
+    onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
@@ -287,6 +292,13 @@ fun SettingsUi(
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
+                modifier = Modifier.testTag("storageButton"),
+                imageVector = Icons.Outlined.Storage,
+                text = stringResource(MR.string.settings_storage),
+                onClick = onNavigateToStorage
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
                 modifier = Modifier.testTag("helpButton"),
                 imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
                 text = stringResource(MR.string.settings_help),
@@ -344,6 +356,7 @@ fun SettingsUiPreview() {
             onNavigateToConnections = {},
             onNavigateToNotifications = {},
             onNavigateToAppearance = {},
+            onNavigateToStorage = {},
             onNavigateToHelp = {}
         )
     }

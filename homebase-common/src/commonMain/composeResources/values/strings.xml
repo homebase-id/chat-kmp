@@ -154,8 +154,29 @@
     <string name="settings_profile_info">Profile Info</string>
     <string name="settings_security_setup">Security Setup</string>
     <string name="settings_help">Help</string>
+    <string name="settings_storage">Storage</string>
     <string name="settings_logout">Log out</string>
     <string name="settings_delete_account">Delete my account</string>
+
+    <!-- Storage screen -->
+    <string name="storage_caches_header">Caches</string>
+    <string name="storage_drives_header">Drives</string>
+    <string name="storage_cache_profiles">Public profiles</string>
+    <string name="storage_cache_profile_images">Profile images</string>
+    <string name="storage_cache_payloads">Media payloads</string>
+    <string name="storage_cache_thumbnails">Thumbnails</string>
+    <string name="storage_cache_unknown">Other</string>
+    <string name="storage_cache_size_format">%1$s / %2$s</string>
+    <string name="storage_drive_count_format">%1$d items</string>
+    <string name="storage_total_cache_format">Total: %1$s</string>
+    <string name="storage_clear_caches">Clear caches</string>
+    <string name="storage_caches_cleared">Caches cleared</string>
+    <string name="storage_caches_none">No caches</string>
+    <string name="storage_drives_none">No drives</string>
+    <string name="storage_cache_coil_memory">In-memory images</string>
+    <string name="storage_cache_ram_badge">RAM</string>
+    <string name="storage_other_header">Other</string>
+    <string name="storage_database">Database</string>
 
     <!-- Help screen -->
     <string name="help_support_center">Support Center</string>
