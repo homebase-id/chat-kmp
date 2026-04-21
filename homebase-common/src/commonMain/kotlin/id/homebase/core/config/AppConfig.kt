@@ -125,6 +125,16 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
         ),
     )
 
+val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = vaultLabeledDrive.drive.alias.toString(),
+        type = vaultLabeledDrive.drive.type.toString(),
+        name = vaultLabeledDrive.label,
+        description = "Drive to store your personal documents",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
+
 // Drives we listen to for sockets and synchronization
 val syncLabeledDrives: List<LabeledDrive> = listOf(chatLabeledDrive, contactLabeledDrive, feedLabeledDrive)
 
@@ -156,6 +166,16 @@ fun getPermissionExtensionConfig(): PermissionExtensionConfig {
         circleDrives = circleDriveTargetRequest,
         permissions = appPermissions,
         // needsAllConnected = true,
+        returnUrl = AppConfig.RETURN_URL
+    )
+}
+
+fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = vaultTargetDriveAccessRequest,
+        permissions = emptyList(),
         returnUrl = AppConfig.RETURN_URL
     )
 }

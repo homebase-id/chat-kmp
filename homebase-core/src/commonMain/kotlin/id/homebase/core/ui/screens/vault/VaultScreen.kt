@@ -14,6 +14,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.vault.BiometricResult
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.vault.authenticateBiometric
@@ -36,6 +42,7 @@ import org.koin.compose.koinInject
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultScreen(
+    vaultExtendPermissionViewModel: ExtendPermissionViewModel,
     onNavigateBack: () -> Unit,
 ) {
     val vaultPreferences = koinInject<VaultPreferences>()
@@ -51,6 +58,19 @@ fun VaultScreen(
             BiometricResult.Failure -> onNavigateBack()
         }
     }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                vaultExtendPermissionViewModel.recheckPermissions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    ExtendPermissionDialog(viewModel = vaultExtendPermissionViewModel)
 
     Scaffold(
         topBar = {

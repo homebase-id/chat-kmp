@@ -58,8 +58,14 @@ import id.homebase.core.ui.screens.settings.SettingsViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
+import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
+import id.homebase.core.config.getPermissionExtensionConfig
+import id.homebase.core.config.getVaultPermissionExtensionConfig
+
+val VaultPermissionQualifier = named("vaultPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
@@ -149,7 +155,8 @@ val appModule = module {
     viewModelOf(::GroupSettingsViewModel)
     viewModelOf(::AddGroupMembersViewModel)
     viewModelOf(::EditConversationGroupViewModel)
-    viewModelOf(::ExtendPermissionViewModel)
+    viewModel { ExtendPermissionViewModel(get(), get(), get(), getPermissionExtensionConfig()) }
+    viewModel(VaultPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getVaultPermissionExtensionConfig()) }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
@@ -158,7 +165,7 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
-    viewModelOf(::VaultViewModel)
+    viewModel { VaultViewModel(get(), get(VaultPermissionQualifier)) }
     viewModelOf(::VaultSettingsViewModel)
 }
 

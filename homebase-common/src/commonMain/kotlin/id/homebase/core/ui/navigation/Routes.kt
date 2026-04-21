@@ -9,6 +9,7 @@ sealed class Route {
     @Serializable
     @SerialName("app-loading")
     data object AppLoading : Route()
+
     @Serializable
     @SerialName("login")
     data object Login : Route()
@@ -35,7 +36,8 @@ sealed class Route {
 
     @Serializable
     @SerialName("message")
-    data class MessageInfo(val conversationId: String, val messageId: String, val fileId: String) : Route()
+    data class MessageInfo(val conversationId: String, val messageId: String, val fileId: String) :
+        Route()
 
     @Serializable
     @SerialName("contact")
@@ -96,6 +98,8 @@ sealed class Route {
     @Serializable
     @SerialName("vault-settings")
     data object VaultSettings : Route()
+
+    @Serializable
     @SerialName("feed")
     data object Feed : Route()
 }

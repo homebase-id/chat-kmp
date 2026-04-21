@@ -662,6 +662,7 @@ fun AppNavHost(
                     composable<Route.Vault> {
                         if (isAuthenticated) {
                             VaultScreen(
+                                vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
                                 onNavigateBack = { navController.popBackStack() },
                             )
                         }
