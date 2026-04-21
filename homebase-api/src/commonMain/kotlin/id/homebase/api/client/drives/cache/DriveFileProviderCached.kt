@@ -28,6 +28,37 @@ import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.SYSTEM
 
+/**
+ * Disk-backed, encrypted cache for authenticated drive file bytes. Wraps
+ * [DriveFileHttpProvider] so callers get transparent read-through caching
+ * for payloads and thumbnails.
+ *
+ * Two underlying [com.mayakapps.kache.FileKache] instances back the two
+ * Storage-screen rows:
+ * - `drive_payloads`   — media payload bytes (attachments). Directory
+ *   `homebase-payloads`, cap 200 MB. Fetches are gated by
+ *   [payloadSemaphore] (1 concurrent network request).
+ * - `drive_thumbnails` — thumbnail bytes. Directory `homebase-thumbs`,
+ *   cap 300 MB. Fetches are gated by [thumbnailSemaphore] (30 concurrent).
+ *
+ * The payload/thumbnail split follows the same "small-hot vs large-cold"
+ * stratification as PublicProfileProviderCached — thumbnails render on
+ * every gallery scroll, so they are kept on their own cap where a burst
+ * of full-payload fetches cannot evict them.
+ *
+ * Bytes are AES-CBC-encrypted on the wire and written encrypted to disk;
+ * the [KeyHeader] is *not* persisted to the cache, so a copy of the cache
+ * directory alone yields no plaintext.
+ *
+ * A separate in-memory [notFoundCache] records 404 responses so repeated
+ * lookups of deleted files skip the network. Transient failures
+ * (5xx, network errors) are never cached.
+ *
+ * Both FileKache instances are created lazily through mutex-gated
+ * accessors; [clearCaches] deletes the directories recursively and nulls
+ * the refs, so concurrent readers cannot end up with a disposed
+ * FileKache reference — they re-create it on next access.
+ */
 class DriveFileProviderCached(
         httpClient: HttpClient,
         credentialsManager: CredentialsManager,
