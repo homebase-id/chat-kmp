@@ -12,7 +12,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 class ConnectionIntroductionProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager
-) : OdinApiProviderBase(httpClient, credentialsManager) {
+) : OdinApiProviderBase(httpClient, credentialsManager), IntroductionSender {
 
     companion object {
         private const val TAG = "ConnectionIntroductionProvider"
@@ -42,7 +42,7 @@ class ConnectionIntroductionProvider(
     // POST /introductions
     // ------------------------------------------------------------
 
-    suspend fun sendIntroductions(
+    override suspend fun sendIntroductions(
         group: IntroductionGroup
     ): IntroductionResult {
 

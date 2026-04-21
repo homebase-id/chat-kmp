@@ -48,7 +48,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
-) {
+) : ConversationLoader {
 
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
@@ -326,7 +326,7 @@ class ConversationStream(
         }
     }
 
-    suspend fun loadConversation(conversationId: Uuid) {
+    override suspend fun loadConversation(conversationId: Uuid) {
         val c = credentialsManager.requireActiveCredentials()
 
         val conversationFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
