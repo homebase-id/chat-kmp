@@ -1,17 +1,21 @@
 package id.homebase.core.ui.screens.storage
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -22,7 +26,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -35,6 +38,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.resources.MR
@@ -142,17 +147,14 @@ fun StorageSettingsUi(
                     EmptyRow(text = stringResource(MR.string.storage_caches_none))
                 } else {
                     Column {
-                        uiState.caches.forEachIndexed { index, cache ->
-                            if (index > 0) {
-                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            }
-                            CacheRow(state = cache)
+                        if (uiState.caches.isNotEmpty()) {
+                            DiskCachesBlock(caches = uiState.caches)
                         }
                         uiState.coilMemoryCache?.let { coil ->
                             if (uiState.caches.isNotEmpty()) {
                                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                             }
-                            CacheRow(state = coil, isMemory = true)
+                            CoilMemoryRow(state = coil)
                         }
                     }
                 }
@@ -228,51 +230,126 @@ private fun SectionHeader(
 }
 
 @Composable
-private fun CacheRow(state: CacheRowState, isMemory: Boolean = false) {
-    val fraction = if (state.maxBytes <= 0L) 0f
-    else (state.sizeBytes.toFloat() / state.maxBytes.toFloat()).coerceIn(0f, 1f)
+private fun DiskCachesBlock(caches: List<CacheRowState>) {
+    val totalMax = caches.sumOf { it.maxBytes }
+    val totalUsed = caches.sumOf { it.sizeBytes }
+    val freeFraction = if (totalMax > 0L)
+        ((totalMax - totalUsed).toFloat() / totalMax.toFloat()).coerceAtLeast(0f)
+    else 0f
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(10.dp)
+                .clip(RoundedCornerShape(5.dp)),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = stringResource(cacheLabelRes(state.id)),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                if (isMemory) {
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(
-                        text = stringResource(MR.string.storage_cache_ram_badge),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            for (cache in caches) {
+                val w = if (totalMax > 0L)
+                    (cache.sizeBytes.toFloat() / totalMax.toFloat()).coerceAtLeast(0f)
+                else 0f
+                if (w > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .weight(w)
+                            .fillMaxHeight()
+                            .background(cacheColor(cache.id)),
                     )
                 }
             }
+            if (freeFraction > 0f) {
+                Box(
+                    modifier = Modifier
+                        .weight(freeFraction)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (cache in caches) {
+                CacheLegendRow(cache)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CacheLegendRow(state: CacheRowState) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(cacheColor(state.id)),
+        )
+        Spacer(modifier = Modifier.size(10.dp))
+        Text(
+            text = stringResource(cacheLabelRes(state.id)),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = stringResource(
+                MR.string.storage_cache_size_format,
+                formatBytes(state.sizeBytes),
+                formatBytes(state.maxBytes),
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun CoilMemoryRow(state: CacheRowState) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = stringResource(
-                    MR.string.storage_cache_size_format,
-                    formatBytes(state.sizeBytes),
-                    formatBytes(state.maxBytes),
-                ),
-                style = MaterialTheme.typography.bodyMedium,
+                text = stringResource(cacheLabelRes(state.id)),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Spacer(modifier = Modifier.size(8.dp))
+            Text(
+                text = stringResource(MR.string.storage_cache_ram_badge),
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Spacer(modifier = Modifier.height(6.dp))
-        LinearProgressIndicator(
-            progress = { fraction },
-            modifier = Modifier.fillMaxWidth(),
-            drawStopIndicator = {},
+        Text(
+            text = stringResource(
+                MR.string.storage_cache_size_format,
+                formatBytes(state.sizeBytes),
+                formatBytes(state.maxBytes),
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+@Composable
+private fun cacheColor(id: String): Color = when (id) {
+    "public_profiles"  -> MaterialTheme.colorScheme.primary
+    "public_images"    -> MaterialTheme.colorScheme.tertiary
+    "drive_payloads"   -> MaterialTheme.colorScheme.secondary
+    "drive_thumbnails" -> MaterialTheme.colorScheme.errorContainer
+    else               -> MaterialTheme.colorScheme.outline
 }
 
 @Composable
