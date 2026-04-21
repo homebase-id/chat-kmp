@@ -81,11 +81,8 @@ import id.homebase.resources.settings_notifications_issue
 import id.homebase.resources.settings_open_owner_console
 import id.homebase.resources.settings_profile_info
 import id.homebase.resources.settings_security_setup
-<<<<<<< add-vault-feature-scaffold
 import id.homebase.resources.vault_settings_section
-=======
 import id.homebase.resources.settings_storage
->>>>>>> main
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -174,7 +171,12 @@ fun SettingsUi(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(stringResource(MR.string.settings), modifier = Modifier.testTag("settingsTitle")) }, navigationIcon = {
+            TopAppBar(title = {
+                Text(
+                    stringResource(MR.string.settings),
+                    modifier = Modifier.testTag("settingsTitle")
+                )
+            }, navigationIcon = {
                 IconButton(onClick = onBackClick) {
                     Icon(
                         imageVector = Icons.Default.ChevronLeft,
@@ -257,6 +259,7 @@ fun SettingsUi(
                                 strokeWidth = 2.dp
                             )
                         }
+
                         NotificationVerificationStatus.OK -> {
                             Icon(
                                 imageVector = Icons.Outlined.CheckCircle,
@@ -265,6 +268,7 @@ fun SettingsUi(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
+
                         NotificationVerificationStatus.ERROR -> {
                             Icon(
                                 imageVector = Icons.Outlined.Error,
@@ -348,11 +352,19 @@ fun SettingsUi(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = stringResource(MR.string.app_build, uiState.appBuild),
-                    style = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                            alpha = 0.6f
+                        )
+                    ),
                 )
                 Text(
                     text = uiState.appBuildDate,
-                    style = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                            alpha = 0.6f
+                        )
+                    ),
                 )
             }
         }
@@ -364,7 +376,11 @@ fun SettingsUi(
 fun SettingsUiPreview() {
     HomebaseTheme {
         SettingsUi(
-            uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
+            uiState = SettingsUiState(
+                appVersion = "1.0.0",
+                appBuild = "12345",
+                appBuildDate = "2023-01-01"
+            ),
             onAction = {},
             onBackClick = {},
             onNavigateToConnections = {},
