@@ -193,3 +193,12 @@ writing or modifying any screen/composable, verify:
 - Provide `contentDescription` on all meaningful icons/images for accessibility
 - UiState should be a flat `data class` with `_uiState.update { }` pattern
 - One-time events (navigation, snackbar) should use separate `SharedFlow`, not stored in UiState
+
+## Adding New Top-Level Features (Add-on Apps)
+
+When adding a self-contained feature that surfaces as an icon in the bottom navigation bar
+(Vault-style — onboarding flow, extend-permissions dialog, settings toggle for icon
+visibility, optional biometric gate), follow the recipe in
+[`ADDING_ADDON_APPS.md`](ADDING_ADDON_APPS.md). It covers preferences with stable UUIDs,
+routing, `AppNavHost` wiring, `AuthConnectionCoordinator` drive subscription, DI, and the
+expect/actual biometric layer.

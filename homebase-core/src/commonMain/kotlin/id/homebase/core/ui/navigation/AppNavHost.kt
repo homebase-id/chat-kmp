@@ -82,6 +82,7 @@ import id.homebase.core.ui.screens.vault.VaultScreen
 import id.homebase.core.ui.screens.vault.VaultSettingsScreen
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
 import org.koin.compose.koinInject
@@ -605,6 +606,9 @@ fun AppNavHost(
                                 onNavigateToAppearance = {
                                     navController.navigate(Route.AppearanceSettings)
                                 },
+                                onNavigateToStorage = {
+                                    navController.navigate(Route.StorageSettings)
+                                },
                                 onNavigateToHelp = {
                                     navController.navigate(Route.Help)
                                 },
@@ -680,6 +684,11 @@ fun AppNavHost(
                                 onBackClick = { navController.popBackStack() },
                                 onOpenVault = openVault,
                             )
+                    composable<Route.StorageSettings> {
+                        if (isAuthenticated) {
+                            StorageSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() })
                         }
                     }
                 }

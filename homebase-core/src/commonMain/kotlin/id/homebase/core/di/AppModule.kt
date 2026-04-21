@@ -56,6 +56,7 @@ import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
+import id.homebase.core.ui.screens.storage.StorageSettingsViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
@@ -162,6 +163,7 @@ val appModule = module {
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
+    viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::HelpViewModel)
     viewModelOf(::ConnectionsViewModel)
     viewModelOf(::ConnectRequestViewModel)
