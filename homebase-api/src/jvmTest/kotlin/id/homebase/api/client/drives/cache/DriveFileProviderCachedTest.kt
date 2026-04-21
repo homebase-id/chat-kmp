@@ -16,9 +16,13 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.forms.InputProvider
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import java.io.DataOutputStream
 import java.io.IOException
 import java.nio.file.Files
@@ -252,6 +256,62 @@ class DriveFileProviderCachedTest {
         assertTrue(
             logCollector.hasError(tag = "ThumbIO", substring = "thumb cache-read FAILED"),
             "expected error log for cache-read corruption; got: ${logCollector.messages("ThumbIO")}"
+        )
+    }
+
+    /**
+     * Reproduces the Android NPE that fires 335× after logout: a concurrent
+     * `clearCaches()` on one thread races against in-flight `getThumbBytesRaw()`
+     * on another, poisoning the FileKache instance the reader is holding.
+     *
+     * Uses `runBlocking` (not `runTest`) — we need real parallelism across
+     * threads, which `runTest`'s virtual-time scheduler deliberately does
+     * not provide.
+     */
+    @Test
+    fun `concurrent clearCaches during thumb fetch does not propagate exceptions`() = runBlocking {
+        // Warm the cache so reads/writes are exercised (not just fresh inits).
+        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
+
+        val iterations = 300
+        val fetcherErrors = mutableListOf<Throwable>()
+        val clearerErrors = mutableListOf<Throwable>()
+
+        val fetcher = async(Dispatchers.Default) {
+            repeat(iterations) {
+                try {
+                    provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
+                } catch (e: NotFoundException) {
+                    // Acceptable — the race window can return EMPTY_404 or
+                    // throw for a just-cleared cache under some code paths.
+                } catch (e: Throwable) {
+                    synchronized(fetcherErrors) { fetcherErrors += e }
+                }
+                yield()
+            }
+        }
+
+        val clearer = async(Dispatchers.Default) {
+            repeat(iterations) {
+                try {
+                    provider.clearCaches()
+                } catch (e: Throwable) {
+                    synchronized(clearerErrors) { clearerErrors += e }
+                }
+                yield()
+            }
+        }
+
+        awaitAll(fetcher, clearer)
+
+        assertTrue(
+            fetcherErrors.isEmpty(),
+            "fetcher must not see any unhandled exceptions while clearCaches runs " +
+                "(got ${fetcherErrors.size}: ${fetcherErrors.firstOrNull()})"
+        )
+        assertTrue(
+            clearerErrors.isEmpty(),
+            "clearCaches must not throw (got ${clearerErrors.size}: ${clearerErrors.firstOrNull()})"
         )
     }
 }
