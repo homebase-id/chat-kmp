@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.mayakapps.kache.FileKache
 import kotlin.time.measureTimedValue
 import id.homebase.api.client.ByteApiResponse
+import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.auth.CredentialsManager
@@ -489,5 +490,22 @@ class DriveFileProviderCached(
         } catch (_: Exception) {}
 
         notFoundCache = emptySet()
+    }
+
+    suspend fun getCacheStats(): List<CacheStats> {
+        val payload = payloadDiskKache()
+        val thumb = thumbDiskKache()
+        return listOf(
+            CacheStats(
+                id = "drive_payloads",
+                sizeBytes = payload.size,
+                maxBytes = payload.maxSize,
+            ),
+            CacheStats(
+                id = "drive_thumbnails",
+                sizeBytes = thumb.size,
+                maxBytes = thumb.maxSize,
+            ),
+        )
     }
 }

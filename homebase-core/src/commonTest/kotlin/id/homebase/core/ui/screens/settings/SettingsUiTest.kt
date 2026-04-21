@@ -23,6 +23,7 @@ class SettingsUiTest {
                     onNavigateToConnections = {},
                     onNavigateToNotifications = {},
                     onNavigateToAppearance = {},
+                    onNavigateToStorage = {},
                     onNavigateToHelp = {},
                 )
             }
@@ -41,6 +42,7 @@ class SettingsUiTest {
                     onNavigateToConnections = {},
                     onNavigateToNotifications = {},
                     onNavigateToAppearance = {},
+                    onNavigateToStorage = {},
                     onNavigateToHelp = {},
                 )
             }
@@ -64,6 +66,7 @@ class SettingsUiTest {
                     onNavigateToConnections = {},
                     onNavigateToNotifications = {},
                     onNavigateToAppearance = {},
+                    onNavigateToStorage = {},
                     onNavigateToHelp = {},
                 )
             }
@@ -84,6 +87,7 @@ class SettingsUiTest {
                     onNavigateToConnections = {},
                     onNavigateToNotifications = { navigated = true },
                     onNavigateToAppearance = {},
+                    onNavigateToStorage = {},
                     onNavigateToHelp = {},
                 )
             }
@@ -104,6 +108,7 @@ class SettingsUiTest {
                     onNavigateToConnections = {},
                     onNavigateToNotifications = {},
                     onNavigateToAppearance = { navigated = true },
+                    onNavigateToStorage = {},
                     onNavigateToHelp = {},
                 )
             }
@@ -128,6 +133,7 @@ class SettingsUiTest {
                     onNavigateToConnections = {},
                     onNavigateToNotifications = {},
                     onNavigateToAppearance = {},
+                    onNavigateToStorage = {},
                     onNavigateToHelp = {},
                 )
             }
@@ -152,6 +158,7 @@ class SettingsUiTest {
                     onNavigateToConnections = {},
                     onNavigateToNotifications = {},
                     onNavigateToAppearance = {},
+                    onNavigateToStorage = {},
                     onNavigateToHelp = {},
                 )
             }

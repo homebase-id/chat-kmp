@@ -121,6 +121,11 @@ WHERE identityId = ? AND driveId = ? AND fileId = ?;
 countAll:
 SELECT count(*) FROM DriveMainIndex;
 
+-- Count records for a specific identity + drive (used by Storage settings)
+countByIdentityAndDrive:
+SELECT count(*) FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ?;
+
 -- Select all records - for TESTING
 selectAll:
 SELECT * FROM DriveMainIndex;

@@ -1,9 +1,12 @@
 package id.homebase.core.di
 
+import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import coil3.PlatformContext
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.api.sync.database.DatabaseSizeProbe
+import id.homebase.api.sync.database.JvmDatabaseSizeProbe
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
@@ -31,7 +34,8 @@ actual fun platformModule(): Module = module {
     single<AudioRecorder> { JvmAudioRecorder() }
     single<AudioPlayer> { JvmAudioPlayer() }
     single<AudioWaveFormGenerator> { JvmWaveFormGenerator() }
-    single {
+    single<DatabaseSizeProbe> { JvmDatabaseSizeProbe() }
+    single(createdAtStart = true) {
         // Note: No disk cache - DriveFileProviderCached handles encrypted disk caching
         // Coil's memory cache is still enabled by default for fast UI redraws
         ImageLoader.Builder(PlatformContext.INSTANCE)
@@ -41,5 +45,16 @@ actual fun platformModule(): Module = module {
                     add(PublicImageFetcher.Factory(get()))
                 }
                 .build()
+                .also(::assertNoCoilDiskCache)
+    }
+}
+
+private fun assertNoCoilDiskCache(loader: ImageLoader) {
+    val disk = loader.diskCache
+    if (disk != null) {
+        Logger.e(tag = "ImageLoader") {
+            "Unexpected Coil disk cache enabled (max=${disk.maxSize} bytes). " +
+                    "DriveFileProviderCached handles encrypted disk caching; Coil's disk cache must stay off."
+        }
     }
 }

@@ -2,6 +2,7 @@ package id.homebase.api.client.profile
 
 import co.touchlab.kermit.Logger
 import com.mayakapps.kache.FileKache
+import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.file.FileOperationsProvider
@@ -139,6 +140,23 @@ class PublicProfileProviderCached(
         }
 
         notFoundCache = emptySet()
+    }
+
+    suspend fun getCacheStats(): List<CacheStats> {
+        val profile = profileDiskKache()
+        val image = imageDiskKache()
+        return listOf(
+            CacheStats(
+                id = "public_profiles",
+                sizeBytes = profile.size,
+                maxBytes = profile.maxSize,
+            ),
+            CacheStats(
+                id = "public_images",
+                sizeBytes = image.size,
+                maxBytes = image.maxSize,
+            ),
+        )
     }
 
     // =========================================================
