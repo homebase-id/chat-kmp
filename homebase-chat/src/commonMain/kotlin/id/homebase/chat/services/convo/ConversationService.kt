@@ -459,7 +459,7 @@ class ConversationService(
                 previousMessageId = messageId
             }
 
-            trySendIntroductions(added, "$domain has added you to a group chat")
+            trySendIntroductions((current - domain).toList(), "You share a group chat with $domain")
         }
     }
 
