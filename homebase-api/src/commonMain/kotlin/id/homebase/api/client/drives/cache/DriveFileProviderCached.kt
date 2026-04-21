@@ -57,24 +57,22 @@ class DriveFileProviderCached(
     private var _thumbDiskKache: FileKache? = null
     private val kacheMutex = Mutex()
 
-    private suspend fun payloadDiskKache(): FileKache {
-        _payloadDiskKache?.let { return it }
-        return kacheMutex.withLock {
-            _payloadDiskKache ?: FileKache(
-                    directory = "$directory/homebase-payloads",
-                    maxSize = 200L * 1024L * 1024L // 200MB
-            ).also { _payloadDiskKache = it }
-        }
+    // Always acquires kacheMutex — the previous lock-free fast path let a
+    // reader hand out a reference to a FileKache instance that clearCaches()
+    // was simultaneously disposing, producing a NPE inside FileKache's
+    // internals when the reader resumed and called .get() on it.
+    private suspend fun payloadDiskKache(): FileKache = kacheMutex.withLock {
+        _payloadDiskKache ?: FileKache(
+                directory = "$directory/homebase-payloads",
+                maxSize = 200L * 1024L * 1024L // 200MB
+        ).also { _payloadDiskKache = it }
     }
 
-    private suspend fun thumbDiskKache(): FileKache {
-        _thumbDiskKache?.let { return it }
-        return kacheMutex.withLock {
-            _thumbDiskKache ?: FileKache(
-                    directory = "$directory/homebase-thumbs",
-                    maxSize = 300L * 1024L * 1024L // 300MB
-            ).also { _thumbDiskKache = it }
-        }
+    private suspend fun thumbDiskKache(): FileKache = kacheMutex.withLock {
+        _thumbDiskKache ?: FileKache(
+                directory = "$directory/homebase-thumbs",
+                maxSize = 300L * 1024L * 1024L // 300MB
+        ).also { _thumbDiskKache = it }
     }
 
     // ================================================================
@@ -97,11 +95,7 @@ class DriveFileProviderCached(
         }
 
         // 2️⃣ Peek in disk cache and return result if it's there
-        payloadDiskKache().get(cacheKey)?.let { filePath ->
-            val (result, elapsed) = measureTimedValue { readBytesResponse(filePath) }
-            Logger.d(tag = "VideoIO") { "payload cache-hit: ${result.bytes.size} bytes in $elapsed key=$cacheKey" }
-            return result
-        }
+        readCachedPayloadOrLog(cacheKey)?.let { return it }
 
         // 2️⃣ Fetch from network but lock to make sure that we don't load the same
         // resource twice over the network
@@ -113,11 +107,7 @@ class DriveFileProviderCached(
             if (cacheKey in notFoundCache) {
                 return@withLock ByteApiResponse.EMPTY_404
             }
-            payloadDiskKache().get(cacheKey)?.let { filePath ->
-                val (result, elapsed) = measureTimedValue { readBytesResponse(filePath) }
-                Logger.d(tag = "VideoIO") { "payload cache-hit (post-lock): ${result.bytes.size} bytes in $elapsed key=$cacheKey" }
-                return@withLock result
-            }
+            readCachedPayloadOrLog(cacheKey)?.let { return@withLock it }
 
             // we allow up to 3 concurrent semaphore payloads over the network
             return payloadSemaphore.withPermit {
@@ -319,18 +309,35 @@ class DriveFileProviderCached(
 
     /**
      * Read a thumb from the disk cache. Returns null on cache miss OR when the
-     * cached file cannot be parsed (corrupted entry, truncated write, etc.) —
-     * the latter is logged as an error so the NPE/parse failure is visible
-     * instead of being swallowed into the retry loop above.
+     * cached file cannot be parsed (corrupted entry, truncated write, etc.) OR
+     * when the underlying FileKache throws (e.g. a concurrent clearCaches()
+     * on another thread). All exceptions are logged as errors so the caller
+     * can fall through to the network cleanly.
      */
     private suspend fun readCachedThumbOrLog(cacheKey: String): ByteApiResponse? {
-        val filePath = thumbDiskKache().get(cacheKey) ?: return null
         return try {
+            val filePath = thumbDiskKache().get(cacheKey) ?: return null
             val result = readBytesResponse(filePath)
             Logger.d(tag = "ThumbIO") { "thumb cache-hit: status=${result.status} ${result.bytes.size} bytes key=$cacheKey" }
             result
         } catch (e: Exception) {
-            Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-read FAILED key=$cacheKey path=$filePath" }
+            Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-read FAILED key=$cacheKey" }
+            null
+        }
+    }
+
+    /**
+     * Payload-cache analog of [readCachedThumbOrLog]. Defense-in-depth against
+     * FileKache internal errors and parse failures.
+     */
+    private suspend fun readCachedPayloadOrLog(cacheKey: String): ByteApiResponse? {
+        return try {
+            val filePath = payloadDiskKache().get(cacheKey) ?: return null
+            val (result, elapsed) = measureTimedValue { readBytesResponse(filePath) }
+            Logger.d(tag = "VideoIO") { "payload cache-hit: ${result.bytes.size} bytes in $elapsed key=$cacheKey" }
+            result
+        } catch (e: Exception) {
+            Logger.e(tag = "VideoIO", throwable = e) { "payload cache-read FAILED key=$cacheKey" }
             null
         }
     }
@@ -450,21 +457,32 @@ class DriveFileProviderCached(
         val thumbDir = "$directory/homebase-thumbs".toPath()
         val preloadDir = "$directory/hbvid_preload".toPath()
 
-        try {
-            _payloadDiskKache?.clear()
-            _thumbDiskKache?.clear()
-        } catch (e: Exception) {
-            Logger.w("Kache.clear() failed, falling back to manual delete", e)
+        // Serialised with the accessor functions: any in-flight payload/thumb
+        // reader either completed before we took the mutex (so its reference
+        // is no longer reachable from us) or is still waiting for it (so it
+        // will observe the post-teardown null and construct a fresh kache).
+        //
+        // We intentionally do NOT call FileKache.clear() — on at least one
+        // Android device that call raced with concurrent .get() calls and
+        // nulled internal FileKache state under a reader's feet, producing
+        // the `getClass() on null` NPE that fired 335× after logout.
+        // Deleting the directory directly achieves the same outcome and the
+        // next accessor reconstructs a clean FileKache on top of an empty dir.
+        kacheMutex.withLock {
+            _payloadDiskKache = null
+            _thumbDiskKache = null
+
             try {
-                fileSystem.delete(payloadDir, mustExist = false)
-                fileSystem.delete(thumbDir, mustExist = false)
-            } catch (deleteEx: Exception) {
-                Logger.w("Manual cache delete also failed", deleteEx)
+                fileSystem.deleteRecursively(payloadDir)
+            } catch (e: Exception) {
+                Logger.w(tag = "DriveFileProviderCached", throwable = e) { "payload cache dir delete failed" }
+            }
+            try {
+                fileSystem.deleteRecursively(thumbDir)
+            } catch (e: Exception) {
+                Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache dir delete failed" }
             }
         }
-
-        _payloadDiskKache = null
-        _thumbDiskKache = null
 
         try {
             fileSystem.deleteRecursively(preloadDir)
