@@ -14,7 +14,7 @@ import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 
 
-const val VAULT_FILE_TYPE = 5572;
+const val VAULT_FILE_TYPE = 5572
 
 /**
  * JSON content stored in appData.content for vault files.
@@ -47,13 +47,14 @@ data class VaultFileItem(
     val isPending: Boolean get() = pendingFileUri != null
 
     @OptIn(ExperimentalEncodingApi::class)
-    val payloadKeyHeader: KeyHeader get() = payloadIv?.let { ivBase64 ->
-        try {
-            KeyHeader(Base64.decode(ivBase64), keyHeader.aesKey)
-        } catch (_: Exception) {
-            keyHeader
-        }
-    } ?: keyHeader
+    val payloadKeyHeader: KeyHeader
+        get() = payloadIv?.let { ivBase64 ->
+            try {
+                KeyHeader(Base64.decode(ivBase64), keyHeader.aesKey)
+            } catch (_: Exception) {
+                keyHeader
+            }
+        } ?: keyHeader
 
     val isImage: Boolean get() = contentType.startsWith("image/")
 
