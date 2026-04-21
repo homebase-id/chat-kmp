@@ -15,7 +15,7 @@ A self-contained feature that:
 1. Shows up as a **toggleable icon** in the bottom navigation bar (or side rail).
 2. Has an **onboarding screen** the first time the user taps it, with *Set it up* and
    *Dismiss* buttons.
-3. Flips a runtime **activation flag** via an "Extend Permissions" dialog — which in
+3. When setup it flips a runtime **activation flag** via an "Extend Permissions" dialog — which in
    turn widens the set of drives the auth WebSocket subscribes to.
 4. Has a **Settings sub-page** with a switch to hide its icon and (optionally) a
    biometrics switch.
