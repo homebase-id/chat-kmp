@@ -18,9 +18,9 @@ class PayloadBundleEncryptionService(
     private val fileOps: FileOperationsProvider,
     private val videoProcessor: VideoPayloadProcessor,
     private val eventBus: EventBus
-) : PayloadBundleEncryptor {
+) {
 
-    override suspend fun encryptBundle(
+    suspend fun encryptBundle(
         uniqueId: Uuid,
         bundle: PayloadBundle?,
         aesKey: SecureByteArray,
