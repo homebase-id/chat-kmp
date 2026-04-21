@@ -24,7 +24,9 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -35,11 +37,18 @@ import kotlin.test.assertTrue
 class PublicProfileProviderCachedTest {
 
     private var requestCount = 0
+    private var nextException: Exception? = null
+    private var nextStatus = HttpStatusCode.OK
     private val imageBytes = ByteArray(128) { it.toByte() }
 
     private val mockEngine = MockEngine { _ ->
         requestCount++
-        respond(imageBytes, HttpStatusCode.OK)
+        nextException?.let { e -> throw e }
+        if (nextStatus == HttpStatusCode.OK) {
+            respond(imageBytes, nextStatus)
+        } else {
+            respond("", nextStatus)
+        }
     }
 
     private val httpClient = HttpClient(mockEngine)
@@ -68,6 +77,8 @@ class PublicProfileProviderCachedTest {
         )
 
         requestCount = 0
+        nextException = null
+        nextStatus = HttpStatusCode.OK
         logCollector.entries.clear()
         Logger.setLogWriters(listOf(logCollector))
     }
@@ -174,6 +185,40 @@ class PublicProfileProviderCachedTest {
             clearerErrors.isEmpty(),
             "clearCaches must not throw (got ${clearerErrors.size}: ${clearerErrors.firstOrNull()})"
         )
+    }
+
+    @Test
+    fun `404 response is cached and subsequent call skips the network`() = runTest {
+        nextStatus = HttpStatusCode.NotFound
+
+        val first = provider.getPublicImage(odinId)
+        assertNull(first, "404 must surface as null")
+        val countAfterFirst = requestCount
+
+        // Switch to 200 — notFoundCache should intercept before reaching the network.
+        nextStatus = HttpStatusCode.OK
+        val second = provider.getPublicImage(odinId)
+
+        assertEquals(countAfterFirst, requestCount, "notFoundCache must prevent a second network call for 404")
+        assertNull(second, "cached 404 must still surface as null")
+    }
+
+    @Test
+    fun `5xx response is not cached — subsequent call retries and succeeds`() = runTest {
+        nextStatus = HttpStatusCode.InternalServerError
+
+        assertFailsWith<Exception> {
+            provider.getPublicImage(odinId)
+        }
+        val countAfterFirst = requestCount
+
+        // Server recovers; next call must re-hit the network.
+        nextStatus = HttpStatusCode.OK
+        val second = provider.getPublicImage(odinId)
+
+        assertEquals(countAfterFirst + 1, requestCount, "500 must not be cached — second call must reach the network")
+        assertNotNull(second)
+        assertEquals(imageBytes.size, second.size)
     }
 
     @Test

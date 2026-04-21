@@ -314,6 +314,25 @@ class DriveFileProviderCachedTest {
             "clearCaches must not throw (got ${clearerErrors.size}: ${clearerErrors.firstOrNull()})"
         )
     }
+
+    /**
+     * Positive assertion: after clearCaches, the next fetch must actually
+     * reach the network. Protects against a future regression where we e.g.
+     * null the kache reference but forget to delete the on-disk directory.
+     */
+    @Test
+    fun `clearCaches removes cached bytes so next call re-fetches from network`() = runTest {
+        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
+        val countAfterPopulate = requestCount
+
+        provider.clearCaches()
+
+        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
+        assertTrue(
+            requestCount > countAfterPopulate,
+            "after clearCaches, next call must reach the network (requestCount unchanged => cache was not actually cleared)"
+        )
+    }
 }
 
 /** Snapshot every regular file under [dir] (recursively), skipping FileKache's journal. */
