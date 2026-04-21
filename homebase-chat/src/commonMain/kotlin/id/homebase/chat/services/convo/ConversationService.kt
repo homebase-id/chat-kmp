@@ -3,8 +3,8 @@ package id.homebase.chat.services.convo
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.IntroductionGroup
-import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
@@ -30,9 +30,10 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.toBase64
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
-import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.StatusMessage
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.XorIdUtil
@@ -43,14 +44,14 @@ import kotlin.uuid.Uuid
 
 class ConversationService(
     private val credentialsManager: CredentialsManager,
-    private val payloadBundleEncryptionService: PayloadBundleEncryptor,
+    private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
     private val dbm: DatabaseManager,
-    private val introductionProvider: IntroductionSender,
+    private val introductionProvider: ConnectionIntroductionProvider,
     private val scope: CoroutineScope,
     private val outboxSync: OutboxSync,
-    private val chatMessageSenderService: StatusMessageSender,
+    private val chatMessageSenderService: ChatMessageSenderService,
     private val optimisticWriter: OptimisticWriter,
-    private val conversationStream: ConversationLoader,
+    private val conversationStream: ConversationStream,
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -458,7 +459,7 @@ class ConversationService(
                 previousMessageId = messageId
             }
 
-            trySendIntroductions((current - domain).toList(), "You share a group chat with $domain")
+            trySendIntroductions(added, "$domain has added you to a group chat")
         }
     }
 
