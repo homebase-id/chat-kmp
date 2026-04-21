@@ -390,29 +390,14 @@ fun ConversationListUi(
     // Notify parent about detail pane visibility in compact view
     LaunchedEffect(showingOnlyDetail) { onDetailPaneVisibilityChanged(showingOnlyDetail) }
 
-    // Clear selectedConversationId when user navigates back to list in compact mode
-    // This ensures that when returning to the screen, it shows the list instead of detail
-    LaunchedEffect(isListPaneHidden, isDetailPaneVisible) {
-        if (scaffoldDirective.maxHorizontalPartitions == 1 && !isListPaneHidden && !isDetailPaneVisible && uiState.selectedConversationId != null) {
-            // User is back on list in compact mode, clear the selection
-            onUiAction(ConversationListUiAction.ClearSelection)
-        }
-    }
-
-    // Navigate to detail pane only when selectedConversationId changes to a NEW value.
-    // Without tracking, list refreshes can re-emit the same ID and push the user
-    // back into the detail pane after they navigated away.
-    var lastNavigatedConversationId by remember { mutableStateOf<Uuid?>(null) }
-    LaunchedEffect(uiState.selectedConversationId) {
-        val selectedId = uiState.selectedConversationId
-        if (selectedId != null && selectedId != lastNavigatedConversationId && scaffoldDirective.maxHorizontalPartitions == 1) {
-            Logger.i(tag = "ConversationListUi") { "Restore detail pane for $selectedId" }
-            lastNavigatedConversationId = selectedId
-            scaffoldNavigator.navigateTo(ListDetailPaneScaffoldRole.Detail, selectedId)
-        } else if (selectedId == null) {
-            lastNavigatedConversationId = null
-        }
-    }
+    // Installs the coupled cleanup + swap effects that drive notification-tap navigation.
+    // See NotificationNavigationEffects.kt for why the two effects must be coordinated.
+    NotificationNavigationEffects(
+        scaffoldNavigator = scaffoldNavigator,
+        selectedConversationId = uiState.selectedConversationId,
+        scaffoldDirective = scaffoldDirective,
+        onClearSelection = { onUiAction(ConversationListUiAction.ClearSelection) },
+    )
 
     @Suppress("DEPRECATION") BackHandler(scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
         scope.launch {
@@ -482,8 +467,14 @@ fun ConversationListUi(
             },
             detailPane = {
                 AnimatedPane {
+                    val contentKey = scaffoldNavigator.currentDestination?.contentKey
                     val conversation =
-                        uiState.activeConversations.find { it.conversation.id == scaffoldNavigator.currentDestination?.contentKey }
+                        uiState.activeConversations.find { it.conversation.id == contentKey }
+                    LaunchedEffect(contentKey, conversation != null) {
+                        Logger.i(tag = "ConversationListUi") {
+                            "detailPane render: contentKey=$contentKey, conversationFound=${conversation != null}, activeConversationsSize=${uiState.activeConversations.size}"
+                        }
+                    }
                     if (conversation != null) {
                         key(conversation.conversation.id) {
                             ConversationMessagesPane(

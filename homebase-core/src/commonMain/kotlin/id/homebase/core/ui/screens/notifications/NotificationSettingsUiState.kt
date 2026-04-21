@@ -36,6 +36,7 @@ data class NotificationSettingsUiState(
     val isReRegistering: Boolean = false,
     val showContentLevelPicker: Boolean = false,
     val isPermissionGranted: Boolean = false,
+    val isPermissionPermanentlyDenied: Boolean = false,
     val deviceToken: String? = null,
     val registrationStatus: RegistrationStatus = RegistrationStatus.UNKNOWN,
     val reRegisterResult: ReRegisterResult? = null,

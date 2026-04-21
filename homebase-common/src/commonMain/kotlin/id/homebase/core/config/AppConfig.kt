@@ -2,6 +2,7 @@ package id.homebase.core.config
 
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.crypto.Md5
 import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
@@ -49,7 +50,8 @@ const val COMMUNITY_APP_ID = "77ed6136-6b33-4654-8088-3d89c91e6065"
 
 // Labeled drives — drive definition co-located with its human-readable label
 val chatLabeledDrive = LabeledDrive(drive = SystemDriveConstants.chatDrive, label = "Chat")
-val contactLabeledDrive = LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
+val contactLabeledDrive =
+    LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
 
 // Placeholder Vault drive — real GUIDs will replace these once the server feature ships.
@@ -62,9 +64,9 @@ val vaultLabeledDrive = LabeledDrive(
 )
 
 // Backward-compatible aliases — all existing consumers remain unaffected
-val chatTargetDrive    = chatLabeledDrive.drive
+val chatTargetDrive = chatLabeledDrive.drive
 val contactTargetDrive = contactLabeledDrive.drive
-val feedTargetDrive    = feedLabeledDrive.drive
+val feedTargetDrive = feedLabeledDrive.drive
 
 // App permissions required
 val appPermissions: List<AppPermissionType> =
@@ -75,6 +77,8 @@ val appPermissions: List<AppPermissionType> =
         AppPermissionType.ReceiveDataFromOtherIdentitiesOnMyBehalf,
         AppPermissionType.SendPushNotifications,
         AppPermissionType.SendIntroductions,
+        AppPermissionType.ManageFeed,
+        AppPermissionType.PublishStaticContent
     )
 
 // Target drive access requests
@@ -105,7 +109,20 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
             name = " ",
             description = " ",
             permissions = listOf(DrivePermission.Read, DrivePermission.Write)
-        )
+        ),
+        TargetDriveAccessRequest(
+            type = "8f448716e34cedf9014145e043ca6612",
+            alias = Md5.toGuidId("public_channel_drive").toString(),
+            name = " ",
+            description = " ",
+            permissions = listOf(
+                DrivePermission.Read,
+                DrivePermission.Write,
+                DrivePermission.React,
+                DrivePermission.Comment
+            )
+
+        ),
     )
 
 // Drives we listen to for sockets and synchronization

@@ -69,39 +69,69 @@ jobs:
           )
           print(token)
           EOF
-                   
+          
           TOKEN=$(python3 /tmp/generate_jwt.py \
             "${{ secrets.APPSTORE_API_KEY_ID }}" \
             "${{ secrets.APPSTORE_API_ISSUER_ID }}" \
             "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8")
           
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
-          echo "::add-mask::$TOKEN"
+          echo "::add-mask::$TOKEN"     
 
       - name: Get App ID
         id: app
         run: |
-          # Get your app's ID - replace with your actual bundle ID
           BUNDLE_ID="id.homebase.feed"
           
-          RESPONSE=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
-            "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=$BUNDLE_ID")
+          echo "Making API request for bundle ID: $BUNDLE_ID"
           
-          if echo "$RESPONSE" | jq -e '.errors' > /dev/null; then
+          # Use curl's -G and --data-urlencode for proper URL encoding
+          RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" \
+          -G \
+          --data-urlencode "filter[bundleId]=$BUNDLE_ID" \
+          -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+          "https://api.appstoreconnect.apple.com/v1/apps")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE:" | cut -d: -f2)
+          BODY=$(echo "$RESPONSE" | sed '/HTTP_CODE:/d')
+          
+          echo "HTTP Status: $HTTP_CODE"
+          
+          if echo "$BODY" | jq -e '.errors' > /dev/null 2>&1; then
             echo "❌ API Error:"
-            echo "$RESPONSE" | jq '.errors'
+            echo "$BODY" | jq '.errors'
             exit 1
           fi
           
-          APP_ID=$(echo "$RESPONSE" | jq -r '.data[0].id')
+          # Check how many results we got
+          RESULT_COUNT=$(echo "$BODY" | jq '.data | length')
+          echo "Number of apps returned by API: $RESULT_COUNT"
           
-          if [ -z "$APP_ID" ] || [ "$APP_ID" == "null" ]; then
-            echo "❌ App not found for bundle ID: $BUNDLE_ID"
+          if [ "$RESULT_COUNT" -eq 0 ]; then
+            echo "❌ No app found with bundle ID: $BUNDLE_ID"
             exit 1
           fi
+          
+          # Filter for exact bundle ID match (API does prefix matching)
+          EXACT_MATCH=$(echo "$BODY" | jq --arg bid "$BUNDLE_ID" '.data[] | select(.attributes.bundleId == $bid)')
+          
+          if [ -z "$EXACT_MATCH" ]; then
+            echo "❌ No app found with exact bundle ID: $BUNDLE_ID"
+            echo "Apps returned by API:"
+            echo "$BODY" | jq '.data[] | {id: .id, bundleId: .attributes.bundleId, name: .attributes.name}'
+            exit 1
+          fi
+          
+          APP_ID=$(echo "$EXACT_MATCH" | jq -r '.id')
+          APP_NAME=$(echo "$EXACT_MATCH" | jq -r '.attributes.name')
+          APP_BUNDLE_ID=$(echo "$EXACT_MATCH" | jq -r '.attributes.bundleId')
+          
+          echo "✅ Found App:"
+          echo "  ID: $APP_ID"
+          echo "  Name: $APP_NAME"
+          echo "  Bundle ID: $APP_BUNDLE_ID"
           
           echo "app_id=$APP_ID" >> $GITHUB_OUTPUT
-          echo "App ID: $APP_ID"
 
       - name: Get latest pre-release build or specific build
         id: build
@@ -110,103 +140,153 @@ jobs:
             BUILD_NUMBER="${{ github.event.inputs.build_number }}"
             echo "Using specified build number: $BUILD_NUMBER"
           else
-            # Get the latest pre-release build
-            BUILDS=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
-              "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=${{ steps.app.outputs.app_id }}&filter[preReleaseVersion.platform]=IOS&sort=-uploadedDate&limit=1")
-
+            echo "Fetching latest pre-release build..."
+            
+            # Get the latest pre-release build using proper URL encoding
+            BUILDS=$(curl -s \
+             -G \
+             --data-urlencode "filter[app]=${{ steps.app.outputs.app_id }}" \
+             --data-urlencode "filter[preReleaseVersion.platform]=IOS" \
+             --data-urlencode "sort=-uploadedDate" \
+             --data-urlencode "limit=1" \
+             -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+             "https://api.appstoreconnect.apple.com/v1/builds")
+      
             # Check for API errors
             if echo "$BUILDS" | jq -e '.errors' > /dev/null; then
-              echo "❌ API Error fetching builds:"
-              echo "$BUILDS" | jq '.errors'
-              exit 1
+             echo "❌ API Error fetching builds:"
+             echo "$BUILDS" | jq '.errors'
+             exit 1
             fi
-
+      
             BUILD_NUMBER=$(echo "$BUILDS" | jq -r '.data[0].attributes.version')
-
+      
             if [ -z "$BUILD_NUMBER" ] || [ "$BUILD_NUMBER" == "null" ]; then
-              echo "❌ No builds found"
-              exit 1
+             echo "❌ No builds found"
+             echo "Response:"
+             echo "$BUILDS" | jq '.'
+             exit 1
             fi
-
+      
             echo "Latest build number: $BUILD_NUMBER"
           fi
-
+          
+          echo "Getting build details for version: $BUILD_NUMBER"
+          
           # Get build ID by version number
-          BUILDS=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
-            "https://api.appstoreconnect.apple.com/v1/builds?filter[app]=${{ steps.app.outputs.app_id }}&filter[version]=$BUILD_NUMBER")
-
+          BUILDS=$(curl -s \
+          -G \
+          --data-urlencode "filter[app]=${{ steps.app.outputs.app_id }}" \
+          --data-urlencode "filter[version]=$BUILD_NUMBER" \
+          -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+          "https://api.appstoreconnect.apple.com/v1/builds")
+          
           # Check for API errors
           if echo "$BUILDS" | jq -e '.errors' > /dev/null; then
             echo "❌ API Error fetching build by version:"
             echo "$BUILDS" | jq '.errors'
             exit 1
           fi
-
+          
           BUILD_ID=$(echo "$BUILDS" | jq -r '.data[0].id')
-
+          
           if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" == "null" ]; then
             echo "❌ Build not found for version: $BUILD_NUMBER"
+            echo "Response:"
+            echo "$BUILDS" | jq '.'
             exit 1
           fi
-
+          
           echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
           echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
-          echo "Promoting build: $BUILD_NUMBER (ID: $BUILD_ID)"
+          echo "✅ Found build: $BUILD_NUMBER (ID: $BUILD_ID)"
 
       - name: Create or update App Store version
         id: version
         run: |
-          # Get version string from build
-          BUILD_INFO=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
-            "https://api.appstoreconnect.apple.com/v1/builds/${{ steps.build.outputs.build_id }}")
+          echo "Fetching build information..."
+          
+          # Get version string from build (include preReleaseVersion relationship)
+          BUILD_INFO=$(curl -s \
+          -G \
+          --data-urlencode "include=preReleaseVersion" \
+          -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+          "https://api.appstoreconnect.apple.com/v1/builds/${{ steps.build.outputs.build_id }}")
+          
+          echo "Build info response:"
+          echo "$BUILD_INFO" | jq '.'
           
           # Get marketing version from preReleaseVersion relationship
-          VERSION_STRING=$(echo "$BUILD_INFO" | jq -r '.included[] | select(.type=="preReleaseVersions") | .attributes.version')        
+          VERSION_STRING=$(echo "$BUILD_INFO" | jq -r '.included[]? | select(.type=="preReleaseVersions") | .attributes.version')
           
           if [ -z "$VERSION_STRING" ] || [ "$VERSION_STRING" == "null" ]; then
             echo "❌ Failed to get version string from build"
+            echo "Full build info:"
+            echo "$BUILD_INFO" | jq '.'
             exit 1
           fi
           
           echo "Version string: $VERSION_STRING"
           
           # Check if version already exists
-          VERSIONS=$(curl -s -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
-            "https://api.appstoreconnect.apple.com/v1/appStoreVersions?filter[app]=${{ steps.app.outputs.app_id }}&filter[versionString]=$VERSION_STRING&filter[platform]=IOS")
+          echo "Checking if App Store version already exists..."
+          VERSIONS=$(curl -s \
+          -G \
+          --data-urlencode "filter[app]=${{ steps.app.outputs.app_id }}" \
+          --data-urlencode "filter[versionString]=$VERSION_STRING" \
+          --data-urlencode "filter[platform]=IOS" \
+          -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+          "https://api.appstoreconnect.apple.com/v1/appStoreVersions")
           
           VERSION_ID=$(echo "$VERSIONS" | jq -r '.data[0].id // empty')
           
           if [ -z "$VERSION_ID" ]; then
-            # Create new App Store version
+            echo "Creating new App Store version..."
+            
             CREATE_RESPONSE=$(curl -s -X POST \
-              -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
-              -H "Content-Type: application/json" \
-              "https://api.appstoreconnect.apple.com/v1/appStoreVersions" \
-              -d '{
-                "data": {
-                  "type": "appStoreVersions",
-                  "attributes": {
-                    "platform": "IOS",
-                    "versionString": "'"$VERSION_STRING"'"
-                  },
-                  "relationships": {
-                    "app": {
-                      "data": {
-                        "type": "apps",
-                        "id": "'"${{ steps.app.outputs.app_id }}"'"
-                      }
-                    }
-                  }
-                }
-              }')
+             -H "Authorization: Bearer ${{ steps.jwt.outputs.token }}" \
+             -H "Content-Type: application/json" \
+             "https://api.appstoreconnect.apple.com/v1/appStoreVersions" \
+             -d '{
+               "data": {
+                 "type": "appStoreVersions",
+                 "attributes": {
+                   "platform": "IOS",
+                   "versionString": "'"$VERSION_STRING"'"
+                 },
+                 "relationships": {
+                   "app": {
+                     "data": {
+                       "type": "apps",
+                       "id": "'"${{ steps.app.outputs.app_id }}"'"
+                     }
+                   }
+                 }
+               }
+             }')
+          
+            # Check for errors in create response
+            if echo "$CREATE_RESPONSE" | jq -e '.errors' > /dev/null; then
+             echo "❌ Failed to create App Store version:"
+             echo "$CREATE_RESPONSE" | jq '.errors'
+             exit 1
+            fi
           
             VERSION_ID=$(echo "$CREATE_RESPONSE" | jq -r '.data.id')
-            echo "Created new version: $VERSION_ID"
+            
+            if [ -z "$VERSION_ID" ] || [ "$VERSION_ID" == "null" ]; then
+             echo "❌ Failed to get version ID from create response"
+             echo "$CREATE_RESPONSE" | jq '.'
+             exit 1
+            fi
+          
+            echo "✅ Created new version: $VERSION_ID"
           else
-            echo "Using existing version: $VERSION_ID"
+            echo "✅ Using existing version: $VERSION_ID"
           fi
           
           echo "version_id=$VERSION_ID" >> $GITHUB_OUTPUT
+    
 
       - name: Attach build to App Store version
         run: |
@@ -238,8 +318,7 @@ jobs:
 
           echo "✅ Build attached to App Store version"
 
-      - name: Submit for review (optional - uncomment to auto-submit)
-        if: false  # Change to true to enable auto-submission
+      - name: Submit for review
         run: |
           # Create submission
           RESPONSE=$(curl -s -X POST \
@@ -259,14 +338,14 @@ jobs:
                 }
               }
             }')
-          
+
           # Check for errors
           if echo "$RESPONSE" | jq -e '.errors' > /dev/null; then
             echo "❌ Failed to submit for review:"
             echo "$RESPONSE" | jq '.errors'
             exit 1
           fi
-          
+
           echo "✅ Submitted for App Store review"
 
       - name: Summary

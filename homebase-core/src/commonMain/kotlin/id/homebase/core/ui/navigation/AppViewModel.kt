@@ -17,12 +17,12 @@ import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.registerShareHandler
 import id.homebase.core.share.unregisterShareHandler
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
@@ -37,9 +37,11 @@ class AppViewModel(
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
-    private val _navigationEvents =
-        MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 5)
-    val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
+    // Channel (not SharedFlow) so events forwarded from NotificationService are queued until
+    // AppNavHost's collector attaches. A SharedFlow with replay=0 would drop events emitted
+    // before the first subscriber — e.g. a notification tap processed during cold start.
+    private val _navigationEvents = Channel<NotificationNavigationEvent>(Channel.BUFFERED)
+    val navigationEvents: Flow<NotificationNavigationEvent> = _navigationEvents.receiveAsFlow()
 
     private var credentialsJob: Job? = null
     private var listenForConnectionRequestsJob: Job? = null
@@ -86,7 +88,8 @@ class AppViewModel(
     private fun collectNotificationEvents() {
         viewModelScope.launch {
             notificationService.navigationEvents.collect { event ->
-                _navigationEvents.tryEmit(event)
+                Logger.i(tag = "AppViewModel") { "navigationEvent forwarded: $event" }
+                _navigationEvents.trySend(event)
             }
         }
         viewModelScope.launch {
@@ -115,7 +118,7 @@ class AppViewModel(
         Logger.i(tag = "AppViewModel") { "Handling share intent for conversation: $conversationId" }
         val pending = shareContentProcessor.readPendingContent()
         if (pending != null) {
-            _navigationEvents.tryEmit(NotificationNavigationEvent.OpenConversation(conversationId))
+            _navigationEvents.trySend(NotificationNavigationEvent.OpenConversation(conversationId))
         } else {
             Logger.w(tag = "AppViewModel") { "No pending shared content found for conversation: $conversationId" }
         }

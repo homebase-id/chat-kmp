@@ -218,7 +218,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -240,7 +244,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -264,7 +272,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -288,7 +300,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -311,7 +327,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -335,7 +355,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -357,7 +381,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -379,7 +407,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -401,7 +433,11 @@ class OutboxSync(
         )
 
         if (enqueued && sendNow) {
-            send()
+            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
+            // wait on outbox worker startup. send() is non-blocking today, but we
+            // launch it on the outbox's own scope so future changes to send() can't
+            // leak back into the caller's suspension chain.
+            scope.launch { send() }
         }
 
         return enqueued
@@ -441,12 +477,17 @@ class OutboxSync(
                 filePaths = null
             )
 
-            eventBus.emit(
-                BackendEvent.OutboxEvent.ItemEnqueued(
-                    driveId,
-                    uniqueId
-                )
+            // Non-suspending emit: the message is durably queued — listeners are a
+            // best-effort side-effect and must not gate the caller. A slow subscriber
+            // (doing blocking network IO inside its collect body) can saturate the
+            // 11-slot SharedFlow buffer on partial connectivity; parking here would
+            // hang the chat Send button.
+            val emitted = eventBus.tryEmit(
+                BackendEvent.OutboxEvent.ItemEnqueued(driveId, uniqueId)
             )
+            if (!emitted) {
+                Logger.w("OutboxSync: ItemEnqueued event dropped (EventBus buffer full) uniqueId=$uniqueId")
+            }
 
             return true
 

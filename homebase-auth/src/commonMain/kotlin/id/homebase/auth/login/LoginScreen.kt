@@ -11,9 +11,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
@@ -23,7 +20,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,18 +35,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.input.TransformedText
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
@@ -64,6 +53,7 @@ import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
+import id.homebase.core.widget.HomebaseIdField
 import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
 import id.homebase.resources.done
@@ -392,8 +382,11 @@ private fun LoginForm(
         HomebaseIdField(
             value = homebaseIdField,
             onValueChange = { homebaseIdField = it.copy(text = it.text.cleanDomain().replace(".", " ")) },
+            label = { Text(stringResource(MR.string.login_id_label)) },
+            placeholder = { Text(stringResource(MR.string.login_id_placeholder)) },
             focusRequester = focusRequester,
-            onDone = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) }
+            imeAction = ImeAction.Done,
+            onImeAction = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) },
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -412,41 +405,6 @@ private fun LoginForm(
             Text(stringResource(MR.string.login_create_account_button))
         }
     }
-}
-
-/* ---------- SHARED FIELD ---------- */
-
-@Composable
-private fun HomebaseIdField(
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
-    focusRequester: FocusRequester,
-    onDone: () -> Unit,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-        placeholder = { Text(stringResource(MR.string.login_id_placeholder)) },
-        label = { Text(stringResource(MR.string.login_id_label)) },
-        singleLine = true,
-        shape = RoundedCornerShape(24.dp),
-        visualTransformation = remember {
-            VisualTransformation { text ->
-                TransformedText(
-                    text = AnnotatedString(text.text.replace(' ', '.')),
-                    offsetMapping = OffsetMapping.Identity
-                )
-            }
-        },
-        keyboardOptions =
-            KeyboardOptions(
-                keyboardType = KeyboardType.Uri,
-                capitalization = KeyboardCapitalization.None,
-                imeAction = ImeAction.Done,
-            ),
-        keyboardActions = KeyboardActions(onDone = { onDone() })
-    )
 }
 
 @Preview(device = Devices.PIXEL_8)

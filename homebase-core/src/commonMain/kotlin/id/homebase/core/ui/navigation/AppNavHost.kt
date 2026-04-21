@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
@@ -46,6 +47,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.window.core.layout.WindowSizeClass
+import co.touchlab.kermit.Logger
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
@@ -70,6 +72,7 @@ import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.connections.ConnectionsScreen
 import id.homebase.core.ui.screens.help.HelpScreen
+import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
@@ -88,6 +91,7 @@ import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.uuid.Uuid
 
@@ -109,6 +113,7 @@ fun AppNavHost(
     val topLevelRoutes = remember(vaultIconVisible) {
         buildList {
             add(TopLevelRoute.Chat)
+            add(TopLevelRoute.Feed)
             if (vaultIconVisible) add(TopLevelRoute.Vault)
             add(TopLevelRoute.Home)
         }
@@ -214,10 +219,26 @@ fun AppNavHost(
         viewModel.navigationEvents.collect { event ->
             when (event) {
                 is NotificationNavigationEvent.OpenConversation -> {
-                    Uuid.parseOrNull(event.conversationId)?.let {
-                        navController.selectConversationOnChatList(it, scrollToBottom = true)
+                    val id = Uuid.parseOrNull(event.conversationId) ?: return@collect
+                    val topRoute = navController.currentBackStackEntry?.destination?.route
+                    Logger.i(tag = "AppNavHost") {
+                        "OpenConversation received: id=$id, currentDest=$topRoute"
                     }
-                    navController.popBackStack(Route.ChatList, inclusive = false)
+                    // Gate on ChatList being *anywhere* in the back stack, not just
+                    // on top. Top-of-stack gating (currentBackStackEntryFlow) hangs
+                    // forever when the user is warm on Detail/Settings/etc. —
+                    // regression introduced by PR #322. currentBackStack returns
+                    // immediately here because ChatList sits underneath the current
+                    // top entry; the subsequent popBackStack pops back to it.
+                    val stack = navController.currentBackStack
+                        .first { stack -> stack.any { it.destination.hasRoute(Route.ChatList::class) } }
+                    Logger.i(tag = "AppNavHost") {
+                        "ChatList present in stack (size=${stack.size}), dispatching"
+                    }
+                    val ok = navController.selectConversationOnChatList(id, scrollToBottom = true)
+                    Logger.i(tag = "AppNavHost") { "selectConversationOnChatList result=$ok" }
+                    val popped = navController.popBackStack(Route.ChatList, inclusive = false)
+                    Logger.i(tag = "AppNavHost") { "popBackStack(ChatList)=$popped" }
                 }
                 is NotificationNavigationEvent.OpenUrl ->
                     uriHandler.openUrl(event.url)
@@ -372,6 +393,12 @@ fun AppNavHost(
                         }
                     }
 
+                    composable<Route.Feed> {
+                        if (isAuthenticated) {
+                            FeedScreen(viewModel = koinViewModel())
+                        }
+                    }
+
                     composable<Route.ChatList> { backStackEntry ->
                         if (isAuthenticated) {
                             val conversationListViewModel: ConversationListViewModel = koinViewModel()
@@ -380,6 +407,9 @@ fun AppNavHost(
                             LaunchedEffect(pendingConversationId) {
                                 pendingConversationId?.let { idStr ->
                                     Uuid.parseOrNull(idStr)?.let {
+                                        Logger.i(tag = "AppNavHost") {
+                                            "ChatList observed pendingConversationId=$idStr, calling selectConversation"
+                                        }
                                         conversationListViewModel.selectConversation(it, scrollToBottom = pendingScrollToBottom)
                                         backStackEntry.savedStateHandle["pendingConversationId"] = null
                                         backStackEntry.savedStateHandle["pendingScrollToBottom"] = false
@@ -663,16 +693,25 @@ fun AppNavHost(
     }
 }
 
-private fun NavHostController.selectConversationOnChatList(conversationId: Uuid, scrollToBottom: Boolean = false) {
-    getBackStackEntry<Route.ChatList>().savedStateHandle["pendingConversationId"] = conversationId.toString()
-    getBackStackEntry<Route.ChatList>().savedStateHandle["pendingScrollToBottom"] = scrollToBottom
+private fun NavHostController.selectConversationOnChatList(conversationId: Uuid, scrollToBottom: Boolean = false): Boolean {
+    val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull()
+    if (entry == null) {
+        Logger.w(tag = "AppNavHost") {
+            "ChatList missing from stack — dropping pending conversation $conversationId"
+        }
+        return false
+    }
+    entry.savedStateHandle["pendingConversationId"] = conversationId.toString()
+    entry.savedStateHandle["pendingScrollToBottom"] = scrollToBottom
+    return true
 }
 
 // Helper to check if a destination is a top-level route
 private fun NavDestination?.isTopLevelRoute(): Boolean {
     return this?.hasRoute(Route.ChatList::class) == true ||
             this?.hasRoute(Route.Home::class) == true ||
-            this?.hasRoute(Route.Vault::class) == true
+            this?.hasRoute(Route.Vault::class) == true ||
+            this?.hasRoute(Route.Feed::class) == true
 }
 
 // Helper to check if we're navigating between top-level routes
@@ -685,6 +724,7 @@ sealed class TopLevelRoute(
     val route: Route, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
     data object Chat : TopLevelRoute(Route.ChatList, "Chats", BootstrapChat)
+    data object Feed : TopLevelRoute(Route.Feed, "Feed", Icons.Default.RssFeed)
     data object Home : TopLevelRoute(Route.Home, "Home", Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, "Vault", Icons.Outlined.Lock)
 }

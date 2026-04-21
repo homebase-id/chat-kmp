@@ -516,18 +516,25 @@ class ConversationService(
 
     }
 
-    suspend fun leaveGroup(conversationId: Uuid) {
+    /**
+     * @param forceLocalOnly caller has determined the group is isolated (no reachable
+     *  participant to receive distributed updates). Skips the admin-distribution protocol
+     *  and just flips [ChatProtocol.ConversationLeftTag] locally, matching the legacy-group
+     *  path. Also bypasses the sole-admin guard since there is no one to promote.
+     */
+    suspend fun leaveGroup(conversationId: Uuid, forceLocalOnly: Boolean = false) {
         val conversation = requireConversation(conversationId)
         val domain = credentialsManager.requireActiveDomain()
         val leaveFile = getConversationHomebaseFile(conversationId)
-        Logger.d { "leaveGroup START: conversationId=$conversationId isEncrypted=${leaveFile?.fileMetadata?.isEncrypted} aesKey=${leaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
+        Logger.d { "leaveGroup START: conversationId=$conversationId forceLocalOnly=$forceLocalOnly isEncrypted=${leaveFile?.fileMetadata?.isEncrypted} aesKey=${leaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
 
         if (!conversation.isGroupConversation) {
             throw IllegalStateException("Can only leave group conversations")
         }
 
-        if (conversation.isLegacyGroup) {
-            // Legacy groups don't support the full leave protocol — just mark locally
+        if (conversation.isLegacyGroup || forceLocalOnly) {
+            // Legacy groups don't support the full leave protocol, and isolated groups
+            // (no reachable participant) have nobody to distribute to — just mark locally.
             updateConversationTags(conversationId, dependencyUniqueId = conversationId) {
                 it + ChatProtocol.ConversationLeftTag
             }

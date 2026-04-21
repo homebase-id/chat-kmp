@@ -96,4 +96,6 @@ sealed class Route {
     @Serializable
     @SerialName("vault-settings")
     data object VaultSettings : Route()
+    @SerialName("feed")
+    data object Feed : Route()
 }

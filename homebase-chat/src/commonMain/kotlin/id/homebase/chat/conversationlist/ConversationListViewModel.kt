@@ -7,12 +7,17 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.auth.ApiCredentials
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
@@ -38,8 +43,8 @@ import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.LocalVideoContext
-import id.homebase.chat.services.LocalVideoContextStore
+import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
@@ -129,6 +134,7 @@ class ConversationListViewModel(
     private val userPreferences: UserPreferences,
     private val fileOperationsProvider: FileOperationsProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
+    private val credentialsManager: CredentialsManager,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val audioRecorder: AudioRecorder,
     private val audioWaveFormGenerator: AudioWaveFormGenerator,
@@ -138,7 +144,7 @@ class ConversationListViewModel(
     private val connectionRequestService: ConnectionRequestService,
     private val driveFileProvider: DriveFileProvider,
     private val shareContentProcessor: ShareContentProcessor,
-    private val localVideoContextStore: LocalVideoContextStore,
+    private val localVideoContextStore: LocalAttachmentContextStore,
 ) : ViewModel() {
 
     companion object {
@@ -174,6 +180,7 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
+            val vmInitMark = TimeSource.Monotonic.markNow()
             contactService.start()
             conversationStream.start()
             connectionService.start()
@@ -195,14 +202,46 @@ class ConversationListViewModel(
                 )
             }.distinctUntilChanged()
 
+            viewModelScope.launch {
+                conversationStream.conversations.first { it.dataReady }
+                Logger.i(tag = "ConvListPerf") {
+                    "combineSource firstEmit=conversations(dataReady) at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+                }
+            }
+            viewModelScope.launch {
+                contactService.contacts.first { it.isNotEmpty() }
+                Logger.i(tag = "ConvListPerf") {
+                    "combineSource firstEmit=contacts(nonEmpty) at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+                }
+            }
+            viewModelScope.launch {
+                ownerSessionRepository.user.first { it != null }
+                Logger.i(tag = "ConvListPerf") {
+                    "combineSource firstEmit=ownerSession(nonNull) at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+                }
+            }
+            viewModelScope.launch {
+                connectionStatusFlow.first { it.statusKnown }
+                Logger.i(tag = "ConvListPerf") {
+                    "combineSource firstEmit=connectionStatus(known) at ${vmInitMark.elapsedNow().inWholeMilliseconds}ms from vmInit"
+                }
+            }
+
             combine(
                 conversationStream.conversations,
                 contactService.contacts,
                 ownerSessionRepository.user,
+                credentialsManager.credentialsFlow,
                 connectionStatusFlow,
-            ) { conversationState, contacts, ownerSession, connectionCtx ->
+            ) { conversationState, contacts, ownerSession, credentials, connectionCtx ->
 
-                if (ownerSession == null) return@combine Pair(false, emptyList())
+                // Synthesize a minimal OwnerSession from the active credentials
+                // when the live session hasn't loaded yet. credentialsFlow is
+                // set synchronously at login/restore, so this fills the gap
+                // before OwnerSessionRepository.load() has run — the enricher
+                // never has to deal with a null session.
+                val effectiveSession = synthesizeOwnerSession(ownerSession, credentials)
+                if (effectiveSession == null) return@combine Pair(false, emptyList())
 
                 val contactMap = contacts.associateBy { it.odinId }
 
@@ -210,7 +249,7 @@ class ConversationListViewModel(
                     enricher.enrich(
                         convo = it,
                         contactMap = contactMap,
-                        ownerSession = ownerSession,
+                        ownerSession = effectiveSession,
                         connectionMap = connectionCtx.connectionMap,
                         incomingRequestSenders = connectionCtx.incomingSenders,
                         outgoingRequestRecipients = connectionCtx.outgoingRecipients,
@@ -218,6 +257,9 @@ class ConversationListViewModel(
                     )
                 })
             }.debounce(50).collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
+                Logger.i(tag = "ConversationListViewModel") {
+                    "conversationStream emit: dataReady=$dataReady enrichedCount=${enriched.size}"
+                }
                 if (dataReady) {
                     _uiState.update {
                         it.copy(
@@ -307,7 +349,8 @@ class ConversationListViewModel(
                                 uploadProgress = (state.uploadProgress - event.uniqueId).toPersistentMap()
                             )
                         }
-                        localVideoContextStore.remove(event.uniqueId)
+                        // Keep the local video thumbnail for the rest of the session so the
+                        // bubble never swaps to HomebaseImage (avoids progressive load + resize).
                     }
                 }
         }
@@ -367,6 +410,9 @@ class ConversationListViewModel(
         messageId: Uuid? = null,
         scrollToBottom: Boolean = false
     ) {
+        Logger.i(tag = "ConversationListViewModel") {
+            "selectConversation id=$conversationId scrollToBottom=$scrollToBottom"
+        }
         // Check for pending shared content (from iOS share extension or other handoff)
         viewModelScope.launch {
             processPendingSharedContent(conversationId)
@@ -1176,7 +1222,7 @@ class ConversationListViewModel(
                             }
 
                             contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
-                                val localContext = localVideoContextStore.get(action.message.id)
+                                val localContext = localVideoContextStore.get(action.message.id, selectedPayload.key)
                                 val ivBytes = selectedPayload.iv?.let { Base64.decode(it) }
 
                                 if (ivBytes != null || localContext != null) {
@@ -1369,6 +1415,7 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.ForwardMessageSend -> {
+                _messagesUiState.update { it.copy(isSendingMessage = true) }
                 viewModelScope.launch {
                     try {
                         val conversationIds = action.recipients.map { recipientModel ->
@@ -1397,6 +1444,8 @@ class ConversationListViewModel(
                                 "Failed to send forward message: ${e.message}"
                             )
                         )
+                    } finally {
+                        _messagesUiState.update { it.copy(isSendingMessage = false) }
                     }
                 }
             }
@@ -1606,7 +1655,7 @@ class ConversationListViewModel(
                         val tempPath = fileOperationsProvider.writeBytesToTempFile(
                             action.imageBytes,
                             "clipboard_image",
-                            "png"
+                            ".png"
                         )
                         val platformFile = platformFileFromPath(tempPath)
                         val newFile = AttachmentPendingFile.FileImage(
@@ -1892,9 +1941,16 @@ class ConversationListViewModel(
         val loadStart = TimeSource.Monotonic.markNow()
 
         val hasCachedMessages = chatMessageStream.hasCachedMessages(conversationId)
+        Logger.i(tag = "ConversationListViewModel") {
+            "loadMessagesForConversation id=$conversationId hasCached=$hasCachedMessages"
+        }
 
         _messagesUiState.update {
-            it.copy(scrollPosition = null, isLoadingMessages = !hasCachedMessages)
+            it.copy(
+                scrollPosition = null,
+                isLoadingMessages = !hasCachedMessages,
+                replyToMessage = null,
+            )
         }
 
         // When loading message for newly selected conversation, cancel any previous job to
@@ -1953,26 +2009,20 @@ class ConversationListViewModel(
                                 }
                             })
 
-                            // Scroll handling, either use new message id, click message id or null
-                            val newMessageId =
-                                messages.firstOrNull { it.id == pendingMessageId }?.id
+                            // Scroll handling: navigate to a specific message (search results,
+                            // cross-conversation jumps, etc.). The user's own just-sent messages
+                            // are handled by the LazyColumn auto-follow effect in ConversationContent.kt,
+                            // which only scrolls when the user was already at the bottom. Forcing
+                            // a scroll-to-new-message here would yank the user out of history.
                             pendingMessageId = null
-                            val indexOfMessageForScroll = if (newMessageId != null) {
-                                val index = messagesModels.indexOfLast {
-                                    it is MessageListContentModel.Message && it.message.id == newMessageId
+                            val indexOfMessageForScroll = if (messageIdForScrollNullable != null) {
+                                val messageIndex = messagesModels.indexOfLast {
+                                    it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
                                 }
-                                Logger.i("Resetting scroll position, new message seen, index: $index")
-                                index
+                                messageIdForScrollNullable = null
+                                messageIndex
                             } else {
-                                if (messageIdForScrollNullable == null) {
-                                    null
-                                } else {
-                                    val messageIndex = messagesModels.indexOfLast {
-                                        it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
-                                    }
-                                    messageIdForScrollNullable = null
-                                    messageIndex
-                                }
+                                null
                             }
 
                             val newScroll = if (indexOfMessageForScroll == null) {
@@ -2002,6 +2052,9 @@ class ConversationListViewModel(
                                 )
                             }
 
+                            Logger.i(tag = "ConversationListViewModel") {
+                                "selectedConversationId flip id=$conversationId messageCount=${messages.size}"
+                            }
                             _uiState.value = _uiState.value.copy(
                                 selectedConversationId = conversationId,
                             )
@@ -2281,6 +2334,7 @@ class ConversationListViewModel(
         content: String,
         files: List<AttachmentPendingFile>
     ) {
+        val sentAt = UnixTimeUtc.now()
         viewModelScope.launch {
             val attachments = mutableListOf<AttachmentInput>()
             files.forEach { attachment ->
@@ -2384,67 +2438,140 @@ class ConversationListViewModel(
             val newMessageId = Uuid.random()
             Logger.d(tag = TAG) { "addMessageWithFiles: message=$newMessageId conversation=$conversationId files=${files.size}" }
 
-            _messagesUiState.update { state ->
-                state.copy(
-                    uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap()
-                )
+            // Store a local preview context per attachment (keyed by the payload key the
+            // MessageAttachmentBuilder will emit), so both the placeholder and the eventual
+            // real bubble can render the local preview without fetching from the server.
+            // Populate local contexts synchronously with what we have on hand, so the
+            // placeholder shows immediately. For videos the thumbnail bytes give us the
+            // aspect for free; for images we compute aspect asynchronously below and
+            // re-put once we have it — avoids blocking the placeholder on image I/O.
+            val imagePathsToRefine = mutableListOf<Pair<String, String>>()
+            files.forEachIndexed { index, file ->
+                val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+                val ctx: LocalAttachmentContext? = when (file) {
+                    is AttachmentPendingFile.FileVideo -> {
+                        val bytes = file.thumbnailBytes
+                        if (bytes != null) {
+                            val aspect = runCatching {
+                                val size = ImageUtils.getNaturalSize(bytes)
+                                if (size.pixelWidth > 0 && size.pixelHeight > 0)
+                                    size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
+                                else null
+                            }.getOrNull()
+                            LocalAttachmentContext.Video(
+                                thumbnailBytes = bytes,
+                                localFilePath = file.file.toString(),
+                                aspectRatio = aspect,
+                            )
+                        } else null
+                    }
+                    is AttachmentPendingFile.FileImage -> {
+                        val path = file.file.toString()
+                        imagePathsToRefine += payloadKey to path
+                        LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
+                    }
+                    is AttachmentPendingFile.Gallery -> {
+                        val path = file.image.file.toString()
+                        imagePathsToRefine += payloadKey to path
+                        LocalAttachmentContext.Image(localFilePath = path, aspectRatio = null)
+                    }
+                    is AttachmentPendingFile.File -> null
+                    is AttachmentPendingFile.Audio -> null
+                }
+                if (ctx != null) {
+                    localVideoContextStore.put(newMessageId, payloadKey, ctx)
+                }
             }
 
-            // Store local video context for thumbnail preview during upload
-            files.filterIsInstance<AttachmentPendingFile.FileVideo>()
-                .firstOrNull()?.let { videoFile ->
-                    val thumbBytes = videoFile.thumbnailBytes
-                    if (thumbBytes != null) {
-                        localVideoContextStore.put(
-                            newMessageId,
-                            LocalVideoContext(
-                                thumbnailBytes = thumbBytes,
-                                localFilePath = videoFile.file.toString(),
+            // Refine image aspect ratios off the main path.
+            if (imagePathsToRefine.isNotEmpty()) {
+                viewModelScope.launch {
+                    imagePathsToRefine.forEach { (payloadKey, path) ->
+                        val aspect = runCatching {
+                            val bytes = fileOperationsProvider.readFileBytes(path)
+                            val size = ImageUtils.getNaturalSize(bytes)
+                            if (size.pixelWidth > 0 && size.pixelHeight > 0)
+                                size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
+                            else null
+                        }.getOrNull()
+                        if (aspect != null) {
+                            localVideoContextStore.put(
+                                newMessageId,
+                                payloadKey,
+                                LocalAttachmentContext.Image(localFilePath = path, aspectRatio = aspect),
                             )
-                        )
+                        }
                     }
                 }
+            }
 
             pendingMessageId = newMessageId
 
-            try {
-                val bundle = MessageAttachmentBuilder.build(
-                    attachments = attachments,
-                    fileOperationsProvider = fileOperationsProvider,
-                    payloadKeyFactory = { index, _ ->
-                        "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
-                    })
+            val placeholder = PendingOutgoingMessage(
+                id = newMessageId,
+                conversationId = conversationId,
+                text = content,
+                attachmentCount = files.size,
+                sentAt = kotlin.time.Instant.fromEpochMilliseconds(sentAt.milliseconds),
+            )
 
-                chatMessageSenderService.sendNewMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    messageText = content,
-                    previousMessageUniqueId = null,
-                    payloadBundle = bundle,
+            // Register the placeholder, register upload progress, clear the
+            // composer, and close the overlay BEFORE the heavy work so the
+            // user sees a "Preparing…" bubble in the chat immediately.
+            _messagesUiState.update { state ->
+                state.copy(
+                    uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap(),
+                    pendingOutgoing = (state.pendingOutgoing + placeholder).toPersistentList(),
+                    fullScreenOverlay = null,
+                    isSendingMessage = false,
                 )
-                messageInputTextState.clear()
-                _messagesUiState.update {
-                    it.copy(
-                        fullScreenOverlay = null,
-                        isSendingMessage = false
+            }
+            messageInputTextState.clear()
+
+            viewModelScope.launch {
+                try {
+                    val bundle = MessageAttachmentBuilder.build(
+                        attachments = attachments,
+                        fileOperationsProvider = fileOperationsProvider,
+                        payloadKeyFactory = { index, _ ->
+                            "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
+                        })
+
+                    chatMessageSenderService.sendNewMessage(
+                        messageUniqueId = newMessageId,
+                        conversationId = conversationId,
+                        messageText = content,
+                        previousMessageUniqueId = null,
+                        payloadBundle = bundle,
+                        userDate = sentAt,
+                    )
+                    // Real optimistic bubble has landed — drop the placeholder.
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            pendingOutgoing = state.pendingOutgoing
+                                .filterNot { it.id == newMessageId }
+                                .toPersistentList(),
+                        )
+                    }
+                } catch (e: Exception) {
+                    Logger.e(
+                        throwable = e,
+                        tag = TAG
+                    ) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap(),
+                            pendingOutgoing = state.pendingOutgoing
+                                .filterNot { it.id == newMessageId }
+                                .toPersistentList(),
+                        )
+                    }
+                    sendEvent(
+                        ShowErrorMessage(
+                            "Failed to send file(s): ${e.message}"
+                        )
                     )
                 }
-            } catch (e: Exception) {
-                Logger.e(
-                    throwable = e,
-                    tag = TAG
-                ) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
-                _messagesUiState.update { state ->
-                    state.copy(
-                        uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap(),
-                        isSendingMessage = false
-                    )
-                }
-                sendEvent(
-                    ShowErrorMessage(
-                        "Failed to send file(s): ${e.message}"
-                    )
-                )
             }
         }
     }
@@ -2508,4 +2635,30 @@ class ConversationListViewModel(
             shareContentProcessor.cleanup()
         }
     }
+}
+
+/**
+ * Chooses the [OwnerSession] passed to [ConversationEnricher]: prefer the
+ * fully-resolved [live] session, fall back to a minimal one synthesized
+ * from [credentials] when the async profile load hasn't arrived yet.
+ *
+ * Returns null only when neither source is available (pre-login state).
+ * The preference order is load-bearing — inverting it would replace a
+ * resolved display name / profile image with a bare odinId.
+ */
+internal fun synthesizeOwnerSession(
+    live: OwnerSession?,
+    credentials: ApiCredentials?,
+): OwnerSession? = live ?: credentials?.let {
+    OwnerSession(
+        odinId = it.domain,
+        displayName = null,
+        firstName = null,
+        surName = null,
+        profileImageFileId = null,
+        profileImageFileKey = null,
+        profileImagePreviewThumbnail = null,
+        profileImageLastModified = null,
+        status = null,
+    )
 }

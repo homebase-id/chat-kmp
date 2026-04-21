@@ -49,7 +49,7 @@ class DriveFileProviderCached(
     // Immutable set — always replaced, never mutated in-place.
     // @Volatile ensures lock-free reads always see the latest reference.
     // Writes are serialized via notFoundCacheMutex (rare: only on 404 responses).
-    // Later we should cache 401,403,404,410, but not yet
+    // Only 404 (NotFoundException) is cached. Transient failures (5xx, network errors) are never cached.
     @Volatile private var notFoundCache: Set<String> = emptySet()
     private val notFoundCacheMutex = Mutex()
 
@@ -57,24 +57,22 @@ class DriveFileProviderCached(
     private var _thumbDiskKache: FileKache? = null
     private val kacheMutex = Mutex()
 
-    private suspend fun payloadDiskKache(): FileKache {
-        _payloadDiskKache?.let { return it }
-        return kacheMutex.withLock {
-            _payloadDiskKache ?: FileKache(
-                    directory = "$directory/homebase-payloads",
-                    maxSize = 200L * 1024L * 1024L // 200MB
-            ).also { _payloadDiskKache = it }
-        }
+    // Always acquires kacheMutex — the previous lock-free fast path let a
+    // reader hand out a reference to a FileKache instance that clearCaches()
+    // was simultaneously disposing, producing a NPE inside FileKache's
+    // internals when the reader resumed and called .get() on it.
+    private suspend fun payloadDiskKache(): FileKache = kacheMutex.withLock {
+        _payloadDiskKache ?: FileKache(
+                directory = "$directory/homebase-payloads",
+                maxSize = 200L * 1024L * 1024L // 200MB
+        ).also { _payloadDiskKache = it }
     }
 
-    private suspend fun thumbDiskKache(): FileKache {
-        _thumbDiskKache?.let { return it }
-        return kacheMutex.withLock {
-            _thumbDiskKache ?: FileKache(
-                    directory = "$directory/homebase-thumbs",
-                    maxSize = 300L * 1024L * 1024L // 300MB
-            ).also { _thumbDiskKache = it }
-        }
+    private suspend fun thumbDiskKache(): FileKache = kacheMutex.withLock {
+        _thumbDiskKache ?: FileKache(
+                directory = "$directory/homebase-thumbs",
+                maxSize = 300L * 1024L * 1024L // 300MB
+        ).also { _thumbDiskKache = it }
     }
 
     // ================================================================
@@ -97,11 +95,7 @@ class DriveFileProviderCached(
         }
 
         // 2️⃣ Peek in disk cache and return result if it's there
-        payloadDiskKache().get(cacheKey)?.let { filePath ->
-            val (result, elapsed) = measureTimedValue { readBytesResponse(filePath) }
-            Logger.d(tag = "VideoIO") { "payload cache-hit: read ${result.bytes.size} bytes in $elapsed" }
-            return result
-        }
+        readCachedPayloadOrLog(cacheKey)?.let { return it }
 
         // 2️⃣ Fetch from network but lock to make sure that we don't load the same
         // resource twice over the network
@@ -113,11 +107,7 @@ class DriveFileProviderCached(
             if (cacheKey in notFoundCache) {
                 return@withLock ByteApiResponse.EMPTY_404
             }
-            payloadDiskKache().get(cacheKey)?.let { filePath ->
-                val (result, elapsed) = measureTimedValue { readBytesResponse(filePath) }
-                Logger.d(tag = "VideoIO") { "payload cache-hit (post-lock): read ${result.bytes.size} bytes in $elapsed" }
-                return@withLock result
-            }
+            readCachedPayloadOrLog(cacheKey)?.let { return@withLock it }
 
             // we allow up to 3 concurrent semaphore payloads over the network
             return payloadSemaphore.withPermit {
@@ -125,23 +115,20 @@ class DriveFileProviderCached(
                     val (networkResult, elapsed) = measureTimedValue {
                         delegate.getPayloadBytesRawNetwork(driveId, fileId, key, options, onDownloadProgress)
                     }
-                    Logger.d(tag = "VideoIO") { "payload network-fetch: ${networkResult.bytes.size} bytes in $elapsed" }
+                    Logger.d(tag = "VideoIO") { "payload network-fetch: ${networkResult.bytes.size} bytes in $elapsed key=$cacheKey" }
                     val result = networkResult
 
-                    if (result.status == 404) {
-                        // 404 case - cache that file doesn't exist in memory only
-                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
-                        ByteApiResponse.EMPTY_404
-                    } else {
-                        // 3️⃣ Store to disk
-                        val (_, cacheWriteElapsed) = measureTimedValue {
-                            payloadDiskKache().put(cacheKey) { filePath ->
-                                writeBytesResponse(filePath, result)
-                            }
-                        }
-                        Logger.d(tag = "VideoIO") { "payload cache-write: ${result.bytes.size} bytes in $cacheWriteElapsed" }
-                        result
+                    // 3️⃣ Store to disk (only 200/206 can reach here — throwForFailure throws for everything else)
+                    check(result.status in 200..299) {
+                        "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
+                    val (_, cacheWriteElapsed) = measureTimedValue {
+                        payloadDiskKache().put(cacheKey) { filePath ->
+                            writeBytesResponse(filePath, result)
+                        }
+                    }
+                    Logger.d(tag = "VideoIO") { "payload cache-write: ${result.bytes.size} bytes in $cacheWriteElapsed key=$cacheKey" }
+                    result
                 } catch (e: NotFoundException) {
                     // 404 thrown by network layer — cache it so future calls skip the network
                     notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
@@ -192,13 +179,7 @@ class DriveFileProviderCached(
                                         chunkStart = (chunkStart ?: 0).toInt()
                                 )
 
-                        val sliceEnd =
-                                if (chunkLength != null && chunkStart != null) {
-                                    (chunkLength - chunkStart).toInt()
-                                } else {
-                                    decrypted.size
-                                }
-
+                        val sliceEnd = chunkLength?.toInt() ?: decrypted.size
                         decrypted.sliceArray(0 until minOf(sliceEnd, decrypted.size))
                     } else {
                         delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
@@ -260,13 +241,12 @@ class DriveFileProviderCached(
 
         // 1️⃣ Check in-memory 404 cache first
         if (cacheKey in notFoundCache) {
+            Logger.d(tag = "ThumbIO") { "thumb notFound-cache-hit key=$cacheKey" }
             return ByteApiResponse.EMPTY_404
         }
 
         // 2️⃣ Peek in disk cache and return result if it's there
-        thumbDiskKache().get(cacheKey)?.let { filePath ->
-            return readBytesResponse(filePath)
-        }
+        readCachedThumbOrLog(cacheKey)?.let { return it }
 
         // 2️⃣ Fetch from network but lock to make sure that we don't load the same
         // resource twice over the network
@@ -278,9 +258,7 @@ class DriveFileProviderCached(
             if (cacheKey in notFoundCache) {
                 return@withLock ByteApiResponse.EMPTY_404
             }
-            thumbDiskKache().get(cacheKey)?.let { filePath ->
-                return@withLock readBytesResponse(filePath)
-            }
+            readCachedThumbOrLog(cacheKey)?.let { return@withLock it }
 
             // we allow up to 30 concurrent semaphore thumbnails over the network
             return thumbnailSemaphore.withPermit {
@@ -294,31 +272,74 @@ class DriveFileProviderCached(
                                     height,
                                     lastModified
                             )
+                    Logger.d(tag = "ThumbIO") {
+                        "thumb network-fetch: status=${result.status} ${result.bytes.size} bytes contentType=${result.contentType} key=$cacheKey"
+                    }
 
-                    if (result.status == 404) {
-                        // 404 case - cache that file doesn't exist in memory only
-                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
-                        ByteApiResponse.EMPTY_404
-                    } else {
-                        // 3️⃣ Store to disk; only allow one writer per GPT indicating
-                        // many writers can corrupt the journal file
+                    // 3️⃣ Store to disk (only 200/206 can reach here — throwForFailure throws for everything else).
+                    // Serialise writes to avoid corrupting FileKache's journal file.
+                    check(result.status in 200..299) {
+                        "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
+                    }
+                    try {
                         thumbnailKacheWriteMutex.withLock {
                             thumbDiskKache().put(cacheKey) { filePath ->
                                 writeBytesResponse(filePath, result)
                             }
                         }
-                        result
+                        Logger.d(tag = "ThumbIO") { "thumb cache-write: ${result.bytes.size} bytes key=$cacheKey" }
+                    } catch (e: Exception) {
+                        // A write failure should not prevent the caller from getting the fetched bytes.
+                        // Surface it loudly so we can spot corrupted journals or full disks.
+                        Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-write FAILED key=$cacheKey" }
                     }
+                    result
                 } catch (e: NotFoundException) {
                     // 404 thrown by network layer — cache it so future calls skip the network
                     notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
                     throw e
                 } catch (e: Exception) {
                     // For other errors (500, network issues, etc.), don't cache and rethrow
+                    Logger.w(tag = "ThumbIO") { "thumb network-fetch FAILED (${e::class.simpleName}): ${e.message} key=$cacheKey" }
                     throw e
                 }
             }
         } // Mutex.lock
+    }
+
+    /**
+     * Read a thumb from the disk cache. Returns null on cache miss OR when the
+     * cached file cannot be parsed (corrupted entry, truncated write, etc.) OR
+     * when the underlying FileKache throws (e.g. a concurrent clearCaches()
+     * on another thread). All exceptions are logged as errors so the caller
+     * can fall through to the network cleanly.
+     */
+    private suspend fun readCachedThumbOrLog(cacheKey: String): ByteApiResponse? {
+        return try {
+            val filePath = thumbDiskKache().get(cacheKey) ?: return null
+            val result = readBytesResponse(filePath)
+            Logger.d(tag = "ThumbIO") { "thumb cache-hit: status=${result.status} ${result.bytes.size} bytes key=$cacheKey" }
+            result
+        } catch (e: Exception) {
+            Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-read FAILED key=$cacheKey" }
+            null
+        }
+    }
+
+    /**
+     * Payload-cache analog of [readCachedThumbOrLog]. Defense-in-depth against
+     * FileKache internal errors and parse failures.
+     */
+    private suspend fun readCachedPayloadOrLog(cacheKey: String): ByteApiResponse? {
+        return try {
+            val filePath = payloadDiskKache().get(cacheKey) ?: return null
+            val (result, elapsed) = measureTimedValue { readBytesResponse(filePath) }
+            Logger.d(tag = "VideoIO") { "payload cache-hit: ${result.bytes.size} bytes in $elapsed key=$cacheKey" }
+            result
+        } catch (e: Exception) {
+            Logger.e(tag = "VideoIO", throwable = e) { "payload cache-read FAILED key=$cacheKey" }
+            null
+        }
     }
 
     suspend fun getThumbBytesDecrypted(
@@ -342,7 +363,21 @@ class DriveFileProviderCached(
 
         if (raw.status == 404) throw NotFoundException()
 
-        val decryptedBytes = delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
+        val payloadEncryptedHeader = raw.headers["payloadencrypted"]
+        val decryptedBytes = try {
+            delegate.decryptBytes(keyHeader, raw.headers, raw.bytes)
+        } catch (e: Exception) {
+            // Single most likely NPE site when the cache is poisoned with a
+            // non-2xx response from the pre-61ebe154 code path. Keep context
+            // so the log pins the bad key.
+            Logger.e(tag = "ThumbIO", throwable = e) {
+                "thumb decrypt FAILED (${e::class.simpleName}): status=${raw.status} " +
+                    "bytes=${raw.bytes.size} contentType=${raw.contentType} " +
+                    "payloadEncrypted=$payloadEncryptedHeader drive=$driveId file=$fileId " +
+                    "key=$payloadKey size=${width}x$height lastMod=$lastModified"
+            }
+            throw e
+        }
 
         return BytesResponse(bytes = decryptedBytes, contentType = raw.contentType)
     }
@@ -422,21 +457,32 @@ class DriveFileProviderCached(
         val thumbDir = "$directory/homebase-thumbs".toPath()
         val preloadDir = "$directory/hbvid_preload".toPath()
 
-        try {
-            _payloadDiskKache?.clear()
-            _thumbDiskKache?.clear()
-        } catch (e: Exception) {
-            Logger.w("Kache.clear() failed, falling back to manual delete", e)
+        // Serialised with the accessor functions: any in-flight payload/thumb
+        // reader either completed before we took the mutex (so its reference
+        // is no longer reachable from us) or is still waiting for it (so it
+        // will observe the post-teardown null and construct a fresh kache).
+        //
+        // We intentionally do NOT call FileKache.clear() — on at least one
+        // Android device that call raced with concurrent .get() calls and
+        // nulled internal FileKache state under a reader's feet, producing
+        // the `getClass() on null` NPE that fired 335× after logout.
+        // Deleting the directory directly achieves the same outcome and the
+        // next accessor reconstructs a clean FileKache on top of an empty dir.
+        kacheMutex.withLock {
+            _payloadDiskKache = null
+            _thumbDiskKache = null
+
             try {
-                fileSystem.delete(payloadDir, mustExist = false)
-                fileSystem.delete(thumbDir, mustExist = false)
-            } catch (deleteEx: Exception) {
-                Logger.w("Manual cache delete also failed", deleteEx)
+                fileSystem.deleteRecursively(payloadDir)
+            } catch (e: Exception) {
+                Logger.w(tag = "DriveFileProviderCached", throwable = e) { "payload cache dir delete failed" }
+            }
+            try {
+                fileSystem.deleteRecursively(thumbDir)
+            } catch (e: Exception) {
+                Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache dir delete failed" }
             }
         }
-
-        _payloadDiskKache = null
-        _thumbDiskKache = null
 
         try {
             fileSystem.deleteRecursively(preloadDir)

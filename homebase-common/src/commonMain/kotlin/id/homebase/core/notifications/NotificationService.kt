@@ -18,10 +18,13 @@ import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.Platform
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlin.random.Random
@@ -61,8 +64,11 @@ class NotificationService(
     private val ALERT_COOLDOWN = 15.minutes
     private var lastAlertMark = TimeSource.Monotonic.markNow() - ALERT_COOLDOWN
 
-    private val _navigationEvents = MutableSharedFlow<NotificationNavigationEvent>(extraBufferCapacity = 5)
-    val navigationEvents: SharedFlow<NotificationNavigationEvent> = _navigationEvents.asSharedFlow()
+    // Channel (not SharedFlow) so a notification tap on cold start is queued until the
+    // UI collector attaches, rather than dropped (MutableSharedFlow with replay=0 discards
+    // emissions that happen before the first subscriber subscribes).
+    private val _navigationEvents = Channel<NotificationNavigationEvent>(Channel.BUFFERED)
+    val navigationEvents: Flow<NotificationNavigationEvent> = _navigationEvents.receiveAsFlow()
 
     private val _inAppNotificationEvents =
         MutableSharedFlow<RichNotificationData>(extraBufferCapacity = 1)
@@ -431,7 +437,12 @@ class NotificationService(
             }
 
             if (event != null) {
-                _navigationEvents.tryEmit(event)
+                Logger.i(tag = "NotificationService") { "navigationEvent emit: $event" }
+                _navigationEvents.trySend(event)
+            } else {
+                Logger.w(tag = "NotificationService") {
+                    "No navigationEvent produced from click (appId unmatched?)"
+                }
             }
         } catch (e: Exception) {
             Logger.e(tag = "NotificationService") {
@@ -442,7 +453,7 @@ class NotificationService(
 
     /** Navigate to a specific conversation (used for deep links and share shortcuts). */
     fun navigateToConversation(conversationId: String) {
-        _navigationEvents.tryEmit(NotificationNavigationEvent.OpenConversation(conversationId))
+        _navigationEvents.trySend(NotificationNavigationEvent.OpenConversation(conversationId))
     }
 
     /** Displays a rich notification using platform-specific APIs. */

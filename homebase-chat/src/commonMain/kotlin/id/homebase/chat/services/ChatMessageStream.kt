@@ -395,6 +395,9 @@ class ChatMessageStream(
                     ?: false
 
             val localReadTimestamp = metadata.localAppData?.readTime
+            val ownReactions = metadata.localAppData?.localReactions
+                .orEmpty()
+                .toPersistentList()
 
             try {
                 require(appData.fileType == ChatProtocol.MessageFileType)
@@ -421,6 +424,7 @@ class ChatMessageStream(
                         originalAuthor = metadata.originalAuthor,
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         localReadTimestamp = localReadTimestamp,
+                        ownReactions = ownReactions,
                         isEdited = false,
                         content = "Deleted File",
                         messageAppData = MessageAppData(),
@@ -479,8 +483,10 @@ class ChatMessageStream(
                             authorSpecificDate
                         } else {
                             if (appData.userDate == null) {
-                                Logger.w { "Message (uid: ${appData.uniqueId}) with no version and not edited has null userDate. using authorSpecificDate" }
-                                Logger.w { "See File here: https://${domain}/owner/drives/9ff813aff2d61e2f9b9db189e72d1a11_66ea8355ae4155c39b5a719166b510e3/${appData.uniqueId}" }
+                                Logger.w {
+                                    "Message (uid: ${appData.uniqueId}) with no version and not edited has null userDate. " +
+                                        "using authorSpecificDate. See file: https://${domain}/owner/drives/9ff813aff2d61e2f9b9db189e72d1a11_66ea8355ae4155c39b5a719166b510e3/${appData.uniqueId}"
+                                }
                                 authorSpecificDate
                             } else
                                 UnixTimeUtc(appData.userDate!!)
@@ -511,6 +517,7 @@ class ChatMessageStream(
                     displayName = displayName,
                     isEdited = messageAppData.isEdited,
                     localReadTimestamp = localReadTimestamp,
+                    ownReactions = ownReactions,
                     messageAppData = messageAppData,
                     reactionPreview = metadata.reactionPreview,
                     previewThumbnail = metadata.appData.previewThumbnail,
@@ -542,6 +549,7 @@ class ChatMessageStream(
                         displayName = metadata.originalAuthor?.domainName ?: "",
                         messageAppData = MessageAppData(),
                         localReadTimestamp = localReadTimestamp,
+                        ownReactions = ownReactions,
                         reactionPreview = metadata.reactionPreview,
                         previewThumbnail = metadata.appData.previewThumbnail,
                         payloads = metadata.payloads?.toPersistentList(),

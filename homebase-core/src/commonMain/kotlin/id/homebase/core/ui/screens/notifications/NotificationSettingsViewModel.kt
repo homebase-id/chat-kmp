@@ -174,7 +174,12 @@ class NotificationSettingsViewModel(
         }
     }
 
-    fun updatePermissionStatus(isGranted: Boolean) {
-        _uiState.update { it.copy(isPermissionGranted = isGranted) }
+    fun updatePermissionStatus(isGranted: Boolean, isPermanentlyDenied: Boolean = false) {
+        _uiState.update {
+            it.copy(
+                isPermissionGranted = isGranted,
+                isPermissionPermanentlyDenied = !isGranted && isPermanentlyDenied
+            )
+        }
     }
 }

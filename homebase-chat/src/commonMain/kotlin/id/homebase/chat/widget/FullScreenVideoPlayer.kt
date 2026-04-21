@@ -36,7 +36,8 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.image.toImageBitmap
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.UploadStatus
-import id.homebase.chat.services.LocalVideoContextStore
+import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.widget.video.LocalVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.image.HomebaseImage
@@ -144,8 +145,10 @@ fun FullScreenVideoPlayer(
                 )
             } else if (isLocalPlayback) {
                 // Show local thumbnail when paused during local playback
-                val localVideoContextStore = org.koin.compose.koinInject<LocalVideoContextStore>()
-                val localContext = data.uploadMessageId?.let { localVideoContextStore.get(it) }
+                val localVideoContextStore = org.koin.compose.koinInject<LocalAttachmentContextStore>()
+                val localContext = data.uploadMessageId?.let {
+                    localVideoContextStore.get(it, data.payloadKey) as? LocalAttachmentContext.Video
+                }
                 val localBitmap = localContext?.thumbnailBytes?.let { bytes ->
                     remember(bytes) { bytes.toImageBitmap() }
                 }
@@ -170,13 +173,6 @@ fun FullScreenVideoPlayer(
             )
         }
 
-        if (isDownloading) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = Color.White,
-            )
-        }
-
         TopAppBar(
             modifier = Modifier.align(Alignment.TopStart),
             title = {},
@@ -190,6 +186,15 @@ fun FullScreenVideoPlayer(
                 }
             },
             actions = {
+                if (isDownloading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                    )
+                }
                 if (uploadStatus != null) {
                     val statusText = when (uploadStatus) {
                         UploadStatus.Preparing -> stringResource(MR.string.upload_preparing)

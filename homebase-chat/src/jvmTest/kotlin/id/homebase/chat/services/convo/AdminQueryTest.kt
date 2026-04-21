@@ -69,7 +69,8 @@ class AdminQueryTest {
         originalAuthor: String,
         isGroup: Boolean,
         adminDataJson: String? = null,
-        title: String = ""
+        title: String = "",
+        archivalStatus: Int = 0,
     ): String {
         val now = Clock.System.now().epochSeconds
         val recipientsJson = participants.joinToString(",") { "\"$it\"" }
@@ -119,7 +120,7 @@ class AdminQueryTest {
                     "userDate": ${now}000,
                     "content": "$escapedContent",
                     "previewThumbnail": null,
-                    "archivalStatus": 0
+                    "archivalStatus": $archivalStatus
                 },
                 "localAppData": null,
                 "referencedFile": null,
@@ -559,6 +560,143 @@ class AdminQueryTest {
     // the same logic as ConversationMapper.queryAdmins(), we'll cover it after the refactor
     // extracts the shared logic into a testable unit.
 
+    // ---- Group 2b: ConversationAdminInfo.queryBatchFromDb() ----
+
+    @Test
+    fun queryBatchFromDb_emptyInput_returnsEmptyMap() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+            val result = ConversationAdminInfo.queryBatchFromDb(cm, dbm, chatDriveId, emptyList())
+            assertTrue(result.isEmpty())
+        }
+    }
+
+    @Test
+    fun queryBatchFromDb_returnsAdminsForAllPresentFiles() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+
+            val convo1 = Uuid.random()
+            val convo2 = Uuid.random()
+            val convo3 = Uuid.random()
+
+            insertFile(dbm, buildConversationFileJson(
+                fileId = Uuid.random(), uniqueId = convo1,
+                participants = listOf(testDomain, alice, bob),
+                originalAuthor = testDomain, isGroup = true
+            ))
+            insertFile(dbm, buildConversationFileJson(
+                fileId = Uuid.random(), uniqueId = convo2,
+                participants = listOf(testDomain, alice, bob),
+                originalAuthor = testDomain, isGroup = true
+            ))
+            insertFile(dbm, buildConversationFileJson(
+                fileId = Uuid.random(), uniqueId = convo3,
+                participants = listOf(testDomain, alice, bob),
+                originalAuthor = testDomain, isGroup = true
+            ))
+
+            insertFile(dbm, buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convo1),
+                groupId = convo1,
+                admins = listOf(alice),
+                originalAuthor = testDomain
+            ))
+            insertFile(dbm, buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convo2),
+                groupId = convo2,
+                admins = listOf(alice, bob),
+                originalAuthor = testDomain
+            ))
+            // convo3 intentionally has no admin file
+
+            val result = ConversationAdminInfo.queryBatchFromDb(
+                cm, dbm, chatDriveId, listOf(convo1, convo2, convo3)
+            )
+
+            assertEquals(2, result.size)
+            assertEquals(setOf(OdinId(alice)), result[convo1])
+            assertEquals(setOf(OdinId(alice), OdinId(bob)), result[convo2])
+            assertTrue(result[convo3] == null, "convo3 has no admin file — must be absent")
+        }
+    }
+
+    @Test
+    fun queryBatchFromDb_skipsCorruptAndEmptyAdminFiles() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+
+            val convoGood = Uuid.random()
+            val convoCorrupt = Uuid.random()
+            val convoEmpty = Uuid.random()
+
+            insertFile(dbm, buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convoGood),
+                groupId = convoGood,
+                admins = listOf(bob),
+                originalAuthor = testDomain
+            ))
+            insertFile(dbm, buildAdminFileJsonWithRawContent(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convoCorrupt),
+                groupId = convoCorrupt,
+                rawContent = "not valid json",
+                originalAuthor = testDomain
+            ))
+            insertFile(dbm, buildAdminFileJsonWithRawContent(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convoEmpty),
+                groupId = convoEmpty,
+                rawContent = "",
+                originalAuthor = testDomain
+            ))
+
+            val result = ConversationAdminInfo.queryBatchFromDb(
+                cm, dbm, chatDriveId, listOf(convoGood, convoCorrupt, convoEmpty)
+            )
+
+            assertEquals(1, result.size)
+            assertEquals(setOf(OdinId(bob)), result[convoGood])
+        }
+    }
+
+    @Test
+    fun queryBatchFromDb_matchesPerRowQueryResults() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+
+            val convo1 = Uuid.random()
+            val convo2 = Uuid.random()
+
+            insertFile(dbm, buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convo1),
+                groupId = convo1,
+                admins = listOf(alice, bob),
+                originalAuthor = testDomain
+            ))
+            insertFile(dbm, buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = ChatProtocol.getAdminFileUniqueId(convo2),
+                groupId = convo2,
+                admins = listOf(bob),
+                originalAuthor = testDomain
+            ))
+
+            val singleRow1 = ConversationAdminInfo.queryFromDb(cm, dbm, chatDriveId, convo1)
+            val singleRow2 = ConversationAdminInfo.queryFromDb(cm, dbm, chatDriveId, convo2)
+            val batch = ConversationAdminInfo.queryBatchFromDb(
+                cm, dbm, chatDriveId, listOf(convo1, convo2)
+            )
+
+            assertEquals(singleRow1, batch[convo1])
+            assertEquals(singleRow2, batch[convo2])
+        }
+    }
+
     // ---- Group 3: Additional mapping correctness ----
 
     @Test
@@ -613,6 +751,249 @@ class AdminQueryTest {
 
             assertTrue(result.isLegacyGroup)
             assertTrue(result.isGroupConversation)
+        }
+    }
+
+    // ---- Group 3: ConversationMapper.mapToBasic() — MANDATORY-path contract ----
+    //
+    // These tests lock down the invariant that mapToBasic does NOT touch
+    // admin-file rows, unread counts, last-message state, or any other
+    // enrichment-only field. If someone later adds a DB call or field
+    // population inside mapToBasic, these tests break and flag the seam
+    // crossing.
+
+    @Test
+    fun mapToBasic_oneOnOne_leavesEnrichmentFieldsAtDefaults() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+            val mapper = ConversationMapper(cm, dbm)
+
+            val conversationId = Uuid.random()
+            val convoJson = buildConversationFileJson(
+                fileId = Uuid.random(),
+                uniqueId = conversationId,
+                participants = listOf(testDomain, alice),
+                originalAuthor = testDomain,
+                isGroup = false
+            )
+            insertFile(dbm, convoJson)
+
+            val convoFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+                testIdentityId, chatDriveId, conversationId
+            )!!
+            val result = mapper.mapToBasic(convoFile)
+
+            // 1:1 — no admins at all
+            assertEquals(emptySet(), result.admins)
+            // Enrichment-only defaults preserved
+            assertEquals(" ", result.lastMessage)
+            assertEquals(0, result.unreadCount)
+            assertEquals(null, result.lastMessageDeliveryStatus)
+            assertEquals(false, result.lastMessageIsDeleted)
+            assertEquals(null, result.lastMessageFirstPayload)
+            assertEquals(false, result.lastMessageHasMultiplePayloads)
+            assertEquals(false, result.lastMessageIsFromActiveUser)
+            // Mandatory fields populated
+            assertEquals(conversationId, result.id)
+            assertEquals(listOf(OdinId(testDomain), OdinId(alice)), result.participants)
+        }
+    }
+
+    @Test
+    fun mapToBasic_group_seedsAdminsFromAdminDataWithoutDbLookup() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+            val mapper = ConversationMapper(cm, dbm)
+
+            val conversationId = Uuid.random()
+            // Group conversation with in-content adminData listing alice + bob
+            val adminDataJson = """{"admins":["$alice","$bob"]}"""
+            val convoJson = buildConversationFileJson(
+                fileId = Uuid.random(),
+                uniqueId = conversationId,
+                participants = listOf(testDomain, alice, bob),
+                originalAuthor = testDomain,
+                isGroup = true,
+                adminDataJson = adminDataJson
+            )
+            insertFile(dbm, convoJson)
+
+            // ALSO insert an admin file with a DIFFERENT admin set. If mapToBasic
+            // is wrongly querying the admin file, the result will include testDomain
+            // (from the admin file) instead of alice + bob (from adminData).
+            val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
+            val adminFileJson = buildAdminFileJson(
+                fileId = Uuid.random(),
+                uniqueId = adminUniqueId,
+                groupId = conversationId,
+                admins = listOf(testDomain), // different from adminData
+                originalAuthor = testDomain
+            )
+            insertFile(dbm, adminFileJson)
+
+            val convoFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+                testIdentityId, chatDriveId, conversationId
+            )!!
+            val result = mapper.mapToBasic(convoFile)
+
+            // Seeded from in-content adminData, NOT from the admin file.
+            assertEquals(setOf(OdinId(alice), OdinId(bob)), result.admins)
+        }
+    }
+
+    @Test
+    fun mapToBasic_group_withoutAdminData_fallsBackToOriginalAuthor() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+            val mapper = ConversationMapper(cm, dbm)
+
+            val conversationId = Uuid.random()
+            // Group with NO adminData in content
+            val convoJson = buildConversationFileJson(
+                fileId = Uuid.random(),
+                uniqueId = conversationId,
+                participants = listOf(testDomain, alice, bob),
+                originalAuthor = alice, // note: alice is the creator
+                isGroup = true
+            )
+            insertFile(dbm, convoJson)
+
+            val convoFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+                testIdentityId, chatDriveId, conversationId
+            )!!
+            val result = mapper.mapToBasic(convoFile)
+
+            assertEquals(setOf(OdinId(alice)), result.admins)
+        }
+    }
+
+    // ---- Group 4: ConversationMapper.applyAdmins() — pure patcher ----
+
+    // ---- Group 5: ConversationMapper.mapToBasic() — edge cases ----
+
+    @Test
+    fun mapToBasic_deletedConversation_shortCircuits() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+            val mapper = ConversationMapper(cm, dbm)
+
+            val conversationId = Uuid.random()
+            val convoJson = buildConversationFileJson(
+                fileId = Uuid.random(),
+                uniqueId = conversationId,
+                participants = listOf(testDomain, alice),
+                originalAuthor = testDomain,
+                isGroup = false,
+                archivalStatus = 2, // ArchivalStatus.Removed
+            )
+            insertFile(dbm, convoJson)
+
+            val convoFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+                testIdentityId, chatDriveId, conversationId
+            )!!
+            val result = mapper.mapToBasic(convoFile)
+
+            assertEquals(id.homebase.chat.data.ConversationState.Deleted, result.conversationState)
+            // mapDeletedConversation empties participants and stamps a deleted name.
+            assertTrue(result.participants.isEmpty())
+            assertEquals("Deleted conversation", result.name)
+        }
+    }
+
+    @Test
+    fun mapToBasic_noteToSelf_returnsOwnerAvatar() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+            val mapper = ConversationMapper(cm, dbm)
+
+            // Use the protocol-defined self-conversation id.
+            val conversationId = ChatProtocol.ConversationWithYourselfId
+            val convoJson = buildConversationFileJson(
+                fileId = Uuid.random(),
+                uniqueId = conversationId,
+                participants = listOf(testDomain),
+                originalAuthor = testDomain,
+                isGroup = false,
+            )
+            insertFile(dbm, convoJson)
+
+            val convoFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+                testIdentityId, chatDriveId, conversationId
+            )!!
+            val result = mapper.mapToBasic(convoFile)
+
+            assertEquals(
+                id.homebase.core.avatars.ConversationAvatarModel.Type.Owner,
+                result.avatarModel.type
+            )
+            // Note-to-self title is intentionally blank — resolved via string
+            // resource at the UI layer.
+            assertEquals("", result.name)
+        }
+    }
+
+    // ---- Group 6: ConversationsData — enrichment-flag preservation ----
+
+    @Test
+    fun conversationsData_copyPreservesEnrichmentFlags() {
+        // The refactor's subtle invariant: every incremental-update call site
+        // uses `.copy(items = ...)` instead of `ConversationsData(items = ...)`
+        // so the enrichment flags carried over from the last emit survive.
+        // This test pins the contract to the data class itself — if someone
+        // regresses a call site back to the constructor pattern, the flags
+        // won't carry and hasLastMessages/hasAdmins/hasUnreadCounts will
+        // silently drop back to false.
+        val enriched = ConversationsData(
+            dataReady = true,
+            items = emptyList(),
+            enrichment = EnrichmentState(
+                hasLastMessages = true,
+                hasAdmins = true,
+                hasUnreadCounts = true,
+            ),
+        )
+
+        val afterCopy = enriched.copy(items = emptyList())
+        assertTrue(afterCopy.enrichment.hasLastMessages)
+        assertTrue(afterCopy.enrichment.hasAdmins)
+        assertTrue(afterCopy.enrichment.hasUnreadCounts)
+
+        // Sanity: the constructor pattern DOES reset flags — that's the trap
+        // we're guarding against, and the reason every incremental-update call
+        // site was switched to .copy(items = ...).
+        val afterCtor = ConversationsData(items = emptyList())
+        assertEquals(false, afterCtor.enrichment.hasLastMessages)
+        assertEquals(false, afterCtor.enrichment.hasAdmins)
+        assertEquals(false, afterCtor.enrichment.hasUnreadCounts)
+    }
+
+    @Test
+    fun applyAdmins_patchesOnlyAdminsField() = runTest {
+        createTestDatabaseManager().use { dbm ->
+            val cm = createTestCredentialsManager()
+            val mapper = ConversationMapper(cm, dbm)
+
+            val conversationId = Uuid.random()
+            val convoJson = buildConversationFileJson(
+                fileId = Uuid.random(),
+                uniqueId = conversationId,
+                participants = listOf(testDomain, alice, bob),
+                originalAuthor = testDomain,
+                isGroup = true,
+                adminDataJson = """{"admins":["$testDomain"]}"""
+            )
+            insertFile(dbm, convoJson)
+
+            val convoFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+                testIdentityId, chatDriveId, conversationId
+            )!!
+            val basic = mapper.mapToBasic(convoFile)
+            val patched = mapper.applyAdmins(basic, setOf(OdinId(alice), OdinId(bob)))
+
+            // Only admins changed
+            assertEquals(setOf(OdinId(alice), OdinId(bob)), patched.admins)
+            // Everything else identical to basic
+            assertEquals(basic.copy(admins = patched.admins), patched)
         }
     }
 }

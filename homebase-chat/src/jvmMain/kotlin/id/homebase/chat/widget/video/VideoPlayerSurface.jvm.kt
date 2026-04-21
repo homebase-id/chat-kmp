@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -52,6 +53,7 @@ import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Bitmap
@@ -83,6 +85,7 @@ actual fun VideoPlayerSurface(
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
+    val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
     var httpServer by remember(data) { mutableStateOf<HttpServer?>(null) }
@@ -104,7 +107,23 @@ actual fun VideoPlayerSurface(
 
                 when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
-                        onProgress(0.5f)
+                        // Subscribe to the preloader's live bytes progress BEFORE kicking off the
+                        // preload, so StateFlow's initial value and every subsequent emit lands.
+                        val progressJob = scope.launch {
+                            var highWater = 0f
+                            videoPreloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
+                                Logger.d(tag = "VideoIO") { "hls surface progress: fileId=${data.fileId} p=$p" }
+                                if (p > highWater) highWater = p
+                                if (highWater < 1f) onProgress(highWater)
+                            }
+                        }
+                        // Await the preload so the first segment is cached before VLC starts.
+                        // If MediaItem's preload was cancelled when the chat list left composition,
+                        // this is the only path that drives real progress — VLC's own data-source
+                        // fetches bypass onDownloadProgress entirely.
+                        videoPreloader.preload(
+                            VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
+                        )
                         File(dir, "index.m3u8").writeText(content.strippedPlaylist)
 
                         val totalSize = content.metadata.fileSize
@@ -134,6 +153,7 @@ actual fun VideoPlayerSurface(
                                 end = totalSize - 1
                             }
                             val length = end - start + 1
+                            Logger.d(tag = "VideoHLS") { "vlc chunk request: fileId=${data.fileId} key=${data.payloadKey} chunkStart=$start chunkLength=$length name=$name" }
                             val bytes = runBlocking {
                                 driveFileProvider.getPayloadBytesDecrypted(
                                     driveId = data.driveId,
@@ -157,7 +177,7 @@ actual fun VideoPlayerSurface(
                         start()
                     }
                         httpServer = server
-                        onProgress(0.8f)
+                        progressJob.cancel()
                         state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                     }
                     is VideoContent.Mp4 -> {
@@ -217,8 +237,10 @@ internal fun VlcjPlayer(
     // VLC delivers frames on its own thread. We park the latest frame in an AtomicReference
     // and pull it into Compose state via withFrameNanos, decoupling VLC's frame rate from
     // the recomposition rate. Bitmap and pixel buffer are reused across frames to avoid GC.
-    val pendingFrame = remember { AtomicReference<ImageBitmap?>(null) }
-    var currentFrame by remember { mutableStateOf<ImageBitmap?>(null) }
+    // Re-keyed to videoPath so stale frames don't outlive the Bitmap that backs them
+    // when the user scrolls to a different video.
+    val pendingFrame = remember(videoPath) { AtomicReference<ImageBitmap?>(null) }
+    var currentFrame by remember(videoPath) { mutableStateOf<ImageBitmap?>(null) }
     var isPlaying by remember(videoPath) { mutableStateOf(true) }
     var position by remember(videoPath) { mutableFloatStateOf(0f) }
     var duration by remember(videoPath) { mutableFloatStateOf(0f) }
@@ -287,6 +309,10 @@ internal fun VlcjPlayer(
                     val size = width * height * 4
                     if (pixelBuffer.size != size) {
                         pixelBuffer = ByteArray(size)
+                        // Close the outgoing Bitmap before dropping our only strong reference.
+                        // Any ImageBitmap that wrapped it (still held in currentFrame for a frame
+                        // or two) will error cleanly on the next draw instead of racing GC.
+                        skiaBitmap.close()
                         skiaBitmap = Bitmap().apply { allocN32Pixels(width, height) }
                     }
                     nativeBuffers[0].rewind()
@@ -318,6 +344,10 @@ internal fun VlcjPlayer(
             mediaPlayer.controls().stop()
             mediaPlayer.release()
             factory.release()
+            // release() above joins VLC's render threads, so no more display() calls can land.
+            // Safe to close the Bitmap now; also drop any pending frame that still wraps it.
+            pendingFrame.set(null)
+            skiaBitmap.close()
         }
     }
 

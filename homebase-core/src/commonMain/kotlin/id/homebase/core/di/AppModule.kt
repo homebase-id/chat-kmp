@@ -19,7 +19,7 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.LocalVideoContextStore
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.PayloadBundleEncryptionService
@@ -50,6 +50,7 @@ import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.connections.ConnectionsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
+import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
@@ -116,7 +117,7 @@ val appModule = module {
 
     singleOf(::ShareConversationCacheWriter)
     singleOf(::ShareContentProcessor)
-    singleOf(::LocalVideoContextStore)
+    singleOf(::LocalAttachmentContextStore)
 
     singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
@@ -136,6 +137,7 @@ val appModule = module {
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
     viewModelOf(::HomeViewModel)
+    viewModelOf(::FeedViewModel)
     viewModelOf(::ConversationListViewModel)
     viewModelOf(::ArchivedConversationsViewModel)
     viewModelOf(::CreateConversationViewModel)

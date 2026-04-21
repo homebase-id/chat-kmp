@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.settings
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -16,7 +17,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -26,7 +27,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Settings").assertExists()
+        onNodeWithTag("settingsTitle").assertExists()
     }
 
     @Test
@@ -34,7 +35,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -44,11 +45,12 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Notifications").assertExists()
-        onNodeWithText("Appearance").assertExists()
-        onNodeWithText("Help").assertExists()
-        onNodeWithText("Delete my account").assertExists()
-        onNodeWithText("Log out").assertExists()
+        onNodeWithTag("notificationsButton").assertExists()
+        onNodeWithTag("securitySetupButton").assertExists()
+        onNodeWithTag("appearanceButton").assertExists()
+        onNodeWithTag("helpButton").assertExists()
+        onNodeWithTag("deleteAccountButton").assertExists()
+        onNodeWithTag("logoutButton").assertExists()
     }
 
     @Test
@@ -56,7 +58,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "2.5.3"),
+                    uiState = SettingsUiState(appVersion = "2.5.3", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -76,16 +78,17 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = {},
                     onBackClick = {},
+                    onNavigateToConnections = {},
                     onNavigateToNotifications = { navigated = true },
                     onNavigateToAppearance = {},
                     onNavigateToHelp = {},
                 )
             }
         }
-        onNodeWithText("Notifications").performClick()
+        onNodeWithTag("notificationsButton").performClick()
         assertTrue(navigated)
     }
 
@@ -95,7 +98,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -105,7 +108,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Appearance").performClick()
+        onNodeWithTag("appearanceButton").performClick()
         assertTrue(navigated)
     }
 
@@ -115,7 +118,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = { action ->
                         if (action is SettingsUiAction.LogoutClicked) {
                             loggedOut = true
@@ -129,7 +132,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Log out").performClick()
+        onNodeWithTag("logoutButton").performClick()
         assertTrue(loggedOut)
     }
 
@@ -139,7 +142,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0"),
+                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
                     onAction = { action ->
                         if (action is SettingsUiAction.DeleteAccount) {
                             deleteClicked = true
@@ -153,7 +156,7 @@ class SettingsUiTest {
                 )
             }
         }
-        onNodeWithText("Delete my account").performClick()
+        onNodeWithTag("deleteAccountButton").performClick()
         assertTrue(deleteClicked)
     }
 }

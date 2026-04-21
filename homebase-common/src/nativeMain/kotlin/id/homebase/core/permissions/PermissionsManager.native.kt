@@ -203,7 +203,7 @@ class IOSPermissionsManager(val onPermissionResult: (PermissionType, PermissionS
             }
 
             else -> {
-                onPermissionStatus(permission, PermissionStatus.DENIED, false)
+                onPermissionStatus(permission, PermissionStatus.DENIED, true)
             }
         }
     }
