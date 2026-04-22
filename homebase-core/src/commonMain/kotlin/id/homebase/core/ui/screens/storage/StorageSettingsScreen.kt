@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.client.cache.CacheStats
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_storage
@@ -52,6 +53,9 @@ import id.homebase.resources.storage_cache_profiles
 import id.homebase.resources.storage_cache_ram_badge
 import id.homebase.resources.storage_cache_size_format
 import id.homebase.resources.storage_cache_thumbnails
+import id.homebase.resources.storage_cache_unavailable
+import id.homebase.resources.storage_cache_unhealthy_body
+import id.homebase.resources.storage_cache_unhealthy_title
 import id.homebase.resources.storage_cache_unknown
 import id.homebase.resources.storage_caches_cleared
 import id.homebase.resources.storage_caches_header
@@ -164,6 +168,11 @@ fun StorageSettingsUi(
                 OrphanCoilCacheWarning(bytes = uiState.orphanCoilDiskBytes)
             }
 
+            val hasUnhealthyCache = uiState.caches.any { it.sizeBytes == CacheStats.UNAVAILABLE }
+            if (hasUnhealthyCache) {
+                UnhealthyCacheWarning()
+            }
+
             Button(
                 onClick = { onAction(StorageSettingsUiAction.ClearCachesClicked) },
                 enabled = !uiState.isClearing &&
@@ -235,8 +244,11 @@ private fun SectionHeader(
 
 @Composable
 private fun DiskCachesBlock(caches: List<CacheRowState>) {
-    val totalMax = caches.sumOf { it.maxBytes }
-    val totalUsed = caches.sumOf { it.sizeBytes }
+    // Skip unavailable caches from the usage-bar math — their sizeBytes is the
+    // -1L sentinel (see CacheStats.UNAVAILABLE) and would poison totals.
+    val healthy = caches.filter { it.sizeBytes != CacheStats.UNAVAILABLE }
+    val totalMax = healthy.sumOf { it.maxBytes }
+    val totalUsed = healthy.sumOf { it.sizeBytes }
     val freeFraction = if (totalMax > 0L)
         ((totalMax - totalUsed).toFloat() / totalMax.toFloat()).coerceAtLeast(0f)
     else 0f
@@ -253,7 +265,7 @@ private fun DiskCachesBlock(caches: List<CacheRowState>) {
                 .height(10.dp)
                 .clip(RoundedCornerShape(5.dp)),
         ) {
-            for (cache in caches) {
+            for (cache in healthy) {
                 val w = if (totalMax > 0L)
                     (cache.sizeBytes.toFloat() / totalMax.toFloat()).coerceAtLeast(0f)
                 else 0f
@@ -286,6 +298,7 @@ private fun DiskCachesBlock(caches: List<CacheRowState>) {
 
 @Composable
 private fun CacheLegendRow(state: CacheRowState) {
+    val unavailable = state.sizeBytes == CacheStats.UNAVAILABLE
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -294,7 +307,10 @@ private fun CacheLegendRow(state: CacheRowState) {
             modifier = Modifier
                 .size(10.dp)
                 .clip(CircleShape)
-                .background(cacheColor(state.id)),
+                .background(
+                    if (unavailable) MaterialTheme.colorScheme.error
+                    else cacheColor(state.id)
+                ),
         )
         Spacer(modifier = Modifier.size(10.dp))
         Text(
@@ -302,15 +318,23 @@ private fun CacheLegendRow(state: CacheRowState) {
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f),
         )
-        Text(
-            text = stringResource(
-                MR.string.storage_cache_size_format,
-                formatBytes(state.sizeBytes),
-                formatBytes(state.maxBytes),
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (unavailable) {
+            Text(
+                text = stringResource(MR.string.storage_cache_unavailable),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else {
+            Text(
+                text = stringResource(
+                    MR.string.storage_cache_size_format,
+                    formatBytes(state.sizeBytes),
+                    formatBytes(state.maxBytes),
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -416,6 +440,24 @@ private fun EmptyRow(text: String) {
 
 @Composable
 private fun OrphanCoilCacheWarning(bytes: Long) {
+    ErrorCard(
+        title = "Orphan Coil disk cache detected",
+        body = "${formatBytes(bytes)} in cache/coil3_disk_cache. Coil's default disk " +
+                "cache should be off — this directory means something is bypassing " +
+                "the Homebase cache layer. Tap \"Clear caches\" to delete it.",
+    )
+}
+
+@Composable
+private fun UnhealthyCacheWarning() {
+    ErrorCard(
+        title = stringResource(MR.string.storage_cache_unhealthy_title),
+        body = stringResource(MR.string.storage_cache_unhealthy_body),
+    )
+}
+
+@Composable
+private fun ErrorCard(title: String, body: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = androidx.compose.material3.CardDefaults.cardColors(
@@ -424,15 +466,13 @@ private fun OrphanCoilCacheWarning(bytes: Long) {
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
-                text = "Orphan Coil disk cache detected",
+                text = title,
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
             Spacer(modifier = Modifier.size(4.dp))
             Text(
-                text = "${formatBytes(bytes)} in cache/coil3_disk_cache. Coil's default disk " +
-                        "cache should be off — this directory means something is bypassing " +
-                        "the Homebase cache layer. Tap \"Clear caches\" to delete it.",
+                text = body,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
