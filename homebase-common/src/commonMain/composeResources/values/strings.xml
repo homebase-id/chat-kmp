@@ -175,6 +175,9 @@
     <string name="storage_drives_none">No drives</string>
     <string name="storage_cache_coil_memory">In-memory images</string>
     <string name="storage_cache_ram_badge">RAM</string>
+    <string name="storage_cache_unavailable">Unavailable</string>
+    <string name="storage_cache_unhealthy_title">Some caches could not be opened</string>
+    <string name="storage_cache_unhealthy_body">One or more on-disk caches failed to initialise. Tap \"Clear caches\" to reset them — cached bytes will be lost but no primary data is affected.</string>
     <string name="storage_other_header">Other</string>
     <string name="storage_database">Database</string>
 

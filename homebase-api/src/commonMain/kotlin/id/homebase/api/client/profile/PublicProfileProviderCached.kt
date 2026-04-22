@@ -195,6 +195,9 @@ class PublicProfileProviderCached(
         kacheMutex.withLock {
             _profileDiskKache = null
             _imageDiskKache = null
+            // Reset the ctor tombstones — see DriveFileProviderCached.clearCaches
+            // for the full rationale. This is the Clear-caches-button recovery
+            // path for a tombstoned FileKache ctor failure.
             profileKacheFailure = null
             imageKacheFailure = null
 
@@ -213,21 +216,25 @@ class PublicProfileProviderCached(
         notFoundCache = emptySet()
     }
 
+    // Per-cache try/catch — see DriveFileProviderCached.getCacheStats for the
+    // rationale. Same shape here for symmetry.
     suspend fun getCacheStats(): List<CacheStats> {
-        val profile = profileDiskKache()
-        val image = imageDiskKache()
-        return listOf(
-            CacheStats(
-                id = "public_profiles",
-                sizeBytes = profile.size,
-                maxBytes = profile.maxSize,
-            ),
-            CacheStats(
-                id = "public_images",
-                sizeBytes = image.size,
-                maxBytes = image.maxSize,
-            ),
-        )
+        val out = ArrayList<CacheStats>(2)
+        try {
+            val profile = profileDiskKache()
+            out.add(CacheStats(id = "public_profiles", sizeBytes = profile.size, maxBytes = profile.maxSize))
+        } catch (e: Throwable) {
+            Logger.w(tag = "PublicProfileIO", throwable = e) { "public_profiles stats unavailable" }
+            out.add(CacheStats(id = "public_profiles", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
+        }
+        try {
+            val image = imageDiskKache()
+            out.add(CacheStats(id = "public_images", sizeBytes = image.size, maxBytes = image.maxSize))
+        } catch (e: Throwable) {
+            Logger.w(tag = "PublicProfileIO", throwable = e) { "public_images stats unavailable" }
+            out.add(CacheStats(id = "public_images", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
+        }
+        return out
     }
 
     // =========================================================
