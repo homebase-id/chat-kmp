@@ -99,6 +99,10 @@ class DriveSyncManager(
                                 driveSyncsMutex.withLock { driveSyncs[event.driveId] }?.sync()
                             }
                         }
+                        is BackendEvent.DriveResult.PermissionDenied -> {
+                            Logger.w { "DriveSyncManager: drive ${event.driveId} denied (403) — unmounting for this session" }
+                            scope.launch { unmountDrive(event.driveId) }
+                        }
                     }
                     else -> Unit
                 }
@@ -193,6 +197,44 @@ class DriveSyncManager(
 
         old.values.forEach { it.cancel() }
         _driveStatuses.update { emptyMap() }
+    }
+
+    /**
+     * Dynamically mounts a drive into the sync engine (e.g. when an add-on is activated
+     * mid-session). Starts an HTTP-polling sync immediately; real-time WebSocket push
+     * notifications will arrive only after the next reconnect.
+     */
+    suspend fun mountDrive(driveId: Uuid, label: String) {
+        if (!isRunning) { Logger.w { "mountDrive() skipped — not running" }; return }
+        val alreadyExists = driveSyncsMutex.withLock { driveSyncs.containsKey(driveId) }
+        if (alreadyExists) return
+
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        runCatching {
+            DriveSync(identityId, driveId, driveQueryProvider, databaseManager, eventBus, scope)
+        }.onSuccess { sync ->
+            driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
+            _driveStatuses.update { it + (driveId to DriveStatus(driveId, label, DriveState.Initialized)) }
+            sync.sync()
+        }.onFailure { e ->
+            Logger.e("DriveSyncManager: mountDrive failed for $driveId: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Removes a drive from active sync for the current session. Does NOT modify [DriveRegistry] —
+     * the drive will be attempted again on the next app startup. Use this for session-level
+     * permission failures (403) so the sync indicator clears without altering user configuration.
+     */
+    suspend fun unmountDrive(driveId: Uuid) {
+        val sync = driveSyncsMutex.withLock {
+            val s = driveSyncs[driveId]
+            driveSyncs = driveSyncs - driveId
+            s
+        } ?: return
+        sync.cancel()
+        _driveStatuses.update { it - driveId }
+        Logger.i { "DriveSyncManager: unmounted drive $driveId" }
     }
 
     fun clearStorage(): Job {

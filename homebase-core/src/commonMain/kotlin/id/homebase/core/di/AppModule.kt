@@ -39,7 +39,8 @@ import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
-import id.homebase.core.config.syncLabeledDrives
+import id.homebase.core.config.mandatorySyncDrives
+import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
@@ -72,9 +73,13 @@ val FeedPermissionQualifier = named("feedPermission")
 val appModule = module {
     single { UserPreferences(get()) }
 
+    single { DriveRegistry(get()) }
+
     single {
+        val registry = get<DriveRegistry>()
+        val allDrives = mandatorySyncDrives + registry.loadDrives()
         DriveSyncManager(get(), get(), get(), get(), get(),
-            syncLabeledDrives.associate { it.drive.alias to it.label })
+            allDrives.associate { it.drive.alias to it.label })
     }
 
     single {
@@ -86,6 +91,7 @@ val appModule = module {
             outboxSync = get(),
             eventBus = get(),
             databaseManager = get(),
+            driveRegistry = get(),
             onPostAuthenticated = {
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.

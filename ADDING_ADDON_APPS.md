@@ -12,13 +12,13 @@ files mentioned below.
 
 A self-contained feature that:
 
-1. Shows up as a **toggleable icon** in the bottom navigation bar (or side rail).
+1. Shows up as a **toggleable icon** in the bottom navigation bar (or side rail for desktop).
 2. Has an **onboarding screen** the first time the user taps it, with *Set it up* and
-   *Dismiss* buttons.
+   *Dismiss* options.
 3. When setup it flips a runtime **activation flag** via an "Extend Permissions" dialog — which in
-   turn widens the set of drives the auth WebSocket subscribes to.
+   turn widens the set of drives the auth WebSocket subscribes to (and probably mounts it as an optional drive).
 4. Has a **Settings sub-page** with a switch to hide its icon and (optionally) a
-   biometrics switch.
+   biometrics switch plus other app specific settings.
 5. Optionally gates the main screen behind **device biometrics** on entry.
 
 Everything the user toggles is persisted in the encrypted local key/value store — no
@@ -49,6 +49,51 @@ homebase-core/src/commonMain/kotlin/id/homebase/core/ui/screens/foo/
 
 Class names are load-bearing: Koin's `viewModelOf(::FooViewModel)` binds by
 constructor reference, so renaming the VM requires an `AppModule.kt` update.
+
+---
+
+## Mandatory vs Optional Drives
+
+The sync engine distinguishes two categories of drives:
+
+| Category | Constant / Source | Examples |
+|---|---|---|
+| **Mandatory** | `mandatorySyncDrives` in `AppConfig.kt` | Chat, Contacts, Profile |
+| **Optional** | `DriveRegistry` (encrypted DB) | Feed, Vault, … |
+
+**Mandatory drives** (`chatLabeledDrive`, `contactLabeledDrive`, `profileLabeledDrive`) are always
+mounted. They cannot be removed and require no user action. These are the minimum set needed for the
+chat app to function.
+
+**Optional drives** are listed in `DriveRegistry` — a JSON blob stored in the encrypted
+`DatabaseManager.keyValue` store under a stable UUID key. The registry is read at startup and
+merged with the mandatory set before constructing `DriveSyncManager` and the WebSocket client.
+
+### First-startup migration
+
+When no registry entry exists (fresh install or first upgrade from a build that hardcoded Feed),
+`DriveRegistry.loadDrives()` returns `[feedLabeledDrive]` as a default seed so existing users
+keep feed sync without any manual action.
+
+### Activating an add-on drive at runtime
+
+When the user completes the *Extend Permissions* flow for a new add-on:
+
+```kotlin
+// 1. Persist to DB — survives restarts
+driveRegistry.addDrive(fooLabeledDrive)
+
+// 2. Mount immediately in the running session (HTTP polling only;
+//    real-time WS push arrives after the next reconnect)
+driveSyncManager.mountDrive(fooLabeledDrive.drive.alias, fooLabeledDrive.label)
+```
+
+### Unmounting on 403 Forbidden
+
+If `DriveSyncManager` receives a `BackendEvent.DriveResult.PermissionDenied` event (emitted by
+`DriveSync` when the server returns 403), it calls `unmountDrive()` automatically. This clears the
+sync indicator without touching `DriveRegistry` — the drive will be attempted again on the next
+startup, which is intentional (session-only unmount, not a permanent removal).
 
 ---
 
@@ -454,11 +499,9 @@ This is what the "Extend" button in the permission dialog actually does at runti
 
 ### 9a — `AppConfig.kt`
 
-Declare the feature's `LabeledDrive` and add an `activeSyncLabeledDrives(...)`
-overload that appends it when requested:
+Declare the feature's `LabeledDrive` (get the alias/type UUIDs from the server team):
 
 ```kotlin
-// Get real alias / type UUIDs from the server team before shipping.
 val fooLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("<server-provided-alias>"),
@@ -466,42 +509,33 @@ val fooLabeledDrive = LabeledDrive(
     ),
     label = "Foo",
 )
-
-fun activeSyncLabeledDrives(
-    includeVault: Boolean = false,
-    includeFoo: Boolean = false,
-): List<LabeledDrive> = buildList {
-    addAll(syncLabeledDrives)
-    if (includeVault) add(vaultLabeledDrive)
-    if (includeFoo)   add(fooLabeledDrive)
-}
 ```
 
-### 9b — `AuthConnectionCoordinator.kt`
+### 9b — Activation wiring (`FooViewModel.kt`)
 
-Inject `FooPreferences` and pass its activation flag into
-`activeSyncLabeledDrives(...)` when opening the WebSocket:
+When the user taps *Extend* in the permission dialog, persist to `DriveRegistry` and
+mount into the running session:
 
 ```kotlin
-class AuthConnectionCoordinator(
-    ...
-    private val vaultPreferences: VaultPreferences,
-    private val fooPreferences: FooPreferences,
-    ...
-) {
-    // inside connect():
-    drives = activeSyncLabeledDrives(
-        includeVault = vaultPreferences.activated.value,
-        includeFoo   = fooPreferences.activated.value,
-    ).map { it.drive }
+FooUiAction.PermissionExtendClicked -> viewModelScope.launch {
+    fooPreferences.setActivated(true)
+    driveRegistry.addDrive(fooLabeledDrive)          // persists to encrypted DB
+    driveSyncManager.mountDrive(                      // starts HTTP polling immediately
+        fooLabeledDrive.drive.alias,
+        fooLabeledDrive.label
+    )
+    _uiState.update { it.copy(showPermissionDialog = false) }
+    _events.tryEmit(FooUiEvent.Activated)
 }
 ```
 
-> **Limitation today:** `AuthConnectionCoordinator` reads `activated.value` once at
-> connect time. Flipping the toggle after login requires a reconnect to actually
-> widen the drive subscription. If your add-on needs live re-subscription, observe
-> the flow and trigger a reconnect — or file a TODO and document the workaround
-> ("sign out / sign back in after enabling").
+Inject `DriveRegistry` and `DriveSyncManager` into `FooViewModel` and register them
+in `AppModule.kt`.
+
+> **WebSocket note:** `mountDrive()` starts HTTP-polling sync immediately but
+> real-time WebSocket push notifications for the new drive arrive only after the next
+> reconnect. This is acceptable — the polling catches up and the next disconnect/reconnect
+> subscribes the WS to the full drive list (mandatory + all registry drives).
 
 ---
 
@@ -512,30 +546,11 @@ Reference: `AppModule.kt`.
 ```kotlin
 single { FooPreferences(get()) }
 
-// Update DriveSyncManager factory to include the new drive
-single {
-    val vaultPrefs = get<VaultPreferences>()
-    val fooPrefs   = get<FooPreferences>()
-    val drives = activeSyncLabeledDrives(
-        includeVault = vaultPrefs.activated.value,
-        includeFoo   = fooPrefs.activated.value,
-    )
-    DriveSyncManager(get(), get(), get(), get(), get(),
-        drives.associate { it.drive.alias to it.label })
-}
+// DriveSyncManager is already wired to DriveRegistry — no per-add-on changes needed here.
+// DriveRegistry.addDrive() at activation time is the only registration step.
 
-// Update AuthConnectionCoordinator factory to pass the new prefs
-single {
-    AuthConnectionCoordinator(
-        ...
-        vaultPreferences = get(),
-        fooPreferences = get(),
-        onPostAuthenticated = { /* … */ }
-    )
-}
-
-// ViewModels
-viewModelOf(::FooViewModel)
+// ViewModels — inject DriveRegistry and DriveSyncManager if needed for mid-session mounting
+viewModelOf(::FooViewModel)       // constructor: FooPreferences, DriveRegistry, DriveSyncManager
 viewModelOf(::FooSettingsViewModel)
 ```
 
@@ -581,6 +596,14 @@ Copy this into your PR description and tick off each wiring point:
 
 ## Known gotchas
 
+- **WebSocket subscription is fixed at connect time.** `mountDrive()` starts HTTP-polling
+  sync immediately but real-time WebSocket push notifications won't arrive for the newly
+  mounted drive until the next reconnect. This is acceptable — polling catches up within
+  one sync cycle.
+- **403 unmount is session-only.** If the server returns 403 for a drive, `DriveSyncManager`
+  unmounts it automatically, clearing the sync indicator. The drive will be attempted again
+  on the next startup. To permanently remove a drive from the registry, call
+  `DriveRegistry.removeDrive()` explicitly (e.g. in a "deactivate" settings action).
 - **Placeholder drive UUIDs.** Vault currently ships with a stub `f47ac10b-…`.
   Get real alias/type UUIDs from the server team before enabling the drive in
   production — otherwise the WebSocket will subscribe to a non-existent drive.
