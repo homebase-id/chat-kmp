@@ -204,11 +204,19 @@ class ConnectionRequestService(
                 removeFromOutgoing(header.recipient)
                 refresh()
                 connectionService.refresh()
+                driveContactService.saveContactForOdinId(header.recipient)
             }
             AutoConnectOutcome.AlreadyConnected -> {
                 connectionService.refresh()
+                driveContactService.saveContactForOdinId(header.recipient)
             }
-            AutoConnectOutcome.PendingManualApproval,
+            AutoConnectOutcome.PendingManualApproval -> {
+                markOutgoingOptimistically(header.recipient)
+                refresh()
+                // Save contact so they appear in the contact list immediately — matches
+                // the legacy sendConnectionRequest flow, which saved on HTTP-200.
+                driveContactService.saveContactForOdinId(header.recipient)
+            }
             AutoConnectOutcome.OutgoingRequestAlreadyExists,
             AutoConnectOutcome.DuplicateIntroductoryRequest -> {
                 markOutgoingOptimistically(header.recipient)
