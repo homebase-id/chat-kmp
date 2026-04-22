@@ -19,6 +19,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,7 +28,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.feed_error_retry
@@ -44,6 +49,19 @@ fun FeedScreen(viewModel: FeedViewModel) {
     LaunchedEffect(isSystemDark) {
         viewModel.updateSystemDarkMode(isSystemDark)
     }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.feedExtendPermissionViewModel.recheckPermissions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    ExtendPermissionDialog(viewModel = viewModel.feedExtendPermissionViewModel)
 
     FeedContent(
         uiState = uiState,

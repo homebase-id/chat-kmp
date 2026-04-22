@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +16,7 @@ import kotlinx.coroutines.launch
 class FeedViewModel(
     private val credentialsManager: CredentialsManager,
     private val userPreferences: UserPreferences,
+    val feedExtendPermissionViewModel: ExtendPermissionViewModel,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FeedUiState())
