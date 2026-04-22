@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -61,11 +62,17 @@ fun FeedScreen(viewModel: FeedViewModel) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    var reloadKey by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        viewModel.reloadEvent.collect { reloadKey++ }
+    }
+
     ExtendPermissionDialog(viewModel = viewModel.feedExtendPermissionViewModel)
 
     FeedContent(
         uiState = uiState,
         onAction = viewModel::onAction,
+        reloadKey = reloadKey,
     )
 }
 
@@ -73,6 +80,7 @@ fun FeedScreen(viewModel: FeedViewModel) {
 private fun FeedContent(
     uiState: FeedUiState,
     onAction: (FeedUiAction) -> Unit,
+    reloadKey: Int = 0,
 ) {
     when {
         uiState.error != null -> {
@@ -88,6 +96,7 @@ private fun FeedContent(
                 injectionScript = uiState.injectionScript,
                 isLoading = uiState.isLoading,
                 onAction = onAction,
+                reloadKey = reloadKey,
             )
         }
 
@@ -105,14 +114,19 @@ private fun FeedWebView(
     injectionScript: String?,
     isLoading: Boolean,
     onAction: (FeedUiAction) -> Unit,
+    reloadKey: Int = 0,
 ) {
-    // Load the feed URL directly — localStorage is origin-scoped so we must
-    // inject credentials on the same origin, then reload.
     val webViewState = rememberWebViewState(url)
     val webViewNavigator = rememberWebViewNavigator()
     val uriHandler = getUriHandler()
     val feedHost = remember(url) { extractHost(url) }
     var lastInjectedScript by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(reloadKey) {
+        if (reloadKey > 0) {
+            webViewNavigator.loadUrl(url)
+        }
+    }
 
     // On first load completion: inject credentials into localStorage, then reload.
     // evaluateJavaScript is async (callback-based, not suspend), so we reload

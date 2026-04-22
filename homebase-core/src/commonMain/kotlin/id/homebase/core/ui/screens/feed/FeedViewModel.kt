@@ -7,9 +7,13 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -22,8 +26,24 @@ class FeedViewModel(
     private val _uiState = MutableStateFlow(FeedUiState())
     val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()
 
+    private val _reloadEvent = MutableSharedFlow<Unit>()
+    val reloadEvent: SharedFlow<Unit> = _reloadEvent.asSharedFlow()
+
     init {
         loadFeed()
+        observePermissionGrants()
+    }
+
+    private fun observePermissionGrants() {
+        viewModelScope.launch {
+            feedExtendPermissionViewModel.permissionsGranted
+                .filter { it }
+                .collect {
+                    if (_uiState.value.credentialsReady) {
+                        _reloadEvent.emit(Unit)
+                    }
+                }
+        }
     }
 
     fun onAction(action: FeedUiAction) {

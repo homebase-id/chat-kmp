@@ -91,23 +91,12 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
             description = " ",
             permissions = listOf(DrivePermission.Read, DrivePermission.Write)
         ),
-        TargetDriveAccessRequest(
-            type = "8f448716e34cedf9014145e043ca6612",
-            alias = Md5.toGuidId("public_channel_drive").toString(),
-            name = " ",
-            description = " ",
-            permissions = listOf(
-                DrivePermission.Read,
-                DrivePermission.Write,
-                DrivePermission.React,
-                DrivePermission.Comment
-            )
 
-        ),
-    )
+        )
 
 // Drives we listen to for sockets and synchronization
-val syncLabeledDrives: List<LabeledDrive> = listOf(chatLabeledDrive, contactLabeledDrive, feedLabeledDrive)
+val syncLabeledDrives: List<LabeledDrive> =
+    listOf(chatLabeledDrive, contactLabeledDrive, feedLabeledDrive)
 
 // Feed-specific permission config
 val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
@@ -117,12 +106,28 @@ val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         name = "Feed Drive",
         description = " ",
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
-    )
+    ),
+    TargetDriveAccessRequest(
+        type = "8f448716e34cedf9014145e043ca6612",
+        alias = Md5.toGuidId("public_channel_drive").toString(),
+        name = " ",
+        description = " ",
+        permissions = listOf(
+            DrivePermission.Read,
+            DrivePermission.Write,
+            DrivePermission.React,
+            DrivePermission.Comment
+        )
+
+    ),
 )
 
 val feedAppPermissions: List<AppPermissionType> = listOf(
     AppPermissionType.ManageFeed,
     AppPermissionType.PublishStaticContent,
+    AppPermissionType.ReadCircleMembers,
+    AppPermissionType.ReadWhoIFollow,
+    AppPermissionType.ReadMyFollowers
 )
 
 fun getFeedPermissionExtensionConfig(): PermissionExtensionConfig {
