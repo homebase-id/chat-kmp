@@ -1,6 +1,8 @@
 package id.homebase.chat.services.requests
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.connections.AutoConnectOutcome
+import id.homebase.api.client.connections.AutoConnectResult
 import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IncomingConnectionRequestResponse
@@ -178,6 +180,48 @@ class ConnectionRequestService(
         connectionRequestProvider.sendConnectionRequest(header)
         markOutgoingOptimistically(header.recipient)
         refresh()
+    }
+
+    /**
+     * App-origin auto-connect: the server may fully establish the ICR in a single round trip
+     * (if the recipient auto-accepts). Applies the right local-state side effects for each
+     * outcome so the UI updates immediately:
+     *  - Connected / AcceptedFromExistingIncoming: drop from outgoing (if present) and refresh
+     *    both pending-request and connected-identity lists.
+     *  - AlreadyConnected: refresh connected-identity list (cheap, keeps UI in sync).
+     *  - PendingManualApproval / OutgoingRequestAlreadyExists / DuplicateIntroductoryRequest:
+     *    show the outgoing request optimistically.
+     *  - All other outcomes (Blocked, Rejected, Unreachable, InvalidRequest, Failed, Unknown):
+     *    no local state change — the caller decides how to surface them.
+     *
+     * Transport/auth failures propagate as exceptions; they are never returned as an outcome.
+     */
+    suspend fun autoConnect(header: ConnectionRequestHeader): AutoConnectResult {
+        val result = connectionRequestProvider.autoConnect(header)
+        when (result.outcome) {
+            AutoConnectOutcome.Connected,
+            AutoConnectOutcome.AcceptedFromExistingIncoming -> {
+                removeFromOutgoing(header.recipient)
+                refresh()
+                connectionService.refresh()
+            }
+            AutoConnectOutcome.AlreadyConnected -> {
+                connectionService.refresh()
+            }
+            AutoConnectOutcome.PendingManualApproval,
+            AutoConnectOutcome.OutgoingRequestAlreadyExists,
+            AutoConnectOutcome.DuplicateIntroductoryRequest -> {
+                markOutgoingOptimistically(header.recipient)
+                refresh()
+            }
+            AutoConnectOutcome.Blocked,
+            AutoConnectOutcome.RecipientUnreachable,
+            AutoConnectOutcome.RecipientRejected,
+            AutoConnectOutcome.InvalidRequest,
+            AutoConnectOutcome.Failed,
+            AutoConnectOutcome.Unknown -> Unit
+        }
+        return result
     }
 
     /**
