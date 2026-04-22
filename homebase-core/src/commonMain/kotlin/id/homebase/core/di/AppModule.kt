@@ -37,6 +37,8 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.config.getFeedPermissionExtensionConfig
+import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.syncLabeledDrives
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
@@ -59,9 +61,13 @@ import id.homebase.core.ui.screens.storage.StorageSettingsViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
+import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
+import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
+
+val FeedPermissionQualifier = named("feedPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
@@ -135,7 +141,7 @@ val appModule = module {
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
     viewModelOf(::HomeViewModel)
-    viewModelOf(::FeedViewModel)
+    viewModel { FeedViewModel(get(), get(), get(FeedPermissionQualifier)) }
     viewModelOf(::ConversationListViewModel)
     viewModelOf(::ArchivedConversationsViewModel)
     viewModelOf(::CreateConversationViewModel)
@@ -147,7 +153,8 @@ val appModule = module {
     viewModelOf(::GroupSettingsViewModel)
     viewModelOf(::AddGroupMembersViewModel)
     viewModelOf(::EditConversationGroupViewModel)
-    viewModelOf(::ExtendPermissionViewModel)
+    viewModel { ExtendPermissionViewModel(get(), get(), get(), getPermissionExtensionConfig()) }
+    viewModel(FeedPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getFeedPermissionExtensionConfig()) }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
