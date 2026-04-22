@@ -23,9 +23,12 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.ShareSuggestionDonor
+import id.homebase.chat.services.convo.ConversationLoader
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.StatusMessageSender
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
@@ -57,6 +60,7 @@ import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
+import org.koin.dsl.bind
 import org.koin.dsl.module
 
 val appModule = module {
@@ -106,7 +110,7 @@ val appModule = module {
     }
     singleOf(::BackgroundSyncOrchestrator)
 
-    factoryOf(::PayloadBundleEncryptionService)
+    factoryOf(::PayloadBundleEncryptionService) bind PayloadBundleEncryptor::class
     factoryOf(::OptimisticWriter)
 
     singleOf(::ShareConversationCacheWriter)
@@ -117,11 +121,11 @@ val appModule = module {
     singleOf(::ConnectionService)
     singleOf(::DriveContactService)
     singleOf(::ContactService)
-    singleOf(::ConversationStream)
+    singleOf(::ConversationStream) bind ConversationLoader::class
     singleOf(::ConversationService)
     singleOf(::ChatMessageStream)
     singleOf(::ShareSuggestionDonor)
-    singleOf(::ChatMessageSenderService)
+    singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
     singleOf(::NotificationService)
