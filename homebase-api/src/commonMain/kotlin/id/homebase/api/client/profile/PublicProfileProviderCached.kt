@@ -30,19 +30,19 @@ import kotlin.time.Clock
  * Storage-screen rows:
  * - `public_profiles` — serialized [ProfileCard] JSON (display name, bio,
  *   links, email list, avatar URL, etc.). Directory
- *   `homebase-public-profiles`, cap 50 MB.
+ *   `homebase-public-profiles`, cap 10 MB.
  * - `public_images`   — raw avatar image bytes. Directory
  *   `homebase-public-images`, cap 200 MB.
  *
  * The split is deliberate, not incidental. Profile JSON is small (~1–10 KB)
- * and read on every ContactName render and notification hydration; avatar
- * bytes are an order of magnitude larger and sit behind Coil's in-memory
- * cache, so their disk hit rate is lower. A single merged FileKache would
- * let a burst of avatar loads evict the much smaller, much hotter profile
- * JSON under LRU pressure. Keeping them on separate caps (50 MB profiles,
- * 200 MB images) pins the small-hot tier. It also lets the two caps be
- * tuned independently and shows up as two distinct rows on the Storage
- * settings screen.
+ * and used as a sparse fallback for identities without a local contact-drive
+ * record — push senders, forward-sheet targets, unmet-peer [id.homebase.core.widget.ContactName]
+ * renders. Avatar bytes are an order of magnitude larger. A single merged
+ * FileKache would let a burst of avatar loads evict profile JSON entries
+ * under shared-pool LRU pressure; separate caps (10 MB profiles, 200 MB
+ * images) protect the small tier from the large one regardless of relative
+ * request rates. It also lets the two caps be tuned independently and
+ * shows up as two distinct rows on the Storage settings screen.
  *
  * A separate in-memory [notFoundCache] records 404 responses so repeated
  * lookups of missing identities skip the network. Transient failures
@@ -66,6 +66,10 @@ class PublicProfileProviderCached(
     private val directory = fileOperationsProvider.getCacheDirectory()
 
     private val lock = Mutex()
+    // TODO: unbounded growth — keyLocks gains one entry per unique cacheKey
+    //  ever touched and never drops any. Over a long session this leaks
+    //  memory. Same shape in DriveFileProviderCached. Fix with a
+    //  weak-valued map or a periodic prune keyed on last-use timestamp.
     private val keyLocks = mutableMapOf<String, Mutex>()
 
     // Immutable set — always replaced, never mutated in-place.
@@ -97,7 +101,7 @@ class PublicProfileProviderCached(
         val dir = "$directory/homebase-public-profiles"
         try {
             fileSystem.createDirectories(dir.toPath())
-            FileKache(directory = dir, maxSize = 50L * 1024L * 1024L)
+            FileKache(directory = dir, maxSize = 10L * 1024L * 1024L)
                 .also { _profileDiskKache = it }
         } catch (e: Throwable) {
             Logger.e(tag = "PublicProfileIO", throwable = e) {
@@ -296,7 +300,12 @@ class PublicProfileProviderCached(
                     null
                 }
 
-                else -> throw Exception("Fetch failed: ${response.status}")
+                else -> {
+                    Logger.w(tag = "PublicProfileIO") {
+                        "unexpected status=${response.status.value} key=$cacheKey"
+                    }
+                    throw Exception("Fetch failed: ${response.status}")
+                }
             }
         }
     }
