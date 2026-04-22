@@ -446,6 +446,8 @@
     <string name="vault_biometric_prompt_subtitle">Authenticate to access your documents</string>
     <string name="vault_empty_title">Your vault is empty</string>
     <string name="vault_empty_subtitle">Store your private files securely.\nTap + to add your first file.</string>
+    <string name="vault_empty_add_prompt">Press + to add a section</string>
+    <string name="vault_empty_add_section">Add section</string>
     <string name="vault_upload_preparing">Preparing…</string>
     <string name="vault_upload_failed">Upload failed</string>
     <string name="vault_upload_retry">Retry</string>
@@ -459,6 +461,42 @@
     <string name="vault_settings">Settings</string>
     <string name="vault_add_file">Add file</string>
     <string name="vault_more_options">More options</string>
+
+    <!-- Vault Sections -->
+    <string name="vault_section_passports">Passports</string>
+    <string name="vault_section_drivers_licenses">Driver\'s Licenses</string>
+    <string name="vault_section_health_cards">Health Cards</string>
+    <string name="vault_section_birth_certificates">Birth Certificates</string>
+    <string name="vault_section_credit_cards">Credit Cards</string>
+
+    <string name="vault_section_menu">Section options</string>
+    <string name="vault_section_move_up">Move Up</string>
+    <string name="vault_section_move_down">Move Down</string>
+    <string name="vault_section_rename">Rename Section</string>
+    <string name="vault_section_delete">Delete Section</string>
+    <string name="vault_section_delete_confirm_title">Delete %1$s?</string>
+    <string name="vault_section_delete_confirm_message">All entries in this section will be permanently deleted.</string>
+
+    <string name="vault_new_section_title">New Section</string>
+    <string name="vault_new_section_field_label">Title</string>
+    <string name="vault_new_section_add">Add</string>
+    <string name="vault_new_section_name_exists">A section with this name already exists</string>
+
+    <string name="vault_entry_add">Add</string>
+    <string name="vault_entry_new_title">New Entry</string>
+    <string name="vault_entry_name_label">Name</string>
+    <string name="vault_entry_move_to_section">Move to Section...</string>
+    <string name="vault_entry_delete">Delete Entry</string>
+    <string name="vault_entry_delete_confirm">Delete %1$s? This entry and all its images will be permanently deleted.</string>
+
+    <string name="vault_image_add">Add Image</string>
+    <string name="vault_image_take_photo">Take Photo</string>
+    <string name="vault_image_choose_gallery">Choose from Gallery</string>
+    <string name="vault_image_replace">Replace</string>
+    <string name="vault_image_delete">Delete Image</string>
+
+    <string name="vault_section_empty_hint">Tap + to add your first %1$s</string>
+
     <string name="feed_error_title">Failed to load feed</string>
     <string name="feed_error_retry">Retry</string>
     <string name="pending_attachment_one">1 attachment</string>

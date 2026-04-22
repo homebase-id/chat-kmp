@@ -141,7 +141,7 @@ val appModule = module {
     singleOf(::NotificationService)
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
-    single { VaultRepository(get(), get(), get(), get(), get(), get(), get()) }
+    single { VaultRepository(get(), get(), get(), get(), get(), get(), get(), get()) }
 
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)

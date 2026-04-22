@@ -19,9 +19,6 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
     private val _biometricsEnabled = MutableStateFlow(readBoolean(BIOMETRICS_KEY, default = true))
     val biometricsEnabled: StateFlow<Boolean> = _biometricsEnabled.asStateFlow()
 
-    private val _viewMode = MutableStateFlow(readViewMode())
-    val viewMode: StateFlow<ViewMode> = _viewMode.asStateFlow()
-
     suspend fun setActivated(value: Boolean) {
         if (_activated.value == value) return
         keyValue.upsertValue(ACTIVATED_KEY, encode(value))
@@ -40,15 +37,6 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
         _biometricsEnabled.value = value
     }
 
-    suspend fun setViewMode(value: ViewMode) {
-        keyValue.upsertValue(VIEW_MODE_KEY, encode(value == ViewMode.Grid))
-        _viewMode.value = value
-    }
-
-    private fun readViewMode(): ViewMode {
-        return if (readBoolean(VIEW_MODE_KEY, default = false)) ViewMode.Grid else ViewMode.List
-    }
-
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
         val bytes: ByteArray = runCatching {
             keyValue.selectByKey(key) { _, data -> data }
@@ -63,6 +51,5 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
         val ACTIVATED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0101")
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0102")
         val BIOMETRICS_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0103")
-        private val VIEW_MODE_KEY = Uuid.parse("00000000-0000-0000-0000-0000000a0104")
     }
 }

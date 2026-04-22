@@ -1,13 +1,15 @@
 package id.homebase.core.ui.screens.vault
 
-import id.homebase.core.vault.ViewMode
+import id.homebase.core.ui.screens.vault.model.VaultSectionUiModel
 import io.github.vinceglb.filekit.PlatformFile
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
+@OptIn(ExperimentalUuidApi::class)
 data class VaultUiState(
     val isCheckingPermissions: Boolean = false,
     val isLoading: Boolean = false,
-    val files: List<VaultFileItem> = emptyList(),
-    val viewMode: ViewMode = ViewMode.List,
+    val sections: List<VaultSectionUiModel> = emptyList(),
     val fullScreenOverlay: VaultOverlay? = null,
 )
 
@@ -18,12 +20,18 @@ sealed interface VaultOverlay {
 sealed interface VaultUiAction {
     data object SetupClicked : VaultUiAction
     data object DismissOnboardingClicked : VaultUiAction
-    data class FileSelected(val file: PlatformFile) : VaultUiAction
-    data class FileClicked(val file: VaultFileItem) : VaultUiAction
-    data class DeleteFile(val file: VaultFileItem) : VaultUiAction
-    data class RenameFile(val file: VaultFileItem, val newName: String) : VaultUiAction
+
+    data class AddSection(val title: String) : VaultUiAction
+    data class RenameSection(val section: VaultSectionUiModel, val newTitle: String) : VaultUiAction
+    data class DeleteSection(val section: VaultSectionUiModel) : VaultUiAction
+    data class MoveSectionUp(val section: VaultSectionUiModel) : VaultUiAction
+    data class MoveSectionDown(val section: VaultSectionUiModel) : VaultUiAction
+
+    data class AddEntryToSection(val sectionId: Uuid, val file: PlatformFile) : VaultUiAction
+    data class EntryClicked(val file: VaultFileItem) : VaultUiAction
     data class ShareFile(val file: VaultFileItem) : VaultUiAction
-    data object ToggleViewMode : VaultUiAction
+    data class DeleteFile(val file: VaultFileItem) : VaultUiAction
+
     data object CloseOverlay : VaultUiAction
     data object RefreshFiles : VaultUiAction
 }

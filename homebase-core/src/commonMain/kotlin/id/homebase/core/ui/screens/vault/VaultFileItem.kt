@@ -15,6 +15,7 @@ import kotlinx.serialization.Serializable
 
 
 const val VAULT_FILE_TYPE = 5572
+const val VAULT_SECTION_TYPE = 5573
 
 /**
  * JSON content stored in appData.content for vault files.
@@ -22,6 +23,12 @@ const val VAULT_FILE_TYPE = 5572
 @Serializable
 data class VaultFileContent(
     val name: String,
+)
+
+@Serializable
+data class VaultSectionContent(
+    val title: String,
+    val sortOrder: Int,
 )
 
 /**
@@ -43,6 +50,7 @@ data class VaultFileItem(
     val versionTag: Uuid?,
     val uploadStatus: VaultUploadStatus? = null,
     val pendingFileUri: String? = null,
+    val groupId: Uuid? = null,
 ) {
     val isPending: Boolean get() = pendingFileUri != null
 
@@ -145,5 +153,19 @@ fun HomebaseFile.toVaultFileItem(): VaultFileItem? {
         payloadIv = firstPayload.iv,
         isEncrypted = fileMetadata.isEncrypted,
         versionTag = fileMetadata.versionTag,
+        groupId = fileMetadata.appData.groupId,
     )
+}
+
+/**
+ * Maps a [HomebaseFile] to a [VaultSectionContent], or returns null if the file
+ * has no content or the content cannot be parsed.
+ */
+fun HomebaseFile.toVaultSection(): VaultSectionContent? {
+    val contentJson = fileMetadata.appData.content ?: return null
+    return try {
+        OdinSystemSerializer.deserialize<VaultSectionContent>(contentJson)
+    } catch (e: Exception) {
+        null
+    }
 }

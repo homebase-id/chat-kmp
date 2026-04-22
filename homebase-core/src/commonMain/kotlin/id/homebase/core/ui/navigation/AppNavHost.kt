@@ -717,6 +717,14 @@ fun AppNavHost(
                                     onBackClick = { navController.popBackStack() })
                             }
                         }
+
+                        composable<Route.VaultEntryDetail> { _ ->
+                            if (isAuthenticated) {
+                                // Phase 3 will replace this with VaultEntryDetailScreen
+                                // For now, navigate back (entry preview handled by overlay in VaultScreen)
+                                LaunchedEffect(Unit) { navController.popBackStack() }
+                            }
+                        }
                     }
                 }
             }

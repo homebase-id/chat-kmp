@@ -104,6 +104,10 @@ sealed class Route {
     data object VaultSettings : Route()
 
     @Serializable
+    @SerialName("vault-entry-detail")
+    data class VaultEntryDetail(val fileId: String, val sectionTitle: String) : Route()
+
+    @Serializable
     @SerialName("feed")
     data object Feed : Route()
 }
