@@ -84,6 +84,9 @@ fun List<ContactUiModel>.filterAndGroup(query: String): List<ContactGroup> {
             it.name.contains(
                 query,
                 ignoreCase = true
+            ) || it.odinId.toString().contains(
+                query,
+                ignoreCase = true
             )
         }
     }.distinctBy { it.odinId }

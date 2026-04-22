@@ -23,8 +23,10 @@ class HelpViewModel(
     private val _uiState = MutableStateFlow(HelpUiState(
         appVersion = platformInfo.versionName,
         errorCollectionEnabled = userPreferences.errorCollectionEnabled,
+        showDeveloperMenu = userPreferences.showDeveloperMenu,
     ))
     val uiState: StateFlow<HelpUiState> = _uiState.asStateFlow()
+    private var developerTapCount = 0
 
     fun onAction(action: HelpUiAction) {
         when (action) {
@@ -63,6 +65,33 @@ class HelpViewModel(
                 } catch (e: Exception) {
                     Logger.e { "Failed to toggle error collection: ${e.message}" }
                 }
+            }
+
+            HelpUiAction.DeveloperClicked -> {
+                developerTapCount++
+
+                if (developerTapCount >= 5) {
+                    // Enable developer menu after 5 taps
+                    userPreferences.showDeveloperMenu = true
+                    Logger.d { "Developer menu enabled after $developerTapCount taps" }
+
+                    // Optional: Show a confirmation message
+                    _uiState.update {
+                        it.copy(
+                            showDeveloperMenu = true,
+                            uiEvent = ShowError("Developer menu enabled!"),
+                        )
+                    }
+
+                    // Reset counter
+                    developerTapCount = 0
+                } else {
+                    Logger.d { "Developer tap $developerTapCount/5" }
+                }
+            }
+
+            HelpUiAction.DeveloperMenu -> {
+                    _uiState.update { it.copy(uiEvent = HelpUiEvent.OpenDeveloperMenu) }
             }
         }
     }

@@ -22,11 +22,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -46,15 +50,19 @@ import id.homebase.resources.help_version
 import id.homebase.resources.logging
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_help
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun HelpScreen(
     viewModel: HelpViewModel,
     onBackClick: () -> Unit,
+    onNavigateToDeveloperMenu: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(uiState.uiEvent) {
         when (val event = uiState.uiEvent) {
@@ -71,12 +79,18 @@ fun HelpScreen(
 
             is HelpUiEvent.ShowError -> {
                 viewModel.eventConsumed()
-                // Error is transient; in a future iteration we could show a snackbar
+                scope.launch { snackbarHostState.showSnackbar(message = event.message) }
+            }
+
+            is HelpUiEvent.OpenDeveloperMenu -> {
+                viewModel.eventConsumed()
+                onNavigateToDeveloperMenu()
             }
         }
     }
 
     HelpUi(
+        snackbarHostState = snackbarHostState,
         uiState = uiState,
         onAction = viewModel::onAction,
         onBackClick = onBackClick,
@@ -86,6 +100,7 @@ fun HelpScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HelpUi(
+    snackbarHostState: SnackbarHostState,
     uiState: HelpUiState,
     onAction: (HelpUiAction) -> Unit,
     onBackClick: () -> Unit,
@@ -93,6 +108,7 @@ fun HelpUi(
     val scrollState = rememberScrollState()
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.settings_help)) },
@@ -132,7 +148,7 @@ fun HelpUi(
             }
 
             // ── Logging Section ──
-            SectionHeader(title = stringResource(MR.string.logging))
+            HelpSectionHeader(title = stringResource(MR.string.logging))
             Card(modifier = Modifier.fillMaxWidth()) {
                 HelpClickableRow(
                     label = stringResource(MR.string.help_submit_debug_log),
@@ -155,13 +171,16 @@ fun HelpUi(
             )
 
             // ── About Section ──
-            SectionHeader(title = stringResource(MR.string.about_homebase))
+            HelpSectionHeader(title = stringResource(MR.string.about_homebase))
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     // Version row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clickable {
+                                onAction(HelpUiAction.DeveloperClicked)
+                            }
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -181,6 +200,13 @@ fun HelpUi(
                         label = stringResource(MR.string.help_terms_privacy),
                         onClick = { onAction(HelpUiAction.TermsPrivacyClicked) }
                     )
+                    if (uiState.showDeveloperMenu) {
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        HelpClickableRow(
+                            label = "Developer menu",
+                            onClick = { onAction(HelpUiAction.DeveloperMenu) }
+                        )
+                    }
                 }
             }
             Text(
@@ -198,7 +224,7 @@ fun HelpUi(
 // ── Reusable Components ──
 
 @Composable
-private fun SectionHeader(title: String) {
+fun HelpSectionHeader(title: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleMedium,
@@ -208,7 +234,7 @@ private fun SectionHeader(title: String) {
 }
 
 @Composable
-private fun HelpClickableRow(
+fun HelpClickableRow(
     label: String,
     showChevron: Boolean = true,
     onClick: () -> Unit,

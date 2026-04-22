@@ -6,8 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.contact.ContactService
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -111,6 +111,9 @@ class CreateConversationViewModel(
         } else {
             contacts.filter {
                 it.name.contains(
+                    query,
+                    ignoreCase = true
+                ) || it.odinId.toString().contains(
                     query,
                     ignoreCase = true
                 )
