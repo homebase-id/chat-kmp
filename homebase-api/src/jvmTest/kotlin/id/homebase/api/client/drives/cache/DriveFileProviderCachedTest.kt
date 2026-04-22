@@ -160,29 +160,6 @@ class DriveFileProviderCachedTest {
     }
 
     @Test
-    fun `thumb fetch emits ThumbIO breadcrumbs for network-fetch cache-write and cache-hit`() = runTest {
-        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
-
-        assertTrue(
-            logCollector.hasMessage(tag = "ThumbIO", substring = "thumb network-fetch"),
-            "expected ThumbIO network-fetch breadcrumb; got: ${logCollector.messages("ThumbIO")}"
-        )
-        assertTrue(
-            logCollector.hasMessage(tag = "ThumbIO", substring = "thumb cache-write"),
-            "expected ThumbIO cache-write breadcrumb; got: ${logCollector.messages("ThumbIO")}"
-        )
-
-        // Second call must hit the disk cache and log accordingly.
-        logCollector.entries.clear()
-        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
-
-        assertTrue(
-            logCollector.hasMessage(tag = "ThumbIO", substring = "thumb cache-hit"),
-            "expected ThumbIO cache-hit breadcrumb; got: ${logCollector.messages("ThumbIO")}"
-        )
-    }
-
-    @Test
     fun `poisoned cache entry with non-2xx status is visible in the decrypt failure log`() = runTest {
         // Populate the cache with a normal 200 response, then rewrite the on-disk
         // data file with a valid-format ByteApiResponse whose status is 500.

@@ -2,6 +2,7 @@ package id.homebase.core.di
 
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
+import coil3.SingletonImageLoader
 import coil3.memory.MemoryCache
 import coil3.video.VideoFrameDecoder
 import id.homebase.api.file.AndroidFileOperationsProvider
@@ -53,7 +54,19 @@ actual fun platformModule(): Module = module {
                 .diskCache(null)
                 .build()
                 .also(::assertNoCoilDiskCache)
+                .also(::installAsCoilSingleton)
     }
+}
+
+// Rewire Coil's default SingletonImageLoader to our Koin-configured instance.
+// Without this, any SubcomposeAsyncImage / AsyncImage call that forgets the
+// `imageLoader=` argument falls back to Coil's auto-created singleton — a
+// separate loader with zero custom fetchers/keyers and a default 250 MB disk
+// cache (coil3_disk_cache). That path silently bypasses PublicImageFetcher
+// and stores avatar bytes unencrypted in a directory our Storage screen
+// cannot see.
+private fun installAsCoilSingleton(loader: ImageLoader) {
+    SingletonImageLoader.setSafe { loader }
 }
 
 private fun assertNoCoilDiskCache(loader: ImageLoader) {

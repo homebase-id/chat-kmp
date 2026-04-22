@@ -31,11 +31,11 @@ actual fun clipboardImageReceiverModifier(onImagePasted: (ByteArray) -> Unit): M
                                 onImagePasted(bytes)
                                 true
                             } else {
-                                Logger.w("ClipboardImageReceiver") { "Failed to read bytes from URI: $uri" }
+                                Logger.w(tag = "ClipboardImageReceiver") { "Failed to read bytes from URI: $uri" }
                                 false
                             }
                         } catch (e: Exception) {
-                            Logger.e("ClipboardImageReceiver", e) { "Error reading pasted image" }
+                            Logger.e(throwable = e, tag = "ClipboardImageReceiver") { "Error reading pasted image" }
                             false
                         }
                     } else {

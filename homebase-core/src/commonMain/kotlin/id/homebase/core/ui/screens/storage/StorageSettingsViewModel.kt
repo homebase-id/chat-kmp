@@ -7,6 +7,7 @@ import coil3.ImageLoader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.DatabaseSizeProbe
@@ -17,6 +18,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okio.FileSystem
+import okio.Path
+import okio.Path.Companion.toPath
+import okio.SYSTEM
 import kotlin.uuid.Uuid
 
 class StorageSettingsViewModel(
@@ -27,7 +32,10 @@ class StorageSettingsViewModel(
     private val databaseManager: DatabaseManager,
     private val imageLoader: ImageLoader,
     private val databaseSizeProbe: DatabaseSizeProbe,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel() {
+
+    private val fileSystem = FileSystem.SYSTEM
 
     private val _uiState = MutableStateFlow(StorageSettingsUiState())
     val uiState: StateFlow<StorageSettingsUiState> = _uiState.asStateFlow()
@@ -84,6 +92,10 @@ class StorageSettingsViewModel(
 
             val driveRows = loadDriveRows()
 
+            val orphanCoilBytes = withContext(Dispatchers.Default) {
+                probeOrphanCoilDiskCache()
+            }
+
             _uiState.update {
                 it.copy(
                     caches = caches,
@@ -91,10 +103,47 @@ class StorageSettingsViewModel(
                     drives = driveRows,
                     totalCacheBytes = total,
                     databaseSizeBytes = dbSize,
+                    orphanCoilDiskBytes = orphanCoilBytes,
                     isLoading = false,
                 )
             }
         }
+    }
+
+    /**
+     * Measure the size of Coil's default disk cache directory (`coil3_disk_cache`)
+     * if it exists. In a correctly-configured build this is always 0 — we set
+     * `.diskCache(null)` on our ImageLoader and wire the SingletonImageLoader
+     * to that instance, so nothing should write there. A non-zero value means
+     * either a leftover directory from an older build or a regression that
+     * reintroduced Coil's default disk cache somewhere. Logged loudly so the
+     * anomaly is visible in logs too.
+     */
+    private fun probeOrphanCoilDiskCache(): Long {
+        return runCatching {
+            val path = "${fileOperationsProvider.getCacheDirectory()}/coil3_disk_cache".toPath()
+            if (!fileSystem.exists(path)) return@runCatching 0L
+            val total = directorySizeBytes(path)
+            if (total > 0L) {
+                Logger.e(tag = "StorageSettings") {
+                    "orphan coil3_disk_cache detected: $total bytes at $path — " +
+                        "Coil's default disk cache should be off and the directory should be empty/deleted"
+                }
+            }
+            total
+        }.getOrElse {
+            Logger.w(tag = "StorageSettings", throwable = it) { "orphan coil disk probe failed" }
+            0L
+        }
+    }
+
+    private fun directorySizeBytes(dir: Path): Long {
+        var total = 0L
+        for (child in fileSystem.list(dir)) {
+            val meta = fileSystem.metadata(child)
+            total += if (meta.isDirectory) directorySizeBytes(child) else (meta.size ?: 0L)
+        }
+        return total
     }
 
     private suspend fun loadDriveRows(): List<DriveRowState> {
@@ -134,6 +183,10 @@ class StorageSettingsViewModel(
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "drive clearCaches failed" } }
             runCatching { imageLoader.memoryCache?.clear() }
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "coil memory clear failed" } }
+            runCatching {
+                val orphan = "${fileOperationsProvider.getCacheDirectory()}/coil3_disk_cache".toPath()
+                if (fileSystem.exists(orphan)) fileSystem.deleteRecursively(orphan)
+            }.onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "orphan coil disk clear failed" } }
             _uiState.update { it.copy(isClearing = false, uiEvent = StorageSettingsUiEvent.CachesCleared) }
             load()
         }

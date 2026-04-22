@@ -19,7 +19,6 @@ actual fun PlatformWebView(
         onCreated = { nativeWebView ->
             // Enable DOM storage (localStorage) — disabled by default on Android WebView
             nativeWebView.settings.domStorageEnabled = true
-            nativeWebView.settings.databaseEnabled = true
         },
         onDispose = {},
     )
