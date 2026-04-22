@@ -160,6 +160,10 @@ fun StorageSettingsUi(
                 }
             }
 
+            if (uiState.orphanCoilDiskBytes > 0L) {
+                OrphanCoilCacheWarning(bytes = uiState.orphanCoilDiskBytes)
+            }
+
             Button(
                 onClick = { onAction(StorageSettingsUiAction.ClearCachesClicked) },
                 enabled = !uiState.isClearing &&
@@ -407,6 +411,32 @@ private fun EmptyRow(text: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun OrphanCoilCacheWarning(bytes: Long) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(
+                text = "Orphan Coil disk cache detected",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Spacer(modifier = Modifier.size(4.dp))
+            Text(
+                text = "${formatBytes(bytes)} in cache/coil3_disk_cache. Coil's default disk " +
+                        "cache should be off — this directory means something is bypassing " +
+                        "the Homebase cache layer. Tap \"Clear caches\" to delete it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
     }
 }
 

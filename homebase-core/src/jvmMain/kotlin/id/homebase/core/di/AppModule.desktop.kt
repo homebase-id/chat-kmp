@@ -3,6 +3,7 @@ package id.homebase.core.di
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import coil3.PlatformContext
+import coil3.SingletonImageLoader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.sync.database.DatabaseSizeProbe
@@ -47,7 +48,17 @@ actual fun platformModule(): Module = module {
                 .diskCache(null)
                 .build()
                 .also(::assertNoCoilDiskCache)
+                .also(::installAsCoilSingleton)
     }
+}
+
+// See AppModule.android.kt for the full rationale. tl;dr: SubcomposeAsyncImage
+// without an explicit `imageLoader=` falls back to Coil's auto-created
+// singleton — a loader with zero of our custom fetchers and a default disk
+// cache. Rewiring the singleton to our Koin-configured instance closes that
+// leak globally.
+private fun installAsCoilSingleton(loader: ImageLoader) {
+    SingletonImageLoader.setSafe { loader }
 }
 
 private fun assertNoCoilDiskCache(loader: ImageLoader) {
