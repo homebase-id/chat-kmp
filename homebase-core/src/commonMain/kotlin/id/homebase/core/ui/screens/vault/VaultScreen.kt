@@ -49,6 +49,7 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.ui.screens.vault.model.VaultSectionUiModel
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.vault.BiometricResult
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.vault.authenticateBiometric
@@ -143,6 +144,15 @@ fun VaultScreen(
     var sectionToDelete by remember { mutableStateOf<VaultSectionUiModel?>(null) }
     var sectionToRename by remember { mutableStateOf<VaultSectionUiModel?>(null) }
     var fileToRename by remember { mutableStateOf<VaultFileItem?>(null) }
+
+    // Camera picker
+    val cameraLauncher = rememberCameraManager { file ->
+        file?.let {
+            activeSectionForEntry?.let { section ->
+                viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, listOf(it)))
+            }
+        }
+    }
 
     // File picker wired to active section
     val filePicker = rememberFilePickerLauncher(
@@ -275,7 +285,10 @@ fun VaultScreen(
         val sheetState = rememberModalBottomSheetState()
         VaultImageAddSheet(
             sheetState = sheetState,
-            onTakePhoto = { showImageAddSheet = false },
+            onTakePhoto = {
+                showImageAddSheet = false
+                cameraLauncher.launch()
+            },
             onChooseGallery = {
                 showImageAddSheet = false
                 filePicker.launch()
