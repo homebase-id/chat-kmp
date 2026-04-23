@@ -115,6 +115,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.util.dismissKeyboardOnTap
+import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
@@ -1333,7 +1334,7 @@ private fun ConnectIdentityRow(
         ContactAvatar(
             odinId = odinId,
             profileImageData = null,
-            initials = resolvedName.take(2).uppercase(),
+            initials = resolvedName.initials(),
             options = AvatarOptions(size = 36.dp, fontSize = 14.sp),
             sharedTransitionScope = null,
             animatedVisibilityScope = null,

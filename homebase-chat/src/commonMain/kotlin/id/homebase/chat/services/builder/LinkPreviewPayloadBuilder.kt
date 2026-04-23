@@ -6,6 +6,7 @@ import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.PayloadBundle
 import kotlin.io.encoding.Base64
@@ -83,7 +84,7 @@ object LinkPreviewPayloadBuilder {
             imageWidth = if (hasImage) linkPreview.imageWidth else null,
             imageHeight = if (hasImage) linkPreview.imageHeight else null,
             description = if (maxDescLen != null) {
-                linkPreview.description.take(maxDescLen)
+                linkPreview.description.truncateToCodePoints(maxDescLen)
             } else {
                 linkPreview.description
             },

@@ -19,6 +19,7 @@ import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.buildConnectToIdentityUrl
+import id.homebase.core.util.initials
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -231,7 +232,7 @@ class GroupSettingsViewModel(
                             id = Uuid.random(),
                             odinId = odinId,
                             name = odinId.domainName,
-                            avatarInitials = odinId.domainName.take(2).uppercase(),
+                            avatarInitials = odinId.domainName.initials(),
                             connectionState = ContactConnectionState.NotConnected
                         )
                     }
