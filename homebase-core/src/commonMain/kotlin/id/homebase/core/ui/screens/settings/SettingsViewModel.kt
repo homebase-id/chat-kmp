@@ -106,6 +106,11 @@ class SettingsViewModel(
     }
 
     private fun handleLogout() {
+        // Guard against a second tap while logout is in progress — the overlay is the
+        // primary defence, but the VM is the authoritative one-in-flight gate.
+        if (_uiState.value.isLoggingOut) return
+        _uiState.update { it.copy(isLoggingOut = true) }
+
         viewModelScope.launch {
             LoggerConfig.purgeLogs()
             notificationService.deleteToken()

@@ -6,6 +6,7 @@ enum class NotificationVerificationStatus { CHECKING, OK, ERROR }
 
 data class SettingsUiState(
     val isLoading: Boolean = false,
+    val isLoggingOut: Boolean = false,
     val appName: String = "Homebase Chat",
     val appVersion: String,
     val appBuild: String,
