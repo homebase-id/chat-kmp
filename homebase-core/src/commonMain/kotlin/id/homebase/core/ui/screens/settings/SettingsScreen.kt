@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
@@ -34,12 +38,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -74,6 +80,7 @@ import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_logout
+import id.homebase.resources.settings_logout_in_progress
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_active
 import id.homebase.resources.settings_notifications_issue
@@ -138,16 +145,62 @@ fun SettingsScreen(
         }
     }
 
-    SettingsUi(
-        uiState = uiState,
-        onAction = viewModel::onAction,
-        onBackClick = onBackClick,
-        onNavigateToConnections = onNavigateToConnections,
-        onNavigateToNotifications = onNavigateToNotifications,
-        onNavigateToAppearance = onNavigateToAppearance,
-        onNavigateToStorage = onNavigateToStorage,
-        onNavigateToHelp = onNavigateToHelp
-    )
+    Box(modifier = Modifier.fillMaxSize()) {
+        SettingsUi(
+            uiState = uiState,
+            onAction = viewModel::onAction,
+            onBackClick = onBackClick,
+            onNavigateToConnections = onNavigateToConnections,
+            onNavigateToNotifications = onNavigateToNotifications,
+            onNavigateToAppearance = onNavigateToAppearance,
+            onNavigateToStorage = onNavigateToStorage,
+            onNavigateToHelp = onNavigateToHelp
+        )
+
+        if (uiState.isLoggingOut) {
+            LogoutOverlay()
+        }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun LogoutOverlay() {
+    // Swallow the system back gesture so the user can't navigate mid-wipe.
+    @Suppress("DEPRECATION")
+    BackHandler(enabled = true) { /* no-op */ }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f))
+            // Absorb every tap so the underlying Settings row never receives it.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) { awaitPointerEvent() }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 32.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                CircularProgressIndicator()
+                Text(
+                    text = stringResource(MR.string.settings_logout_in_progress),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
