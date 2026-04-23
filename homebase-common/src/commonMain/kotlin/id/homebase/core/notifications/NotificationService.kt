@@ -94,6 +94,8 @@ class NotificationService(
                 if (id != null) conversationMessageCounts.remove(id.toString())
             }
         }
+        // Route clicks from platform backends (Nucleus on JVM) back to this service.
+        NotificationClickRouter.handler = { data -> handleNotificationClicked(data) }
     }
 
     /** Clears the accumulated message count for a conversation (e.g. on mark-as-read). */
