@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 
 @Serializable
-data class AutoConnectResult(
+data class ConnectionRequestResult(
     val outcome: AutoConnectOutcome,
     val detail: String? = null,
 )
