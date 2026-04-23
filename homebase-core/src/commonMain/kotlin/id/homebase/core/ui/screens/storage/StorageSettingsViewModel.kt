@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.file.FileOperationsProvider
@@ -72,7 +73,10 @@ class StorageSettingsViewModel(
             val caches = (profileStats + driveStats).map {
                 CacheRowState(id = it.id, sizeBytes = it.sizeBytes, maxBytes = it.maxBytes)
             }
-            val total = caches.sumOf { it.sizeBytes }
+            // Unavailable caches (sizeBytes == CacheStats.UNAVAILABLE, -1L) must
+            // not contribute to the total — they represent caches that could
+            // not be opened, not caches with negative size.
+            val total = caches.sumOf { if (it.sizeBytes == CacheStats.UNAVAILABLE) 0L else it.sizeBytes }
 
             val coilRow = imageLoader.memoryCache?.let { mem ->
                 CacheRowState(

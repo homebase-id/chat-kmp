@@ -15,13 +15,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
 
-/**
- * ViewModel that checks for missing app permissions on startup and exposes a UI state to drive the
- * extend permission dialog.
- *
- * This is the KMP equivalent of the React Native `ExtendPermissionDialog` component's
- * permission-checking logic.
- */
 class ExtendPermissionViewModel(
     private val securityContextProvider: SecurityContextProvider,
     private val credentialsManager: CredentialsManager,

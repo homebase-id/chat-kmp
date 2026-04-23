@@ -98,3 +98,7 @@ WHERE checkOutStamp = ?;
 -- Get count
 count:
 SELECT count(*) FROM Outbox;
+
+-- Wipe the entire table (used on logout).
+deleteAll:
+DELETE FROM Outbox;

@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -43,6 +44,7 @@ import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -78,6 +80,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
@@ -92,6 +95,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.profile.PublicProfileProvider
+import id.homebase.api.common.OdinId
+import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
@@ -107,14 +112,17 @@ import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.util.dismissKeyboardOnTap
+import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.rememberVideoRecorderManager
+import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.EmojiSelectorSheet
 import id.homebase.core.widget.EmojiSummary
 import id.homebase.core.widget.HomebaseVerticalScrollbar
@@ -122,6 +130,7 @@ import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.chat_auto_connect_connected
 import id.homebase.resources.chat_group_not_connected_disclaimer
 import id.homebase.resources.chat_group_rejoin_accept
 import id.homebase.resources.chat_group_rejoin_decline
@@ -1153,39 +1162,12 @@ fun ConversationContentSheets(
     when (val sheet = uiState.uiSheet) {
         null -> {}
         is MessageListUiSheet.ConnectIdentities -> {
-            val sheetState = rememberModalBottomSheetState()
-            val scrollState = rememberScrollState()
-
-            ModalBottomSheet(
-                onDismissRequest = { onUiAction(ConversationListUiAction.DismissSheet) },
-                sheetState = sheetState
-            ) {
-                // Bottom sheet content
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp).verticalScroll(scrollState)
-                ) {
-                    sheet.identities.forEach { odinId ->
-                        val profileProvider = koinInject<PublicProfileProvider>()
-                        var resolvedName by remember(odinId) { mutableStateOf(odinId.domainName) }
-
-                        LaunchedEffect(odinId) {
-                            try {
-                                resolvedName = profileProvider.getPublicProfile(odinId).name
-                            } catch (_: Exception) {
-                            }
-                        }
-
-                        ContactItem(
-                            name = resolvedName,
-                            odinId = odinId,
-                            avatarInitials = resolvedName.take(2).uppercase(),
-                            onContactClick = {
-                                onUiAction(ConversationListUiAction.ConnectToIdentity(odinId))
-                            },
-                        )
-                    }
-                }
-            }
+            ConnectIdentitiesSheet(
+                identities = sheet.identities,
+                autoConnectStates = sheet.autoConnectStates,
+                onDismiss = { onUiAction(ConversationListUiAction.DismissSheet) },
+                onAutoConnect = { onUiAction(ConversationListUiAction.AutoConnect(it)) },
+            )
         }
 
         is MessageListUiSheet.ForwardMessage -> {
@@ -1297,6 +1279,121 @@ fun ConversationContentSheets(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConnectIdentitiesSheet(
+    identities: List<OdinId>,
+    autoConnectStates: Map<OdinId, AutoConnectRowState>,
+    onDismiss: () -> Unit,
+    onAutoConnect: (OdinId) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+    val scrollState = rememberScrollState()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp).verticalScroll(scrollState)
+        ) {
+            identities.forEach { odinId ->
+                ConnectIdentityRow(
+                    odinId = odinId,
+                    rowState = autoConnectStates[odinId],
+                    onAutoConnect = { onAutoConnect(odinId) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectIdentityRow(
+    odinId: OdinId,
+    rowState: AutoConnectRowState?,
+    onAutoConnect: () -> Unit,
+) {
+    val profileProvider = koinInject<PublicProfileProvider>()
+    var resolvedName by remember(odinId) { mutableStateOf(odinId.domainName) }
+
+    LaunchedEffect(odinId) {
+        try {
+            resolvedName = profileProvider.getPublicProfile(odinId).name
+        } catch (_: Exception) {
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ContactAvatar(
+            odinId = odinId,
+            profileImageData = null,
+            initials = resolvedName.initials(),
+            options = AvatarOptions(size = 36.dp, fontSize = 14.sp),
+            sharedTransitionScope = null,
+            animatedVisibilityScope = null,
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            ContactName(
+                odinId = odinId,
+                knownName = resolvedName,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (rowState is AutoConnectRowState.Failed) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(rowState.res, *rowState.args.toTypedArray()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        when (rowState) {
+            AutoConnectRowState.Succeeded -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = SuccessGreen,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(MR.string.chat_auto_connect_connected),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = SuccessGreen,
+                    )
+                }
+            }
+            AutoConnectRowState.Connecting -> {
+                ElevatedButton(
+                    onClick = {},
+                    enabled = false,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+            }
+            is AutoConnectRowState.Failed,
+            null -> {
+                ElevatedButton(onClick = onAutoConnect) {
+                    Text(stringResource(MR.string.connect))
+                }
+            }
+        }
+    }
+}
+
+private val SuccessGreen = Color(0xFF2E7D32)
 
 @Composable
 fun RecipientsSelectorList(

@@ -7,7 +7,8 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +21,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 class DriveSyncManager(
@@ -36,6 +38,10 @@ class DriveSyncManager(
     private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
     private val driveSyncsMutex = Mutex()
     @kotlin.concurrent.Volatile private var isRunning = false
+
+    // Set by clearStorage(), consumed by the next start(). Lets a freshly constructed
+    // DriveSync detect and loudly complain if a cursor survived logout.
+    @kotlin.concurrent.Volatile private var expectFreshCursors = false
 
     private val _driveStatuses = MutableStateFlow<Map<Uuid, DriveStatus>>(emptyMap())
     val driveStatuses: StateFlow<Map<Uuid, DriveStatus>> = _driveStatuses.asStateFlow()
@@ -117,6 +123,9 @@ class DriveSyncManager(
         val credentials = credentialsManager.requireActiveCredentials()
         val identityId = credentials.getIdentityId()
 
+        val freshLogin = expectFreshCursors
+        expectFreshCursors = false
+
         drives.forEach { (driveId, label) ->
             val alreadyExists = driveSyncsMutex.withLock { driveSyncs.containsKey(driveId) }
             if (alreadyExists) {
@@ -131,7 +140,8 @@ class DriveSyncManager(
                     driveQueryProvider = driveQueryProvider,
                     databaseManager = databaseManager,
                     eventBus = eventBus,
-                    scope = scope
+                    scope = scope,
+                    expectFreshCursor = freshLogin,
                 )
             }.onSuccess { sync ->
                 driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
@@ -195,16 +205,33 @@ class DriveSyncManager(
         _driveStatuses.update { emptyMap() }
     }
 
-    fun clearStorage(): Job {
-        val snapshot = driveSyncs.values.toList()
-        return scope.launch {
+    // Runs under NonCancellable because the typical caller is
+    // YouAuthFlowManager.logout() on SettingsViewModel.viewModelScope, and that scope is
+    // cancelled as soon as the auth-state flip to Unauthenticated tears the settings
+    // screen down. Without this, the wipe would be interrupted mid-flight and leave the
+    // KeyValue / Outbox / AppNotifications / ConnectionCache tables stale across logins.
+    suspend fun clearStorage() = withContext(NonCancellable) {
+        val snapshot = driveSyncsMutex.withLock { driveSyncs.values.toList() }
+
+        coroutineScope {
             snapshot
-                .map { sync ->
-                    launch {
-                        sync.clearStorage()
-                    }
-                }
+                .map { sync -> launch { sync.clearStorage() } }
                 .joinAll()
         }
+
+        // Wipe identity-scoped tables once, after every per-drive clear has finished.
+        // Anything stored here is tied to the logged-out identity and must not leak
+        // into the next session.
+        //  - KeyValue       (sync cursors — the reason this method exists)
+        //  - Outbox         (pending uploads bound to drives we just wiped)
+        //  - AppNotifications
+        //  - ConnectionCache
+        databaseManager.keyValue.deleteAll()
+        databaseManager.outbox.deleteAll()
+        databaseManager.appNotifications.deleteAllRows()
+        databaseManager.connectionCache.deleteAllRows()
+
+        // Signal the next start() that any cursor it finds is a bug.
+        expectFreshCursors = true
     }
 }

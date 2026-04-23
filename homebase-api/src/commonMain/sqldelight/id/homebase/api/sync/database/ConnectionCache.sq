@@ -37,3 +37,7 @@ WHERE identityId = ? AND status = ?;
 deleteAllByIdentity:
 DELETE FROM ConnectionCache
 WHERE identityId = ?;
+
+-- Wipe the entire table (used on logout).
+deleteAllRows:
+DELETE FROM ConnectionCache;

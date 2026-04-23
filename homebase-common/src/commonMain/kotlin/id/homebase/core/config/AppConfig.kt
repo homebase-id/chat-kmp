@@ -69,7 +69,7 @@ val chatTargetDrive = chatLabeledDrive.drive
 val contactTargetDrive = contactLabeledDrive.drive
 val feedTargetDrive = feedLabeledDrive.drive
 
-// App permissions required
+// App permissions required (general — excludes feed-specific permissions)
 val appPermissions: List<AppPermissionType> =
     listOf(
         AppPermissionType.ReadConnections,
@@ -78,20 +78,11 @@ val appPermissions: List<AppPermissionType> =
         AppPermissionType.ReceiveDataFromOtherIdentitiesOnMyBehalf,
         AppPermissionType.SendPushNotifications,
         AppPermissionType.SendIntroductions,
-        AppPermissionType.ManageFeed,
-        AppPermissionType.PublishStaticContent
     )
 
-// Target drive access requests
+// Target drive access requests (general — excludes feed drive)
 val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
     listOf(
-        TargetDriveAccessRequest(
-            alias = feedTargetDrive.alias.toString(),
-            type = feedTargetDrive.type.toString(),
-            name = "Feed Drive",
-            description = " ",
-            permissions = listOf(DrivePermission.Read, DrivePermission.Write)
-        ),
         TargetDriveAccessRequest(
             alias = chatTargetDrive.alias.toString(),
             type = chatTargetDrive.type.toString(),
@@ -111,20 +102,8 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
             description = " ",
             permissions = listOf(DrivePermission.Read, DrivePermission.Write)
         ),
-        TargetDriveAccessRequest(
-            type = "8f448716e34cedf9014145e043ca6612",
-            alias = Md5.toGuidId("public_channel_drive").toString(),
-            name = " ",
-            description = " ",
-            permissions = listOf(
-                DrivePermission.Read,
-                DrivePermission.Write,
-                DrivePermission.React,
-                DrivePermission.Comment
-            )
 
-        ),
-    )
+        )
 
 val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     TargetDriveAccessRequest(
@@ -143,6 +122,47 @@ val syncLabeledDrives: List<LabeledDrive> =
 /** Returns the active list of sync drives, optionally including the Vault drive. */
 fun activeSyncLabeledDrives(includeVault: Boolean): List<LabeledDrive> =
     if (includeVault) syncLabeledDrives + vaultLabeledDrive else syncLabeledDrives
+// Feed-specific permission config
+val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = feedTargetDrive.alias.toString(),
+        type = feedTargetDrive.type.toString(),
+        name = "Feed Drive",
+        description = " ",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    ),
+    TargetDriveAccessRequest(
+        type = "8f448716e34cedf9014145e043ca6612",
+        alias = Md5.toGuidId("public_channel_drive").toString(),
+        name = " ",
+        description = " ",
+        permissions = listOf(
+            DrivePermission.Read,
+            DrivePermission.Write,
+            DrivePermission.React,
+            DrivePermission.Comment
+        )
+
+    ),
+)
+
+val feedAppPermissions: List<AppPermissionType> = listOf(
+    AppPermissionType.ManageFeed,
+    AppPermissionType.PublishStaticContent,
+    AppPermissionType.ReadCircleMembers,
+    AppPermissionType.ReadWhoIFollow,
+    AppPermissionType.ReadMyFollowers
+)
+
+fun getFeedPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = feedTargetDriveAccessRequest,
+        permissions = feedAppPermissions,
+        returnUrl = AppConfig.RETURN_URL
+    )
+}
 
 // Circle drive requests
 val circleDriveTargetRequest: List<TargetDriveAccessRequest> =

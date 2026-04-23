@@ -42,6 +42,9 @@ import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.ui.screens.vault.VaultRepository
 import id.homebase.core.ui.screens.vault.VaultSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.config.getFeedPermissionExtensionConfig
+import id.homebase.core.config.getPermissionExtensionConfig
+import id.homebase.core.config.syncLabeledDrives
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
@@ -72,6 +75,8 @@ import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 
 val VaultPermissionQualifier = named("vaultPermission")
+
+val FeedPermissionQualifier = named("feedPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
@@ -150,7 +155,7 @@ val appModule = module {
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
     viewModelOf(::HomeViewModel)
-    viewModelOf(::FeedViewModel)
+    viewModel { FeedViewModel(get(), get(), get(FeedPermissionQualifier)) }
     viewModelOf(::ConversationListViewModel)
     viewModelOf(::ArchivedConversationsViewModel)
     viewModelOf(::CreateConversationViewModel)
@@ -164,6 +169,7 @@ val appModule = module {
     viewModelOf(::EditConversationGroupViewModel)
     viewModel { ExtendPermissionViewModel(get(), get(), get(), getPermissionExtensionConfig()) }
     viewModel(VaultPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getVaultPermissionExtensionConfig()) }
+    viewModel(FeedPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getFeedPermissionExtensionConfig()) }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::AppearanceSettingsViewModel)

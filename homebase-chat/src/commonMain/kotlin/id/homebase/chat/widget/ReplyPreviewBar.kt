@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.core.config.chatTargetDrive
@@ -95,7 +96,7 @@ fun ReplyPreviewBar(message: MessageUiModel, onDismiss: () -> Unit, modifier: Mo
         hasMultiplePayloads = hasMultiplePayloads,
     )
 
-    val previewText = contentLabel?.text ?: message.content.take(80)
+    val previewText = contentLabel?.text ?: message.content.truncateToCodePoints(80)
 
     Surface(
         modifier = modifier.fillMaxWidth(),

@@ -530,6 +530,12 @@ class DriveFileProviderCached(
         kacheMutex.withLock {
             _payloadDiskKache = null
             _thumbDiskKache = null
+            // Reset the ctor tombstones. This is the recovery path for a
+            // FileKache-ctor NPE (observed on real devices with a populated
+            // homebase-thumbs dir from a prior install): the Storage-screen
+            // "Clear caches" button deletes the directory and clears the
+            // tombstone so the next access builds a fresh FileKache on top
+            // of an empty dir.
             payloadKacheFailure = null
             thumbKacheFailure = null
 
@@ -554,20 +560,30 @@ class DriveFileProviderCached(
         notFoundCache = emptySet()
     }
 
+    // Per-cache try/catch: one broken FileKache (e.g. ctor tombstoned after a
+    // mayakapps/kache NPE on this device's pre-existing cache state) must not
+    // hide the other row. A thrown `payloadDiskKache()` used to propagate up
+    // through the ViewModel's outer runCatching and wipe *both* drive rows
+    // from the Storage screen, leaving the user with no indication that a
+    // cache was unhealthy. Return sentinel `sizeBytes = CacheStats.UNAVAILABLE`
+    // (-1L) so the UI can render a visible "Unavailable" row and point the
+    // user at the Clear caches button — which resets the tombstone.
     suspend fun getCacheStats(): List<CacheStats> {
-        val payload = payloadDiskKache()
-        val thumb = thumbDiskKache()
-        return listOf(
-            CacheStats(
-                id = "drive_payloads",
-                sizeBytes = payload.size,
-                maxBytes = payload.maxSize,
-            ),
-            CacheStats(
-                id = "drive_thumbnails",
-                sizeBytes = thumb.size,
-                maxBytes = thumb.maxSize,
-            ),
-        )
+        val out = ArrayList<CacheStats>(2)
+        try {
+            val payload = payloadDiskKache()
+            out.add(CacheStats(id = "drive_payloads", sizeBytes = payload.size, maxBytes = payload.maxSize))
+        } catch (e: Throwable) {
+            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_payloads stats unavailable" }
+            out.add(CacheStats(id = "drive_payloads", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
+        }
+        try {
+            val thumb = thumbDiskKache()
+            out.add(CacheStats(id = "drive_thumbnails", sizeBytes = thumb.size, maxBytes = thumb.maxSize))
+        } catch (e: Throwable) {
+            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_thumbnails stats unavailable" }
+            out.add(CacheStats(id = "drive_thumbnails", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
+        }
+        return out
     }
 }

@@ -42,4 +42,8 @@ class KeyValueWrapper(
     ): Boolean {
         return databaseManager.withWriteValue { delegate.deleteByKey(key).value > 0 }
     }
+
+    suspend fun deleteAll(): Long {
+        return databaseManager.withWriteValue { delegate.deleteAll().value }
+    }
 }
