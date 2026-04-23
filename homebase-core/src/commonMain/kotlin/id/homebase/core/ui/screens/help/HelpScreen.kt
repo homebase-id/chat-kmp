@@ -50,6 +50,12 @@ import id.homebase.resources.help_version
 import id.homebase.resources.logging
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_help
+import id.homebase.resources.update_available
+import id.homebase.resources.update_check_now
+import id.homebase.resources.update_checking
+import id.homebase.resources.update_get_update
+import id.homebase.resources.update_not_supported
+import id.homebase.resources.update_using_latest_version
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -195,6 +201,41 @@ fun HelpUi(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    if (uiState.isCheckingForUpdate) {
+                        HelpClickableRow(
+                            label = stringResource(MR.string.update_checking),
+                            onClick = { /* No action, show loading state */ },
+                            showChevron = false
+                        )
+                    } else if (uiState.isUpdateAvailable) {
+                        HelpClickableRow(
+                            label = stringResource(MR.string.update_get_update),
+                            onClick = { onAction(HelpUiAction.DownloadUpdateClicked) }
+                        )
+                    } else {
+                        HelpClickableRow(
+                            label = stringResource(MR.string.update_check_now),
+                            onClick = { onAction(HelpUiAction.CheckForUpdatedClicked) }
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (!uiState.isUpdatedSupported)
+                                stringResource(MR.string.update_not_supported)
+                            else if (uiState.isUpdateAvailable)
+                                stringResource(MR.string.update_available)
+                            else
+                                stringResource(MR.string.update_using_latest_version),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     HelpClickableRow(
                         label = stringResource(MR.string.help_terms_privacy),
@@ -209,6 +250,7 @@ fun HelpUi(
                     }
                 }
             }
+
             Text(
                 text = stringResource(MR.string.help_copyright),
                 style = MaterialTheme.typography.bodySmall,
@@ -257,6 +299,8 @@ fun HelpClickableRow(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        } else {
+            Spacer(modifier = Modifier.height(24.dp)) // To align with rows that have chevron
         }
     }
 }

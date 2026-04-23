@@ -71,6 +71,13 @@
     <string name="error_too_many_attempts">For mange forsøg</string>
     <string name="error_delivery_failed">Levering mislykkedes</string>
     <string name="not_connected">Ikke forbundet</string>
+    <string name="update">Opdater</string>
+    <string name="update_not_supported">Opdateringscheck understøttes ikke på denne version</string>
+    <string name="update_available">Opdatering tilgængelig</string>
+    <string name="update_using_latest_version">App er nyeste version</string>
+    <string name="update_check_now">Søg efter opdateringer</string>
+    <string name="update_get_update">Hent ny opdatering</string>
+    <string name="update_checking">Søger efter opdatering...</string>
 
     <!-- Avatars -->
     <string name="avatar_owner">Ejer avatar</string>

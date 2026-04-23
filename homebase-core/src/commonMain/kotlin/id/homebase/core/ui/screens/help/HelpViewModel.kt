@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.help
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.core.logging.LogFileExporter
 import id.homebase.core.logging.LoggerConfig
@@ -9,24 +10,34 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.help.HelpUiEvent.OpenUrl
 import id.homebase.core.ui.screens.help.HelpUiEvent.ShareFile
 import id.homebase.core.ui.screens.help.HelpUiEvent.ShowError
+import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.util.PlatformInfo
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 class HelpViewModel(
     platformInfo: PlatformInfo,
     private val userPreferences: UserPreferences,
+    private val updateAppManager: UpdateAppManager,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(HelpUiState(
-        appVersion = platformInfo.versionName,
-        errorCollectionEnabled = userPreferences.errorCollectionEnabled,
-        showDeveloperMenu = userPreferences.showDeveloperMenu,
-    ))
+    private val _uiState = MutableStateFlow(
+        HelpUiState(
+            appVersion = platformInfo.versionName,
+            errorCollectionEnabled = userPreferences.errorCollectionEnabled,
+            showDeveloperMenu = userPreferences.showDeveloperMenu,
+        )
+    )
     val uiState: StateFlow<HelpUiState> = _uiState.asStateFlow()
     private var developerTapCount = 0
+
+    init {
+        checkForUpdate()
+    }
 
     fun onAction(action: HelpUiAction) {
         when (action) {
@@ -91,12 +102,42 @@ class HelpViewModel(
             }
 
             HelpUiAction.DeveloperMenu -> {
-                    _uiState.update { it.copy(uiEvent = HelpUiEvent.OpenDeveloperMenu) }
+                _uiState.update { it.copy(uiEvent = HelpUiEvent.OpenDeveloperMenu) }
+            }
+
+            HelpUiAction.DownloadUpdateClicked -> {
+                downloadUpdate()
+            }
+
+            HelpUiAction.CheckForUpdatedClicked -> {
+                checkForUpdate()
             }
         }
     }
 
     fun eventConsumed() {
         _uiState.update { it.copy(uiEvent = null) }
+    }
+
+    private fun checkForUpdate() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCheckingForUpdate = true) }
+            updateAppManager.checkForUpdate().let { data ->
+                delay(1000)
+                _uiState.update {
+                    it.copy(
+                        isUpdateAvailable = data.updateAvailable,
+                        isUpdatedSupported = data.error == null,
+                        isCheckingForUpdate = false,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun downloadUpdate() {
+        viewModelScope.launch {
+            updateAppManager.downloadUpdate()
+        }
     }
 }
