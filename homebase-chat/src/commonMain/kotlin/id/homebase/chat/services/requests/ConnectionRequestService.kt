@@ -225,6 +225,8 @@ class ConnectionRequestService(
             AutoConnectOutcome.Blocked,
             AutoConnectOutcome.RecipientUnreachable,
             AutoConnectOutcome.RecipientRejected,
+            AutoConnectOutcome.RecipientIdentityNotConfigured,
+            AutoConnectOutcome.RecipientRequiresUpgrade,
             AutoConnectOutcome.InvalidRequest,
             AutoConnectOutcome.Failed,
             AutoConnectOutcome.Unknown -> Unit

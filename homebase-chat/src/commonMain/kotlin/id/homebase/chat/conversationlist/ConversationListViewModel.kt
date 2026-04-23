@@ -88,7 +88,9 @@ import id.homebase.resources.auto_connect_invalid_request
 import id.homebase.resources.auto_connect_invalid_request_with_detail
 import id.homebase.resources.auto_connect_outgoing_request_exists
 import id.homebase.resources.auto_connect_pending_manual_approval
+import id.homebase.resources.auto_connect_recipient_not_configured
 import id.homebase.resources.auto_connect_recipient_rejected
+import id.homebase.resources.auto_connect_recipient_requires_upgrade
 import id.homebase.resources.auto_connect_recipient_unreachable
 import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_message_audio_recording_help
@@ -2235,6 +2237,10 @@ class ConversationListViewModel(
                 AutoConnectRowState.Failed(MR.string.auto_connect_recipient_unreachable, listOf(who))
             AutoConnectOutcome.RecipientRejected ->
                 AutoConnectRowState.Failed(MR.string.auto_connect_recipient_rejected, listOf(who))
+            AutoConnectOutcome.RecipientIdentityNotConfigured ->
+                AutoConnectRowState.Failed(MR.string.auto_connect_recipient_not_configured, listOf(who))
+            AutoConnectOutcome.RecipientRequiresUpgrade ->
+                AutoConnectRowState.Failed(MR.string.auto_connect_recipient_requires_upgrade, listOf(who))
             AutoConnectOutcome.InvalidRequest ->
                 result.detail?.let {
                     AutoConnectRowState.Failed(
