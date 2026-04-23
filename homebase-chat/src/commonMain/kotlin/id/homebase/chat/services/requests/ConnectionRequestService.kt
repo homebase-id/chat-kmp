@@ -2,7 +2,7 @@ package id.homebase.chat.services.requests
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.connections.AutoConnectOutcome
-import id.homebase.api.client.connections.AutoConnectResult
+import id.homebase.api.client.connections.ConnectionRequestResult
 import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IncomingConnectionRequestResponse
@@ -196,7 +196,7 @@ class ConnectionRequestService(
      *
      * Transport/auth failures propagate as exceptions; they are never returned as an outcome.
      */
-    suspend fun autoConnect(header: ConnectionRequestHeader): AutoConnectResult {
+    suspend fun autoConnect(header: ConnectionRequestHeader): ConnectionRequestResult {
         val result = connectionRequestProvider.autoConnect(header)
         when (result.outcome) {
             AutoConnectOutcome.Connected,
