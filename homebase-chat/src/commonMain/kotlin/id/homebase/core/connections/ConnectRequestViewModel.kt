@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.connections.AutoConnectOutcome
 import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.PublicIdentityRepository
@@ -15,7 +16,6 @@ import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.StatusMessage
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.convo.ConversationService
-import id.homebase.chat.services.convo.contact.DriveContactService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,7 +30,6 @@ class ConnectRequestViewModel(
     private val connectionRequestService: ConnectionRequestService,
     private val publicIdentityRepository: PublicIdentityRepository,
     private val ownerSessionRepository: OwnerSessionRepository,
-    private val driveContactService: DriveContactService,
     private val conversationService: ConversationService,
     private val chatMessageSenderService: ChatMessageSenderService,
 ) : ViewModel() {
@@ -203,26 +202,63 @@ class ConnectRequestViewModel(
         _state.update { it.copy(isSending = true) }
         viewModelScope.launch {
             try {
-                connectionRequestService.sendConnectionRequest(header)
-                driveContactService.saveContactForOdinId(header.recipient)
+                val result = connectionRequestService.autoConnect(header)
 
-                val conversationId = startConversationWithRecipient(header.recipient)
+                when (result.outcome) {
+                    AutoConnectOutcome.Connected,
+                    AutoConnectOutcome.AcceptedFromExistingIncoming,
+                    AutoConnectOutcome.AlreadyConnected,
+                    AutoConnectOutcome.PendingManualApproval -> {
+                        val conversationId = startConversationWithRecipient(header.recipient)
+                        _state.update {
+                            it.copy(
+                                isSending = false,
+                                showDialog = false,
+                                recipient = "",
+                                message = "",
+                                resolution = RecipientResolution.Idle,
+                                uiEvent = conversationId
+                                    ?.let { id -> ConnectRequestEvent.NavigateToConversation(id) }
+                                    ?: ConnectRequestEvent.SendSuccess,
+                            )
+                        }
+                    }
 
-                _state.update {
-                    it.copy(
-                        isSending = false,
-                        showDialog = false,
-                        recipient = "",
-                        message = "",
-                        resolution = RecipientResolution.Idle,
-                        uiEvent = conversationId
-                            ?.let { id -> ConnectRequestEvent.NavigateToConversation(id) }
-                            ?: ConnectRequestEvent.SendSuccess,
-                    )
+                    AutoConnectOutcome.OutgoingRequestAlreadyExists,
+                    AutoConnectOutcome.DuplicateIntroductoryRequest -> {
+                        _state.update {
+                            it.copy(
+                                isSending = false,
+                                showDialog = false,
+                                recipient = "",
+                                message = "",
+                                resolution = RecipientResolution.Idle,
+                                alreadySentRecipient = header.recipient,
+                            )
+                        }
+                    }
+
+                    AutoConnectOutcome.Blocked,
+                    AutoConnectOutcome.RecipientUnreachable,
+                    AutoConnectOutcome.RecipientRejected,
+                    AutoConnectOutcome.InvalidRequest,
+                    AutoConnectOutcome.Failed,
+                    AutoConnectOutcome.Unknown -> {
+                        _state.update {
+                            it.copy(
+                                isSending = false,
+                                uiEvent = ConnectRequestEvent.SendError(
+                                    result.detail ?: "Failed to send request",
+                                ),
+                            )
+                        }
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ClientException) {
+                // Fallback for legacy 400 behavior — server may still bubble some failures
+                // as ProblemDetails instead of typed AutoConnectOutcomes.
                 Logger.e(e) { "Connection request rejected by server: ${e.errorCode}" }
                 val title = e.problem?.title.orEmpty()
                 val alreadySent = e.errorCode == OdinClientErrorCode.ConnectionRequestAlreadySent ||
