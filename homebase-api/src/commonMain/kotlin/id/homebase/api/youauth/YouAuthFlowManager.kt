@@ -328,6 +328,7 @@ class YouAuthFlowManager(
 
     /** Logout and clear credentials. */
     suspend fun logout() {
+        // Notify the backend first — this needs valid credentials.
         try {
             val credentials = CredentialStorage.getCredentials()
             if (credentials != null) {
@@ -338,15 +339,20 @@ class YouAuthFlowManager(
             Logger.e(throwable = e, tag = TAG) { "Error during logout" }
         }
 
-        CredentialStorage.clearCredentials()
-        ShareAuthBridge.clearAuth()
-        _authState.value = YouAuthState.Unauthenticated
-        Logger.i(tag = TAG) { "User logged out" }
-
+        // Wipe all identity-scoped state BEFORE flipping _authState to Unauthenticated.
+        // Emitting Unauthenticated tears down the authenticated nav graph (and with it
+        // SettingsViewModel.viewModelScope, which is the coroutine currently running
+        // this logout). If we emit first, driveSyncManager.clearStorage() — and any
+        // other cache clears — get cancelled mid-flight, leaving stale DB rows behind.
         credentialsManager.removeActiveCredentials()
         driveSyncManager.clearStorage()
         driveFileProviderCached.clearCaches()
         publicProfileProviderCached.clearCaches()
+        CredentialStorage.clearCredentials()
+        ShareAuthBridge.clearAuth()
+
+        _authState.value = YouAuthState.Unauthenticated
+        Logger.i(tag = TAG) { "User logged out" }
     }
 
     /** Check if authentication is in progress. */
