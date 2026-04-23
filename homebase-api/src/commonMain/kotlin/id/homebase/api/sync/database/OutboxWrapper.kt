@@ -105,4 +105,8 @@ class OutboxWrapper(
             delegate.deleteBy(driveId, uniqueId).value
         }
     }
+
+    suspend fun deleteAll(): Long {
+        return databaseManager.withWriteValue { delegate.deleteAll().value }
+    }
 }
