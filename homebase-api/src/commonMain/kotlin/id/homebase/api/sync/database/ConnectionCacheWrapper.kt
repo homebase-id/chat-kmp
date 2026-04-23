@@ -52,4 +52,10 @@ class ConnectionCacheWrapper(
             delegate.deleteAllByIdentity(identityId)
         }
     }
+
+    suspend fun deleteAllRows() {
+        databaseManager.withWrite {
+            delegate.deleteAllRows()
+        }
+    }
 }

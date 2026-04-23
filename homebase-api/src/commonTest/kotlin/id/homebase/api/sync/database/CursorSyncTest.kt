@@ -125,6 +125,63 @@ class CursorSyncTest {
     }
 
     @Test
+    fun testLoadCursor_expectFreshButCursorExists_returnsNull() = runTest {
+        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+            val cursorStorage = CursorStorage(dbm, Uuid.random())
+            cursorStorage.saveCursor(
+                QueryBatchCursor(
+                    paging = TimeRowCursor(UnixTimeUtc(1704067200000L), 12345L),
+                    stop = null,
+                    next = null,
+                )
+            )
+
+            // Sanity: cursor is there under a normal load.
+            assertNotNull(cursorStorage.loadCursor(), "precondition: cursor saved")
+
+            // Fresh-login load must discard it rather than silently resume.
+            assertNull(
+                cursorStorage.loadCursor(expectFresh = true),
+                "stale cursor must not be returned on fresh login",
+            )
+        }
+    }
+
+    @Test
+    fun testLoadCursor_expectFreshAndNoCursor_returnsNullWithoutLogging() = runTest {
+        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+            val cursorStorage = CursorStorage(dbm, Uuid.random())
+            // No cursor saved — expectFresh=true is the normal, quiet path.
+            assertNull(cursorStorage.loadCursor(expectFresh = true))
+        }
+    }
+
+    @Test
+    fun testKeyValueDeleteAll_wipesEveryCursor() = runTest {
+        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+            // Two different drives each holding a cursor, mirroring what the app has at
+            // logout time (chat + contact + feed drives each write their own KV row).
+            val cursor = QueryBatchCursor(
+                paging = TimeRowCursor(UnixTimeUtc(1704067200000L), 1L),
+                stop = null,
+                next = null,
+            )
+            val storageA = CursorStorage(dbm, Uuid.random())
+            val storageB = CursorStorage(dbm, Uuid.random())
+            storageA.saveCursor(cursor)
+            storageB.saveCursor(cursor)
+            assertNotNull(storageA.loadCursor(), "precondition: cursor A saved")
+            assertNotNull(storageB.loadCursor(), "precondition: cursor B saved")
+
+            // This is what DriveSyncManager.clearStorage() calls on logout.
+            dbm.keyValue.deleteAll()
+
+            assertNull(storageA.loadCursor(), "cursor A must be gone after deleteAll")
+            assertNull(storageB.loadCursor(), "cursor B must be gone after deleteAll")
+        }
+    }
+
+    @Test
     fun testDeleteCursor() = runTest {
         DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Create and save a cursor

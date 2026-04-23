@@ -33,7 +33,8 @@ class DriveSync(
     private val driveQueryProvider: DriveQueryProvider, // TODO: <- can we get rid of this?
     private val databaseManager: DatabaseManager,
     private val eventBus: EventBus,
-    scope: CoroutineScope? = null
+    scope: CoroutineScope? = null,
+    expectFreshCursor: Boolean = false,
 ) {
     // Background work is Network and DB bound, so using IO
     private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -47,21 +48,18 @@ class DriveSync(
     //TODO: Consider having a (readable) "last modified" which holds the largest timestamp of last-modified
 
     init {
-        // Load cursor from database
         val cursorStorage = CursorStorage(databaseManager, driveId)
-        cursor = cursorStorage.loadCursor()
+        cursor = cursorStorage.loadCursor(expectFresh = expectFreshCursor)
     }
 
 
-    // Wipe all synced data on logout — nothing should survive for security
+    // Wipe drive-scoped synced data on logout. Identity-scoped tables (KeyValue, Outbox,
+    // AppNotifications, ConnectionCache) are wiped once at the DriveSyncManager level.
     suspend fun clearStorage() {
         databaseManager.driveMainIndex.deleteAll()
         databaseManager.driveTagIndex.deleteAll()
         databaseManager.driveLocalTagIndex.deleteAll()
         databaseManager.chatReadCount.deleteAll()
-        databaseManager.keyValue.deleteByKey(driveId)
-        val cursorStorage = CursorStorage(databaseManager, driveId)
-        cursorStorage.deleteCursor()
         cursor = null
     }
 

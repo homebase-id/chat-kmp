@@ -49,3 +49,7 @@ WHERE identityId = ?;
 deleteByNotificationId:
 DELETE FROM AppNotifications
 WHERE identityId = ? AND notificationId = ?;
+
+-- Wipe the entire table (used on logout).
+deleteAllRows:
+DELETE FROM AppNotifications;
