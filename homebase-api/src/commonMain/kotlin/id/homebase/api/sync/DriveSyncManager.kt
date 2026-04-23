@@ -7,6 +7,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +21,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 class DriveSyncManager(
@@ -203,10 +205,12 @@ class DriveSyncManager(
         _driveStatuses.update { emptyMap() }
     }
 
-    // Suspend so the caller (YouAuthFlowManager.logout) cannot race the next start():
-    // returning a Job would let login fire before the table wipes and the
-    // expectFreshCursors flag land.
-    suspend fun clearStorage() {
+    // Runs under NonCancellable because the typical caller is
+    // YouAuthFlowManager.logout() on SettingsViewModel.viewModelScope, and that scope is
+    // cancelled as soon as the auth-state flip to Unauthenticated tears the settings
+    // screen down. Without this, the wipe would be interrupted mid-flight and leave the
+    // KeyValue / Outbox / AppNotifications / ConnectionCache tables stale across logins.
+    suspend fun clearStorage() = withContext(NonCancellable) {
         val snapshot = driveSyncsMutex.withLock { driveSyncs.values.toList() }
 
         coroutineScope {
@@ -222,14 +226,10 @@ class DriveSyncManager(
         //  - Outbox         (pending uploads bound to drives we just wiped)
         //  - AppNotifications
         //  - ConnectionCache
-        try {
-            databaseManager.keyValue.deleteAll()
-            databaseManager.outbox.deleteAll()
-            databaseManager.appNotifications.deleteAllRows()
-            databaseManager.connectionCache.deleteAllRows()
-        } catch (e: Exception) {
-            Logger.e("DriveSyncManager.clearStorage: failed to wipe identity-scoped tables: ${e.message}", e)
-        }
+        databaseManager.keyValue.deleteAll()
+        databaseManager.outbox.deleteAll()
+        databaseManager.appNotifications.deleteAllRows()
+        databaseManager.connectionCache.deleteAllRows()
 
         // Signal the next start() that any cursor it finds is a bug.
         expectFreshCursors = true
