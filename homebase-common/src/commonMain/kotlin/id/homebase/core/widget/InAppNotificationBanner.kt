@@ -25,6 +25,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.notifications.RichNotificationData
+import id.homebase.core.util.initials
 
 /**
  * Signal-style in-app notification banner displayed at the top of the screen.
@@ -61,7 +62,7 @@ fun InAppNotificationBanner(
                     // Sender avatar (circular, loaded via URL)
                     PublicAvatar(
                         odinId = OdinId(notification.senderId),
-                        initials = notification.senderName.take(2),
+                        initials = notification.senderName.initials(),
                         options = AvatarOptions(size = 40.dp),
                     )
 
