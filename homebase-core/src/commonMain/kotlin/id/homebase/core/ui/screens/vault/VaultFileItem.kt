@@ -5,6 +5,7 @@ package id.homebase.core.ui.screens.vault
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.io.encoding.Base64
@@ -23,6 +24,7 @@ const val VAULT_SECTION_TYPE = 5573
 @Serializable
 data class VaultFileContent(
     val name: String,
+    val notes: String? = null,
 )
 
 @Serializable
@@ -51,8 +53,13 @@ data class VaultFileItem(
     val uploadStatus: VaultUploadStatus? = null,
     val pendingFileUri: String? = null,
     val groupId: Uuid? = null,
+    val payloadDescriptors: List<PayloadDescriptor> = emptyList(),
+    val notes: String? = null,
 ) {
     val isPending: Boolean get() = pendingFileUri != null
+
+    val pageCount: Int get() = payloadDescriptors.size.coerceAtLeast(1)
+    val hasMultiplePages: Boolean get() = pageCount > 1
 
     @OptIn(ExperimentalEncodingApi::class)
     val payloadKeyHeader: KeyHeader
@@ -154,6 +161,8 @@ fun HomebaseFile.toVaultFileItem(): VaultFileItem? {
         isEncrypted = fileMetadata.isEncrypted,
         versionTag = fileMetadata.versionTag,
         groupId = fileMetadata.appData.groupId,
+        payloadDescriptors = payloads,
+        notes = vaultFileContent.notes,
     )
 }
 

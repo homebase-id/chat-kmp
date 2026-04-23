@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalUuidApi::class)
+@file:OptIn(ExperimentalUuidApi::class, ExperimentalEncodingApi::class)
 
 package id.homebase.core.ui.screens.vault
 
@@ -15,6 +15,7 @@ import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
+import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
@@ -34,11 +35,13 @@ import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.vaultLabeledDrive
 import kotlinx.coroutines.CoroutineScope
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 private const val TAG = "VaultRepository"
-private const val VAULT_PAYLOAD_KEY = "vault_pld"
+private fun vaultPayloadKey(index: Int): String = "vlt_pg_${index.toString().padStart(2, '0')}"
 
 data class VaultData(
     val sections: List<Pair<HomebaseFile, VaultSectionContent>>,
@@ -158,36 +161,30 @@ class VaultRepository(
         }
     }
 
-    /**
-     * Enqueues a file upload to the outbox for reliable delivery.
-     * Pre-encrypts payload and thumbnails via [PayloadBundleEncryptionService],
-     * matching the chat upload pipeline exactly.
-     *
-     * @return The uniqueId for tracking outbox progress events, or null on failure.
-     */
     suspend fun uploadFile(
-        fileName: String,
-        contentType: String,
-        filePath: String,
+        entryName: String,
+        files: List<Pair<String, String>>,
         scope: CoroutineScope,
         groupId: Uuid? = null,
+        notes: String? = null,
     ): Uuid? {
         return try {
             val uniqueId = Uuid.random()
             val keyHeader = KeyHeader.newRandom16()
 
-            val resolvedPath = fileOperationsProvider.resolveToFilePath(filePath)
+            val resolvedFiles = files.map { (path, contentType) ->
+                fileOperationsProvider.resolveToFilePath(path) to contentType
+            }
 
-            // Build unencrypted payload bundle (thumbnails generated for images)
-            val bundle = buildPayloadBundle(resolvedPath, contentType)
+            val bundle = buildMultiPayloadBundle(resolvedFiles)
 
-            // Encrypt payloads + thumbnails using existing service
             val encryptedBundle = payloadEncryptionService.encryptBundle(
                 uniqueId, bundle, keyHeader.aesKey, scope
             )
 
-            // Encrypt metadata content
-            val content = OdinSystemSerializer.serialize(VaultFileContent(name = fileName))
+            val content = OdinSystemSerializer.serialize(
+                VaultFileContent(name = entryName, notes = notes)
+            )
             val metadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
@@ -211,7 +208,7 @@ class VaultRepository(
             val enqueued = outboxSync.tryEnqueue(request)
             if (enqueued) uniqueId else null
         } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to enqueue vault file upload: $fileName" }
+            Logger.e(e, TAG) { "Failed to enqueue multi-payload upload: $entryName" }
             null
         }
     }
@@ -233,11 +230,12 @@ class VaultRepository(
     suspend fun renameFile(
         fileId: Uuid,
         newName: String,
+        existingNotes: String?,
         versionTag: Uuid?,
         keyHeader: KeyHeader,
     ): Boolean {
         return try {
-            val content = OdinSystemSerializer.serialize(VaultFileContent(name = newName))
+            val content = OdinSystemSerializer.serialize(VaultFileContent(name = newName, notes = existingNotes))
             val metadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
@@ -337,55 +335,236 @@ class VaultRepository(
         }
     }
 
-    suspend fun downloadFileForShare(file: VaultFileItem): String? {
+    suspend fun appendPages(
+        file: VaultFileItem,
+        newFiles: List<Pair<String, String>>,
+        scope: CoroutineScope,
+    ): Boolean {
         return try {
+            val existingMaxIndex = file.payloadDescriptors
+                .mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
+                .maxOrNull() ?: -1
+            val startIndex = existingMaxIndex + 1
+
+            val resolvedFiles = newFiles.map { (path, contentType) ->
+                fileOperationsProvider.resolveToFilePath(path) to contentType
+            }
+
+            val allPayloads = mutableListOf<PayloadFile>()
+            val allThumbnails = mutableListOf<id.homebase.api.client.drives.files.ThumbnailFile>()
+
+            resolvedFiles.forEachIndexed { i, (filePath, contentType) ->
+                val key = vaultPayloadKey(startIndex + i)
+                var previewThumbnail: EmbeddedThumb? = null
+                var thumbnails = emptyList<id.homebase.api.client.drives.files.ThumbnailFile>()
+
+                if (contentType.startsWith("image/")) {
+                    try {
+                        val result = MessageThumbnailGenerator.generate(
+                            filePath, key, fileOperationsProvider,
+                        )
+                        previewThumbnail = result.preview
+                        thumbnails = result.thumbnails
+                    } catch (e: Exception) {
+                        Logger.w(e, TAG) { "Thumbnail generation failed for append payload $key" }
+                    }
+                }
+
+                allPayloads += PayloadFile(
+                    key = key,
+                    filePath = filePath,
+                    contentType = contentType,
+                    previewThumbnail = previewThumbnail,
+                )
+                allThumbnails += thumbnails
+            }
+
+            val keyHeader = file.keyHeader
+            val encryptedBundle = payloadEncryptionService.encryptBundle(
+                Uuid.random(), PayloadBundle(allPayloads, allThumbnails, emptyList()),
+                keyHeader.aesKey, scope,
+            )
+
+            val metadata = UploadFileMetadata(
+                allowDistribution = false,
+                isEncrypted = true,
+                appData = UploadAppFileMetaData(),
+                versionTag = file.versionTag,
+            )
+
+            val request = UpdateFileByFileIdRequest(
+                driveId = file.driveId,
+                fileId = file.fileId,
+                keyHeader = keyHeader,
+                instructions = FileUpdateInstructionSet(
+                    transferIv = ByteArrayUtil.getRndByteArray(16),
+                    locale = UpdateLocale.Local,
+                    recipients = emptyList(),
+                    manifest = UpdateManifest.build(
+                        payloads = encryptedBundle.payloads,
+                        thumbnails = encryptedBundle.thumbnails,
+                        generatePayloadIv = false,
+                    ),
+                ),
+                metadata = metadata,
+                payloads = encryptedBundle.payloads,
+                thumbnails = encryptedBundle.thumbnails,
+            )
+
+            val result = uploadProvider.updateFileByFileId(request)
+            result != null
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "Failed to append pages to ${file.fileId}" }
+            false
+        }
+    }
+
+    suspend fun deletePage(
+        file: VaultFileItem,
+        payloadKey: String,
+    ): Boolean {
+        return try {
+            val isLastPage = file.payloadDescriptors.size <= 1
+            if (isLastPage) {
+                return deleteFile(file.fileId)
+            }
+
+            val metadata = UploadFileMetadata(
+                allowDistribution = false,
+                isEncrypted = true,
+                appData = UploadAppFileMetaData(),
+                versionTag = file.versionTag,
+            )
+
+            val request = UpdateFileByFileIdRequest(
+                driveId = file.driveId,
+                fileId = file.fileId,
+                keyHeader = file.keyHeader,
+                instructions = FileUpdateInstructionSet(
+                    transferIv = ByteArrayUtil.getRndByteArray(16),
+                    locale = UpdateLocale.Local,
+                    recipients = emptyList(),
+                    manifest = UpdateManifest.build(
+                        toDeletePayloads = listOf(PayloadDeleteKey(payloadKey)),
+                    ),
+                ),
+                metadata = metadata,
+            )
+
+            val result = uploadProvider.updateFileByFileId(request)
+            result != null
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "Failed to delete page $payloadKey from ${file.fileId}" }
+            false
+        }
+    }
+
+    suspend fun updateNotes(
+        file: VaultFileItem,
+        notes: String?,
+    ): Boolean {
+        return try {
+            val content = OdinSystemSerializer.serialize(
+                VaultFileContent(name = file.fileName, notes = notes)
+            )
+            val metadata = UploadFileMetadata(
+                allowDistribution = false,
+                isEncrypted = true,
+                appData = UploadAppFileMetaData(content = content),
+                versionTag = file.versionTag,
+            ).encryptContent(file.keyHeader)
+
+            val request = UpdateFileByFileIdRequest(
+                driveId = file.driveId,
+                fileId = file.fileId,
+                keyHeader = file.keyHeader,
+                instructions = FileUpdateInstructionSet(
+                    transferIv = ByteArrayUtil.getRndByteArray(16),
+                    locale = UpdateLocale.Local,
+                    recipients = emptyList(),
+                    manifest = UpdateManifest.build(),
+                ),
+                metadata = metadata,
+            )
+
+            val result = uploadProvider.updateFileByFileId(request)
+            result != null
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "Failed to update notes for ${file.fileId}" }
+            false
+        }
+    }
+
+    suspend fun downloadPayload(file: VaultFileItem, payloadKey: String): String? {
+        return try {
+            val payloadDescriptor = file.payloadDescriptors.find { it.key == payloadKey }
+            val iv = payloadDescriptor?.iv
+            val keyHeader = if (iv != null) {
+                try {
+                    KeyHeader(Base64.decode(iv), file.keyHeader.aesKey)
+                } catch (_: Exception) {
+                    file.keyHeader
+                }
+            } else {
+                file.keyHeader
+            }
+
             val bytes = driveFileProvider.getPayloadBytesDecrypted(
                 driveId = file.driveId,
                 fileId = file.fileId,
-                key = file.payloadKey,
-                keyHeader = file.payloadKeyHeader,
+                key = payloadKey,
+                keyHeader = keyHeader,
             )?.bytes ?: return null
 
-            val extension = file.contentType.substringAfter("/", "bin").let {
+            val ct = payloadDescriptor?.contentType ?: file.contentType
+            val extension = ct.substringAfter("/", "bin").let {
                 if (it == "jpeg") "jpg" else it
             }
             fileOperationsProvider.writeBytesToTempFile(bytes, "share_", ".$extension")
         } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to download vault file for share: ${file.fileId}" }
+            Logger.e(e, TAG) { "Failed to download payload $payloadKey from ${file.fileId}" }
             null
         }
     }
 
-    private suspend fun buildPayloadBundle(
-        filePath: String,
-        contentType: String,
+    private suspend fun buildMultiPayloadBundle(
+        files: List<Pair<String, String>>,
     ): PayloadBundle {
-        var previewThumbnail: EmbeddedThumb? = null
-        var thumbnails = emptyList<id.homebase.api.client.drives.files.ThumbnailFile>()
+        val allPayloads = mutableListOf<PayloadFile>()
+        val allThumbnails = mutableListOf<id.homebase.api.client.drives.files.ThumbnailFile>()
+        val allPreviews = mutableListOf<EmbeddedThumb>()
 
-        if (contentType.startsWith("image/")) {
-            try {
-                val result = MessageThumbnailGenerator.generate(
-                    filePath, VAULT_PAYLOAD_KEY, fileOperationsProvider,
-                )
-                previewThumbnail = result.preview
-                thumbnails = result.thumbnails
-            } catch (e: Exception) {
-                Logger.w(e, TAG) { "Thumbnail generation failed, uploading without thumbnails" }
+        files.forEachIndexed { index, (filePath, contentType) ->
+            val key = vaultPayloadKey(index)
+            var previewThumbnail: EmbeddedThumb? = null
+            var thumbnails = emptyList<id.homebase.api.client.drives.files.ThumbnailFile>()
+
+            if (contentType.startsWith("image/")) {
+                try {
+                    val result = MessageThumbnailGenerator.generate(
+                        filePath, key, fileOperationsProvider,
+                    )
+                    previewThumbnail = result.preview
+                    thumbnails = result.thumbnails
+                } catch (e: Exception) {
+                    Logger.w(e, TAG) { "Thumbnail generation failed for payload $key" }
+                }
             }
+
+            allPayloads += PayloadFile(
+                key = key,
+                filePath = filePath,
+                contentType = contentType,
+                previewThumbnail = previewThumbnail,
+            )
+            allThumbnails += thumbnails
+            if (previewThumbnail != null) allPreviews += previewThumbnail
         }
 
-        val payload = PayloadFile(
-            key = VAULT_PAYLOAD_KEY,
-            filePath = filePath,
-            contentType = contentType,
-            previewThumbnail = previewThumbnail,
-        )
-
         return PayloadBundle(
-            payloads = listOf(payload),
-            thumbnails = thumbnails,
-            previewThumbs = listOfNotNull(previewThumbnail),
+            payloads = allPayloads,
+            thumbnails = allThumbnails,
+            previewThumbs = allPreviews,
         )
     }
 }

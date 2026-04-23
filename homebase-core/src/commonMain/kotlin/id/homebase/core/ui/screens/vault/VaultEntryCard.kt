@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,83 +67,130 @@ fun VaultEntryCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(THUMBNAIL_HEIGHT)
-                .clip(topCornersShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .height(THUMBNAIL_HEIGHT),
             contentAlignment = Alignment.Center,
         ) {
-            if (file.isImage && file.isPending && file.pendingFileUri != null) {
-                HomebaseImage(
-                    imageData = HomebaseImageData.pending(fileUri = file.pendingFileUri),
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    contentDescription = file.fileName,
+            // Stacked shadow layers (only for multi-page)
+            if (file.hasMultiplePages) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 6.dp, end = 2.dp, top = 4.dp)
+                        .graphicsLayer { rotationZ = -2f }
+                        .clip(topCornersShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                 )
-            } else if (file.isImage && !file.isPending) {
-                HomebaseImage(
-                    imageData = HomebaseImageData(
-                        driveId = file.driveId,
-                        fileId = file.fileId,
-                        payloadKey = file.payloadKey,
-                        previewThumbnail = file.previewThumbnail,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
-                        isEncrypted = file.isEncrypted,
-                        keyHeader = file.payloadKeyHeader,
-                    ),
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    contentDescription = file.fileName,
-                )
-            } else {
-                Icon(
-                    imageVector = vaultEntryFileTypeIcon(file.contentType),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(32.dp),
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 4.dp, end = 2.dp, top = 2.dp)
+                        .graphicsLayer { rotationZ = -1f }
+                        .clip(topCornersShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
                 )
             }
 
-            // Upload status overlay
-            when (val status = file.uploadStatus) {
-                is VaultUploadStatus.Preparing -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    }
+            // Main thumbnail
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(topCornersShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (file.isImage && file.isPending && file.pendingFileUri != null) {
+                    HomebaseImage(
+                        imageData = HomebaseImageData.pending(fileUri = file.pendingFileUri),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        contentDescription = file.fileName,
+                    )
+                } else if (file.isImage && !file.isPending) {
+                    HomebaseImage(
+                        imageData = HomebaseImageData(
+                            driveId = file.driveId,
+                            fileId = file.fileId,
+                            payloadKey = file.payloadKey,
+                            previewThumbnail = file.previewThumbnail,
+                            requestedSize = ImageSize.THUMB_MEDIUM,
+                            isEncrypted = file.isEncrypted,
+                            keyHeader = file.payloadKeyHeader,
+                        ),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        contentDescription = file.fileName,
+                    )
+                } else {
+                    Icon(
+                        imageVector = vaultEntryFileTypeIcon(file.contentType),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(32.dp),
+                    )
                 }
 
-                is VaultUploadStatus.Uploading -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                // Upload status overlay
+                when (val status = file.uploadStatus) {
+                    is VaultUploadStatus.Preparing -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        }
                     }
+
+                    is VaultUploadStatus.Uploading -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        }
+                    }
+
+                    is VaultUploadStatus.Failed -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    }
+
+                    else -> Unit
                 }
 
-                is VaultUploadStatus.Failed -> {
+                // Page count badge (only for multi-page)
+                if (file.hasMultiplePages) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)),
-                        contentAlignment = Alignment.Center,
+                            .align(Alignment.BottomEnd)
+                            .padding(4.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.8f),
+                                shape = RoundedCornerShape(8.dp),
+                            )
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.ErrorOutline,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.size(24.dp),
+                        Text(
+                            text = "${file.pageCount}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.inverseOnSurface,
                         )
                     }
                 }
-
-                else -> Unit
             }
         }
 

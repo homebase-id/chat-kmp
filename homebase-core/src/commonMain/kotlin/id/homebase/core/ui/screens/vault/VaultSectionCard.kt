@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -67,11 +68,12 @@ fun VaultSectionCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Header row: title + 3-dot menu
+            // Header row: title + add button + 3-dot menu
             SectionHeader(
                 title = section.title,
                 isFirst = section.isFirst,
                 isLast = section.isLast,
+                onAddEntry = onAddEntry,
                 onMoveUp = onMoveUp,
                 onMoveDown = onMoveDown,
                 onRenameSection = onRenameSection,
@@ -88,20 +90,19 @@ fun VaultSectionCard(
                 )
             }
 
-            // Entry cards row (always shown, with trailing Add button)
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(end = 4.dp),
-            ) {
-                items(section.entries, key = { it.fileId }) { entry ->
-                    VaultEntryCard(
-                        file = entry,
-                        sectionTitle = section.title,
-                        onClick = { onEntryClick(entry) },
-                    )
-                }
-                item(key = "add_entry_button") {
-                    VaultAddEntryButton(onClick = onAddEntry)
+            // Entry cards row
+            if (section.entries.isNotEmpty()) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(end = 4.dp),
+                ) {
+                    items(section.entries, key = { it.fileId }) { entry ->
+                        VaultEntryCard(
+                            file = entry,
+                            sectionTitle = section.title,
+                            onClick = { onEntryClick(entry) },
+                        )
+                    }
                 }
             }
         }
@@ -113,6 +114,7 @@ private fun SectionHeader(
     title: String,
     isFirst: Boolean,
     isLast: Boolean,
+    onAddEntry: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onRenameSection: () -> Unit,
@@ -131,6 +133,14 @@ private fun SectionHeader(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
         )
+
+        IconButton(onClick = onAddEntry) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = stringResource(MR.string.vault_entry_add),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
 
         Box {
             IconButton(onClick = { menuExpanded = true }) {

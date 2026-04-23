@@ -59,11 +59,14 @@ import id.homebase.resources.vault_biometric_prompt_title
 import id.homebase.resources.vault_label
 import id.homebase.resources.vault_permission_cancel
 import id.homebase.resources.vault_rename_action
+import id.homebase.resources.vault_rename_title
 import id.homebase.resources.vault_section_delete
 import id.homebase.resources.vault_section_delete_confirm_message
 import id.homebase.resources.vault_section_delete_confirm_title
 import id.homebase.resources.vault_section_rename
 import id.homebase.resources.vault_settings
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
@@ -139,14 +142,32 @@ fun VaultScreen(
     var activeSectionForEntry by remember { mutableStateOf<VaultSectionUiModel?>(null) }
     var sectionToDelete by remember { mutableStateOf<VaultSectionUiModel?>(null) }
     var sectionToRename by remember { mutableStateOf<VaultSectionUiModel?>(null) }
+    var fileToRename by remember { mutableStateOf<VaultFileItem?>(null) }
 
     // File picker wired to active section
-    val filePicker = rememberFilePickerLauncher { file ->
-        file?.let {
+    val filePicker = rememberFilePickerLauncher(
+        type = FileKitType.Image,
+        mode = FileKitMode.Multiple(),
+    ) { files ->
+        if (!files.isNullOrEmpty()) {
             activeSectionForEntry?.let { section ->
-                viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, it))
+                viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
             }
         }
+    }
+
+    var fileForAppend by remember { mutableStateOf<VaultFileItem?>(null) }
+
+    val appendPicker = rememberFilePickerLauncher(
+        type = FileKitType.Image,
+        mode = FileKitMode.Multiple(),
+    ) { files ->
+        if (!files.isNullOrEmpty()) {
+            fileForAppend?.let { f ->
+                viewModel.onAction(VaultUiAction.AppendPages(f, files))
+            }
+        }
+        fileForAppend = null
     }
 
     Scaffold(
@@ -330,22 +351,66 @@ fun VaultScreen(
         )
     }
 
-    // Preview overlay (outside Scaffold, on top of everything)
+    // File rename dialog
+    fileToRename?.let { file ->
+        var newName by remember(file) { mutableStateOf(file.fileName) }
+        AlertDialog(
+            onDismissRequest = { fileToRename = null },
+            title = { Text(stringResource(MR.string.vault_rename_title)) },
+            text = {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.onAction(VaultUiAction.RenameFile(file, newName))
+                        fileToRename = null
+                    },
+                ) {
+                    Text(stringResource(MR.string.vault_rename_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { fileToRename = null }) {
+                    Text(stringResource(MR.string.vault_permission_cancel))
+                }
+            },
+        )
+    }
+
+    // Gallery overlay (outside Scaffold, on top of everything)
     AnimatedVisibility(
         visible = uiState.fullScreenOverlay != null,
         enter = fadeIn(),
         exit = fadeOut(),
     ) {
         val overlay = uiState.fullScreenOverlay
-        if (overlay is VaultOverlay.Preview) {
-            VaultPreviewOverlay(
+        if (overlay is VaultOverlay.Gallery) {
+            VaultGalleryOverlay(
                 file = overlay.file,
+                initialPage = overlay.initialPage,
                 onDismiss = { viewModel.onAction(VaultUiAction.CloseOverlay) },
-                onShare = { viewModel.onAction(VaultUiAction.ShareFile(overlay.file)) },
-                onRename = { /* Rename removed in section-based UI */ },
-                onDelete = {
+                onSharePage = { key ->
+                    viewModel.onAction(VaultUiAction.SharePage(overlay.file, key))
+                },
+                onDeletePage = { key ->
+                    viewModel.onAction(VaultUiAction.DeletePage(overlay.file, key))
+                },
+                onAppendPages = {
+                    fileForAppend = overlay.file
+                    appendPicker.launch()
+                },
+                onUpdateNotes = { notes ->
+                    viewModel.onAction(VaultUiAction.UpdateNotes(overlay.file, notes))
+                },
+                onDeleteEntry = {
                     viewModel.onAction(VaultUiAction.DeleteFile(overlay.file))
                 },
+                onRenameEntry = { fileToRename = overlay.file },
             )
         }
     }

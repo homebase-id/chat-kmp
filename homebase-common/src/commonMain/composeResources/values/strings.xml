@@ -497,6 +497,19 @@
 
     <string name="vault_section_empty_hint">Tap + to add your first %1$s</string>
 
+    <!-- Vault Gallery -->
+    <string name="vault_gallery_page_counter">%1$d / %2$d</string>
+    <string name="vault_gallery_add_page">Add page</string>
+    <string name="vault_gallery_delete_page">Delete page</string>
+    <string name="vault_gallery_delete_page_confirm">Delete this page? This cannot be undone.</string>
+    <string name="vault_gallery_delete_last_page_confirm">This is the last page. Deleting it will remove the entire entry.</string>
+    <string name="vault_gallery_share_page">Share this page</string>
+
+    <!-- Vault Notes -->
+    <string name="vault_notes_label">Notes</string>
+    <string name="vault_notes_placeholder">Add notes about this entry…</string>
+    <string name="vault_notes_save">Save</string>
+
     <string name="feed_error_title">Failed to load feed</string>
     <string name="feed_error_retry">Retry</string>
     <string name="pending_attachment_one">1 attachment</string>

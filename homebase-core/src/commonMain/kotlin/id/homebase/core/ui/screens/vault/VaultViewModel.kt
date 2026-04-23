@@ -88,8 +88,13 @@ class VaultViewModel(
             is VaultUiAction.MoveSectionUp -> handleMoveSectionUp(action.section)
             is VaultUiAction.MoveSectionDown -> handleMoveSectionDown(action.section)
             is VaultUiAction.AddEntryToSection -> handleAddEntryToSection(action)
+            is VaultUiAction.AppendPages -> handleAppendPages(action)
+            is VaultUiAction.DeletePage -> handleDeletePage(action)
+            is VaultUiAction.UpdateNotes -> handleUpdateNotes(action)
+            is VaultUiAction.SharePage -> handleSharePage(action)
             is VaultUiAction.EntryClicked -> handleEntryClicked(action)
             is VaultUiAction.ShareFile -> handleShareFile(action)
+            is VaultUiAction.RenameFile -> handleRenameFile(action)
             is VaultUiAction.DeleteFile -> handleDeleteFile(action)
             VaultUiAction.CloseOverlay -> _uiState.update { it.copy(fullScreenOverlay = null) }
             VaultUiAction.RefreshFiles -> loadSections()
@@ -197,17 +202,18 @@ class VaultViewModel(
     // region Entry handlers
 
     private fun handleAddEntryToSection(action: VaultUiAction.AddEntryToSection) {
-        val file = action.file
-        val fileName = file.name
-        val filePath = file.toString()
-        val contentType = file.mimeType()?.toString() ?: guessContentType(fileName)
+        val files = action.files
+        if (files.isEmpty()) return
+
+        val firstName = files.first().name
+        val firstContentType = files.first().mimeType()?.toString() ?: guessContentType(firstName)
         val pendingId = Uuid.random()
 
         val pendingItem = VaultFileItem(
             fileId = pendingId,
             driveId = Uuid.NIL,
-            fileName = fileName,
-            contentType = contentType,
+            fileName = firstName,
+            contentType = firstContentType,
             sizeBytes = 0L,
             createdAt = kotlin.time.Clock.System.now().toEpochMilliseconds(),
             previewThumbnail = null,
@@ -216,7 +222,7 @@ class VaultViewModel(
             isEncrypted = false,
             versionTag = null,
             uploadStatus = VaultUploadStatus.Preparing,
-            pendingFileUri = file.path,
+            pendingFileUri = files.first().path,
             groupId = action.sectionId,
         )
 
@@ -225,18 +231,19 @@ class VaultViewModel(
                 sections = state.sections.map { section ->
                     if (section.sectionId == action.sectionId) {
                         section.copy(entries = section.entries + pendingItem)
-                    } else {
-                        section
-                    }
+                    } else section
                 },
             )
         }
 
         viewModelScope.launch {
+            val fileData = files.map { file ->
+                val ct = file.mimeType()?.toString() ?: guessContentType(file.name)
+                file.path to ct
+            }
             val uniqueId = vaultRepository.uploadFile(
-                fileName = fileName,
-                contentType = contentType,
-                filePath = filePath,
+                entryName = firstName,
+                files = fileData,
                 scope = viewModelScope,
                 groupId = action.sectionId,
             )
@@ -250,14 +257,10 @@ class VaultViewModel(
                                     entries = section.entries.map { entry ->
                                         if (entry.fileId == pendingId) {
                                             entry.copy(uploadStatus = VaultUploadStatus.Uploading(0f))
-                                        } else {
-                                            entry
-                                        }
+                                        } else entry
                                     },
                                 )
-                            } else {
-                                section
-                            }
+                            } else section
                         },
                     )
                 }
@@ -270,18 +273,14 @@ class VaultViewModel(
                                     entries = section.entries.map { entry ->
                                         if (entry.fileId == pendingId) {
                                             entry.copy(uploadStatus = VaultUploadStatus.Failed("Upload failed"))
-                                        } else {
-                                            entry
-                                        }
+                                        } else entry
                                     },
                                 )
-                            } else {
-                                section
-                            }
+                            } else section
                         },
                     )
                 }
-                _events.tryEmit(VaultUiEvent.Error("Failed to upload $fileName"))
+                _events.tryEmit(VaultUiEvent.Error("Failed to upload $firstName"))
             }
         }
     }
@@ -289,14 +288,14 @@ class VaultViewModel(
     private fun handleEntryClicked(action: VaultUiAction.EntryClicked) {
         val file = action.file
         if (file.isPending) return
-        _uiState.update { it.copy(fullScreenOverlay = VaultOverlay.Preview(file)) }
+        _uiState.update { it.copy(fullScreenOverlay = VaultOverlay.Gallery(file)) }
     }
 
     private fun handleShareFile(action: VaultUiAction.ShareFile) {
         val file = action.file
         if (file.isPending) return
         viewModelScope.launch {
-            val tempPath = vaultRepository.downloadFileForShare(file)
+            val tempPath = vaultRepository.downloadPayload(file, file.payloadKey)
             if (tempPath != null) {
                 _events.tryEmit(
                     VaultUiEvent.ShareFileReady(tempPath, file.fileName, file.contentType),
@@ -307,13 +306,92 @@ class VaultViewModel(
         }
     }
 
+    private fun handleRenameFile(action: VaultUiAction.RenameFile) {
+        viewModelScope.launch {
+            val file = action.file
+            val success = vaultRepository.renameFile(
+                fileId = file.fileId,
+                newName = action.newName,
+                existingNotes = file.notes,
+                versionTag = file.versionTag,
+                keyHeader = file.keyHeader,
+            )
+            if (success) {
+                loadSections()
+            } else {
+                _events.tryEmit(VaultUiEvent.Error("Failed to rename ${file.fileName}"))
+            }
+        }
+    }
+
     private fun handleDeleteFile(action: VaultUiAction.DeleteFile) {
         viewModelScope.launch {
             val success = vaultRepository.deleteFile(action.file.fileId)
             if (success) {
+                _uiState.update { it.copy(fullScreenOverlay = null) }
                 loadSections()
             } else {
                 _events.tryEmit(VaultUiEvent.Error("Failed to delete ${action.file.fileName}"))
+            }
+        }
+    }
+
+    private fun handleAppendPages(action: VaultUiAction.AppendPages) {
+        viewModelScope.launch {
+            val fileData = action.newFiles.map { file ->
+                val ct = file.mimeType()?.toString() ?: guessContentType(file.name)
+                file.path to ct
+            }
+            val success = vaultRepository.appendPages(
+                file = action.file,
+                newFiles = fileData,
+                scope = viewModelScope,
+            )
+            if (success) {
+                loadSections()
+            } else {
+                _events.tryEmit(VaultUiEvent.Error("Failed to add pages"))
+            }
+        }
+    }
+
+    private fun handleDeletePage(action: VaultUiAction.DeletePage) {
+        val isLastPage = action.file.payloadDescriptors.size <= 1
+        viewModelScope.launch {
+            val success = vaultRepository.deletePage(action.file, action.payloadKey)
+            if (success) {
+                if (isLastPage) {
+                    _uiState.update { it.copy(fullScreenOverlay = null) }
+                }
+                loadSections()
+            } else {
+                _events.tryEmit(VaultUiEvent.Error("Failed to delete page"))
+            }
+        }
+    }
+
+    private fun handleUpdateNotes(action: VaultUiAction.UpdateNotes) {
+        viewModelScope.launch {
+            val success = vaultRepository.updateNotes(action.file, action.notes)
+            if (success) {
+                loadSections()
+            } else {
+                _events.tryEmit(VaultUiEvent.Error("Failed to save notes"))
+            }
+        }
+    }
+
+    private fun handleSharePage(action: VaultUiAction.SharePage) {
+        viewModelScope.launch {
+            val tempPath = vaultRepository.downloadPayload(action.file, action.payloadKey)
+            if (tempPath != null) {
+                val descriptor = action.file.payloadDescriptors.find { it.key == action.payloadKey }
+                val contentType = descriptor?.contentType ?: action.file.contentType
+                _events.tryEmit(
+                    VaultUiEvent.ShareFileReady(tempPath, action.file.fileName, contentType),
+                )
+            } else {
+                _events.tryEmit(VaultUiEvent.Error("Failed to download page for sharing"))
             }
         }
     }

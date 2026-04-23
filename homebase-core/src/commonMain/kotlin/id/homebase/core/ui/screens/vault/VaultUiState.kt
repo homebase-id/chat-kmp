@@ -14,7 +14,7 @@ data class VaultUiState(
 )
 
 sealed interface VaultOverlay {
-    data class Preview(val file: VaultFileItem) : VaultOverlay
+    data class Gallery(val file: VaultFileItem, val initialPage: Int = 0) : VaultOverlay
 }
 
 sealed interface VaultUiAction {
@@ -27,11 +27,31 @@ sealed interface VaultUiAction {
     data class MoveSectionUp(val section: VaultSectionUiModel) : VaultUiAction
     data class MoveSectionDown(val section: VaultSectionUiModel) : VaultUiAction
 
-    data class AddEntryToSection(val sectionId: Uuid, val file: PlatformFile) : VaultUiAction
+    data class AddEntryToSection(
+        val sectionId: Uuid,
+        val files: List<PlatformFile>,
+    ) : VaultUiAction
+
+    data class AppendPages(
+        val file: VaultFileItem,
+        val newFiles: List<PlatformFile>,
+    ) : VaultUiAction
+
+    data class DeletePage(
+        val file: VaultFileItem,
+        val payloadKey: String,
+    ) : VaultUiAction
+
+    data class UpdateNotes(
+        val file: VaultFileItem,
+        val notes: String?,
+    ) : VaultUiAction
+
     data class EntryClicked(val file: VaultFileItem) : VaultUiAction
     data class ShareFile(val file: VaultFileItem) : VaultUiAction
+    data class SharePage(val file: VaultFileItem, val payloadKey: String) : VaultUiAction
+    data class RenameFile(val file: VaultFileItem, val newName: String) : VaultUiAction
     data class DeleteFile(val file: VaultFileItem) : VaultUiAction
-
     data object CloseOverlay : VaultUiAction
     data object RefreshFiles : VaultUiAction
 }
