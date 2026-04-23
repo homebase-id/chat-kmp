@@ -90,7 +90,7 @@ class DeveloperMenuViewModel(
                 Logger.i(tag = "DeveloperMenu") { "Clearing all data" }
 
                 // Clear all sync data
-                driveSyncManager.clearStorage().join()
+                driveSyncManager.clearStorage()
 
                 // Clear notifications (if user is logged in)
                 val identityId = credentialsManager.getActiveCredentials()?.getIdentityId()
