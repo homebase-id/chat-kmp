@@ -1,6 +1,7 @@
 package id.homebase.core.notifications
 
 import com.mmk.kmpnotifier.notification.PayloadData
+import kotlin.concurrent.Volatile
 
 /**
  * Bridge used by platform notification backends (e.g. Nucleus on JVM) to deliver
