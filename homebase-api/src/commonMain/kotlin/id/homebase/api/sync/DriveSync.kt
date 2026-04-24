@@ -54,13 +54,11 @@ class DriveSync(
     }
 
 
-    // Wipe drive-scoped synced data on logout. Identity-scoped tables (KeyValue, Outbox,
-    // AppNotifications, ConnectionCache) are wiped once at the DriveSyncManager level.
-    suspend fun clearStorage() {
-        databaseManager.driveMainIndex.deleteAll()
-        databaseManager.driveTagIndex.deleteAll()
-        databaseManager.driveLocalTagIndex.deleteAll()
-        databaseManager.chatReadCount.deleteAll()
+    // Reset in-memory sync state on logout. Every SQL table this drive touches is
+    // wiped centrally by DatabaseManager.wipeAndRecreate(), so this method only has
+    // to zero the cursor we hold in memory — without this the next session would
+    // resume from a stale QueryBatchCursor that no longer matches on-disk rows.
+    fun resetInMemoryState() {
         cursor = null
     }
 

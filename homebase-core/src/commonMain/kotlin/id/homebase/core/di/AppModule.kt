@@ -1,8 +1,15 @@
 package id.homebase.core.di
 
+import co.touchlab.kermit.Logger
+import coil3.ImageLoader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.di.apiModule
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.youauth.YouAuthFlowManager
+import okio.FileSystem
+import okio.Path.Companion.toPath
+import okio.SYSTEM
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersViewModel
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
@@ -80,6 +87,48 @@ val appModule = module {
         val allDrives = mandatorySyncDrives + registry.loadDrives()
         DriveSyncManager(get(), get(), get(), get(), get(),
             allDrives.associate { it.drive.alias to it.label })
+    }
+
+    // Bound here rather than in homebase-api's ApiModule because the logout hook
+    // needs platform singletons (Coil ImageLoader, FileOperationsProvider) that
+    // don't exist at the homebase-api layer. The hook clears every cache that
+    // outlives the identity:
+    //   - Coil in-memory image cache: avatars and thumbnails decoded for the
+    //     outgoing user must not leak to the next login on the same machine.
+    //   - Orphan coil3_disk_cache directory: our ImageLoader sets diskCache(null),
+    //     but if a regression ever re-enables it, or a prior install populated
+    //     it, we want logout to clean it up. Matches StorageSettingsViewModel's
+    //     "Clear caches" button behaviour.
+    // DriveFileProviderCached and PublicProfileProviderCached already delete
+    // their encrypted disk directories in their own clearCaches(), which
+    // YouAuthFlowManager.logout() invokes immediately before this hook.
+    single {
+        val imageLoader: ImageLoader = get()
+        val fileOps: FileOperationsProvider = get()
+        val fileSystem = FileSystem.SYSTEM
+        YouAuthFlowManager(
+            driveSyncManager = get(),
+            credentialsManager = get(),
+            httpClient = get(),
+            driveFileProviderCached = get(),
+            publicProfileProviderCached = get(),
+            clearPlatformCaches = {
+                runCatching { imageLoader.memoryCache?.clear() }
+                    .onFailure {
+                        Logger.w(tag = "YouAuthFlowManager", throwable = it) {
+                            "coil memory cache clear failed on logout"
+                        }
+                    }
+                runCatching {
+                    val orphan = "${fileOps.getCacheDirectory()}/coil3_disk_cache".toPath()
+                    if (fileSystem.exists(orphan)) fileSystem.deleteRecursively(orphan)
+                }.onFailure {
+                    Logger.w(tag = "YouAuthFlowManager", throwable = it) {
+                        "orphan coil disk cache delete failed on logout"
+                    }
+                }
+            },
+        )
     }
 
     single {
