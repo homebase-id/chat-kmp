@@ -17,6 +17,7 @@ composeMultiplatform = "1.10.3"
 composeHotReload = "1.1.0-rc01"
 composenativetray = "1.2.0"
 composenativewebview = "1.0.0-beta-01"
+nucleus = "1.14.1"
 conveyor = "2.0"
 ffmpegKit = "1.0"
 vlcj = "4.8.2"
@@ -171,6 +172,10 @@ kache-file = { module = "com.mayakapps.kache:file-kache", version.ref = "kache" 
 kache = { module = "com.mayakapps.kache:kache", version.ref = "kache" }
 composenativetray = { module = "io.github.kdroidfilter:composenativetray", version.ref = "composenativetray" }
 composenativewebview = { module = "io.github.kdroidfilter:composewebview", version.ref = "composenativewebview" }
+nucleus-notification-common = { module = "io.github.kdroidfilter:nucleus.notification-common", version.ref = "nucleus" }
+nucleus-notification-windows = { module = "io.github.kdroidfilter:nucleus.notification-windows", version.ref = "nucleus" }
+nucleus-notification-macos = { module = "io.github.kdroidfilter:nucleus.notification-macos", version.ref = "nucleus" }
+nucleus-notification-linux = { module = "io.github.kdroidfilter:nucleus.notification-linux", version.ref = "nucleus" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

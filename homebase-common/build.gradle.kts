@@ -122,6 +122,10 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
             implementation(libs.kotlinx.io.core.jvm)
+            implementation(libs.nucleus.notification.common)
+            implementation(libs.nucleus.notification.windows)
+            implementation(libs.nucleus.notification.macos)
+            implementation(libs.nucleus.notification.linux)
         }
     }
 
