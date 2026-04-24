@@ -87,6 +87,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
+//TODO(2002Bishwajeet): Lets find a way to modularise it with the chat gallery
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultGalleryOverlay(
