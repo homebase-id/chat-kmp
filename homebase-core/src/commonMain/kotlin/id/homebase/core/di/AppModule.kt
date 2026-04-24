@@ -63,6 +63,9 @@ import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
+import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
+import id.homebase.core.ui.screens.defragmenter.service.DefragSource
+import id.homebase.core.ui.screens.defragmenter.service.LiveDefragSource
 import id.homebase.core.ui.screens.storage.StorageSettingsViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
@@ -186,6 +189,8 @@ val appModule = module {
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
 
+    singleOf(::LiveDefragSource) bind DefragSource::class
+
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
     viewModelOf(::HomeViewModel)
@@ -208,6 +213,7 @@ val appModule = module {
     viewModelOf(::DeveloperMenuViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
+    viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)
     viewModelOf(::ConnectionsViewModel)
     viewModelOf(::ConnectRequestViewModel)

@@ -253,6 +253,13 @@ class DatabaseManager(
         log.i { "wipeAndRecreate: completed (${TABLE_NAMES.size} tables)" }
     }
 
+    // Reclaim space released by DELETE/DROP without nuking schema. Runs on the
+    // single-writer [dispatcher] so it cannot race with other queries. Used by
+    // the Defragmenter screen as its finale.
+    suspend fun vacuum() = withContext(dispatcher) {
+        driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
+    }
+
     override fun close() {
         driver.close()
         logger.i { "Database closed" }

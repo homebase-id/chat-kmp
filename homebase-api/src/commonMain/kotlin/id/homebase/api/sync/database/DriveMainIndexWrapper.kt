@@ -130,6 +130,9 @@ class DriveMainIndexWrapper(
     fun countByIdentityAndDrive(identityId: Uuid, driveId: Uuid): Long =
         delegate.countByIdentityAndDrive(identityId, driveId).executeAsOne()
 
+    fun selectSoftDeletedFileIds(identityId: Uuid, driveId: Uuid): List<Uuid> =
+        delegate.selectSoftDeletedFileIds(identityId, driveId).executeAsList()
+
     suspend fun upsertDriveMainIndex(
         identityId: Uuid,
         driveId: Uuid,
