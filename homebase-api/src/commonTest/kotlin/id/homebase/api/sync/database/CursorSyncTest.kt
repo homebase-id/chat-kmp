@@ -3,17 +3,17 @@ package id.homebase.api.sync.database
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.query.TimeRowCursor
 import id.homebase.api.common.time.UnixTimeUtc
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.test.runTest
 
 class CursorSyncTest {
     @Test
     fun testSaveAndLoadQueryBatchCursor_withAllFields() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
             val originalCursor = QueryBatchCursor(
                 paging = TimeRowCursor(
                     time = UnixTimeUtc(
@@ -78,7 +78,7 @@ class CursorSyncTest {
 
     @Test
     fun testLoadCursor_whenNoCursorExists_returnsNull() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
             val cursorStorage = CursorStorage(dbm, Uuid.random())
 
             // Try to load cursor when none exists
@@ -91,7 +91,7 @@ class CursorSyncTest {
 
     @Test
     fun testSaveAndLoadQueryBatchCursor_withNullFields() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Create a QueryBatchCursor with some null fields
             val originalCursor = QueryBatchCursor(
                 paging = TimeRowCursor(
@@ -126,7 +126,7 @@ class CursorSyncTest {
 
     @Test
     fun testLoadCursor_expectFreshButCursorExists_returnsNull() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val cursorStorage = CursorStorage(dbm, Uuid.random())
             cursorStorage.saveCursor(
                 QueryBatchCursor(
@@ -149,7 +149,7 @@ class CursorSyncTest {
 
     @Test
     fun testLoadCursor_expectFreshAndNoCursor_returnsNullWithoutLogging() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val cursorStorage = CursorStorage(dbm, Uuid.random())
             // No cursor saved — expectFresh=true is the normal, quiet path.
             assertNull(cursorStorage.loadCursor(expectFresh = true))
@@ -158,7 +158,7 @@ class CursorSyncTest {
 
     @Test
     fun testKeyValueDeleteAll_wipesEveryCursor() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             // Two different drives each holding a cursor, mirroring what the app has at
             // logout time (chat + contact + feed drives each write their own KV row).
             val cursor = QueryBatchCursor(
@@ -183,7 +183,7 @@ class CursorSyncTest {
 
     @Test
     fun testDeleteCursor() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Create and save a cursor
             val originalCursor = QueryBatchCursor(
                 paging = TimeRowCursor(
@@ -210,7 +210,7 @@ class CursorSyncTest {
 
     @Test
     fun testUpdateCursor() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Create and save initial cursor
             val initialCursor = QueryBatchCursor(
                 paging = TimeRowCursor(

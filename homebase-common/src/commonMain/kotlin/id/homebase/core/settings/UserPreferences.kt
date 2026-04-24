@@ -26,6 +26,10 @@ class UserPreferences(private val settings: Settings) {
             _preferenceState.value = _preferenceState.value.copy(theme = value)
         }
 
+    var showDeveloperMenu: Boolean
+        get() = settings.getBoolean("show_developer_menu", false)
+        set(value) = settings.putBoolean("show_developer_menu", value)
+
     var preferredUserReactions: List<String>
         get() = settings.getStringOrNull("preferred_user_reactions")?.split(",") ?: listOf()
         set(value) = settings.putString("preferred_user_reactions", value.joinToString(","))

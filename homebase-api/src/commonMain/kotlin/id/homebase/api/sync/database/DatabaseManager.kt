@@ -1,10 +1,11 @@
 package id.homebase.api.sync.database
 
-import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlCursor
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -48,16 +49,15 @@ private val connectionCacheAdapter = ConnectionCache.Adapter(
     identityIdAdapter = UuidAdapter
 )
 
-class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
+class DatabaseManager(
+    driverProvider: () -> SqlDriver,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
+) : AutoCloseable {
     private val logger = Logger.withTag("DatabaseManager")
     private var database: OdinDatabase
-    internal var driver: SqlDriver
-
-    //    private val dbDispatcher = Dispatchers.IO.limitedParallelism(1)
-    private val dbDispatcher = Dispatchers.Default.limitedParallelism(1)
+    internal var driver: SqlDriver = driverProvider()
 
     init {
-        driver = driverProvider()
         OdinDatabase.Schema.create(driver) // Create the tables if they are missing
         database = OdinDatabase(
             driver,
@@ -79,6 +79,20 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
         private lateinit var instance: DatabaseManager
         val appDb: DatabaseManager get() = instance
 
+        // Single source of truth for every table in OdinDatabase. If a new table is
+        // added to the schema, add it here or wipeAndRecreate() will silently skip it
+        // on logout — exactly the class of bug that leaks Outbox rows across sessions.
+        internal val TABLE_NAMES = listOf(
+            "AppNotifications",
+            "ChatReadCount",
+            "ConnectionCache",
+            "DriveLocalTagIndex",
+            "DriveMainIndex",
+            "DriveTagIndex",
+            "KeyValue",
+            "Outbox"
+        )
+
         suspend fun initialize(driverProvider: () -> SqlDriver) {
             if (::instance.isInitialized) throw IllegalStateException("Already initialized")
 
@@ -87,56 +101,38 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
             val version = instance.driveMainIndex.getSchemaVersion()
 
             if (version < DATABASE_VERSION) {
-                val logger = Logger.withTag("DatabaseManager")
-                logger.i { "Schema version $version < $DATABASE_VERSION — wiping tables" }
-                wipeTables(instance.driver)
-                OdinDatabase.Schema.create(instance.driver)
-                logger.i { "Tables recreated after wipe" }
-            }
-        }
-
-        private fun wipeTables(driver: SqlDriver) {
-            val tables = listOf(
-                "AppNotifications",
-                "ChatReadCount",
-                "ConnectionCache",
-                "DriveLocalTagIndex",
-                "DriveMainIndex",
-                "DriveTagIndex",
-                "KeyValue",
-                "Outbox"
-            )
-            tables.forEach { table ->
-                driver.execute(null, "DROP TABLE IF EXISTS $table;", 0)
+                Logger.withTag("DatabaseManager")
+                    .i { "Schema version $version < $DATABASE_VERSION — wiping tables" }
+                instance.wipeAndRecreate()
             }
         }
     }
 
-    public val appNotifications: AppNotificationsWrapper by lazy {
+    val appNotifications: AppNotificationsWrapper by lazy {
         AppNotificationsWrapper(
             driver,
             appNotificationsAdapter,
             this
         )
     }
-    public val chatReadCount: ChatReadCountWrapper by lazy {
+    val chatReadCount: ChatReadCountWrapper by lazy {
         ChatReadCountWrapper(driver, chatReadCountAdapter, driveMainIndexAdapter, this)
     }
-    public val driveMainIndex: DriveMainIndexWrapper by lazy {
+    val driveMainIndex: DriveMainIndexWrapper by lazy {
         DriveMainIndexWrapper(
             driver,
             driveMainIndexAdapter,
             this
         )
     }
-    public val driveLocalTagIndex: DriveLocalTagIndexWrapper by lazy {
+    val driveLocalTagIndex: DriveLocalTagIndexWrapper by lazy {
         DriveLocalTagIndexWrapper(
             driver,
             driveLocalTagIndexAdapter,
             this
         )
     }
-    public val driveTagIndex: DriveTagIndexWrapper by lazy {
+    val driveTagIndex: DriveTagIndexWrapper by lazy {
         DriveTagIndexWrapper(
             driver,
             driveTagIndexAdapter,
@@ -145,13 +141,13 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
     }
 
     // Lazy wrappers
-    public val keyValue: KeyValueWrapper by lazy {
+    val keyValue: KeyValueWrapper by lazy {
         KeyValueWrapper(driver, keyValueAdapter, this)
     }
-    public val outbox: OutboxWrapper by lazy {
+    val outbox: OutboxWrapper by lazy {
         OutboxWrapper(driver, outboxAdapter, this)
     }
-    public val connectionCache: ConnectionCacheWrapper by lazy {
+    val connectionCache: ConnectionCacheWrapper by lazy {
         ConnectionCacheWrapper(driver, connectionCacheAdapter, this)
     }
 
@@ -161,7 +157,7 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
         mapper: (SqlCursor) -> QueryResult<R>,
         parameters: Int,
         binders: (SqlPreparedStatement.() -> Unit)? = null
-    ): QueryResult<R> = withContext(dbDispatcher) {
+    ): QueryResult<R> = withContext(dispatcher) {
         try {
             driver.executeQuery(identifier, sql, mapper, parameters, binders)
         } catch (e: Exception) {
@@ -171,24 +167,90 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
     }
 
     suspend fun withWriteTransaction(block: (OdinDatabase) -> Unit) {
-        withContext(dbDispatcher) {
+        withContext(dispatcher) {
             database.transaction { block(database) }
         }
     }
 
     suspend fun withWrite(block: (OdinDatabase) -> Unit) {
-        withContext(dbDispatcher) { block(database) }
+        withContext(dispatcher) { block(database) }
     }
 
-    suspend fun <R> withWriteValue(block: (OdinDatabase) -> R): R = withContext(dbDispatcher) {
+    suspend fun <R> withWriteValue(block: (OdinDatabase) -> R): R = withContext(dispatcher) {
         block(database)
     }
 
-    // VACUUM rewrites the entire DB file, reclaiming space freed by large DELETEs
-    // (e.g. the logout wipe). Must run outside a transaction and with exclusive access
-    // to the DB, so we run it on dbDispatcher like every other write path.
-    suspend fun vacuum() = withContext(dbDispatcher) {
+    // Nuke every table and rebuild the schema from scratch. Used on logout (via
+    // DriveSyncManager.clearStorage) and on schema-version bump (via initialize).
+    //
+    // DROP TABLE is used instead of DELETE FROM because DROP is an unforgeable
+    // guarantee: after it returns, the rows cannot survive an open transaction,
+    // a stale cache, or a stray driver reference. DELETE has bitten us — the
+    // Outbox has been observed to keep rows across logout/login with their retry
+    // counters intact, meaning some deleteAll() was either racing another writer
+    // or hitting a different driver instance. DROP + CREATE + VACUUM on a single
+    // driver, inside the one-at-a-time dbDispatcher, removes all of those loopholes.
+    //
+    // Two verification probes run alongside the wipe and log an error if they fire:
+    //   1. After DROP: counting rows on the table must throw "no such table". If
+    //      the SELECT succeeds, DROP didn't take effect (wrong driver, or something
+    //      caught the exception silently).
+    //   2. After CREATE: the row count must be zero. If it's not, something wrote
+    //      to the freshly recreated table before we finished — usually a caller
+    //      still running with stale credentials.
+    suspend fun wipeAndRecreate() = withContext(dispatcher) {
+        val log = Logger.withTag("DatabaseManager")
+
+        TABLE_NAMES.forEach { table ->
+            driver.execute(null, "DROP TABLE IF EXISTS $table;", 0)
+        }
+
+        // Probe 1: after DROP every SELECT must throw.
+        TABLE_NAMES.forEach { table ->
+            val stillThere = runCatching {
+                driver.executeQuery(
+                    identifier = null,
+                    sql = "SELECT COUNT(*) FROM $table",
+                    mapper = { cursor ->
+                        cursor.next()
+                        QueryResult.Value(cursor.getLong(0) ?: 0L)
+                    },
+                    parameters = 0,
+                ).value
+            }.getOrNull()
+            if (stillThere != null) {
+                log.e { "wipeAndRecreate: table '$table' still queryable after DROP (rows=$stillThere) — wipe did not take effect" }
+            }
+        }
+
+        OdinDatabase.Schema.create(driver)
+
+        // Probe 2: after CREATE every table must be empty.
+        TABLE_NAMES.forEach { table ->
+            val count = runCatching {
+                driver.executeQuery(
+                    identifier = null,
+                    sql = "SELECT COUNT(*) FROM $table",
+                    mapper = { cursor ->
+                        cursor.next()
+                        QueryResult.Value(cursor.getLong(0) ?: 0L)
+                    },
+                    parameters = 0,
+                ).value
+            }.getOrElse { e ->
+                log.e(e) { "wipeAndRecreate: could not count '$table' after CREATE" }
+                -1L
+            }
+            if (count > 0L) {
+                log.e { "wipeAndRecreate: table '$table' has $count rows after wipe — something re-inserted mid-wipe" }
+            }
+        }
+
+        // Reclaim the pages freed by DROP. VACUUM must run outside any transaction;
+        // dbDispatcher has the single-writer slot so we're safe here.
         driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
+
+        log.i { "wipeAndRecreate: completed (${TABLE_NAMES.size} tables)" }
     }
 
     override fun close() {

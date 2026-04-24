@@ -82,6 +82,10 @@ sealed class Route {
     data object Help : Route()
 
     @Serializable
+    @SerialName("developer-menu")
+    data object DeveloperMenu : Route()
+
+    @Serializable
     @SerialName("storage-settings")
     data object StorageSettings : Route()
 
