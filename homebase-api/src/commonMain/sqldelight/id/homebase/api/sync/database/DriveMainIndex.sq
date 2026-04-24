@@ -107,6 +107,13 @@ selectByIdentityAndDriveAndGlobal:
 SELECT * FROM DriveMainIndex
 WHERE identityId = ? AND driveId = ? AND globalTransitId = ?;
 
+-- Select every row on a given drive with a given fileType. Used by DriveRegistry to
+-- enumerate registry-marker files (one per mounted optional drive) stored on the
+-- Chat drive.
+selectByIdentityAndDriveAndFileType:
+SELECT * FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND fileType = ?;
+
 
 -- Delete all records (for testing)
 deleteAll:

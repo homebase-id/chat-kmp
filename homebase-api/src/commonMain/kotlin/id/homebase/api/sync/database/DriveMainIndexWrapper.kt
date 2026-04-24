@@ -99,6 +99,20 @@ class DriveMainIndexWrapper(
         delegate.selectByIdentityAndDriveAndGlobal(identityId, driveId, globalTransitId)
             .executeAsOneOrNull()
 
+    fun selectHomebaseFilesByFileType(
+        identityId: Uuid,
+        driveId: Uuid,
+        fileType: Long,
+    ): List<HomebaseFile> {
+        val rows = delegate.selectByIdentityAndDriveAndFileType(identityId, driveId, fileType)
+            .executeAsList()
+        val result = ArrayList<HomebaseFile>(rows.size)
+        for (row in rows) {
+            result.add(OdinSystemSerializer.deserialize<HomebaseFile>(row.jsonHeader))
+        }
+        return result
+    }
+
 
     fun <T : Any> selectAll(
         mapper: (

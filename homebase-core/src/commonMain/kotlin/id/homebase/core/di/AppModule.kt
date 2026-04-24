@@ -82,13 +82,28 @@ val FeedPermissionQualifier = named("feedPermission")
 val appModule = module {
     single { UserPreferences(get()) }
 
-    single { DriveRegistry(get()) }
-
+    // DriveRegistry reads/writes a cross-device list of optional drives from the user's
+    // Chat drive. See id.homebase.core.sync.DriveRegistry for the storage model.
     single {
-        val registry = get<DriveRegistry>()
-        val allDrives = mandatorySyncDrives + registry.loadDrives()
-        DriveSyncManager(get(), get(), get(), get(), get(),
-            allDrives.associate { it.drive.alias to it.label })
+        val uploader = get<id.homebase.api.client.drives.upload.DriveUploadProvider>()
+        val files = get<id.homebase.api.client.drives.files.DriveFileProvider>()
+        DriveRegistry(
+            credentialsManager = get(),
+            databaseManager = get(),
+            uploadFile = { request -> uploader.uploadFile(request) },
+            hardDeleteFile = { driveId, fileId -> files.hardDeleteFile(driveId, fileId) },
+            eventBus = get(),
+        )
+    }
+
+    // Seeded with mandatory drives only — optional drives from the registry are cold-loaded
+    // into DriveSyncManager by AuthConnectionCoordinator after authentication, because
+    // reading the registry requires active credentials (not available at Koin time).
+    single {
+        DriveSyncManager(
+            get(), get(), get(), get(), get(),
+            mandatorySyncDrives.associate { it.drive.alias to it.label },
+        )
     }
 
     // Bound here rather than in homebase-api's ApiModule because the logout hook

@@ -59,21 +59,32 @@ The sync engine distinguishes two categories of drives:
 | Category | Constant / Source | Examples |
 |---|---|---|
 | **Mandatory** | `mandatorySyncDrives` in `AppConfig.kt` | Chat, Contacts, Profile |
-| **Optional** | `DriveRegistry` (encrypted DB) | Feed, Vault, … |
+| **Optional** | `DriveRegistry` (files on the Chat drive) | Feed, Vault, … |
 
 **Mandatory drives** (`chatLabeledDrive`, `contactLabeledDrive`, `profileLabeledDrive`) are always
 mounted. They cannot be removed and require no user action. These are the minimum set needed for the
 chat app to function.
 
-**Optional drives** are listed in `DriveRegistry` — a JSON blob stored in the encrypted
-`DatabaseManager.keyValue` store under a stable UUID key. The registry is read at startup and
-merged with the mandatory set before constructing `DriveSyncManager` and the WebSocket client.
+**Optional drives** are persisted as one file per mounted drive on the user's **Chat drive**
+(`fileType = RegistryDriveFileType (4242)`, `uniqueId = drive.alias`,
+`appData.content = serialized LabeledDrive`). The Chat drive is already mandatory and synced
+to the local SQLDelight index on every device, so `DriveRegistry.loadDrives()` is a pure local
+read — offline-safe and synchronous with respect to network. Writes go to the Chat drive via
+`DriveUploadProvider.uploadFile` (new) and `DriveFileProvider.hardDeleteFile` (remove); the
+standard Chat-drive sync machinery brings changes from other devices back into the local index.
 
-### First-startup migration
+### Cross-device propagation
 
-When no registry entry exists (fresh install or first upgrade from a build that hardcoded Feed),
-`DriveRegistry.loadDrives()` returns `[feedLabeledDrive]` as a default seed so existing users
-keep feed sync without any manual action.
+A drive activated on Device A uploads a registry file; the Chat-drive sync engine delivers it
+to Device B's local index; `DriveRegistry`'s `BatchReceived` observer notices the new file,
+calls `AuthConnectionCoordinator.mountDrive(drive, persist = false)`, which hot-mounts the
+drive and schedules a debounced WebSocket reconnect. Symmetric for unmount.
+
+### No default seed
+
+There is no "first-startup seeds Feed" behaviour. A fresh install starts with mandatory drives
+only. Feed (or any other add-on) appears on all devices only after the user explicitly
+activates it once, somewhere.
 
 ### Activating an add-on drive at runtime
 
@@ -610,8 +621,16 @@ Copy this into your PR description and tick off each wiring point:
 - **403 unmount is session-only.** If the server returns 403 for a drive, `DriveSyncManager`
   unmounts it automatically, clearing the sync indicator. The drive will be attempted again
   on the next startup. This path deliberately does NOT trigger a WS refresh — reconnecting
-  would just re-subscribe and be rejected again. To permanently remove a drive from the
-  registry, call `authConnectionCoordinator.unmountDrive(driveId)` from a settings action.
+  would just re-subscribe and be rejected again. It also does NOT delete the registry marker
+  file on the Chat drive — propagating a permission-denied condition as a cross-device
+  registry deletion would affect the user's other devices incorrectly. To permanently remove
+  a drive from the registry (for the whole identity), call
+  `authConnectionCoordinator.unmountDrive(driveId)` from a settings action.
+- **Cross-device unmount latency.** Removing a drive on Device A hard-deletes the registry
+  file on the Chat drive; Device B sees the change only after its next Chat-drive sync cycle.
+  Expect a few seconds (or a re-open of the app) for the drive to disappear on the other
+  device. First-boot on a new device is similar: optional drives appear after the Chat drive
+  has synced once, not instantly on login.
 - **Placeholder drive UUIDs.** Vault currently ships with a stub `f47ac10b-…`.
   Get real alias/type UUIDs from the server team before enabling the drive in
   production — otherwise the WebSocket will subscribe to a non-existent drive.

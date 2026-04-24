@@ -95,7 +95,21 @@ class AuthConnectionCoordinator(
         when (state) {
             is YouAuthState.Authenticated -> {
                 onPostAuthenticated()
+                // Cold-load the registry's optional drives into DriveSyncManager before
+                // opening the WebSocket so the initial subscription includes them. The
+                // Koin factory only seeds mandatory drives, because the DB is not readable
+                // with an active identity at Koin construction time.
+                for (drive in driveRegistry.loadDrives()) {
+                    driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+                }
                 connect()
+                // Observe cross-device registry changes. The registry files mounted above
+                // are already the diff baseline, so start() won't re-emit them; the observer
+                // only fires when another device activates or deactivates a drive.
+                driveRegistry.start(
+                    onMount = { drive -> mountDrive(drive, persist = false) },
+                    onUnmount = { driveId -> unmountDrive(driveId, persist = false) },
+                )
                 loadProfile()
             }
             is YouAuthState.Initializing -> {
@@ -141,6 +155,11 @@ class AuthConnectionCoordinator(
                 scope = scope,
                 eventBus = eventBus,
                 databaseManager = databaseManager,
+                // [DriveRegistry.loadDrives] reads the synced local DB — by the time we get
+                // here, `onAuthStateChanged(Authenticated)` has already populated it from the
+                // Chat drive's local index (or it's empty on a fresh install). mid-session
+                // mountDrive/unmountDrive calls trigger a debounced reconnect that re-invokes
+                // this block, picking up the fresh registry state each time.
                 drives = (mandatorySyncDrives + driveRegistry.loadDrives()).map { it.drive },
                 // Fires asynchronously once the server handshake has completed.
                 // We mark the connection state and then run post-connect setup in a
@@ -198,26 +217,35 @@ class AuthConnectionCoordinator(
     }
 
     /**
-     * Activate an optional add-on drive. Persists it in [DriveRegistry], hot-mounts it in
-     * [DriveSyncManager] (HTTP polling starts immediately) and schedules a debounced
-     * WebSocket reconnect so real-time push arrives within [REFRESH_DEBOUNCE_MS].
-     * Multiple rapid calls coalesce into a single reconnect.
+     * Activate an optional add-on drive. When [persist] is true (default), uploads a
+     * registry marker to the Chat drive so the activation syncs to the user's other
+     * devices. Hot-mounts the drive in [DriveSyncManager] (HTTP polling starts
+     * immediately) and schedules a debounced WebSocket reconnect so real-time push
+     * arrives within [REFRESH_DEBOUNCE_MS]. Multiple rapid calls coalesce.
+     *
+     * Pass `persist = false` when the activation originated elsewhere (e.g. another
+     * device already uploaded the marker, and the Chat-drive observer surfaced it
+     * locally) — persisting again would be a no-op on the server but wastes work.
      */
-    suspend fun mountDrive(drive: LabeledDrive) {
-        driveRegistry.addDrive(drive)
+    suspend fun mountDrive(drive: LabeledDrive, persist: Boolean = true) {
+        if (persist) driveRegistry.addDrive(drive)
         driveSyncManager.mountDrive(drive.drive.alias, drive.label)
         refreshWsSubscription.trigger()
     }
 
     /**
-     * Deactivate an optional add-on drive. Removes it from [DriveRegistry], unmounts it
-     * from [DriveSyncManager] and schedules a debounced WebSocket reconnect so the server
-     * stops pushing for this drive. Intended for user-initiated removals only — the
-     * 403/PermissionDenied auto-unmount in [DriveSyncManager] bypasses this path on purpose
-     * (re-subscribing would just get rejected again).
+     * Deactivate an optional add-on drive. When [persist] is true (default), hard-deletes
+     * the registry marker from the Chat drive so the removal syncs to other devices.
+     * Unmounts from [DriveSyncManager] and schedules a debounced WebSocket reconnect.
+     *
+     * Intended for user-initiated removals and for the Chat-drive observer's unmount
+     * callback (which passes `persist = false` because the deletion originated elsewhere).
+     * The 403/PermissionDenied auto-unmount in [DriveSyncManager] bypasses this path on
+     * purpose — re-subscribing would just get rejected again, and we do NOT want to
+     * propagate a permission-denied condition as a registry deletion to other devices.
      */
-    suspend fun unmountDrive(driveId: Uuid) {
-        driveRegistry.removeDrive(driveId)
+    suspend fun unmountDrive(driveId: Uuid, persist: Boolean = true) {
+        if (persist) driveRegistry.removeDrive(driveId)
         driveSyncManager.unmountDrive(driveId)
         refreshWsSubscription.trigger()
     }
@@ -236,6 +264,7 @@ class AuthConnectionCoordinator(
 
     private suspend fun disconnect() {
         refreshWsSubscription.cancel()
+        driveRegistry.stop()
         outboxSync.setOnline(false)
         // Keep isConnecting = true so the next login cycle correctly starts in
         // StartupState.Loading.  While logged out the auth state is Unauthenticated,
