@@ -11,12 +11,12 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.chat.services.ChatProtocol
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.test.runTest
 
 /**
  * Tests for the admin query logic in [ConversationMapper.mapToConversationUi] (which calls
@@ -40,11 +40,11 @@ class AdminQueryTest {
     // -- Helpers --
 
     private fun createTestDatabaseManager(): DatabaseManager {
-        return DatabaseManager {
+        return DatabaseManager({
             val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
             OdinDatabase.Schema.create(driver)
             driver
-        }
+        })
     }
 
     private suspend fun createTestCredentialsManager(): CredentialsManager {

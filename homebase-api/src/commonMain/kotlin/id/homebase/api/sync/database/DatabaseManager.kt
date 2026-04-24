@@ -1,10 +1,11 @@
 package id.homebase.api.sync.database
 
-import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlCursor
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -48,16 +49,15 @@ private val connectionCacheAdapter = ConnectionCache.Adapter(
     identityIdAdapter = UuidAdapter
 )
 
-class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
+class DatabaseManager(
+    driverProvider: () -> SqlDriver,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
+) : AutoCloseable {
     private val logger = Logger.withTag("DatabaseManager")
     private var database: OdinDatabase
-    internal var driver: SqlDriver
-
-    //    private val dbDispatcher = Dispatchers.IO.limitedParallelism(1)
-    private val dbDispatcher = Dispatchers.Default.limitedParallelism(1)
+    internal var driver: SqlDriver = driverProvider()
 
     init {
-        driver = driverProvider()
         OdinDatabase.Schema.create(driver) // Create the tables if they are missing
         database = OdinDatabase(
             driver,
@@ -108,31 +108,31 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
         }
     }
 
-    public val appNotifications: AppNotificationsWrapper by lazy {
+    val appNotifications: AppNotificationsWrapper by lazy {
         AppNotificationsWrapper(
             driver,
             appNotificationsAdapter,
             this
         )
     }
-    public val chatReadCount: ChatReadCountWrapper by lazy {
+    val chatReadCount: ChatReadCountWrapper by lazy {
         ChatReadCountWrapper(driver, chatReadCountAdapter, driveMainIndexAdapter, this)
     }
-    public val driveMainIndex: DriveMainIndexWrapper by lazy {
+    val driveMainIndex: DriveMainIndexWrapper by lazy {
         DriveMainIndexWrapper(
             driver,
             driveMainIndexAdapter,
             this
         )
     }
-    public val driveLocalTagIndex: DriveLocalTagIndexWrapper by lazy {
+    val driveLocalTagIndex: DriveLocalTagIndexWrapper by lazy {
         DriveLocalTagIndexWrapper(
             driver,
             driveLocalTagIndexAdapter,
             this
         )
     }
-    public val driveTagIndex: DriveTagIndexWrapper by lazy {
+    val driveTagIndex: DriveTagIndexWrapper by lazy {
         DriveTagIndexWrapper(
             driver,
             driveTagIndexAdapter,
@@ -141,13 +141,13 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
     }
 
     // Lazy wrappers
-    public val keyValue: KeyValueWrapper by lazy {
+    val keyValue: KeyValueWrapper by lazy {
         KeyValueWrapper(driver, keyValueAdapter, this)
     }
-    public val outbox: OutboxWrapper by lazy {
+    val outbox: OutboxWrapper by lazy {
         OutboxWrapper(driver, outboxAdapter, this)
     }
-    public val connectionCache: ConnectionCacheWrapper by lazy {
+    val connectionCache: ConnectionCacheWrapper by lazy {
         ConnectionCacheWrapper(driver, connectionCacheAdapter, this)
     }
 
@@ -157,7 +157,7 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
         mapper: (SqlCursor) -> QueryResult<R>,
         parameters: Int,
         binders: (SqlPreparedStatement.() -> Unit)? = null
-    ): QueryResult<R> = withContext(dbDispatcher) {
+    ): QueryResult<R> = withContext(dispatcher) {
         try {
             driver.executeQuery(identifier, sql, mapper, parameters, binders)
         } catch (e: Exception) {
@@ -167,16 +167,16 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
     }
 
     suspend fun withWriteTransaction(block: (OdinDatabase) -> Unit) {
-        withContext(dbDispatcher) {
+        withContext(dispatcher) {
             database.transaction { block(database) }
         }
     }
 
     suspend fun withWrite(block: (OdinDatabase) -> Unit) {
-        withContext(dbDispatcher) { block(database) }
+        withContext(dispatcher) { block(database) }
     }
 
-    suspend fun <R> withWriteValue(block: (OdinDatabase) -> R): R = withContext(dbDispatcher) {
+    suspend fun <R> withWriteValue(block: (OdinDatabase) -> R): R = withContext(dispatcher) {
         block(database)
     }
 
@@ -198,7 +198,7 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
     //   2. After CREATE: the row count must be zero. If it's not, something wrote
     //      to the freshly recreated table before we finished — usually a caller
     //      still running with stale credentials.
-    suspend fun wipeAndRecreate() = withContext(dbDispatcher) {
+    suspend fun wipeAndRecreate() = withContext(dispatcher) {
         val log = Logger.withTag("DatabaseManager")
 
         TABLE_NAMES.forEach { table ->

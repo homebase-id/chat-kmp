@@ -22,6 +22,8 @@ import id.homebase.core.image.PHAssetFetcher
 import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
+import id.homebase.core.updater.IOSUpdateAppManager
+import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.util.IOSPlatformInfo
 import id.homebase.core.util.PlatformInfo
 import org.koin.core.module.Module
@@ -36,8 +38,8 @@ actual fun platformModule(): Module = module {
     single<AudioRecorder> { IOSAudioRecorder() }
     single<AudioPlayer> { IOSAudioPlayer() }
     single<AudioWaveFormGenerator> { IOSWaveFormGenerator() }
-
     single<DatabaseSizeProbe> { NativeDatabaseSizeProbe() }
+    single<UpdateAppManager> { IOSUpdateAppManager(get()) }
     single(createdAtStart = true) {
         ImageLoader.Builder(PlatformContext.INSTANCE)
                 .components {
