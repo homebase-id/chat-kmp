@@ -58,7 +58,9 @@ val apiModule = module {
     single<OutboxUploader> { DriveOutboxUploader(get(), get(), get(), get()) }
     singleOf(::OutboxSync)
 
-    singleOf(::YouAuthFlowManager)
+    // YouAuthFlowManager is bound in homebase-core's AppModule where the platform
+    // singletons (ImageLoader, FileOperationsProvider) needed by its
+    // clearPlatformCaches hook are available. See homebase-core/.../AppModule.kt.
 
     single { UsernameStorage() }
 
