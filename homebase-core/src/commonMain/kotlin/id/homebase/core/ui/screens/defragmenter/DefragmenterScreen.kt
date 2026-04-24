@@ -176,6 +176,9 @@ private fun DefragmenterContent(
                 targetHighlights = state.targetHighlights,
                 frameTimeNanos = frameTimeNanos,
                 celebratoryProgress = celebratoryProgress,
+                analyzedUpto = if (state.phase is DefragmenterPhase.Analyzing)
+                    state.analyzedUpto else Int.MAX_VALUE,
+                scanHeadIndex = state.scanHeadIndex,
                 modifier = Modifier
                     .fillMaxSize()
                     .semantics {
@@ -185,8 +188,13 @@ private fun DefragmenterContent(
             )
         }
 
+        val barFraction = if (state.phase is DefragmenterPhase.Analyzing && state.analyzeTotal > 0) {
+            state.analyzedUpto.toFloat() / state.analyzeTotal.toFloat()
+        } else {
+            state.progressFraction
+        }
         Win98ProgressBar(
-            fraction = state.progressFraction,
+            fraction = barFraction,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -228,7 +236,11 @@ private fun NarrowControls(state: DefragmenterUiState, onAction: (DefragmenterUi
 private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier) {
     val statusText = when (state.phase) {
         DefragmenterPhase.Idle -> stringResource(MR.string.defragmenter_status_idle)
-        DefragmenterPhase.Analyzing -> stringResource(MR.string.defragmenter_status_analyzing)
+        DefragmenterPhase.Analyzing -> stringResource(
+            MR.string.defragmenter_status_analyzing,
+            state.analyzedUpto,
+            state.analyzeTotal,
+        )
         DefragmenterPhase.Ready -> stringResource(MR.string.defragmenter_status_ready)
         DefragmenterPhase.Defragmenting -> stringResource(MR.string.defragmenter_status_running)
         DefragmenterPhase.Paused -> stringResource(MR.string.defragmenter_status_paused)
@@ -299,7 +311,9 @@ private fun ActionButtons(state: DefragmenterUiState, onAction: (DefragmenterUiA
             }
             Win98Button(
                 text = stringResource(MR.string.defragmenter_cancel),
-                enabled = phase is DefragmenterPhase.Defragmenting || phase is DefragmenterPhase.Paused,
+                enabled = phase is DefragmenterPhase.Defragmenting ||
+                    phase is DefragmenterPhase.Paused ||
+                    phase is DefragmenterPhase.Analyzing,
                 onClick = { onAction(DefragmenterUiAction.Cancel) },
             )
         }
