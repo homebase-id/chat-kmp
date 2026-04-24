@@ -19,6 +19,7 @@ import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PublicImageFetcher
+import id.homebase.core.notifications.DesktopChatNotificationBridge
 import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.util.JvmPlatformInfo
@@ -36,6 +37,14 @@ actual fun platformModule(): Module = module {
     single<AudioPlayer> { JvmAudioPlayer() }
     single<AudioWaveFormGenerator> { JvmWaveFormGenerator() }
     single<DatabaseSizeProbe> { JvmDatabaseSizeProbe() }
+    single(createdAtStart = true) {
+        DesktopChatNotificationBridge(
+            eventBus = get(),
+            notificationService = get(),
+            credentialsManager = get(),
+            scope = get(),
+        ).also { it.start() }
+    }
     single(createdAtStart = true) {
         // Note: No disk cache - DriveFileProviderCached handles encrypted disk caching
         // Coil's memory cache is still enabled by default for fast UI redraws
