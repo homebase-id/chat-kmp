@@ -89,6 +89,16 @@ class BlockGrid(
     companion object {
         val EMPTY = BlockGrid(0, LongArray(0), 0)
 
+        /**
+         * Sized grid with every block marked as a gap. Used by the streaming
+         * Analyze flow: the UI starts empty and flips bits to filled as the
+         * scan head advances through the grid.
+         */
+        fun createEmpty(totalBlocks: Int): BlockGrid {
+            val wordCount = (totalBlocks + 63) ushr 6
+            return BlockGrid(totalBlocks, LongArray(wordCount), totalBlocks)
+        }
+
         fun create(totalBlocks: Int, softDeletedIndices: IntArray): BlockGrid {
             val wordCount = (totalBlocks + 63) ushr 6
             val bits = LongArray(wordCount)

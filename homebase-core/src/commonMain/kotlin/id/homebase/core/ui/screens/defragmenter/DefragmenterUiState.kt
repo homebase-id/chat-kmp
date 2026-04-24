@@ -34,10 +34,19 @@ data class DefragmenterUiState(
     val progressFraction: Float = 0f,
     val elapsedMs: Long = 0L,
     val estRemainingMs: Long = 0L,
+    // Streaming-analyze progress. analyzedUpto is the exclusive upper bound of
+    // positions already scanned; analyzeTotal is the final grid size known
+    // after the Sized event.
+    val analyzedUpto: Int = 0,
+    val analyzeTotal: Int = 0,
 ) {
     /** True during Vacuuming and Complete — canvas tints filled blocks green. */
     val celebratory: Boolean
         get() = phase is DefragmenterPhase.Vacuuming || phase is DefragmenterPhase.Complete
+
+    /** Index of the cell the scan head is on, or null outside of Analyzing. */
+    val scanHeadIndex: Int?
+        get() = if (phase is DefragmenterPhase.Analyzing && analyzedUpto > 0) analyzedUpto - 1 else null
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -53,7 +62,9 @@ data class DefragmenterUiState(
             movesCompleted == other.movesCompleted &&
             progressFraction == other.progressFraction &&
             elapsedMs == other.elapsedMs &&
-            estRemainingMs == other.estRemainingMs
+            estRemainingMs == other.estRemainingMs &&
+            analyzedUpto == other.analyzedUpto &&
+            analyzeTotal == other.analyzeTotal
     }
 
     override fun hashCode(): Int {
@@ -64,6 +75,8 @@ data class DefragmenterUiState(
         result = 31 * result + movesCompleted.hashCode()
         result = 31 * result + progressFraction.hashCode()
         result = 31 * result + elapsedMs.hashCode()
+        result = 31 * result + analyzedUpto
+        result = 31 * result + analyzeTotal
         return result
     }
 }

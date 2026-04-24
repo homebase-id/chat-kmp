@@ -4,9 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.core.ui.screens.defragmenter.model.BlockGrid
+import id.homebase.core.ui.screens.defragmenter.service.DefragAnalyzeEvent
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
 import id.homebase.core.ui.screens.defragmenter.service.DeletedFileRef
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -14,9 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.time.TimeSource
@@ -68,36 +68,85 @@ class DefragmenterViewModel(
     private fun analyze() {
         analyzeJob?.cancel()
         analyzeJob = viewModelScope.launch {
-            _uiState.update { it.copy(phase = DefragmenterPhase.Analyzing) }
-            val analysis = source.analyze()
-            val grid = withContext(Dispatchers.Default) {
-                val gapIdx = IntArray(analysis.gapMap.size)
-                var i = 0
-                for (pos in analysis.gapMap.keys) {
-                    gapIdx[i++] = pos
-                }
-                BlockGrid.create(analysis.totalBlocks, gapIdx)
-            }
-            gapMap = analysis.gapMap
-            Logger.d(tag = tag) {
-                "Analyze complete: total=${grid.totalBlocks}, gaps=${grid.gapCount}"
-            }
-            resetCursors()
+            // Reset for a fresh scan; show empty grid immediately.
             _uiState.update {
                 it.copy(
-                    phase = DefragmenterPhase.Ready,
-                    grid = grid,
+                    phase = DefragmenterPhase.Analyzing,
+                    grid = BlockGrid.EMPTY,
                     gridVersion = it.gridVersion + 1,
-                    totalBlocks = grid.totalBlocks,
-                    initialGaps = grid.gapCount,
-                    gapsRemaining = grid.gapCount,
+                    totalBlocks = 0,
+                    initialGaps = 0,
+                    gapsRemaining = 0,
                     movesCompleted = 0L,
                     progressFraction = 0f,
                     elapsedMs = 0L,
                     estRemainingMs = 0L,
                     inFlight = emptyList(),
                     targetHighlights = IntArray(0),
+                    analyzedUpto = 0,
+                    analyzeTotal = 0,
                 )
+            }
+            val accGaps = HashMap<Int, DeletedFileRef>()
+            var liveGrid: BlockGrid = BlockGrid.EMPTY
+            source.analyze().collect { ev ->
+                when (ev) {
+                    is DefragAnalyzeEvent.Sized -> {
+                        liveGrid = BlockGrid.createEmpty(ev.totalBlocks)
+                        _uiState.update {
+                            it.copy(
+                                grid = liveGrid,
+                                gridVersion = it.gridVersion + 1,
+                                totalBlocks = ev.totalBlocks,
+                                analyzeTotal = ev.totalBlocks,
+                                analyzedUpto = 0,
+                            )
+                        }
+                    }
+
+                    is DefragAnalyzeEvent.Progress -> {
+                        val prev = _uiState.value.analyzedUpto
+                        // Flip non-gap positions in [prev, analyzedUpto) to filled.
+                        // Positions present in newGaps stay cleared (= gap).
+                        val grid = liveGrid
+                        if (grid !== BlockGrid.EMPTY) {
+                            for (pos in prev until ev.analyzedUpto) {
+                                if (!ev.newGaps.containsKey(pos)) {
+                                    grid.setFilled(pos, true)
+                                }
+                            }
+                        }
+                        if (ev.newGaps.isNotEmpty()) accGaps.putAll(ev.newGaps)
+                        _uiState.update {
+                            it.copy(
+                                analyzedUpto = ev.analyzedUpto,
+                                gridVersion = it.gridVersion + 1,
+                            )
+                        }
+                    }
+
+                    is DefragAnalyzeEvent.Done -> {
+                        gapMap = accGaps
+                        resetCursors()
+                        val grid = liveGrid
+                        val total = ev.totalBlocks
+                        Logger.d(tag = tag) {
+                            "Analyze complete: total=$total, gaps=${accGaps.size}"
+                        }
+                        _uiState.update {
+                            it.copy(
+                                phase = DefragmenterPhase.Ready,
+                                grid = grid,
+                                gridVersion = it.gridVersion + 1,
+                                totalBlocks = total,
+                                initialGaps = accGaps.size,
+                                gapsRemaining = accGaps.size,
+                                analyzedUpto = total,
+                                analyzeTotal = total,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -135,6 +184,28 @@ class DefragmenterViewModel(
 
     private fun cancel() {
         val s = _uiState.value
+        if (s.phase is DefragmenterPhase.Analyzing) {
+            // Abort the in-progress scan and return to Idle. The partial
+            // grid/gap state is discarded — next Analyze starts fresh.
+            analyzeJob?.cancel()
+            analyzeJob = null
+            gapMap = emptyMap()
+            _uiState.update {
+                it.copy(
+                    phase = DefragmenterPhase.Idle,
+                    grid = BlockGrid.EMPTY,
+                    gridVersion = it.gridVersion + 1,
+                    totalBlocks = 0,
+                    initialGaps = 0,
+                    gapsRemaining = 0,
+                    analyzedUpto = 0,
+                    analyzeTotal = 0,
+                    inFlight = emptyList(),
+                    targetHighlights = IntArray(0),
+                )
+            }
+            return
+        }
         if (s.phase !is DefragmenterPhase.Defragmenting &&
             s.phase !is DefragmenterPhase.Paused &&
             s.phase !is DefragmenterPhase.Ready
