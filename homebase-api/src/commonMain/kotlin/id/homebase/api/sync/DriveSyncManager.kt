@@ -231,6 +231,11 @@ class DriveSyncManager(
         databaseManager.appNotifications.deleteAllRows()
         databaseManager.connectionCache.deleteAllRows()
 
+        // Reclaim the disk space from the large DELETEs above. Logout is rare and
+        // already a "please wait" moment — paying the VACUUM cost here keeps login and
+        // normal operation fast.
+        databaseManager.vacuum()
+
         // Signal the next start() that any cursor it finds is a bug.
         expectFreshCursors = true
     }

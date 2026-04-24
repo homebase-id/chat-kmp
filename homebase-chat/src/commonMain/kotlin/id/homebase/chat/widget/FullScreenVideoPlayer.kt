@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -15,7 +14,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -95,16 +93,15 @@ fun FullScreenVideoPlayer(
 
         // Download/playback progress (only for server-based playback)
         if (!isLocalPlayback && progress < 1f) {
-            androidx.compose.foundation.layout.Column(
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .padding(start = 32.dp, end = 32.dp, bottom = 48.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .size(72.dp)
+                    .align(Alignment.Center),
+                contentAlignment = Alignment.Center,
             ) {
-                LinearProgressIndicator(
+                CircularProgressIndicator(
                     progress = { progress },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxSize(),
                     color = Color.White,
                     trackColor = Color.White.copy(alpha = 0.3f),
                 )
@@ -112,7 +109,6 @@ fun FullScreenVideoPlayer(
                     text = "${(progress * 100).toInt()}%",
                     color = Color.White,
                     fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
         }

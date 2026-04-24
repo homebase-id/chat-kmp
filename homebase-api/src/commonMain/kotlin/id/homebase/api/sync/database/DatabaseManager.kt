@@ -184,6 +184,13 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
         block(database)
     }
 
+    // VACUUM rewrites the entire DB file, reclaiming space freed by large DELETEs
+    // (e.g. the logout wipe). Must run outside a transaction and with exclusive access
+    // to the DB, so we run it on dbDispatcher like every other write path.
+    suspend fun vacuum() = withContext(dbDispatcher) {
+        driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
+    }
+
     override fun close() {
         driver.close()
         logger.i { "Database closed" }
