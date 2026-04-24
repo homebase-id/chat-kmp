@@ -2,7 +2,6 @@ package id.homebase.core.di
 
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
-import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.di.apiModule
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveSyncManager
@@ -25,10 +24,9 @@ import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.chat.services.ChatMessageActionService
-import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.ShareSuggestionDonor
@@ -59,12 +57,16 @@ import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.connections.ConnectionsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
-import id.homebase.core.ui.screens.help.HelpViewModel
+import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
+import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
+import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
+import id.homebase.core.ui.screens.defragmenter.service.DefragSource
+import id.homebase.core.ui.screens.defragmenter.service.LiveDefragSource
 import id.homebase.core.ui.screens.storage.StorageSettingsViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
@@ -193,6 +195,8 @@ val appModule = module {
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
 
+    singleOf(::LiveDefragSource) bind DefragSource::class
+
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
     viewModelOf(::HomeViewModel)
@@ -212,8 +216,10 @@ val appModule = module {
     viewModel(FeedPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getFeedPermissionExtensionConfig()) }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
+    viewModelOf(::DeveloperMenuViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
+    viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)
     viewModelOf(::ConnectionsViewModel)
     viewModelOf(::ConnectRequestViewModel)

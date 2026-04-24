@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.query.TimeRowCursor
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -14,12 +15,11 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.test.runTest
 
 class MainIndexMetaTest {
     @Test
     fun testUpsertDriveMainIndexHelper() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             // Test data
             val identityId = Uuid.random()
             val driveId = Uuid.random()
@@ -110,7 +110,7 @@ class MainIndexMetaTest {
     @Test
     @Ignore // michael will fix
     fun testBaseUpsertEntryZapZapWithTags() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             // Create isolated database manager for this test
             // Test data
             val identityId = Uuid.random()
@@ -287,7 +287,7 @@ class MainIndexMetaTest {
 
     @Test
     fun testBaseUpsertEntryZapZapWithNullCursor() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             // Test data
             val identityId = Uuid.random()
             val driveId = Uuid.random()
@@ -383,7 +383,7 @@ class MainIndexMetaTest {
     @Test
     @Ignore // per michael, he will fix
     fun testBaseUpsertEntryZapZapWithExistingTags() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             // Test data
             val identityId = Uuid.random()
             val driveId = Uuid.random()
@@ -506,7 +506,7 @@ class MainIndexMetaTest {
 
     @Test
     fun testConvertDriveMainIndexRecordToFileHeader_RoundTrip() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             // Test data
             val identityId = Uuid.random()
             val driveId = Uuid.random()
@@ -666,7 +666,7 @@ class MainIndexMetaTest {
 
     @Test
     fun testBaseUpsertEntryZapZapOnConflictResolution() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             // Test data setup
             val identityId = Uuid.random()
             val driveId = Uuid.random()
@@ -826,7 +826,7 @@ class MainIndexMetaTest {
 
     //    @Test
     //    fun testBaseUpsertEntryZapZapUniqueIdConflict() = runTest {
-    //        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+    //        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
     //            // Test data setup
     //            val identityId = Uuid.random()
     //            val driveId = Uuid.random()

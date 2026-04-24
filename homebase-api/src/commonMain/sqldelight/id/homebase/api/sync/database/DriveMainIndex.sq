@@ -126,6 +126,12 @@ countByIdentityAndDrive:
 SELECT count(*) FROM DriveMainIndex
 WHERE identityId = ? AND driveId = ?;
 
+-- Select fileIds of soft-deleted rows (archivalStatus = 2 = Removed).
+-- Used by the Defragmenter screen to enumerate files awaiting hard delete.
+selectSoftDeletedFileIds:
+SELECT fileId FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND archivalStatus = 2;
+
 -- Select all records - for TESTING
 selectAll:
 SELECT * FROM DriveMainIndex;

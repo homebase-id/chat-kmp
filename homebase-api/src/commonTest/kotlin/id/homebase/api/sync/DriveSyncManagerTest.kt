@@ -3,6 +3,7 @@ package id.homebase.api.sync
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -12,13 +13,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
-import id.homebase.api.client.eventbus.BackendEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -35,7 +36,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun startSetsInitialStateToInitialized() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
             val credentialsManager = CredentialsManager()
@@ -71,7 +72,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun failedDriveAutoRetriesSyncAfterOneSecond() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
             val credentialsManager = CredentialsManager()
@@ -125,7 +126,7 @@ class DriveSyncManagerTest {
         db: DatabaseManager,
         credentialsManager: CredentialsManager,
         eventBus: EventBus,
-        scope: kotlinx.coroutines.CoroutineScope,
+        scope: CoroutineScope,
         drives: Map<Uuid, String> = emptyMap(),
     ): DriveSyncManager {
         val mockEngine = MockEngine { awaitCancellation() }
@@ -155,7 +156,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncStateIsIdleBeforeStart() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope)
             assertEquals(SyncState.Idle, manager.syncState.value)
@@ -165,7 +166,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncStateTransitionsToSyncingOnStartedEvent() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -183,7 +184,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncStateTransitionsToCompletedWhenAllDrivesComplete() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -203,7 +204,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncStateTransitionsToFailedOnFailedEvent() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -223,7 +224,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncAllStartedEventFiredOnTransitionToSyncing() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -245,7 +246,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncAllCompletedEventFiredOnTransitionToCompleted() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -270,7 +271,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun syncAllFailedEventFiredOnTransitionToFailed() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -395,8 +396,14 @@ class DriveSyncManagerTest {
 
     @Test
     fun clearStorageCompletesEvenWhenCallerScopeIsCancelled() {
-        val db = DatabaseManager { createInMemoryDatabase() }
-        runTest {
+        // Use StandardTestDispatcher so all DB operations coordinate with virtual time
+        val testDispatcher = StandardTestDispatcher()
+        val db = DatabaseManager(
+            driverProvider = { createInMemoryDatabase() },
+            dispatcher = testDispatcher
+        )
+
+        runTest(testDispatcher) {
             val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope)
 
             // Seed each identity-scoped table so we can detect whether the wipe completed.
@@ -444,12 +451,19 @@ class DriveSyncManagerTest {
             // the default DEFAULT start, dispatch races against cancel(): if cancel wins,
             // the body never runs and the wipe never happens, producing a flake.
             val callerJob = Job()
-            val callerScope = CoroutineScope(backgroundScope.coroutineContext + callerJob)
-            val job = callerScope.launch(start = CoroutineStart.ATOMIC) {
-                manager.clearStorage()
-            }
+            val callerScope = CoroutineScope(callerJob + testDispatcher)
+            val job = callerScope.launch { manager.clearStorage() }
+
+            // Let the job start and enter withContext(NonCancellable)
+            runCurrent()
+
+            // NOW cancel the scope - the job is already protected by NonCancellable
             callerJob.cancel()
+
+            // Process all pending work
             advanceUntilIdle()
+
+            // Wait for the job to complete
             job.join()
 
             assertEquals(0L, db.outbox.count(), "Outbox should be wiped even if caller cancelled")
@@ -467,8 +481,9 @@ class DriveSyncManagerTest {
 
     @Test
     fun numberOfDrivesSyncingReturnsCorrectCount() {
-        val db = DatabaseManager { createInMemoryDatabase() }
-        runTest {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+
+        runTest() {
             val eventBus = EventBus()
             val driveId1 = Uuid.random()
             val driveId2 = Uuid.random()

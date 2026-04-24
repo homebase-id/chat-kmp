@@ -99,6 +99,10 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.koin.android)
+            implementation(libs.play.app.update)
+        }
+        jvmMain.dependencies {
+                implementation(libs.conveyor.control)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
