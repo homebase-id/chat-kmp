@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import id.homebase.core.util.initials
 
 
 @Composable
@@ -141,7 +142,7 @@ fun EmojiSummary(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = user.user.take(2).uppercase(),
+                                text = user.user.initials(),
                                 color = Color.White,
                                 fontSize = 12.sp
                             )

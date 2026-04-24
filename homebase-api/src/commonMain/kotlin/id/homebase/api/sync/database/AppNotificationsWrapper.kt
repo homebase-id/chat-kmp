@@ -106,4 +106,8 @@ class AppNotificationsWrapper(
             delegate.deleteByNotificationId(identityId, notificationId).value
         }
     }
+
+    suspend fun deleteAllRows(): Long {
+        return databaseManager.withWriteValue { db -> delegate.deleteAllRows().value }
+    }
 }

@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.resources.MR
 import id.homebase.resources.share_picker_next
 import id.homebase.resources.share_picker_send
@@ -408,7 +409,7 @@ private fun SharedContentPreview(
     Column(modifier = modifier) {
         if (sharedContent.hasText) {
             Text(
-                text = sharedContent.text!!.take(200),
+                text = sharedContent.text!!.truncateToCodePoints(200),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 3,
