@@ -66,7 +66,8 @@ class NotificationActionBridge(
             try {
                 val convoUuid = Uuid.parse(conversationId)
                 notificationService.clearNotificationCount(conversationId)
-                actionService.markAsReadLatestFileCreated(convoUuid, emptyList())
+                //TODO: we need the message Id here
+//                actionService.markAsReadLatestFileCreated(convoUuid, emptyList())
                 Logger.i(tag = "NotificationActionBridge") {
                     "Marked $conversationId as read"
                 }

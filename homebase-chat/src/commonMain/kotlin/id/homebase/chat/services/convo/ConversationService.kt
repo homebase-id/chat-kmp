@@ -16,6 +16,7 @@ import id.homebase.api.client.drives.upload.FileIdFileIdentifier
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
@@ -23,6 +24,7 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -1154,4 +1156,29 @@ class ConversationService(
 
         outboxSync.tryEnqueue(request)
     }
+
+    suspend fun updateLocalLastReadTime(conversationId: Uuid, newLastReadTime: UnixTimeUtc) {
+
+        val convo = requireConversation(conversationId)
+
+        if (newLastReadTime> UnixTimeUtc(convo.lastRead))
+        {
+            // update the single newLastReadTime field
+
+            // recreate content, etc.
+
+            val request = UpdateLocalAppdataContentOutboxRequest(
+                driveId = TODO(),
+                fileId = TODO(),
+                versionTag = TODO(),
+                content = TODO(),
+                iv = TODO()
+            )
+
+            outboxSync.tryEnqueue(request)
+
+            dbm.chatReadCount.upsertLastReadTime(conversationId, newLastReadTime)
+        }
+    }
+
 }

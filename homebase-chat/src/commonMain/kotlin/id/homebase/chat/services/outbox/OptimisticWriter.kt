@@ -9,7 +9,6 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
-import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -22,8 +21,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
-import id.homebase.api.toBase64
-import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
+import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.common.OdinId
@@ -501,7 +499,7 @@ class OptimisticWriter(
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalMetadataContentOutboxRequest? {
+    suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalAppdataContentOutboxRequest? {
         val credentials = credentialsManager.requireActiveCredentials()
 
         val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
@@ -560,7 +558,7 @@ class OptimisticWriter(
                     source = BackendEvent.SyncSource.DriveSync
                 )
             )
-            UpdateLocalMetadataContentOutboxRequest(
+            UpdateLocalAppdataContentOutboxRequest(
                 driveId = driveId,
                 fileId = existingFile.fileId,
                 versionTag = null,

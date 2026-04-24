@@ -43,51 +43,8 @@ class ChatMessageActionService(
 ) {
     private val chatDrive = chatTargetDrive.alias
 
-    suspend fun markAsReadLatestFileCreated(conversationId: Uuid, messageIds: List<Uuid>) {
 
-        val batch = chatMessageStream.getMessages(messageIds)
-        val domain = credentialsManager.requireActiveDomain()
-        val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
-
-        val isSelfConversation = conversationId == ChatProtocol.ConversationWithYourselfId
-        val unreadRecords = batch.records
-            .filter {
-                it.localReadTimestamp == null &&
-                        !it.isDeleted &&
-                        !it.isPendingSend &&
-                        (isSelfConversation || !it.isAuthoredBy(domain))
-            }
-
-        Logger.d { "markAsRead: convo=$conversationId unread=${unreadRecords.size}/${batch.records.size} newReadTime=${newReadTime.milliseconds}" }
-
-        if (unreadRecords.isEmpty()) {
-            dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
-            conversationStream.enrichWithUnreadCounts() // TODO: We can be more performant here
-            return
-        }
-
-        // Use server-side 'created' timestamp for the read receipt endTime.
-        // The server matches against 'created', not the client-side 'userDate'.
-        val endTime = unreadRecords.maxOf { it.created }
-        Logger.d { "markAsRead: convo=$conversationId endTime=${endTime.toEpochMilliseconds()}" }
-
-        dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
-        conversationStream.enrichWithUnreadCounts()
-
-        if (!isSelfConversation) {
-            outboxSync.tryEnqueue(
-                request = SendReadReceiptByTimeOutboxRequest(
-                    driveId = chatDrive,
-                    fileType = ChatProtocol.MessageFileType,
-                    dataType = 0,
-                    groupId = conversationId,
-                    endTime = UnixTimeUtc(endTime.toEpochMilliseconds()).addMilliseconds(1)
-                )
-            )
-        }
-    }
-
-    suspend fun markAsReadByFiles(messageIds: List<Uuid>) {
+    suspend fun markAsReadByFiles(conversationId: Uuid, messageIds: List<Uuid>) {
 
         Logger.d { "Attempting mark-as-read for messageIds: ${messageIds.size}" }
 
@@ -104,10 +61,12 @@ class ChatMessageActionService(
                         !it.isAuthoredBy(domain)
             }
 
-        val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
+        //TODO: claude to test this date thing
+        val newReadTime = unreadRecords.maxOf { it.userDate }
 
         Logger.d { "Calling mark-as-read for unread-records count: ${unreadRecords.size}" }
 
+        //TODO put in outbox
         unreadRecords
             .map { it.fileId }
             .chunked(50)
@@ -117,7 +76,6 @@ class ChatMessageActionService(
                     driveId = chatDrive,
                     fileIds = chunk
                 )
-
 
                 val successfulFileIds = result.results
                     .filter { file ->
@@ -133,11 +91,15 @@ class ChatMessageActionService(
 
                         Logger.d { "Upserting chatReadCount->lastReadTime: count: ${it.conversationId}" }
 
-                        dbm.chatReadCount.upsertLastReadTime(it.conversationId, newReadTime)
+                        dbm.chatReadCount.upsertLastReadTime(it.conversationId, UnixTimeUtc(newReadTime))
                     }
 
-                conversationStream.enrichWithUnreadCounts()
             }
+
+        conversationService.updateLocalLastReadTime(conversationId, UnixTimeUtc(newReadTime))
+        //TODO: instead of conversationStream.enrichWithUnreadCounts() do this fo a single conversation
+        conversationStream.enrichConversationWithUnreadCounts(conversationId)
+
     }
 
     suspend fun toggleReaction(conversationId: Uuid, messageId: Uuid, emoji: String):
@@ -149,7 +111,11 @@ class ChatMessageActionService(
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
         val fileId = requireFileId(messageId)
 
-        val (resultType, original) = optimisticWriter.writeReactionToggle(chatDrive, messageId, reactionJson)
+        val (resultType, original) = optimisticWriter.writeReactionToggle(
+            chatDrive,
+            messageId,
+            reactionJson
+        )
 
         try {
             val enqueued = outboxSync.tryEnqueue(
@@ -166,7 +132,10 @@ class ChatMessageActionService(
         } catch (t: Throwable) {
             Logger.e("toggleReaction failed to enqueue", t)
             if (original != null) {
-                try { optimisticWriter.rollbackWrite(chatDrive, original) } catch (_: Exception) {}
+                try {
+                    optimisticWriter.rollbackWrite(chatDrive, original)
+                } catch (_: Exception) {
+                }
             }
         }
 
@@ -210,7 +179,10 @@ class ChatMessageActionService(
         } catch (t: Throwable) {
             Logger.e("deleteMessage failed to enqueue", t)
             if (original != null) {
-                try { optimisticWriter.rollbackWrite(chatDrive, original) } catch (_: Exception) {}
+                try {
+                    optimisticWriter.rollbackWrite(chatDrive, original)
+                } catch (_: Exception) {
+                }
             }
         }
     }

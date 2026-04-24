@@ -7,7 +7,7 @@ import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByTimeOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
-import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
+import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
@@ -366,7 +366,7 @@ class OutboxSync(
     }
 
     public suspend fun tryEnqueue(
-        request: UpdateLocalMetadataContentOutboxRequest,
+        request: UpdateLocalAppdataContentOutboxRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true

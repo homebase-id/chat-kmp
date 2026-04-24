@@ -7,7 +7,7 @@ import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.LocalAppData
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
-import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
+import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
@@ -261,7 +261,7 @@ class DriveOutboxUploader(
     }
 
     private suspend fun updateLocalMetadataContent(outboxRecord: Outbox) {
-        val request = OdinSystemSerializer.deserialize<UpdateLocalMetadataContentOutboxRequest>(outboxRecord.json.decodeToString())
+        val request = OdinSystemSerializer.deserialize<UpdateLocalAppdataContentOutboxRequest>(outboxRecord.json.decodeToString())
         val file = fileProvider.getFileHeader(request.driveId, request.fileId)
             ?: error("File not found for local metadata content update: ${request.fileId}")
         val versionTag = request.versionTag

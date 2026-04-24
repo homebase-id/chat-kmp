@@ -972,7 +972,7 @@ class ConversationListViewModel(
                         if (action.messageIds == null) {
                             // TODO - mark all as read
                         } else {
-                            chatMessageActionService.markAsReadLatestFileCreated(
+                            chatMessageActionService.markAsReadByFiles(
                                 action.conversationId,
                                 action.messageIds
                             )
