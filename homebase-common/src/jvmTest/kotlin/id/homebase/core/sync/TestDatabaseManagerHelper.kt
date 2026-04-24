@@ -7,5 +7,5 @@ import id.homebase.api.sync.database.OdinDatabase
 fun createTestDatabaseManager(): DatabaseManager {
     val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
     OdinDatabase.Schema.create(driver)
-    return DatabaseManager { driver }
+    return DatabaseManager({ driver })
 }

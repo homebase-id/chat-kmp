@@ -296,7 +296,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun permissionDeniedEventUnmountsDrive() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -325,7 +325,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun permissionDeniedDoesNotMarkOtherDrivesAsFailed() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val completedDrive = Uuid.random()
@@ -359,7 +359,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun mountDriveAddsNewDrive() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope, emptyMap())
             manager.start()
@@ -377,7 +377,7 @@ class DriveSyncManagerTest {
 
     @Test
     fun unmountDriveRemovesDriveAndClearsStatus() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()

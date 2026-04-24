@@ -55,7 +55,7 @@ class DriveSyncTest {
 
     @Test
     fun forbiddenResponseEmitsPermissionDenied() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
@@ -90,7 +90,7 @@ class DriveSyncTest {
 
     @Test
     fun forbiddenResponseDoesNotTriggerRetry() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
         runTest {
             val eventBus = EventBus()
             val driveId = Uuid.random()
