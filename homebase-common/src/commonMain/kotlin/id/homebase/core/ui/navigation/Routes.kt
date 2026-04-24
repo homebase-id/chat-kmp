@@ -86,6 +86,10 @@ sealed class Route {
     data object StorageSettings : Route()
 
     @Serializable
+    @SerialName("defragmenter")
+    data object Defragmenter : Route()
+
+    @Serializable
     @SerialName("connections")
     data object Connections : Route()
 

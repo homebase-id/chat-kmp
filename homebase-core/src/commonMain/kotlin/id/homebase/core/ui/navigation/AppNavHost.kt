@@ -70,6 +70,7 @@ import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.connections.ConnectionsScreen
+import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
@@ -595,7 +596,20 @@ fun AppNavHost(
                         if (isAuthenticated) {
                             StorageSettingsScreen(
                                 viewModel = koinViewModel(),
-                                onBackClick = { navController.popBackStack() })
+                                onBackClick = { navController.popBackStack() },
+                                onNavigateToDefragmenter = {
+                                    navController.navigate(Route.Defragmenter)
+                                },
+                            )
+                        }
+                    }
+
+                    composable<Route.Defragmenter> {
+                        if (isAuthenticated) {
+                            DefragmenterScreen(
+                                viewModel = koinViewModel(),
+                                onClose = { navController.popBackStack() },
+                            )
                         }
                     }
                 }

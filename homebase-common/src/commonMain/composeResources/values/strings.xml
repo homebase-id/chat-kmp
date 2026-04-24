@@ -192,6 +192,31 @@
     <string name="storage_other_header">Other</string>
     <string name="storage_database">Database</string>
 
+    <!-- Defragmenter -->
+    <string name="storage_defragment_button">Defragment</string>
+    <string name="defragmenter_title_format">Defragmenting %1$s…</string>
+    <string name="defragmenter_drive_label_all">All drives</string>
+    <string name="defragmenter_close">Close</string>
+    <string name="defragmenter_analyze">Analyze</string>
+    <string name="defragmenter_start">Start Defragmentation</string>
+    <string name="defragmenter_pause">Pause</string>
+    <string name="defragmenter_resume">Resume</string>
+    <string name="defragmenter_cancel">Cancel</string>
+    <string name="defragmenter_stat_moves">Blocks moved: %1$d</string>
+    <string name="defragmenter_stat_gaps">Gaps remaining: %1$d</string>
+    <string name="defragmenter_stat_total">Total blocks: %1$d</string>
+    <string name="defragmenter_stat_elapsed">Elapsed: %1$s</string>
+    <string name="defragmenter_stat_eta">Estimated: %1$s</string>
+    <string name="defragmenter_status_idle">Ready to analyze</string>
+    <string name="defragmenter_status_analyzing">Analyzing drive…</string>
+    <string name="defragmenter_status_ready">Analysis complete — ready to defragment</string>
+    <string name="defragmenter_status_running">Defragmenting</string>
+    <string name="defragmenter_status_paused">Paused</string>
+    <string name="defragmenter_status_vacuuming">Optimizing database…</string>
+    <string name="defragmenter_status_complete">Defragmentation complete</string>
+    <string name="defragmenter_status_cancelled">Cancelled</string>
+    <string name="defragmenter_grid_description">Defragmenting %1$s. %2$d percent complete.</string>
+
     <!-- Help screen -->
     <string name="help_support_center">Support Center</string>
     <string name="help_contact_us">Contact Us</string>

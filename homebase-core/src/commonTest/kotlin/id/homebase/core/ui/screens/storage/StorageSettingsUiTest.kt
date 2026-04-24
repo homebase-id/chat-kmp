@@ -42,6 +42,7 @@ class StorageSettingsUiTest {
                     ),
                     onAction = {},
                     onBackClick = {},
+                    onNavigateToDefragmenter = {},
                     snackbarHostState = remember { SnackbarHostState() },
                 )
             }
@@ -62,6 +63,7 @@ class StorageSettingsUiTest {
                     ),
                     onAction = {},
                     onBackClick = {},
+                    onNavigateToDefragmenter = {},
                     snackbarHostState = remember { SnackbarHostState() },
                 )
             }
@@ -82,6 +84,7 @@ class StorageSettingsUiTest {
                     ),
                     onAction = {},
                     onBackClick = {},
+                    onNavigateToDefragmenter = {},
                     snackbarHostState = remember { SnackbarHostState() },
                 )
             }
