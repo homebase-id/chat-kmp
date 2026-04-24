@@ -23,23 +23,29 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,24 +73,38 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.util.formatFileSize
+import id.homebase.core.util.formatShortDate
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.vault_delete_confirm_action
+import id.homebase.resources.vault_detail_created
+import id.homebase.resources.vault_detail_current_page
+import id.homebase.resources.vault_detail_entry_summary
+import id.homebase.resources.vault_detail_modified
+import id.homebase.resources.vault_detail_pages
+import id.homebase.resources.vault_detail_size
+import id.homebase.resources.vault_detail_total_size
+import id.homebase.resources.vault_detail_type
 import id.homebase.resources.vault_gallery_add_page
 import id.homebase.resources.vault_gallery_delete_last_page_confirm
 import id.homebase.resources.vault_gallery_delete_page
 import id.homebase.resources.vault_gallery_delete_page_confirm
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_gallery_share_page
+import id.homebase.resources.vault_notes_cancel
+import id.homebase.resources.vault_notes_label
 import id.homebase.resources.vault_notes_placeholder
 import id.homebase.resources.vault_notes_save
 import id.homebase.resources.vault_permission_cancel
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.Instant
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -104,330 +125,148 @@ fun VaultGalleryOverlay(
     val pages = file.payloadDescriptors
     if (pages.isEmpty()) return
 
-    val scope = rememberCoroutineScope()
-
     val pagerState = rememberPagerState(
         initialPage = initialPage.coerceIn(0, maxOf(0, pages.size - 1)),
         pageCount = { pages.size },
     )
-    val thumbnailListState = rememberLazyListState()
 
     var showUI by remember { mutableStateOf(true) }
     var pageToDelete by remember { mutableStateOf<String?>(null) }
-    var editingNotes by remember { mutableStateOf(false) }
-    var notesText by remember(file.notes) { mutableStateOf(file.notes ?: "") }
+    val sheetPeekHeight by animateDpAsState(if (showUI) 160.dp else 0.dp)
 
-    // Auto-scroll thumbnail strip to follow pager
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.currentPage }.collect { page ->
-            thumbnailListState.animateScrollToItem(page)
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-    ) {
-        // Main pager area
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize(),
-            beyondViewportPageCount = 1,
-        ) { page ->
-            if (pages.isEmpty()) return@HorizontalPager
-            val descriptor = pages[page]
-            val isImage = descriptor.contentType?.startsWith("image/") == true
-
-            if (isImage) {
-                GalleryPageImage(
-                    file = file,
-                    descriptor = descriptor,
-                    onToggleUI = { showUI = !showUI },
-                )
-            } else {
-                GalleryPageNonImage(
-                    descriptor = descriptor,
-                    onToggleUI = { showUI = !showUI },
-                )
-            }
-        }
-
-        // Top bar
-        AnimatedVisibility(
-            visible = showUI,
-            modifier = Modifier.align(Alignment.TopCenter),
-            enter = fadeIn() + slideInVertically { -it },
-            exit = fadeOut() + slideOutVertically { -it },
-        ) {
-            val currentPage = pagerState.currentPage
-            val currentDescriptor = pages.getOrNull(currentPage)
-
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = file.fileName,
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (pages.size > 1) {
-                            Text(
-                                text = stringResource(
-                                    MR.string.vault_gallery_page_counter,
-                                    currentPage + 1,
-                                    pages.size,
-                                ),
-                                color = Color.White.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                            tint = Color.White,
-                        )
-                    }
-                },
-                actions = {
-                    if (currentDescriptor != null) {
-                        IconButton(onClick = { onSharePage(currentDescriptor.key) }) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = stringResource(MR.string.vault_gallery_share_page),
-                                tint = Color.White,
-                            )
-                        }
-                        IconButton(onClick = { pageToDelete = currentDescriptor.key }) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = stringResource(MR.string.vault_gallery_delete_page),
-                                tint = Color.White,
-                            )
-                        }
-                    }
-                    VaultFileDropdownMenu(
-                        file = file,
-                        onRename = { onRenameEntry() },
-                        onShare = { currentDescriptor?.let { onSharePage(it.key) } },
-                        onDelete = { onDeleteEntry() },
-                        iconTint = Color.White,
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Black.copy(alpha = 0.6f),
-                ),
-            )
-        }
-
-        // Bottom panel: thumbnail strip + metadata
-        AnimatedVisibility(
-            visible = showUI,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
-            enter = fadeIn() + slideInVertically { it },
-            exit = fadeOut() + slideOutVertically { it },
-        ) {
-            Column(
+    BottomSheetScaffold(
+        sheetPeekHeight = sheetPeekHeight,
+        sheetShape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        sheetContainerColor = Color(0xF01E1E1E),
+        sheetContentColor = Color.White,
+        sheetShadowElevation = 8.dp,
+        sheetDragHandle = {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.6f))
-                    .padding(bottom = 16.dp),
+                    .padding(top = 12.dp, bottom = 8.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                // Thumbnail strip
-                LazyRow(
-                    state = thumbnailListState,
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    itemsIndexed(pages) { index, descriptor ->
-                        val isSelected = pagerState.currentPage == index
-                        val isImage = descriptor.contentType?.startsWith("image/") == true
-                        val borderModifier = if (isSelected) {
-                            Modifier.border(
-                                width = 2.dp,
-                                color = MaterialTheme.colorScheme.primary,
-                                shape = RoundedCornerShape(6.dp),
-                            )
-                        } else {
-                            Modifier
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .background(
-                                    color = Color.White.copy(alpha = 0.1f),
-                                    shape = RoundedCornerShape(6.dp),
-                                )
-                                .then(borderModifier)
-                                .clickable {
-                                    scope.launch { pagerState.animateScrollToPage(index) }
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (isImage) {
-                                val thumbKeyHeader = descriptor.iv?.let { ivBase64 ->
-                                    try {
-                                        KeyHeader(Base64.decode(ivBase64), file.keyHeader.aesKey)
-                                    } catch (_: Exception) {
-                                        file.keyHeader
-                                    }
-                                } ?: file.keyHeader
-
-                                HomebaseImage(
-                                    imageData = HomebaseImageData(
-                                        driveId = file.driveId,
-                                        fileId = file.fileId,
-                                        payloadKey = descriptor.key,
-                                        previewThumbnail = descriptor.previewThumbnail?.let {
-                                            file.previewThumbnail
-                                        } ?: file.previewThumbnail,
-                                        isEncrypted = file.isEncrypted,
-                                        keyHeader = thumbKeyHeader,
-                                    ),
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .background(
-                                            Color.Transparent,
-                                            RoundedCornerShape(6.dp),
-                                        ),
-                                    contentScale = ContentScale.Crop,
-                                    contentDescription = null,
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = fileTypeIcon(descriptor.contentType ?: ""),
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
-                        }
-                    }
-
-                    // [+] append button
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .border(
-                                    width = 1.dp,
-                                    color = Color.White.copy(alpha = 0.3f),
-                                    shape = RoundedCornerShape(6.dp),
-                                )
-                                .clickable { onAppendPages() },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = stringResource(MR.string.vault_gallery_add_page),
-                                tint = Color.White.copy(alpha = 0.7f),
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
-                    }
-                }
-
-                // Metadata info bar
-                Column(
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                ) {
-                    Text(
-                        text = file.fileName,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        .size(width = 36.dp, height = 4.dp)
+                        .background(
+                            color = Color.White.copy(alpha = 0.3f),
+                            shape = RoundedCornerShape(2.dp),
+                        ),
+                )
+            }
+        },
+        sheetContent = {
+            GalleryDetailSheet(
+                file = file,
+                pages = pages,
+                pagerState = pagerState,
+                onAppendPages = onAppendPages,
+                onUpdateNotes = onUpdateNotes,
+            )
+        },
+        containerColor = Color.Black,
+        contentColor = Color.White,
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                beyondViewportPageCount = 1,
+            ) { page ->
+                if (pages.isEmpty()) return@HorizontalPager
+                val descriptor = pages[page]
+                val isImage = descriptor.contentType?.startsWith("image/") == true
+
+                if (isImage) {
+                    GalleryPageImage(
+                        file = file,
+                        descriptor = descriptor,
+                        onToggleUI = { showUI = !showUI },
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = formatFileInfo(file.sizeBytes, file.createdAt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.5f),
+                } else {
+                    GalleryPageNonImage(
+                        descriptor = descriptor,
+                        onToggleUI = { showUI = !showUI },
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    if (editingNotes) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            OutlinedTextField(
-                                value = notesText,
-                                onValueChange = { notesText = it },
-                                placeholder = {
-                                    Text(
-                                        stringResource(MR.string.vault_notes_placeholder),
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
-                                },
-                                textStyle = MaterialTheme.typography.bodySmall.copy(
-                                    color = Color.White,
-                                ),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
-                                    cursorColor = Color.White,
-                                ),
-                                modifier = Modifier.weight(1f),
-                                maxLines = 3,
+                }
+            }
+
+            AnimatedVisibility(
+                visible = showUI,
+                modifier = Modifier.align(Alignment.TopCenter),
+                enter = fadeIn() + slideInVertically { -it },
+                exit = fadeOut() + slideOutVertically { -it },
+            ) {
+                val currentPage = pagerState.currentPage
+                val currentDescriptor = pages.getOrNull(currentPage)
+
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = file.fileName,
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                            IconButton(
-                                onClick = {
-                                    val notes = notesText.ifBlank { null }
-                                    onUpdateNotes(notes)
-                                    editingNotes = false
-                                },
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = stringResource(MR.string.vault_notes_save),
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    notesText = file.notes ?: ""
-                                    editingNotes = false
-                                },
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.5f),
+                            if (pages.size > 1) {
+                                Text(
+                                    text = stringResource(
+                                        MR.string.vault_gallery_page_counter,
+                                        currentPage + 1,
+                                        pages.size,
+                                    ),
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    style = MaterialTheme.typography.labelSmall,
                                 )
                             }
                         }
-                    } else {
-                        Text(
-                            text = file.notes?.ifBlank { null }
-                                ?: stringResource(MR.string.vault_notes_placeholder),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (file.notes.isNullOrBlank()) {
-                                Color.White.copy(alpha = 0.3f)
-                            } else {
-                                Color.White.copy(alpha = 0.7f)
-                            },
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable { editingNotes = true },
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back),
+                                tint = Color.White,
+                            )
+                        }
+                    },
+                    actions = {
+                        if (currentDescriptor != null) {
+                            IconButton(onClick = { onSharePage(currentDescriptor.key) }) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = stringResource(MR.string.vault_gallery_share_page),
+                                    tint = Color.White,
+                                )
+                            }
+                            IconButton(onClick = { pageToDelete = currentDescriptor.key }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = stringResource(MR.string.vault_gallery_delete_page),
+                                    tint = Color.White,
+                                )
+                            }
+                        }
+                        VaultFileDropdownMenu(
+                            file = file,
+                            onRename = { onRenameEntry() },
+                            onShare = { currentDescriptor?.let { onSharePage(it.key) } },
+                            onDelete = { onDeleteEntry() },
+                            iconTint = Color.White,
                         )
-                    }
-                }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Black.copy(alpha = 0.6f),
+                    ),
+                )
             }
         }
     }
 
-    // Delete page confirmation dialog
     pageToDelete?.let { payloadKey ->
         val isLastPage = pages.size <= 1
         val confirmMessage = if (isLastPage) {
@@ -462,6 +301,320 @@ fun VaultGalleryOverlay(
                     Text(stringResource(MR.string.vault_permission_cancel))
                 }
             },
+        )
+    }
+}
+
+@Composable
+private fun GalleryDetailSheet(
+    file: VaultFileItem,
+    pages: List<PayloadDescriptor>,
+    pagerState: PagerState,
+    onAppendPages: () -> Unit,
+    onUpdateNotes: (String?) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val thumbnailListState = rememberLazyListState()
+    val scrollState = rememberScrollState()
+    var editingNotes by remember { mutableStateOf(false) }
+    var notesText by remember(file.notes) { mutableStateOf(file.notes ?: "") }
+
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            thumbnailListState.animateScrollToItem(page)
+        }
+    }
+
+    LaunchedEffect(editingNotes) {
+        if (editingNotes) {
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .imePadding()
+            .verticalScroll(scrollState),
+    ) {
+        // Thumbnail strip
+        LazyRow(
+            state = thumbnailListState,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            itemsIndexed(pages) { index, descriptor ->
+                val isSelected = pagerState.currentPage == index
+                val isImage = descriptor.contentType?.startsWith("image/") == true
+                val borderModifier = if (isSelected) {
+                    Modifier.border(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(6.dp),
+                    )
+                } else {
+                    Modifier
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = Color.White.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(6.dp),
+                        )
+                        .then(borderModifier)
+                        .clickable {
+                            scope.launch { pagerState.animateScrollToPage(index) }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isImage) {
+                        val thumbKeyHeader = descriptor.iv?.let { ivBase64 ->
+                            try {
+                                KeyHeader(Base64.decode(ivBase64), file.keyHeader.aesKey)
+                            } catch (_: Exception) {
+                                file.keyHeader
+                            }
+                        } ?: file.keyHeader
+
+                        HomebaseImage(
+                            imageData = HomebaseImageData(
+                                driveId = file.driveId,
+                                fileId = file.fileId,
+                                payloadKey = descriptor.key,
+                                previewThumbnail = descriptor.previewThumbnail?.let {
+                                    file.previewThumbnail
+                                } ?: file.previewThumbnail,
+                                isEncrypted = file.isEncrypted,
+                                keyHeader = thumbKeyHeader,
+                            ),
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(Color.Transparent, RoundedCornerShape(6.dp)),
+                            contentScale = ContentScale.Crop,
+                            contentDescription = null,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = fileTypeIcon(descriptor.contentType ?: ""),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+            }
+
+            item {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .border(
+                            width = 1.dp,
+                            color = Color.White.copy(alpha = 0.3f),
+                            shape = RoundedCornerShape(6.dp),
+                        )
+                        .clickable { onAppendPages() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(MR.string.vault_gallery_add_page),
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+        }
+
+        // File name + date
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+        ) {
+            Text(
+                text = file.fileName,
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = formatFileInfo(file.sizeBytes, file.createdAt),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.5f),
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Current Page
+        val currentDescriptor = pages.getOrNull(pagerState.currentPage)
+        DetailSectionLabel(stringResource(MR.string.vault_detail_current_page))
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            DetailField(
+                label = stringResource(MR.string.vault_detail_type),
+                value = currentDescriptor?.contentType ?: "—",
+            )
+            DetailField(
+                label = stringResource(MR.string.vault_detail_size),
+                value = currentDescriptor?.bytesWritten?.formatFileSize() ?: "—",
+            )
+            DetailField(
+                label = stringResource(MR.string.vault_detail_modified),
+                value = currentDescriptor?.lastModified?.let {
+                    formatShortDate(Instant.fromEpochMilliseconds(it))
+                } ?: "—",
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Entry Summary
+        DetailSectionLabel(stringResource(MR.string.vault_detail_entry_summary))
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            DetailField(
+                label = stringResource(MR.string.vault_detail_pages),
+                value = pages.size.toString(),
+            )
+            DetailField(
+                label = stringResource(MR.string.vault_detail_total_size),
+                value = file.sizeBytes.formatFileSize(),
+            )
+            DetailField(
+                label = stringResource(MR.string.vault_detail_created),
+                value = formatShortDate(Instant.fromEpochMilliseconds(file.createdAt)),
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+        HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Notes
+        DetailSectionLabel(stringResource(MR.string.vault_notes_label))
+        Spacer(modifier = Modifier.height(6.dp))
+        if (editingNotes) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = notesText,
+                    onValueChange = { notesText = it },
+                    placeholder = {
+                        Text(
+                            stringResource(MR.string.vault_notes_placeholder),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    },
+                    textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.White),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                        cursorColor = Color.White,
+                    ),
+                    modifier = Modifier.weight(1f),
+                    maxLines = 5,
+                )
+                IconButton(
+                    onClick = {
+                        val notes = notesText.ifBlank { null }
+                        onUpdateNotes(notes)
+                        editingNotes = false
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = stringResource(MR.string.vault_notes_save),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        notesText = file.notes ?: ""
+                        editingNotes = false
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(MR.string.vault_notes_cancel),
+                        tint = Color.White.copy(alpha = 0.5f),
+                    )
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(8.dp),
+                    )
+                    .clickable { editingNotes = true }
+                    .padding(12.dp),
+            ) {
+                Text(
+                    text = file.notes?.ifBlank { null }
+                        ?: stringResource(MR.string.vault_notes_placeholder),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (file.notes.isNullOrBlank()) {
+                        Color.White.copy(alpha = 0.3f)
+                    } else {
+                        Color.White.copy(alpha = 0.7f)
+                    },
+                    maxLines = 5,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun DetailSectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = Color.White.copy(alpha = 0.4f),
+        letterSpacing = 0.5.sp,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
+}
+
+@Composable
+private fun DetailField(label: String, value: String) {
+    Column {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.5f),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White,
         )
     }
 }
