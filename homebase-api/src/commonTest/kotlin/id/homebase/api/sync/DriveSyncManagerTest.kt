@@ -14,6 +14,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import id.homebase.api.client.eventbus.BackendEvent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -334,9 +335,18 @@ class DriveSyncManagerTest {
             // Simulate a caller (viewModelScope) that is cancelled while logout is running.
             // Without withContext(NonCancellable), clearStorage() would throw and leave
             // some of the identity-scoped tables populated.
+            //
+            // Run the caller on runTest's scheduler so advanceUntilIdle() actually drains
+            // its work, and use CoroutineStart.ATOMIC so the launched body is guaranteed
+            // to start executing before cancellation can take effect — i.e. it gets to
+            // enter withContext(NonCancellable) on the first line of clearStorage(). With
+            // the default DEFAULT start, dispatch races against cancel(): if cancel wins,
+            // the body never runs and the wipe never happens, producing a flake.
             val callerJob = Job()
-            val callerScope = CoroutineScope(callerJob)
-            val job = callerScope.launch { manager.clearStorage() }
+            val callerScope = CoroutineScope(backgroundScope.coroutineContext + callerJob)
+            val job = callerScope.launch(start = CoroutineStart.ATOMIC) {
+                manager.clearStorage()
+            }
             callerJob.cancel()
             advanceUntilIdle()
             job.join()
