@@ -119,7 +119,12 @@ class DriveSyncManager(
     }
 
     suspend fun start() {
-        val credentials = credentialsManager.requireActiveCredentials()
+        // getActiveCredentials() + null-check instead of requireActiveCredentials()
+        // so a logout race can't crash the caller. Not all callers try-catch this.
+        val credentials = credentialsManager.getActiveCredentials() ?: run {
+            Logger.w { "DriveSyncManager.start() skipped — no active credentials" }
+            return
+        }
         val identityId = credentials.getIdentityId()
 
         val freshLogin = expectFreshCursors
