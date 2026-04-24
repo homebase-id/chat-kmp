@@ -6,9 +6,14 @@ import id.homebase.api.file.JvmFileSystemUtil
 import io.github.kdroidfilter.nucleus.notification.common.NotificationManager
 import io.github.kdroidfilter.nucleus.notification.common.NotificationResult
 import io.github.kdroidfilter.nucleus.notification.common.notification
+import io.github.kdroidfilter.nucleus.notification.windows.ShortcutPolicy
+import io.github.kdroidfilter.nucleus.notification.windows.WindowsNotificationCenter
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+
+private const val DESKTOP_AUMID = "id.homebase.chat.desktop"
+private const val DESKTOP_APP_NAME = "Homebase Chat"
 
 /**
  * JVM-only adapter that wraps the Nucleus cross-platform notification API
@@ -84,6 +89,7 @@ internal class NucleusNotificationAdapter private constructor() {
          * can fall back to KMPNotifier.
          */
         fun createOrNull(): NucleusNotificationAdapter? = try {
+            initializeWindowsIfApplicable()
             NotificationManager.initialize()
             if (!NotificationManager.isAvailable()) {
                 Logger.i(tag = "NucleusNotificationAdapter") {
@@ -98,6 +104,41 @@ internal class NucleusNotificationAdapter private constructor() {
                 "Nucleus initialisation failed: ${e.message}"
             }
             null
+        }
+
+        /**
+         * Windows toasts require an installed app whose AUMID is bound to a Start Menu
+         * shortcut. Unpackaged Java apps (e.g. dev-mode `./gradlew desktopApp:run`) have
+         * no such shortcut, so Nucleus's default policy (`REQUIRE_NO_CREATE` in dev
+         * mode) lets `send()` succeed while WinRT silently drops the toast.
+         *
+         * We force [ShortcutPolicy.REQUIRE_CREATE] with an explicit AUMID so a Start
+         * Menu shortcut is created once on first run; subsequent runs reuse it and
+         * toasts render.
+         *
+         * Harmless no-op on macOS/Linux — [WindowsNotificationCenter.isAvailable]
+         * returns false when the native bridge hasn't loaded.
+         */
+        private fun initializeWindowsIfApplicable() {
+            val osName = System.getProperty("os.name")?.lowercase().orEmpty()
+            if (!osName.contains("windows")) return
+            try {
+                if (!WindowsNotificationCenter.isAvailable) {
+                    Logger.w(tag = "NucleusNotificationAdapter") {
+                        "Windows native bridge not available — skipping explicit AUMID init"
+                    }
+                    return
+                }
+                WindowsNotificationCenter.initialize(
+                    aumid = DESKTOP_AUMID,
+                    appName = DESKTOP_APP_NAME,
+                    shortcutPolicy = ShortcutPolicy.REQUIRE_CREATE,
+                )
+            } catch (e: Throwable) {
+                Logger.w(tag = "NucleusNotificationAdapter") {
+                    "WindowsNotificationCenter.initialize threw: ${e.message}"
+                }
+            }
         }
     }
 }
