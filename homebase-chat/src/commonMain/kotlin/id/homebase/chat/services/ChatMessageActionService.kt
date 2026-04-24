@@ -60,7 +60,12 @@ class ChatMessageActionService(
                         !it.isAuthoredBy(domain)
             }
 
-        //TODO: claude to test this date thing
+        if (unreadRecords.isEmpty()) {
+            // Nothing to do — this is the common case when the user
+            // scrolls past self-authored or already-read messages.
+            return
+        }
+
         val newReadTime = unreadRecords.maxOf { it.userDate }
 
         Logger.d { "Calling mark-as-read for unread-records count: ${unreadRecords.size}" }

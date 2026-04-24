@@ -5,7 +5,6 @@ import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
@@ -192,26 +191,23 @@ class ChatMessageActionServiceTest {
     }
 
     @Test
-    fun markAsReadByFiles_noUnreadRecords_throws() = runTest {
+    fun markAsReadByFiles_noUnreadRecords_returnsEarlyWithNoSideEffects() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val convoId = Uuid.random()
 
             // Only self-authored — all filtered out, unreadRecords ends up empty.
+            // Realistic: the scroll autoscan in ConversationMessagesPane can hand us
+            // a batch of ids where every record is self-authored or already-read.
             val id = fixture.seedMessage(
                 conversationId = convoId,
                 senderDomain = fixture.testDomain,
                 userDateMs = 100L,
             )
 
-            // Pin the latent bug: `unreadRecords.maxOf { ... }` throws on empty input.
-            // If/when markAsReadByFiles guards against empty lists, update this test
-            // intentionally rather than letting the fix go unnoticed.
-            assertFailsWith<NoSuchElementException> {
-                service.markAsReadByFiles(convoId, listOf(id))
-            }
+            service.markAsReadByFiles(convoId, listOf(id))
 
-            // The pre-filter state is unchanged — nothing enqueued, no enrichment.
+            // Nothing to receipt — no outbox row, no local upsert, no enrichment.
             assertTrue(fixture.drainOutbox().isEmpty())
             assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
             assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
