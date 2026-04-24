@@ -94,6 +94,7 @@ kotlin {
             }
             implementation(libs.sqlite.jdbc.crypt)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
     }
 

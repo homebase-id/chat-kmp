@@ -33,7 +33,10 @@ import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.convo.ConversationLoader
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.StatusMessageSender
+import id.homebase.chat.services.convo.UnreadCountEnricher
+import id.homebase.chat.services.MessageLookup
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
@@ -179,8 +182,11 @@ val appModule = module {
     singleOf(::DriveContactService)
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
+    single<UnreadCountEnricher> { get<ConversationStream>() }
     singleOf(::ConversationService)
+    single<LocalLastReadUpdater> { get<ConversationService>() }
     singleOf(::ChatMessageStream)
+    single<MessageLookup> { get<ChatMessageStream>() }
     singleOf(::ShareSuggestionDonor)
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)

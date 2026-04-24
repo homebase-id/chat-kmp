@@ -48,7 +48,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
-) : ConversationLoader {
+) : ConversationLoader, UnreadCountEnricher {
 
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
@@ -726,6 +726,32 @@ class ConversationStream(
         Logger.i(tag = "ConvListPerf") {
             "enrichWithUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms changedRows=$changed totalRows=${current.items.size}"
         }
+    }
+
+    /**
+     * Single-conversation variant of [enrichWithUnreadCounts] — patches the
+     * unread count for one conversation without re-scanning the whole list.
+     * Called from message-read actions after the local read timestamp is
+     * advanced for a specific conversation.
+     */
+    override suspend fun enrichConversationWithUnreadCounts(conversationId: Uuid) {
+        val c = credentialsManager.requireActiveCredentials()
+        val newCount = dbm.chatReadCount
+            .selectUnreadCountForConversation(c.getIdentityId(), conversationId)
+            .toInt()
+
+        val current = _conversations.value
+        val index = current.items.indexOfFirst { it.id == conversationId }
+        if (index < 0) return
+
+        val convo = current.items[index]
+        if (convo.unreadCount == newCount) return
+
+        Logger.d("ConversationStream: unreadSync convo=${conversationId} ${convo.unreadCount}->${newCount}")
+        val updated = current.items.toMutableList().apply {
+            this[index] = convo.copy(unreadCount = newCount)
+        }
+        _conversations.value = current.copy(items = updated)
     }
 
     // endregion

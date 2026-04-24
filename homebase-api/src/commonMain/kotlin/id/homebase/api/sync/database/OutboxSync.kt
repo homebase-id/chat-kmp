@@ -4,7 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
-import id.homebase.api.client.drives.files.SendReadReceiptByTimeOutboxRequest
+import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
@@ -35,7 +35,7 @@ private fun uploadTypeName(t: Long): String = when (t) {
     DriveOutboxUploader.DeleteFile -> "DeleteFile"
     DriveOutboxUploader.UpdateLocalMetadataTags -> "UpdateLocalMetadataTags"
     DriveOutboxUploader.UpdateLocalMetadataContent -> "UpdateLocalMetadataContent"
-    DriveOutboxUploader.SendReadReceiptByTime -> "SendReadReceiptByTime"
+    DriveOutboxUploader.SendReadReceiptByFileIds -> "SendReadReceiptByFileIds"
     DriveOutboxUploader.ToggleReaction -> "ToggleReaction"
     DriveOutboxUploader.DeleteFilesByGroupId -> "DeleteFilesByGroupId"
     else -> "Unknown"
@@ -418,7 +418,7 @@ class OutboxSync(
     }
 
     public suspend fun tryEnqueue(
-        request: SendReadReceiptByTimeOutboxRequest,
+        request: SendReadReceiptByFileIdsOutboxRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
@@ -428,7 +428,7 @@ class OutboxSync(
             uniqueId = Uuid.random(),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
-            uploadType = DriveOutboxUploader.SendReadReceiptByTime,
+            uploadType = DriveOutboxUploader.SendReadReceiptByFileIds,
             json = OdinSystemSerializer.serialize(request)
         )
 

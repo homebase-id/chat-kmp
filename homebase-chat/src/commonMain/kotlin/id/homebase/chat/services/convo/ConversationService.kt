@@ -53,7 +53,7 @@ class ConversationService(
     private val chatMessageSenderService: StatusMessageSender,
     private val optimisticWriter: OptimisticWriter,
     private val conversationStream: ConversationLoader,
-) {
+) : LocalLastReadUpdater {
     private val chatDrive = chatTargetDrive.alias
 
     private val mapper: ConversationMapper = ConversationMapper(
@@ -1157,7 +1157,7 @@ class ConversationService(
         outboxSync.tryEnqueue(request)
     }
 
-    suspend fun updateLocalLastReadTime(conversationId: Uuid, newLastReadTime: UnixTimeUtc) {
+    override suspend fun updateLocalLastReadTime(conversationId: Uuid, newLastReadTime: UnixTimeUtc) {
 
         val convo = requireConversation(conversationId)
 

@@ -81,6 +81,12 @@ WHERE d.identityId = ?
 GROUP BY d.groupId;
 
 
+-- Raw lastReadTime for a conversation (test affordance + debugging).
+selectLastReadTime:
+SELECT lastReadTime
+FROM ChatReadCount
+WHERE groupId = ?;
+
 -- Upsert lastReadTime (only increase)
 upsertLastReadTime:
 INSERT INTO ChatReadCount(groupId, lastReadTime)
