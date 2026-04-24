@@ -77,16 +77,19 @@ keep feed sync without any manual action.
 
 ### Activating an add-on drive at runtime
 
-When the user completes the *Extend Permissions* flow for a new add-on:
+When the user completes the *Extend Permissions* flow for a new add-on, call the single
+entry point on `AuthConnectionCoordinator`:
 
 ```kotlin
-// 1. Persist to DB — survives restarts
-driveRegistry.addDrive(fooLabeledDrive)
-
-// 2. Mount immediately in the running session (HTTP polling only;
-//    real-time WS push arrives after the next reconnect)
-driveSyncManager.mountDrive(fooLabeledDrive.drive.alias, fooLabeledDrive.label)
+// Persists in DriveRegistry, hot-mounts in DriveSyncManager (HTTP polling starts
+// immediately) and schedules a debounced WebSocket reconnect (~500ms) so real-time
+// push arrives without waiting for an app restart. Safe to call multiple times in
+// quick succession — the reconnects coalesce.
+authConnectionCoordinator.mountDrive(fooLabeledDrive)
 ```
+
+The symmetric `authConnectionCoordinator.unmountDrive(driveId)` handles user-initiated
+removal the same way (registry + sync manager + WS refresh).
 
 ### Unmounting on 403 Forbidden
 
@@ -248,6 +251,11 @@ sealed interface FooUiEvent {
 The **Settings VM** is simpler — one flat `FooSettingsUiState` mirroring the
 preferences, kept in sync via two `viewModelScope.launch { prefs.xxx.collect { … } }`
 blocks in `init`.
+
+> Step 9b extends `FooViewModel`'s constructor with `AuthConnectionCoordinator`
+> so the *Extend Permissions* click can run the single-call activation
+> (persist + hot-mount + WS refresh). The snippet above only shows the
+> preferences dependency to keep the onboarding state flow readable in isolation.
 
 > **Rule (from CLAUDE.md):** one-time events go in `SharedFlow`, persistent state in
 > `StateFlow`. Composables must use `collectAsStateWithLifecycle()`.
@@ -513,29 +521,25 @@ val fooLabeledDrive = LabeledDrive(
 
 ### 9b — Activation wiring (`FooViewModel.kt`)
 
-When the user taps *Extend* in the permission dialog, persist to `DriveRegistry` and
-mount into the running session:
+When the user taps *Extend* in the permission dialog, call the single entry point on
+`AuthConnectionCoordinator`. It persists to `DriveRegistry`, hot-mounts in
+`DriveSyncManager`, and schedules a debounced WebSocket reconnect so real-time push
+notifications begin within ~500ms:
 
 ```kotlin
 FooUiAction.PermissionExtendClicked -> viewModelScope.launch {
     fooPreferences.setActivated(true)
-    driveRegistry.addDrive(fooLabeledDrive)          // persists to encrypted DB
-    driveSyncManager.mountDrive(                      // starts HTTP polling immediately
-        fooLabeledDrive.drive.alias,
-        fooLabeledDrive.label
-    )
+    authConnectionCoordinator.mountDrive(fooLabeledDrive)
     _uiState.update { it.copy(showPermissionDialog = false) }
     _events.tryEmit(FooUiEvent.Activated)
 }
 ```
 
-Inject `DriveRegistry` and `DriveSyncManager` into `FooViewModel` and register them
-in `AppModule.kt`.
+Inject `AuthConnectionCoordinator` into `FooViewModel` and register it in `AppModule.kt`.
 
-> **WebSocket note:** `mountDrive()` starts HTTP-polling sync immediately but
-> real-time WebSocket push notifications for the new drive arrive only after the next
-> reconnect. This is acceptable — the polling catches up and the next disconnect/reconnect
-> subscribes the WS to the full drive list (mandatory + all registry drives).
+> **Activation is now hot.** `mountDrive()` coalesces bursts into a single WS reconnect,
+> so activating two add-ons back-to-back still results in one close+reopen. For the
+> symmetric removal path use `authConnectionCoordinator.unmountDrive(driveId)`.
 
 ---
 
@@ -546,11 +550,13 @@ Reference: `AppModule.kt`.
 ```kotlin
 single { FooPreferences(get()) }
 
-// DriveSyncManager is already wired to DriveRegistry — no per-add-on changes needed here.
-// DriveRegistry.addDrive() at activation time is the only registration step.
+// AuthConnectionCoordinator is already wired to DriveRegistry and DriveSyncManager —
+// no per-add-on changes needed here. authConnectionCoordinator.mountDrive(fooLabeledDrive)
+// at activation time is the only registration step.
 
-// ViewModels — inject DriveRegistry and DriveSyncManager if needed for mid-session mounting
-viewModelOf(::FooViewModel)       // constructor: FooPreferences, DriveRegistry, DriveSyncManager
+// ViewModels — inject AuthConnectionCoordinator if the onboarding flow needs to activate
+// a drive mid-session (i.e. every onboarding flow).
+viewModelOf(::FooViewModel)       // constructor: FooPreferences, AuthConnectionCoordinator
 viewModelOf(::FooSettingsViewModel)
 ```
 
@@ -583,10 +589,11 @@ Copy this into your PR description and tick off each wiring point:
 - [ ] Three `composable<Route.Foo…>` entries + event-collecting `LaunchedEffect`
 - [ ] `isTopLevelRoute()` updated to include `Route.Foo`
 - [ ] Settings row + `onNavigateToFooSettings` wired
-- [ ] `fooLabeledDrive` + `activeSyncLabeledDrives(includeFoo=…)` in `AppConfig`
-- [ ] `AuthConnectionCoordinator` receives `FooPreferences` and uses it
-- [ ] `AppModule`: `single { FooPreferences }`, two `viewModelOf`, updated
-      `DriveSyncManager` + `AuthConnectionCoordinator` factories
+- [ ] `fooLabeledDrive` constant in `AppConfig.kt` (do NOT add to
+      `mandatorySyncDrives` — optional drives live in `DriveRegistry`)
+- [ ] `AppModule`: `single { FooPreferences }`, two `viewModelOf` — no
+      changes to `DriveSyncManager`, `DriveRegistry`, or `AuthConnectionCoordinator`
+      bindings (they are generic and already wired)
 - [ ] (Optional) `FooBiometricAuth` expect + three actuals
 - [ ] `CLAUDE.md` UI checklist: Material 3 only, `stringResource`,
       `Icons.AutoMirrored.*` for directional icons, `collectAsStateWithLifecycle`,
@@ -596,19 +603,18 @@ Copy this into your PR description and tick off each wiring point:
 
 ## Known gotchas
 
-- **WebSocket subscription is fixed at connect time.** `mountDrive()` starts HTTP-polling
-  sync immediately but real-time WebSocket push notifications won't arrive for the newly
-  mounted drive until the next reconnect. This is acceptable — polling catches up within
-  one sync cycle.
+- **Activation briefly drops the WebSocket.** `authConnectionCoordinator.mountDrive()`
+  debounces by ~500ms and then close+reopens the WS so the new drive joins the
+  subscription. The user sees the online indicator blink. Coalescing means two rapid
+  activations produce one reconnect, not two, but expect *some* reconnect.
 - **403 unmount is session-only.** If the server returns 403 for a drive, `DriveSyncManager`
   unmounts it automatically, clearing the sync indicator. The drive will be attempted again
-  on the next startup. To permanently remove a drive from the registry, call
-  `DriveRegistry.removeDrive()` explicitly (e.g. in a "deactivate" settings action).
+  on the next startup. This path deliberately does NOT trigger a WS refresh — reconnecting
+  would just re-subscribe and be rejected again. To permanently remove a drive from the
+  registry, call `authConnectionCoordinator.unmountDrive(driveId)` from a settings action.
 - **Placeholder drive UUIDs.** Vault currently ships with a stub `f47ac10b-…`.
   Get real alias/type UUIDs from the server team before enabling the drive in
   production — otherwise the WebSocket will subscribe to a non-existent drive.
-- **Activation does not hot-reload the WebSocket.** `AuthConnectionCoordinator`
-  snapshots `activated.value` at connect time. See Step 9b.
 - **Dismiss is sticky.** Dismissing onboarding only hides the icon
   (`iconVisible = false`) — it never flips `activated`. The user must re-enable
   the icon via Settings → *Show Foo icon in bottom bar* to see the onboarding
