@@ -3,9 +3,7 @@ package id.homebase.chat.services.convo
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
@@ -87,8 +85,7 @@ class ConversationMapper(
 
                 val conversationId = appData.uniqueId ?: error("Missing uniqueId")
 
-                val isDeleted = conversationFile.fileState == FileState.Deleted
-                        || appData.archivalStatus == ArchivalStatus.Removed
+                val isDeleted = conversationFile.isSoftDeleted()
 
                 if (isDeleted) {
                     return mapDeletedConversation(conversationFile, domain)

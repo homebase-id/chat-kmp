@@ -3,11 +3,9 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
@@ -404,8 +402,7 @@ class ChatMessageStream(
 
                 val versionTag = header.fileMetadata.versionTag ?: Uuid.NIL
                 val content = appData.content
-                val isDeleted = header.fileState == FileState.Deleted ||
-                        header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
+                val isDeleted = header.isSoftDeleted()
 
                 if (isDeleted) {
                     val deletedUserDate = if (appData.userDate == null)

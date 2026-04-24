@@ -126,11 +126,15 @@ countByIdentityAndDrive:
 SELECT count(*) FROM DriveMainIndex
 WHERE identityId = ? AND driveId = ?;
 
--- Select fileIds of soft-deleted rows (archivalStatus = 2 = Removed).
--- Used by the Defragmenter screen to enumerate files awaiting hard delete.
-selectSoftDeletedFileIds:
-SELECT fileId FROM DriveMainIndex
-WHERE identityId = ? AND driveId = ? AND archivalStatus = 2;
+-- Page rows for a drive in rowId-ascending order, returning (rowId, fileId,
+-- jsonHeader). The Defragmenter scans these chunks and applies the
+-- HomebaseFile.isSoftDeleted() predicate in Kotlin; we can't filter on
+-- fileState in SQL because it lives inside jsonHeader, not as a column.
+selectFileIdAndJsonByDriveSince:
+SELECT rowId, fileId, jsonHeader FROM DriveMainIndex
+WHERE identityId = ? AND driveId = ? AND rowId > ?
+ORDER BY rowId
+LIMIT ?;
 
 -- Select all records - for TESTING
 selectAll:
