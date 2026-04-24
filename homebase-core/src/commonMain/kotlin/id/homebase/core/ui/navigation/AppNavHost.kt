@@ -75,7 +75,6 @@ import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
-import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
@@ -682,23 +681,6 @@ fun AppNavHost(
                                     onNavigateBack = { navController.popBackStack() },
                                 )
                             }
-                    composable<Route.Help> {
-                        if (isAuthenticated) {
-                            HelpScreen(
-                                viewModel = koinViewModel(),
-                                onBackClick = { navController.popBackStack() },
-                                onNavigateToDeveloperMenu = {
-                                    navController.navigate(Route.DeveloperMenu)
-                                },
-                            )
-                        }
-                    }
-
-                    composable<Route.DeveloperMenu> {
-                        if (isAuthenticated) {
-                            DeveloperMenuScreen(
-                                viewModel = koinViewModel(),
-                                onBackClick = { navController.popBackStack() })
                         }
 
                         composable<Route.Vault> {
@@ -726,24 +708,47 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 LaunchedEffect(Unit) { navController.popBackStack() }
                             }
-                    composable<Route.StorageSettings> {
-                        if (isAuthenticated) {
-                            StorageSettingsScreen(
-                                viewModel = koinViewModel(),
-                                onBackClick = { navController.popBackStack() },
-                                onNavigateToDefragmenter = {
-                                    navController.navigate(Route.Defragmenter)
-                                },
-                            )
                         }
-                    }
 
-                    composable<Route.Defragmenter> {
-                        if (isAuthenticated) {
-                            DefragmenterScreen(
-                                viewModel = koinViewModel(),
-                                onClose = { navController.popBackStack() },
-                            )
+                        composable<Route.Help> {
+                            if (isAuthenticated) {
+                                HelpScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onNavigateToDeveloperMenu = {
+                                        navController.navigate(Route.DeveloperMenu)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.DeveloperMenu> {
+                            if (isAuthenticated) {
+                                DeveloperMenuScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() })
+                            }
+                        }
+
+                        composable<Route.StorageSettings> {
+                            if (isAuthenticated) {
+                                StorageSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onNavigateToDefragmenter = {
+                                        navController.navigate(Route.Defragmenter)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.Defragmenter> {
+                            if (isAuthenticated) {
+                                DefragmenterScreen(
+                                    viewModel = koinViewModel(),
+                                    onClose = { navController.popBackStack() },
+                                )
+                            }
                         }
                     }
                 }
@@ -777,14 +782,13 @@ private fun NavHostController.selectConversationOnChatList(
     return true
 }
 
-// Helper to check if a destination is a top-level route
 private fun NavDestination?.isTopLevelRoute(): Boolean {
-    return this?.hasRoute(Route.ChatList::class) == true || this?.hasRoute(Route.Home::class) == true || this?.hasRoute(
-        Route.Vault::class
-    ) == true || this?.hasRoute(Route.Feed::class) == true
+    return this?.hasRoute(Route.ChatList::class) == true ||
+            this?.hasRoute(Route.Home::class) == true ||
+            this?.hasRoute(Route.Vault::class) == true ||
+            this?.hasRoute(Route.Feed::class) == true
 }
 
-// Helper to check if we're navigating between top-level routes
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
     return initialState.destination.isTopLevelRoute() && targetState.destination.isTopLevelRoute()
 }
