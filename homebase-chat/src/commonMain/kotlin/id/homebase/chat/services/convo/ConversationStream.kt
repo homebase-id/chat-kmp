@@ -66,8 +66,15 @@ class ConversationStream(
         _shareableConversations.asStateFlow()
 
     // region Recovery: missing or deleted conversation file
-    /** Called when a message arrives for a conversation that is missing or soft-deleted.
-     *  Wired in AppModule to ConversationService.recoverConversation(). */
+    /** Hook for explicit (non-sync) conversation recovery.
+     *
+     *  Wired in AppModule to ConversationService.recoverConversation().
+     *  Currently has no live caller — the previous sync-handler triggers
+     *  were removed because enqueuing a server write from inside a
+     *  drive-sync batch produced spurious conflicts (real file later in
+     *  sync, or transfer-to-self). The plumbing is retained so a future
+     *  explicit-recovery path (e.g. ensure-file-on-send, or a post-sync
+     *  reconciliation pass) can wire in without touching DI. */
     var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
     // endregion
 
@@ -207,20 +214,13 @@ class ConversationStream(
                 )
                 updateConversationFromNewMessage(revived, m)
 
-                // Trigger server-side revival via unified recovery
-                val revivalAuthor = m.originalAuthor
-                if (revivalAuthor != null) {
-                    scope.launch {
-                        try {
-                            onRecoverConversation?.invoke(m.conversationId, revivalAuthor)
-                            Logger.i("ConversationStream: deleted conversation ${m.conversationId} — recovery triggered successfully")
-                        } catch (e: Exception) {
-                            Logger.e(e) { "ConversationStream: deleted conversation ${m.conversationId} — recovery FAILED: ${e.message}" }
-                        }
-                    }
-                } else {
-                    Logger.w("ConversationStream: deleted conversation ${m.conversationId} — cannot recover, originalAuthor is null")
-                }
+                // Intentionally do NOT trigger server-side recovery here. A
+                // drive-sync batch handler is the wrong place to enqueue
+                // outbox items — see the orphan branch below for the full
+                // rationale. If the server keeps delivering messages for a
+                // locally-deleted conversation, that conversation is
+                // already alive server-side; we simply re-align local state
+                // to match.
                 continue
             }
             // endregion
@@ -271,23 +271,27 @@ class ConversationStream(
                         isGroup = !isOneToOne
                     )
 
-                // region Recovery: missing conversation file
+                // region Placeholder: conversation file not yet synced
+                // Insert a UI placeholder so the message is visible now.
+                // Intentionally do NOT enqueue a server-side recovery from
+                // here. A drive-sync handler reads server state; enqueuing
+                // a server write from inside that read produced spurious
+                // "File already exists with ClientUniqueId" conflicts
+                // (when the real conversation file is simply later in the
+                // sync order) and "Cannot transfer to yourself" rejections
+                // (when originalAuthor == self for groups we started), for
+                // every login. Recovery is now self-healing:
+                //   1. If the real conversation file exists on the server
+                //      (the common case), it will arrive in a later sync
+                //      batch and replace this placeholder via
+                //      processConversationBatchIncrementally →
+                //      updateConversation.
+                //   2. If the server truly lacks the file, the placeholder
+                //      stays until the user interacts with the
+                //      conversation. A follow-up will add "ensure
+                //      conversation file on send" to close that gap.
                 Logger.w("ConversationStream: orphaned conversation ${m.conversationId} from=${m.originalAuthor} isOneToOne=$isOneToOne, creating placeholder")
                 insertNewConversation(emptyConversation)
-
-                if (m.originalAuthor != null) {
-                    Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — triggering recovery for author=${m.originalAuthor}")
-                    scope.launch {
-                        try {
-                            onRecoverConversation?.invoke(m.conversationId, m.originalAuthor)
-                            Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — recovery triggered successfully")
-                        } catch (e: Exception) {
-                            Logger.e(e) { "ConversationStream: orphaned conversation ${m.conversationId} — recovery FAILED: ${e.message}" }
-                        }
-                    }
-                } else {
-                    Logger.w("ConversationStream: orphaned conversation ${m.conversationId} — cannot recover, originalAuthor is null")
-                }
                 // endregion
             } else {
                 updateConversationFromNewMessage(matchingConversation, m)
