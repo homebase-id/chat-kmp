@@ -23,10 +23,10 @@ import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.SendMessageResult
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.outbox.OptimisticWriter
-import kotlin.time.Clock
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.TestScope
+import kotlin.time.Clock
+import kotlin.uuid.Uuid
 
 /**
  * Shared setup for ConversationService tests.
@@ -217,11 +217,11 @@ class ConversationServiceTestFixture : AutoCloseable {
 
     // ---------- internals ----------
 
-    private fun createInMemoryDbm(): DatabaseManager = DatabaseManager {
+    private fun createInMemoryDbm(): DatabaseManager = DatabaseManager({
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         OdinDatabase.Schema.create(driver)
         driver
-    }
+    })
 
     private suspend fun createCredentialsManager(domain: String): CredentialsManager {
         val cm = CredentialsManager()

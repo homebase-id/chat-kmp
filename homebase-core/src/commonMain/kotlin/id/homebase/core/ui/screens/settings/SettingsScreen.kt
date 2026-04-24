@@ -55,8 +55,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.initials
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
-import id.homebase.core.ui.assets.Homebase
-import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
@@ -65,12 +63,8 @@ import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
 import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.SettingsItemAction
-import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
-import id.homebase.resources.app_build
-import id.homebase.resources.app_version
 import id.homebase.resources.cancel
-import id.homebase.resources.homebase_logo
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
@@ -373,27 +367,6 @@ fun SettingsUi(
                 onClick = { onAction(SettingsUiAction.LogoutClicked) }
             )
             Spacer(modifier = Modifier.height(32.dp))
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                SquircleIcon(
-                    imageVector = HomebaseIcons.Homebase,
-                    contentDescription = stringResource(MR.string.homebase_logo),
-                    modifier = Modifier.size(72.dp)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = uiState.appName)
-                Text(text = stringResource(MR.string.app_version, uiState.appVersion))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(MR.string.app_build, uiState.appBuild),
-                    style = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)),
-                )
-                Text(
-                    text = uiState.appBuildDate,
-                    style = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)),
-                )
-            }
         }
     }
 }
@@ -403,7 +376,7 @@ fun SettingsUi(
 fun SettingsUiPreview() {
     HomebaseTheme {
         SettingsUi(
-            uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
+            uiState = SettingsUiState(),
             onAction = {},
             onBackClick = {},
             onNavigateToConnections = {},

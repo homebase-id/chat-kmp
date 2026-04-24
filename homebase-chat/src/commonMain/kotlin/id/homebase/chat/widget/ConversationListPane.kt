@@ -416,7 +416,7 @@ fun ConversationListPane(
                         }
                     }
 
-                    if (uiState.archivedCount > 0) {
+                    if (uiState.archivedCount > 0 && !uiState.isSearchActive) {
                         item {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),

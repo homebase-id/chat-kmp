@@ -3,7 +3,6 @@ package id.homebase.api.sync.database
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +15,11 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlin.test.*
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
@@ -60,7 +63,7 @@ class OutboxSyncTest {
 
     @Test
     fun testSuccessfulSend() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
             val eventBus = EventBus()  // Fresh instance per test
@@ -119,7 +122,7 @@ class OutboxSyncTest {
 
     @Test
     fun testFailureAndRetry() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
             val eventBus = EventBus()  // Fresh instance per test
@@ -172,7 +175,7 @@ class OutboxSyncTest {
 
     @Test
     fun testConcurrencyLimit() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
             val eventBus = EventBus()  // Fresh instance per test
@@ -229,7 +232,7 @@ class OutboxSyncTest {
 
     @Test
     fun testMaxRetriesDrop() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
             val eventBus = EventBus()
@@ -297,7 +300,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testTryEnqueueDoesNotBlockOnSaturatedEventBus() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
             val eventBus = EventBus()
@@ -382,7 +385,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testTryEnqueueDuplicateReturnsFalseAndKeepsOriginal() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
             val eventBus = EventBus()
@@ -430,7 +433,7 @@ class OutboxSyncTest {
      */
     @Test
     fun testReplaceEnqueueSupersedesExistingRow() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
             val eventBus = EventBus()
@@ -472,7 +475,7 @@ class OutboxSyncTest {
 
     @Test
     fun testEmptyOutbox() {
-        val db = DatabaseManager { createInMemoryDatabase() }
+        val db = DatabaseManager({ createInMemoryDatabase() })
 
         runTest {
             val eventBus = EventBus()  // Fresh instance per test

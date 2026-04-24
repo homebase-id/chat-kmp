@@ -83,6 +83,13 @@
     <string name="not_available">Not available</string>
     <string name="error">Error</string>
     <string name="audio_waveform">Audio waveform</string>
+    <string name="update">Updates</string>
+    <string name="update_not_supported">Update check not supported on this version</string>
+    <string name="update_available">Update available</string>
+    <string name="update_using_latest_version">App is latest available version</string>
+    <string name="update_check_now">Check for updates</string>
+    <string name="update_get_update">Get new update</string>
+    <string name="update_checking">Searching for update...</string>
 
     <!-- Avatars -->
     <string name="avatar_owner">Owner avatar</string>

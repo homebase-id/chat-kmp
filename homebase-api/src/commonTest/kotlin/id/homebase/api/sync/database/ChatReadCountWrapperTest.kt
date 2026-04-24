@@ -4,12 +4,12 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.test.runTest
 
 class ChatReadCountWrapperTest {
 
@@ -159,7 +159,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testSelectAllConversations() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
@@ -184,7 +184,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testSelectAllConversationsEmpty() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val wrapper = dbm.chatReadCount
 
             val conversations = wrapper.selectAllConversations(Uuid.random())
@@ -197,7 +197,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testSelectAllConversationPlusLastMessage() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
@@ -258,7 +258,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testSelectAllConversationPlusLastMessageEmpty() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val wrapper = dbm.chatReadCount
 
             val conversationsWithMessages = wrapper.selectAllConversationPlusLastMessage(Uuid.random())
@@ -272,7 +272,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testSelectUnreadCountForConversationNoReadTime() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
@@ -305,7 +305,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testSelectUnreadCountForConversationWithReadTime() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
@@ -327,7 +327,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testSelectUnreadCountForConversationNonExistent() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val wrapper = dbm.chatReadCount
             val nonExistentGroupId = Uuid.random()
 
@@ -341,7 +341,7 @@ class ChatReadCountWrapperTest {
 
 //    @Test
 //    fun testSelectAllReadCountNoReadTime() = runTest {
-//        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+//        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
 //            val testData = populateMockData(dbm)
 //            val wrapper = dbm.chatReadCount
 //
@@ -375,7 +375,7 @@ class ChatReadCountWrapperTest {
 
 //    @Test
 //    fun testSelectAllReadCountWithReadTime() = runTest {
-//        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+//        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
 //            val testData = populateMockData(dbm)
 //            val wrapper = dbm.chatReadCount
 //
@@ -415,7 +415,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testSelectAllReadCountEmpty() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val wrapper = dbm.chatReadCount
 
             val originalAuthor: OdinId = OdinId("somewhere.demo.rocks")
@@ -429,7 +429,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testUpsertLastReadTimeNew() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
@@ -453,7 +453,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testUpsertLastReadTimeUpdate() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
@@ -485,7 +485,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testUpsertLastReadTimeNonExistent() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val wrapper = dbm.chatReadCount
             val nonExistentGroupId = Uuid.random()
             val readTime = UnixTimeUtc.now()
@@ -500,7 +500,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testDeleteByGroupIdExisting() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
@@ -534,7 +534,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testDeleteByGroupIdNonExistent() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val wrapper = dbm.chatReadCount
             val nonExistentGroupId = Uuid.random()
 
@@ -549,7 +549,7 @@ class ChatReadCountWrapperTest {
 
     @Test
     fun testDeleteByGroupIdAndReinsert() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm ->
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val testData = populateMockData(dbm)
             val wrapper = dbm.chatReadCount
 
