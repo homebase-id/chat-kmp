@@ -22,6 +22,8 @@ import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
+import id.homebase.core.updater.AndroidUpdateAppManager
+import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.util.AndroidPlatformInfo
 import id.homebase.core.util.PlatformInfo
 import org.koin.android.ext.koin.androidContext
@@ -38,6 +40,7 @@ actual fun platformModule(): Module = module {
     single<AudioPlayer> { AndroidAudioPlayer() }
     single<AudioWaveFormGenerator> { AndroidWaveFormGenerator() }
     single<DatabaseSizeProbe> { AndroidDatabaseSizeProbe(androidContext()) }
+    single<UpdateAppManager> { AndroidUpdateAppManager(androidContext()) }
     single(createdAtStart = true) {
         ImageLoader.Builder(androidContext())
                 .components {

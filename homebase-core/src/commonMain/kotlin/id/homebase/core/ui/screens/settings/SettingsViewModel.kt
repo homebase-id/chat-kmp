@@ -2,14 +2,12 @@ package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import chat_kmp.homebase_common.BuildConfig
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.SubscriptionVerificationStatus
 import id.homebase.core.share.ShareCacheStorage
-import id.homebase.core.util.PlatformInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,14 +19,9 @@ class SettingsViewModel(
     private val ownerSessionRepository: OwnerSessionRepository,
     private val notificationService: NotificationService,
     private val shareCacheStorage: ShareCacheStorage,
-    platformInfo: PlatformInfo,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState(
-        appVersion = platformInfo.versionName,
-        appBuild = platformInfo.versionCode.toString(),
-        appBuildDate = BuildConfig.APP_BUILD_TIME,
-    ))
+    private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {

@@ -62,6 +62,7 @@ import id.homebase.resources.storage_caches_header
 import id.homebase.resources.storage_caches_none
 import id.homebase.resources.storage_clear_caches
 import id.homebase.resources.storage_database
+import id.homebase.resources.storage_defragment_button
 import id.homebase.resources.storage_drive_count_format
 import id.homebase.resources.storage_drives_header
 import id.homebase.resources.storage_drives_none
@@ -74,6 +75,7 @@ import org.jetbrains.compose.resources.stringResource
 fun StorageSettingsScreen(
     viewModel: StorageSettingsViewModel,
     onBackClick: () -> Unit,
+    onNavigateToDefragmenter: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -93,6 +95,7 @@ fun StorageSettingsScreen(
         uiState = uiState,
         onAction = viewModel::onAction,
         onBackClick = onBackClick,
+        onNavigateToDefragmenter = onNavigateToDefragmenter,
         snackbarHostState = snackbarHostState,
     )
 }
@@ -103,6 +106,7 @@ fun StorageSettingsUi(
     uiState: StorageSettingsUiState,
     onAction: (StorageSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
+    onNavigateToDefragmenter: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
     val scrollState = rememberScrollState()
@@ -205,6 +209,14 @@ fun StorageSettingsUi(
                         }
                     }
                 }
+            }
+
+            Button(
+                onClick = onNavigateToDefragmenter,
+                enabled = uiState.drives.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(MR.string.storage_defragment_button))
             }
 
             SectionHeader(title = stringResource(MR.string.storage_other_header))

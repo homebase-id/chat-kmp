@@ -3,7 +3,6 @@ package id.homebase.core.ui.screens.settings
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
@@ -17,7 +16,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
+                    uiState = SettingsUiState(),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -36,7 +35,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
+                    uiState = SettingsUiState(),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -56,32 +55,12 @@ class SettingsUiTest {
     }
 
     @Test
-    fun showsAppVersionInfo() = runComposeUiTest {
-        setContent {
-            MaterialTheme {
-                SettingsUi(
-                    uiState = SettingsUiState(appVersion = "2.5.3", appBuild = "12345", appBuildDate = "2023-01-01"),
-                    onAction = {},
-                    onBackClick = {},
-                    onNavigateToConnections = {},
-                    onNavigateToNotifications = {},
-                    onNavigateToAppearance = {},
-                    onNavigateToStorage = {},
-                    onNavigateToHelp = {},
-                )
-            }
-        }
-        onNodeWithText("Homebase Chat").assertExists()
-        onNodeWithText("Version 2.5.3").assertExists()
-    }
-
-    @Test
     fun notificationsClickNavigates() = runComposeUiTest {
         var navigated = false
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
+                    uiState = SettingsUiState(),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -102,7 +81,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
+                    uiState = SettingsUiState(),
                     onAction = {},
                     onBackClick = {},
                     onNavigateToConnections = {},
@@ -123,7 +102,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
+                    uiState = SettingsUiState(),
                     onAction = { action ->
                         if (action is SettingsUiAction.LogoutClicked) {
                             loggedOut = true
@@ -148,7 +127,7 @@ class SettingsUiTest {
         setContent {
             MaterialTheme {
                 SettingsUi(
-                    uiState = SettingsUiState(appVersion = "1.0.0", appBuild = "12345", appBuildDate = "2023-01-01"),
+                    uiState = SettingsUiState(),
                     onAction = { action ->
                         if (action is SettingsUiAction.DeleteAccount) {
                             deleteClicked = true

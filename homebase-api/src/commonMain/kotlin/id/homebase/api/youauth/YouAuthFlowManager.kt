@@ -76,6 +76,12 @@ class YouAuthFlowManager(
     private val httpClient: HttpClient,
     private val driveFileProviderCached: DriveFileProviderCached,
     private val publicProfileProviderCached: PublicProfileProviderCached,
+    // Platform-level cache teardown invoked during logout, alongside the per-cache
+    // clearCaches() calls below. Injected from the module that owns platform
+    // singletons (homebase-core) so this class doesn't have to depend on coil3 or
+    // on FileOperationsProvider directly. Default no-op keeps existing tests and
+    // any construction path that doesn't care about platform caches working.
+    private val clearPlatformCaches: suspend () -> Unit = {},
 ) {
     private val _authState = MutableStateFlow<YouAuthState>(YouAuthState.Initializing)
     val authState: StateFlow<YouAuthState> = _authState.asStateFlow()
@@ -348,6 +354,12 @@ class YouAuthFlowManager(
         driveSyncManager.clearStorage()
         driveFileProviderCached.clearCaches()
         publicProfileProviderCached.clearCaches()
+        // Platform caches (Coil memory cache, orphan coil3_disk_cache dir, anything
+        // else the app-level module wants to flush). Wrapped in runCatching so a
+        // failing hook can't block the authState flip that follows — we'd rather
+        // log out with a stale Coil entry than get stuck half-authenticated.
+        runCatching { clearPlatformCaches() }
+            .onFailure { Logger.e(throwable = it, tag = TAG) { "clearPlatformCaches failed" } }
         CredentialStorage.clearCredentials()
         ShareAuthBridge.clearAuth()
 

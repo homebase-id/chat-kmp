@@ -1,16 +1,16 @@
 package id.homebase.api.sync.database
 
+import kotlinx.coroutines.test.runTest
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.test.runTest
 
 class DriveLocalTagIndexTest {
     @Test
     fun testInsertSelectDeleteLocalTag() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
 
             // Test data - create sample byte arrays
             val randomId = Random.nextLong()
@@ -70,7 +70,7 @@ class DriveLocalTagIndexTest {
 
     @Test
     fun testSelectByFileWithNoLocalTags() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
             // Test data for non-existent file
             val identityId = Uuid.random()
             val driveId = Uuid.random()
@@ -88,7 +88,7 @@ class DriveLocalTagIndexTest {
 
     @Test
     fun testUniqueConstraint() = runTest {
-        DatabaseManager { createInMemoryDatabase() }.use { dbm -> // Create a QueryBatchCursor with all fields populated
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm -> // Create a QueryBatchCursor with all fields populated
 
             // Test data
             val identityId = Uuid.random()
