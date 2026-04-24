@@ -97,8 +97,15 @@ class AuthConnectionCoordinator(
 
     private fun loadProfile() {
         scope.launch {
-            val odinId = credentialsManager.requireActiveCredentials().domain
-            ownerSessionRepository.load(odinId)
+            // Use getActiveCredentials() rather than requireActiveCredentials() —
+            // a BackendEvent.ConnectionOnline racing with logout would otherwise
+            // throw IllegalStateException on a scope with no exception handler,
+            // crashing the process.
+            val credentials = credentialsManager.getActiveCredentials() ?: run {
+                Logger.d { "loadProfile: skipping — no active credentials" }
+                return@launch
+            }
+            ownerSessionRepository.load(credentials.domain)
         }
     }
 
