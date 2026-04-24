@@ -79,6 +79,20 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
         private lateinit var instance: DatabaseManager
         val appDb: DatabaseManager get() = instance
 
+        // Single source of truth for every table in OdinDatabase. If a new table is
+        // added to the schema, add it here or wipeAndRecreate() will silently skip it
+        // on logout — exactly the class of bug that leaks Outbox rows across sessions.
+        internal val TABLE_NAMES = listOf(
+            "AppNotifications",
+            "ChatReadCount",
+            "ConnectionCache",
+            "DriveLocalTagIndex",
+            "DriveMainIndex",
+            "DriveTagIndex",
+            "KeyValue",
+            "Outbox"
+        )
+
         suspend fun initialize(driverProvider: () -> SqlDriver) {
             if (::instance.isInitialized) throw IllegalStateException("Already initialized")
 
@@ -87,27 +101,9 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
             val version = instance.driveMainIndex.getSchemaVersion()
 
             if (version < DATABASE_VERSION) {
-                val logger = Logger.withTag("DatabaseManager")
-                logger.i { "Schema version $version < $DATABASE_VERSION — wiping tables" }
-                wipeTables(instance.driver)
-                OdinDatabase.Schema.create(instance.driver)
-                logger.i { "Tables recreated after wipe" }
-            }
-        }
-
-        private fun wipeTables(driver: SqlDriver) {
-            val tables = listOf(
-                "AppNotifications",
-                "ChatReadCount",
-                "ConnectionCache",
-                "DriveLocalTagIndex",
-                "DriveMainIndex",
-                "DriveTagIndex",
-                "KeyValue",
-                "Outbox"
-            )
-            tables.forEach { table ->
-                driver.execute(null, "DROP TABLE IF EXISTS $table;", 0)
+                Logger.withTag("DatabaseManager")
+                    .i { "Schema version $version < $DATABASE_VERSION — wiping tables" }
+                instance.wipeAndRecreate()
             }
         }
     }
@@ -184,11 +180,77 @@ class DatabaseManager(driverProvider: () -> SqlDriver) : AutoCloseable {
         block(database)
     }
 
-    // VACUUM rewrites the entire DB file, reclaiming space freed by large DELETEs
-    // (e.g. the logout wipe). Must run outside a transaction and with exclusive access
-    // to the DB, so we run it on dbDispatcher like every other write path.
-    suspend fun vacuum() = withContext(dbDispatcher) {
+    // Nuke every table and rebuild the schema from scratch. Used on logout (via
+    // DriveSyncManager.clearStorage) and on schema-version bump (via initialize).
+    //
+    // DROP TABLE is used instead of DELETE FROM because DROP is an unforgeable
+    // guarantee: after it returns, the rows cannot survive an open transaction,
+    // a stale cache, or a stray driver reference. DELETE has bitten us — the
+    // Outbox has been observed to keep rows across logout/login with their retry
+    // counters intact, meaning some deleteAll() was either racing another writer
+    // or hitting a different driver instance. DROP + CREATE + VACUUM on a single
+    // driver, inside the one-at-a-time dbDispatcher, removes all of those loopholes.
+    //
+    // Two verification probes run alongside the wipe and log an error if they fire:
+    //   1. After DROP: counting rows on the table must throw "no such table". If
+    //      the SELECT succeeds, DROP didn't take effect (wrong driver, or something
+    //      caught the exception silently).
+    //   2. After CREATE: the row count must be zero. If it's not, something wrote
+    //      to the freshly recreated table before we finished — usually a caller
+    //      still running with stale credentials.
+    suspend fun wipeAndRecreate() = withContext(dbDispatcher) {
+        val log = Logger.withTag("DatabaseManager")
+
+        TABLE_NAMES.forEach { table ->
+            driver.execute(null, "DROP TABLE IF EXISTS $table;", 0)
+        }
+
+        // Probe 1: after DROP every SELECT must throw.
+        TABLE_NAMES.forEach { table ->
+            val stillThere = runCatching {
+                driver.executeQuery(
+                    identifier = null,
+                    sql = "SELECT COUNT(*) FROM $table",
+                    mapper = { cursor ->
+                        cursor.next()
+                        QueryResult.Value(cursor.getLong(0) ?: 0L)
+                    },
+                    parameters = 0,
+                ).value
+            }.getOrNull()
+            if (stillThere != null) {
+                log.e { "wipeAndRecreate: table '$table' still queryable after DROP (rows=$stillThere) — wipe did not take effect" }
+            }
+        }
+
+        OdinDatabase.Schema.create(driver)
+
+        // Probe 2: after CREATE every table must be empty.
+        TABLE_NAMES.forEach { table ->
+            val count = runCatching {
+                driver.executeQuery(
+                    identifier = null,
+                    sql = "SELECT COUNT(*) FROM $table",
+                    mapper = { cursor ->
+                        cursor.next()
+                        QueryResult.Value(cursor.getLong(0) ?: 0L)
+                    },
+                    parameters = 0,
+                ).value
+            }.getOrElse { e ->
+                log.e(e) { "wipeAndRecreate: could not count '$table' after CREATE" }
+                -1L
+            }
+            if (count > 0L) {
+                log.e { "wipeAndRecreate: table '$table' has $count rows after wipe — something re-inserted mid-wipe" }
+            }
+        }
+
+        // Reclaim the pages freed by DROP. VACUUM must run outside any transaction;
+        // dbDispatcher has the single-writer slot so we're safe here.
         driver.execute(identifier = null, sql = "VACUUM", parameters = 0)
+
+        log.i { "wipeAndRecreate: completed (${TABLE_NAMES.size} tables)" }
     }
 
     override fun close() {
