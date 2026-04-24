@@ -11,7 +11,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.connections.AutoConnectOutcome
-import id.homebase.api.client.connections.AutoConnectResult
+import id.homebase.api.client.connections.ConnectionRequestResult
 import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.auth.CredentialsManager
@@ -2218,7 +2218,7 @@ class ConversationListViewModel(
     }
 
     private fun failedOutcomeRowState(
-        result: AutoConnectResult,
+        result: ConnectionRequestResult,
         recipient: OdinId,
     ): AutoConnectRowState.Failed {
         val who = recipient.domainName

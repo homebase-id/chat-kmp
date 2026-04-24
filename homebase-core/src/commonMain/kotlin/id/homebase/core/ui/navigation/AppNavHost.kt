@@ -15,9 +15,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -71,8 +71,11 @@ import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.connections.ConnectionsScreen
+import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
+import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
+import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
@@ -672,14 +675,6 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Help> {
-                            if (isAuthenticated) {
-                                HelpScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() })
-                            }
-                        }
-
                         composable<Route.VaultOnboarding> {
                             if (isAuthenticated) {
                                 VaultOnboardingScreen(
@@ -687,6 +682,23 @@ fun AppNavHost(
                                     onNavigateBack = { navController.popBackStack() },
                                 )
                             }
+                    composable<Route.Help> {
+                        if (isAuthenticated) {
+                            HelpScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() },
+                                onNavigateToDeveloperMenu = {
+                                    navController.navigate(Route.DeveloperMenu)
+                                },
+                            )
+                        }
+                    }
+
+                    composable<Route.DeveloperMenu> {
+                        if (isAuthenticated) {
+                            DeveloperMenuScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() })
                         }
 
                         composable<Route.Vault> {
@@ -710,20 +722,28 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.StorageSettings> {
-                            if (isAuthenticated) {
-                                StorageSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() })
-                            }
-                        }
-
                         composable<Route.VaultEntryDetail> { _ ->
                             if (isAuthenticated) {
-                                // Phase 3 will replace this with VaultEntryDetailScreen
-                                // For now, navigate back (entry preview handled by overlay in VaultScreen)
                                 LaunchedEffect(Unit) { navController.popBackStack() }
                             }
+                    composable<Route.StorageSettings> {
+                        if (isAuthenticated) {
+                            StorageSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() },
+                                onNavigateToDefragmenter = {
+                                    navController.navigate(Route.Defragmenter)
+                                },
+                            )
+                        }
+                    }
+
+                    composable<Route.Defragmenter> {
+                        if (isAuthenticated) {
+                            DefragmenterScreen(
+                                viewModel = koinViewModel(),
+                                onClose = { navController.popBackStack() },
+                            )
                         }
                     }
                 }

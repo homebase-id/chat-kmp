@@ -150,12 +150,12 @@ class ConnectionRequestProvider(
     /**
      * Sends a connection request on the app-origin auto-connect path. The server runs the
      * recipient's auto-accept synchronously, so a single HTTP call can resolve the whole flow
-     * and return a typed [AutoConnectResult]. Non-2xx responses throw — callers treat transport
+     * and return a typed [ConnectionRequestResult]. Non-2xx responses throw — callers treat transport
      * / auth failures separately from in-band [AutoConnectOutcome]s.
      */
     suspend fun autoConnect(
         request: ConnectionRequestHeader
-    ): AutoConnectResult {
+    ): ConnectionRequestResult {
 
         val creds = requireCreds()
 

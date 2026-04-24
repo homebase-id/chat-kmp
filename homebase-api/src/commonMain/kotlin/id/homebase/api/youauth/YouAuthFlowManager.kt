@@ -76,6 +76,12 @@ class YouAuthFlowManager(
     private val httpClient: HttpClient,
     private val driveFileProviderCached: DriveFileProviderCached,
     private val publicProfileProviderCached: PublicProfileProviderCached,
+    // Platform-level cache teardown invoked during logout, alongside the per-cache
+    // clearCaches() calls below. Injected from the module that owns platform
+    // singletons (homebase-core) so this class doesn't have to depend on coil3 or
+    // on FileOperationsProvider directly. Default no-op keeps existing tests and
+    // any construction path that doesn't care about platform caches working.
+    private val clearPlatformCaches: suspend () -> Unit = {},
 ) {
     private val _authState = MutableStateFlow<YouAuthState>(YouAuthState.Initializing)
     val authState: StateFlow<YouAuthState> = _authState.asStateFlow()
@@ -339,6 +345,15 @@ class YouAuthFlowManager(
             Logger.e(throwable = e, tag = TAG) { "Error during logout" }
         }
 
+        // Tear down background work that reads credentials BEFORE nulling them.
+        // Cancels in-flight DriveSync jobs and empties driveSyncs so the retry
+        // scheduler in DriveSyncManager.init can't schedule new work against
+        // cleared credentials (was a source of uncaught
+        // IllegalStateException: No active credentials set). stop() is idempotent;
+        // AuthConnectionCoordinator.disconnect() will call it again when the
+        // authState flip below lands.
+        driveSyncManager.stop()
+
         // Wipe all identity-scoped state BEFORE flipping _authState to Unauthenticated.
         // Emitting Unauthenticated tears down the authenticated nav graph (and with it
         // SettingsViewModel.viewModelScope, which is the coroutine currently running
@@ -348,6 +363,12 @@ class YouAuthFlowManager(
         driveSyncManager.clearStorage()
         driveFileProviderCached.clearCaches()
         publicProfileProviderCached.clearCaches()
+        // Platform caches (Coil memory cache, orphan coil3_disk_cache dir, anything
+        // else the app-level module wants to flush). Wrapped in runCatching so a
+        // failing hook can't block the authState flip that follows — we'd rather
+        // log out with a stale Coil entry than get stuck half-authenticated.
+        runCatching { clearPlatformCaches() }
+            .onFailure { Logger.e(throwable = it, tag = TAG) { "clearPlatformCaches failed" } }
         CredentialStorage.clearCredentials()
         ShareAuthBridge.clearAuth()
 

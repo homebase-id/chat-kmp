@@ -8,7 +8,6 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -120,7 +119,12 @@ class DriveSyncManager(
     }
 
     suspend fun start() {
-        val credentials = credentialsManager.requireActiveCredentials()
+        // getActiveCredentials() + null-check instead of requireActiveCredentials()
+        // so a logout race can't crash the caller. Not all callers try-catch this.
+        val credentials = credentialsManager.getActiveCredentials() ?: run {
+            Logger.w { "DriveSyncManager.start() skipped — no active credentials" }
+            return
+        }
         val identityId = credentials.getIdentityId()
 
         val freshLogin = expectFreshCursors
@@ -213,23 +217,18 @@ class DriveSyncManager(
     suspend fun clearStorage() = withContext(NonCancellable) {
         val snapshot = driveSyncsMutex.withLock { driveSyncs.values.toList() }
 
-        coroutineScope {
-            snapshot
-                .map { sync -> launch { sync.clearStorage() } }
-                .joinAll()
-        }
+        // Zero per-drive in-memory state (cursor fields) before the SQL wipe so no
+        // DriveSync can lazily re-materialize a cursor from a row that's about to be
+        // dropped.
+        snapshot.forEach { it.resetInMemoryState() }
 
-        // Wipe identity-scoped tables once, after every per-drive clear has finished.
-        // Anything stored here is tied to the logged-out identity and must not leak
-        // into the next session.
-        //  - KeyValue       (sync cursors — the reason this method exists)
-        //  - Outbox         (pending uploads bound to drives we just wiped)
-        //  - AppNotifications
-        //  - ConnectionCache
-        databaseManager.keyValue.deleteAll()
-        databaseManager.outbox.deleteAll()
-        databaseManager.appNotifications.deleteAllRows()
-        databaseManager.connectionCache.deleteAllRows()
+        // One DROP + CREATE + VACUUM of every table in OdinDatabase. Replaces the
+        // previous per-table deleteAll() chain, which was observed leaving Outbox
+        // rows across logout/login with their retry counters intact. DROP is the
+        // unforgeable variant — open transactions, stale caches, and stray driver
+        // references can't carry rows across it. Verification probes inside
+        // wipeAndRecreate() log an error if either of those loopholes actually fires.
+        databaseManager.wipeAndRecreate()
 
         // Signal the next start() that any cursor it finds is a bug.
         expectFreshCursors = true

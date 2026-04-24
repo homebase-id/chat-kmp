@@ -32,6 +32,8 @@ import id.homebase.api.video.VideoPrefetchDriveAccess
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage
 import id.homebase.api.youauth.YouAuthFlowManager
+import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,7 +45,12 @@ import org.koin.dsl.module
 val apiModule = module {
     single { DatabaseManager.appDb }
 
-    single<CoroutineScope> { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    single<CoroutineScope> {
+        val handler = CoroutineExceptionHandler { _, e ->
+            Logger.e(throwable = e, tag = "AppScope") { "Unhandled coroutine exception" }
+        }
+        CoroutineScope(SupervisorJob() + Dispatchers.Default + handler)
+    }
 
     // this creates the HttpClient
     single { HttpClientProvider.create() }
@@ -58,7 +65,9 @@ val apiModule = module {
     single<OutboxUploader> { DriveOutboxUploader(get(), get(), get(), get()) }
     singleOf(::OutboxSync)
 
-    singleOf(::YouAuthFlowManager)
+    // YouAuthFlowManager is bound in homebase-core's AppModule where the platform
+    // singletons (ImageLoader, FileOperationsProvider) needed by its
+    // clearPlatformCaches hook are available. See homebase-core/.../AppModule.kt.
 
     single { UsernameStorage() }
 

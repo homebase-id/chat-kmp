@@ -84,8 +84,16 @@ sealed class Route {
     data object Help : Route()
 
     @Serializable
+    @SerialName("developer-menu")
+    data object DeveloperMenu : Route()
+
+    @Serializable
     @SerialName("storage-settings")
     data object StorageSettings : Route()
+
+    @Serializable
+    @SerialName("defragmenter")
+    data object Defragmenter : Route()
 
     @Serializable
     @SerialName("connections")
