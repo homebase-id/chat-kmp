@@ -7,6 +7,7 @@ import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.concurrent.Volatile
 import kotlin.random.Random
 import kotlin.uuid.Uuid
 
