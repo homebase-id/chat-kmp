@@ -6,11 +6,9 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
-import id.homebase.api.client.drives.files.SendReadReceiptByTimeOutboxRequest
-import id.homebase.api.client.drives.files.SendReadReceiptResultStatus
+import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResult
@@ -24,18 +22,19 @@ import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.chat.services.convo.ConversationService
-import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.LocalLastReadUpdater
+import id.homebase.chat.services.convo.UnreadCountEnricher
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.widget.EmojiReaction
 import kotlin.uuid.Uuid
 
 class ChatMessageActionService(
     private val conversationService: ConversationService,
-    private val conversationStream: ConversationStream,
-    private val chatMessageStream: ChatMessageStream,
+    private val localLastReadUpdater: LocalLastReadUpdater,
+    private val unreadCountEnricher: UnreadCountEnricher,
+    private val messageLookup: MessageLookup,
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val credentialsManager: CredentialsManager,
-    private val operationsProvider: DriveFileOperationsProvider,
     private val fileProvider: DriveFileProvider,
     private val dbm: DatabaseManager,
     private val outboxSync: OutboxSync,
@@ -43,58 +42,17 @@ class ChatMessageActionService(
 ) {
     private val chatDrive = chatTargetDrive.alias
 
-    suspend fun markAsReadLatestFileCreated(conversationId: Uuid, messageIds: List<Uuid>) {
 
-        val batch = chatMessageStream.getMessages(messageIds)
-        val domain = credentialsManager.requireActiveDomain()
-        val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
+    suspend fun markAsReadByFiles(conversationId: Uuid, messageIds: List<Uuid>) {
 
-        val isSelfConversation = conversationId == ChatProtocol.ConversationWithYourselfId
-        val unreadRecords = batch.records
-            .filter {
-                it.localReadTimestamp == null &&
-                        !it.isDeleted &&
-                        !it.isPendingSend &&
-                        (isSelfConversation || !it.isAuthoredBy(domain))
-            }
+        Logger.d(tag = TAG) { "enter convo=$conversationId messageIds=${messageIds.size}" }
 
-        Logger.d { "markAsRead: convo=$conversationId unread=${unreadRecords.size}/${batch.records.size} newReadTime=${newReadTime.milliseconds}" }
-
-        if (unreadRecords.isEmpty()) {
-            dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
-            conversationStream.enrichWithUnreadCounts() // TODO: We can be more performant here
-            return
-        }
-
-        // Use server-side 'created' timestamp for the read receipt endTime.
-        // The server matches against 'created', not the client-side 'userDate'.
-        val endTime = unreadRecords.maxOf { it.created }
-        Logger.d { "markAsRead: convo=$conversationId endTime=${endTime.toEpochMilliseconds()}" }
-
-        dbm.chatReadCount.upsertLastReadTime(conversationId, newReadTime)
-        conversationStream.enrichWithUnreadCounts()
-
-        if (!isSelfConversation) {
-            outboxSync.tryEnqueue(
-                request = SendReadReceiptByTimeOutboxRequest(
-                    driveId = chatDrive,
-                    fileType = ChatProtocol.MessageFileType,
-                    dataType = 0,
-                    groupId = conversationId,
-                    endTime = UnixTimeUtc(endTime.toEpochMilliseconds()).addMilliseconds(1)
-                )
-            )
-        }
-    }
-
-    suspend fun markAsReadByFiles(messageIds: List<Uuid>) {
-
-        Logger.d { "Attempting mark-as-read for messageIds: ${messageIds.size}" }
-
-        val batch = chatMessageStream.getMessages(messageIds)
+        val batch = messageLookup.getMessages(messageIds)
         val domain = credentialsManager.requireActiveDomain()
 
-        Logger.d { "Attempting mark-as-read for batch count: ${batch.records.size}" }
+        Logger.d(tag = TAG) {
+            "lookup matched=${batch.records.size}/${messageIds.size} domain=$domain"
+        }
 
         val unreadRecords = batch.records
             .filter {
@@ -104,40 +62,82 @@ class ChatMessageActionService(
                         !it.isAuthoredBy(domain)
             }
 
-        val newReadTime = UnixTimeUtc.now().addMilliseconds(1)
+        Logger.d(tag = TAG) {
+            val excluded = batch.records.size - unreadRecords.size
+            "filter eligible=${unreadRecords.size} excluded=$excluded " +
+                    "(excluded reasons: self-authored | already-read | deleted | pending-send)"
+        }
 
-        Logger.d { "Calling mark-as-read for unread-records count: ${unreadRecords.size}" }
-
-        unreadRecords
-            .map { it.fileId }
-            .chunked(50)
-            .forEach { chunk ->
-
-                val result = operationsProvider.sendReadReceiptBatch(
-                    driveId = chatDrive,
-                    fileIds = chunk
-                )
-
-
-                val successfulFileIds = result.results
-                    .filter { file ->
-                        file.status.any { it.status == SendReadReceiptResultStatus.Enqueued }
-                    }
-                    .map { it.fileId }
-                    .toSet()
-
-                unreadRecords
-                    .filter { it.fileId in successfulFileIds }
-                    .distinctBy { it.conversationId }
-                    .forEach {
-
-                        Logger.d { "Upserting chatReadCount->lastReadTime: count: ${it.conversationId}" }
-
-                        dbm.chatReadCount.upsertLastReadTime(it.conversationId, newReadTime)
-                    }
-
-                conversationStream.enrichWithUnreadCounts()
+        if (unreadRecords.isEmpty()) {
+            Logger.d(tag = TAG) {
+                "no eligible records — early return; convo=$conversationId no outbox row, no enrich"
             }
+            return
+        }
+
+        val newReadTime = unreadRecords.maxOf { it.userDate }
+        Logger.d(tag = TAG) {
+            "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} " +
+                    "(max userDate over ${unreadRecords.size} eligible records)"
+        }
+
+        val fileIds = unreadRecords.map { it.fileId }
+        val enqueued = outboxSync.tryEnqueue(
+            request = SendReadReceiptByFileIdsOutboxRequest(
+                driveId = chatDrive,
+                fileIds = fileIds,
+            )
+        )
+        Logger.d(tag = TAG) {
+            "enqueue receipt: enqueued=$enqueued drive=$chatDrive fileIdsCount=${fileIds.size}"
+        }
+
+        if (enqueued) {
+            // Optimistic local upsert — the read-receipt send is now fire-and-forget
+            // via the outbox, so we can't gate this on a per-file server status.
+            // Local read state reflects what the user read locally; the outbox
+            // retries the server-side receipt delivery independently.
+            unreadRecords
+                .distinctBy { it.conversationId }
+                .forEach {
+                    Logger.d(tag = TAG) {
+                        "upsert chatReadCount.lastReadTime convo=${it.conversationId} ms=${newReadTime.toEpochMilliseconds()}"
+                    }
+                    dbm.chatReadCount.upsertLastReadTime(
+                        it.conversationId,
+                        UnixTimeUtc(newReadTime)
+                    )
+                }
+
+            Logger.d(tag = TAG) {
+                "→ localLastReadUpdater.updateLocalLastReadTime(convo=$conversationId, ms=${newReadTime.toEpochMilliseconds()})"
+            }
+            try {
+                localLastReadUpdater.updateLocalLastReadTime(
+                    conversationId,
+                    UnixTimeUtc(newReadTime)
+                )
+                Logger.d(tag = TAG) { "← localLastReadUpdater returned ok" }
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) {
+                    "localLastReadUpdater THREW — likely the WIP TODO()s in ConversationService.updateLocalLastReadTime; " +
+                            "unreadCountEnricher will NOT run, UI unread count may stay stale"
+                }
+                throw t
+            }
+
+            Logger.d(tag = TAG) { "→ unreadCountEnricher.enrichConversationWithUnreadCounts(convo=$conversationId)" }
+            unreadCountEnricher.enrichConversationWithUnreadCounts(conversationId)
+            Logger.d(tag = TAG) { "← unreadCountEnricher returned" }
+        } else {
+            Logger.w(tag = TAG) {
+                "outbox.tryEnqueue returned false — skipped DB upsert + enrich; convo=$conversationId"
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG = "MarkAsRead"
     }
 
     suspend fun toggleReaction(conversationId: Uuid, messageId: Uuid, emoji: String):
@@ -149,7 +149,11 @@ class ChatMessageActionService(
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
         val fileId = requireFileId(messageId)
 
-        val (resultType, original) = optimisticWriter.writeReactionToggle(chatDrive, messageId, reactionJson)
+        val (resultType, original) = optimisticWriter.writeReactionToggle(
+            chatDrive,
+            messageId,
+            reactionJson
+        )
 
         try {
             val enqueued = outboxSync.tryEnqueue(
@@ -166,7 +170,10 @@ class ChatMessageActionService(
         } catch (t: Throwable) {
             Logger.e("toggleReaction failed to enqueue", t)
             if (original != null) {
-                try { optimisticWriter.rollbackWrite(chatDrive, original) } catch (_: Exception) {}
+                try {
+                    optimisticWriter.rollbackWrite(chatDrive, original)
+                } catch (_: Exception) {
+                }
             }
         }
 
@@ -179,7 +186,7 @@ class ChatMessageActionService(
         messageId: Uuid,
         deleteForEveryone: Boolean
     ) {
-        val msg = chatMessageStream.getMessage(messageId) ?: return
+        val msg = messageLookup.getMessage(messageId) ?: return
         val conversation = conversationService.getConversation(msg.conversationId) ?: return
         val fileId = requireFileId(messageId)
 
@@ -210,7 +217,10 @@ class ChatMessageActionService(
         } catch (t: Throwable) {
             Logger.e("deleteMessage failed to enqueue", t)
             if (original != null) {
-                try { optimisticWriter.rollbackWrite(chatDrive, original) } catch (_: Exception) {}
+                try {
+                    optimisticWriter.rollbackWrite(chatDrive, original)
+                } catch (_: Exception) {
+                }
             }
         }
     }

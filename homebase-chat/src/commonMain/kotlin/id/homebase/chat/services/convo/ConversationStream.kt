@@ -48,7 +48,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
-) : ConversationLoader {
+) : ConversationLoader, UnreadCountEnricher {
 
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
@@ -726,6 +726,51 @@ class ConversationStream(
         Logger.i(tag = "ConvListPerf") {
             "enrichWithUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms changedRows=$changed totalRows=${current.items.size}"
         }
+    }
+
+    /**
+     * Single-conversation variant of [enrichWithUnreadCounts] — patches the
+     * unread count for one conversation without re-scanning the whole list.
+     * Called from message-read actions after the local read timestamp is
+     * advanced for a specific conversation.
+     */
+    override suspend fun enrichConversationWithUnreadCounts(conversationId: Uuid) {
+        Logger.d(tag = "MarkAsRead") {
+            "ConversationStream.enrichConversationWithUnreadCounts: enter convo=$conversationId"
+        }
+        val c = credentialsManager.requireActiveCredentials()
+        val newCount = dbm.chatReadCount
+            .selectUnreadCountForConversation(c.getIdentityId(), conversationId)
+            .toInt()
+        Logger.d(tag = "MarkAsRead") {
+            "ConversationStream.enrichConversationWithUnreadCounts: db newCount=$newCount convo=$conversationId"
+        }
+
+        val current = _conversations.value
+        val index = current.items.indexOfFirst { it.id == conversationId }
+        if (index < 0) {
+            Logger.w(tag = "MarkAsRead") {
+                "ConversationStream.enrichConversationWithUnreadCounts: convo=$conversationId NOT FOUND in in-memory list (size=${current.items.size}) — UI badge will not update from this call"
+            }
+            return
+        }
+
+        val convo = current.items[index]
+        if (convo.unreadCount == newCount) {
+            Logger.d(tag = "MarkAsRead") {
+                "ConversationStream.enrichConversationWithUnreadCounts: convo=$conversationId no-op (unreadCount already $newCount)"
+            }
+            return
+        }
+
+        Logger.d(tag = "MarkAsRead") {
+            "ConversationStream.enrichConversationWithUnreadCounts: convo=$conversationId unread ${convo.unreadCount}->$newCount (publishing to StateFlow)"
+        }
+        Logger.d("ConversationStream: unreadSync convo=${conversationId} ${convo.unreadCount}->${newCount}")
+        val updated = current.items.toMutableList().apply {
+            this[index] = convo.copy(unreadCount = newCount)
+        }
+        _conversations.value = current.copy(items = updated)
     }
 
     // endregion

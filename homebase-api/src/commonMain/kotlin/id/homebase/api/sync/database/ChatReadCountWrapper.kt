@@ -135,6 +135,11 @@ class ChatReadCountWrapper(
         }
     }
 
+    /** Raw stored lastReadTime (epoch ms) for a conversation, or null if none. */
+    fun selectLastReadTimeMs(groupId: Uuid): Long? {
+        return delegate.selectLastReadTime(groupId).executeAsOneOrNull()
+    }
+
     /**
      * Upsert last read time for a conversation
      */

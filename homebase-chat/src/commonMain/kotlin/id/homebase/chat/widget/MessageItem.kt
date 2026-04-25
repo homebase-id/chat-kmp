@@ -133,8 +133,7 @@ fun MessageItem(
                 isCurrentSearchResult = isCurrentSearchResult,
             )
         }
-    } else {
-        val onMarkAsRead =
+    } else { val onMarkAsRead =
             remember(message.id) { { onUiAction(ConversationListUiAction.MarkAsRead(message.conversationId, listOf(message.id))) } }
 
         SwipeableMessageWrapper(

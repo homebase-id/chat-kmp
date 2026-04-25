@@ -4,10 +4,10 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
-import id.homebase.api.client.drives.files.SendReadReceiptByTimeOutboxRequest
+import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
-import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
+import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.time.UnixTimeUtc
@@ -35,7 +35,7 @@ private fun uploadTypeName(t: Long): String = when (t) {
     DriveOutboxUploader.DeleteFile -> "DeleteFile"
     DriveOutboxUploader.UpdateLocalMetadataTags -> "UpdateLocalMetadataTags"
     DriveOutboxUploader.UpdateLocalMetadataContent -> "UpdateLocalMetadataContent"
-    DriveOutboxUploader.SendReadReceiptByTime -> "SendReadReceiptByTime"
+    DriveOutboxUploader.SendReadReceiptByFileIds -> "SendReadReceiptByFileIds"
     DriveOutboxUploader.ToggleReaction -> "ToggleReaction"
     DriveOutboxUploader.DeleteFilesByGroupId -> "DeleteFilesByGroupId"
     else -> "Unknown"
@@ -366,11 +366,14 @@ class OutboxSync(
     }
 
     public suspend fun tryEnqueue(
-        request: UpdateLocalMetadataContentOutboxRequest,
+        request: UpdateLocalAppdataContentOutboxRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
     ): Boolean {
+        Logger.d(tag = "MarkAsRead") {
+            "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): drive=${request.driveId} fileId=${request.fileId} hasIv=${request.iv != null} sendNow=$sendNow"
+        }
         val enqueued = tryEnqueue(
             driveId = request.driveId,
             uniqueId = request.fileId,
@@ -379,6 +382,9 @@ class OutboxSync(
             uploadType = DriveOutboxUploader.UpdateLocalMetadataContent,
             json = OdinSystemSerializer.serialize(request)
         )
+        Logger.d(tag = "MarkAsRead") {
+            "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): enqueued=$enqueued drive=${request.driveId} fileId=${request.fileId}"
+        }
 
         if (enqueued && sendNow) {
             // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
@@ -418,19 +424,25 @@ class OutboxSync(
     }
 
     public suspend fun tryEnqueue(
-        request: SendReadReceiptByTimeOutboxRequest,
+        request: SendReadReceiptByFileIdsOutboxRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
     ): Boolean {
+        Logger.d(tag = "MarkAsRead") {
+            "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): drive=${request.driveId} fileIdsCount=${request.fileIds.size} sendNow=$sendNow"
+        }
         val enqueued = tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
-            uploadType = DriveOutboxUploader.SendReadReceiptByTime,
+            uploadType = DriveOutboxUploader.SendReadReceiptByFileIds,
             json = OdinSystemSerializer.serialize(request)
         )
+        Logger.d(tag = "MarkAsRead") {
+            "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): enqueued=$enqueued drive=${request.driveId}"
+        }
 
         if (enqueued && sendNow) {
             // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not

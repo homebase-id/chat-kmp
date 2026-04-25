@@ -23,6 +23,7 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -51,7 +52,7 @@ class ConversationService(
     private val chatMessageSenderService: StatusMessageSender,
     private val optimisticWriter: OptimisticWriter,
     private val conversationStream: ConversationLoader,
-) {
+) : LocalLastReadUpdater {
     private val chatDrive = chatTargetDrive.alias
 
     private val mapper: ConversationMapper = ConversationMapper(
@@ -1154,4 +1155,37 @@ class ConversationService(
 
         outboxSync.tryEnqueue(request)
     }
+
+    override suspend fun updateLocalLastReadTime(conversationId: Uuid, newLastReadTime: UnixTimeUtc) {
+
+        Logger.d(tag = "MarkAsRead") {
+            "ConversationService.updateLocalLastReadTime: enter convo=$conversationId newMs=${newLastReadTime.milliseconds}"
+        }
+
+        val convo = requireConversation(conversationId)
+        val currentMs = UnixTimeUtc(convo.lastRead).milliseconds
+        val willAdvance = newLastReadTime > UnixTimeUtc(convo.lastRead)
+        Logger.d(tag = "MarkAsRead") {
+            "ConversationService.updateLocalLastReadTime: convo=$conversationId currentMs=$currentMs " +
+                    "newMs=${newLastReadTime.milliseconds} willAdvance=$willAdvance"
+        }
+
+        if (!willAdvance) return
+
+        val request = optimisticWriter.stampConversationLastReadTime(
+            driveId = chatDrive,
+            conversationId = conversationId,
+            newLastReadTime = newLastReadTime,
+        )
+        if (request == null) {
+            Logger.w(tag = "MarkAsRead") {
+                "ConversationService.updateLocalLastReadTime: stampConversationLastReadTime returned null — conversation file missing or optimistic write failed; convo=$conversationId"
+            }
+            return
+        }
+
+        outboxSync.tryEnqueue(request)
+        dbm.chatReadCount.upsertLastReadTime(conversationId, newLastReadTime)
+    }
+
 }
