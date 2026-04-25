@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.query.QueryBatchCursor
@@ -184,6 +185,13 @@ class DriveSync(
                     if (!queryBatchResponse.hasMoreRows)
                         break
                     retryCount = 0
+                } catch (e: ForbiddenException) {
+                    Logger.w("DriveSync: drive $driveId returned 403 Forbidden — unmounting for this session")
+                    killroy.value = false
+                    eventBus.emit(
+                        BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.PermissionDenied)
+                    )
+                    break
                 } catch (e: Exception) {
                     val isTransientNetworkError = e::class.simpleName == "SocketException" ||
                         e.message?.contains("Software caused connection abort") == true ||

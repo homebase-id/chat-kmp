@@ -7,7 +7,9 @@ import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class LabeledDrive(val drive: TargetDrive, val label: String)
 
 /**
@@ -51,6 +53,7 @@ const val COMMUNITY_APP_ID = "77ed6136-6b33-4654-8088-3d89c91e6065"
 val chatLabeledDrive = LabeledDrive(drive = SystemDriveConstants.chatDrive, label = "Chat")
 val contactLabeledDrive =
     LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
+val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive, label = "Profile")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
 
 // Backward-compatible aliases — all existing consumers remain unaffected
@@ -94,9 +97,18 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
 
         )
 
-// Drives we listen to for sockets and synchronization
-val syncLabeledDrives: List<LabeledDrive> =
-    listOf(chatLabeledDrive, contactLabeledDrive, feedLabeledDrive)
+// Mandatory drives — always mounted; required for the chat app to function.
+// Chat and Contacts power messaging.
+// See ADDING_ADDON_APPS.md §"Mandatory vs Optional Drives" for the full model.
+//
+// Profile drive intentionally omitted: owner display name / avatar are loaded via
+// the public unauthenticated `https://{odinId}/pub/profile` endpoint
+// (PublicProfileProviderCached), not through the drive sync engine. Adding
+// profileLabeledDrive here would start additional HTTP polling on every login for
+// content nothing currently reads — wire it in only when a feature actually needs
+// the profile drive synced into the local SQLDelight index.
+val mandatorySyncDrives: List<LabeledDrive> =
+    listOf(chatLabeledDrive, contactLabeledDrive /*, profileLabeledDrive */)
 
 // Feed-specific permission config
 val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(

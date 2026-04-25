@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -103,6 +104,10 @@ class DriveSyncManager(
                                 Logger.i { "DriveSyncManager: retrying drive ${event.driveId}" }
                                 driveSyncsMutex.withLock { driveSyncs[event.driveId] }?.sync()
                             }
+                        }
+                        is BackendEvent.DriveResult.PermissionDenied -> {
+                            Logger.w { "DriveSyncManager: drive ${event.driveId} denied (403) — unmounting for this session" }
+                            scope.launch { unmountDrive(event.driveId) }
                         }
                     }
                     else -> Unit
@@ -207,6 +212,47 @@ class DriveSyncManager(
 
         old.values.forEach { it.cancel() }
         _driveStatuses.update { emptyMap() }
+    }
+
+    /**
+     * Dynamically mounts a drive into the sync engine (e.g. when an add-on is activated
+     * mid-session). Starts an HTTP-polling sync immediately; real-time WebSocket push
+     * notifications will arrive only after the next reconnect.
+     */
+    suspend fun mountDrive(driveId: Uuid, label: String) {
+        if (!isRunning) { Logger.w { "mountDrive() skipped — not running" }; return }
+        val alreadyExists = driveSyncsMutex.withLock { driveSyncs.containsKey(driveId) }
+        if (alreadyExists) return
+
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        val sync = try {
+            DriveSync(identityId, driveId, driveQueryProvider, databaseManager, eventBus, scope)
+        } catch (e: CancellationException) {
+            // Don't swallow cancellation — let the caller's scope tear down cleanly.
+            throw e
+        } catch (e: Exception) {
+            Logger.e("DriveSyncManager: mountDrive failed for $driveId: ${e.message}", e)
+            return
+        }
+        driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
+        _driveStatuses.update { it + (driveId to DriveStatus(driveId, label, DriveState.Initialized)) }
+        sync.sync()
+    }
+
+    /**
+     * Removes a drive from active sync for the current session. Does NOT modify [DriveRegistry] —
+     * the drive will be attempted again on the next app startup. Use this for session-level
+     * permission failures (403) so the sync indicator clears without altering user configuration.
+     */
+    suspend fun unmountDrive(driveId: Uuid) {
+        val sync = driveSyncsMutex.withLock {
+            val s = driveSyncs[driveId]
+            driveSyncs = driveSyncs - driveId
+            s
+        } ?: return
+        sync.cancel()
+        _driveStatuses.update { it - driveId }
+        Logger.i { "DriveSyncManager: unmounted drive $driveId" }
     }
 
     // Runs under NonCancellable because the typical caller is
