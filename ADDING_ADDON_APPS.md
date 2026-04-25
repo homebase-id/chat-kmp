@@ -58,12 +58,13 @@ The sync engine distinguishes two categories of drives:
 
 | Category | Constant / Source | Examples |
 |---|---|---|
-| **Mandatory** | `mandatorySyncDrives` in `AppConfig.kt` | Chat, Contacts, Profile |
+| **Mandatory** | `mandatorySyncDrives` in `AppConfig.kt` | Chat, Contacts |
 | **Optional** | `DriveRegistry` (files on the Chat drive) | Feed, Vault, … |
 
-**Mandatory drives** (`chatLabeledDrive`, `contactLabeledDrive`, `profileLabeledDrive`) are always
-mounted. They cannot be removed and require no user action. These are the minimum set needed for the
-chat app to function.
+**Mandatory drives** (`chatLabeledDrive`, `contactLabeledDrive`) are always mounted. They cannot
+be removed and require no user action. These are the minimum set needed for the chat app to
+function. (Profile data is loaded via the public `/pub/profile` HTTP endpoint, not via the
+drive sync engine, so the profile drive is intentionally absent from the mandatory list.)
 
 **Optional drives** are persisted as a **single singleton file** on the user's **Chat drive**:
 
