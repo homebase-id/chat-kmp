@@ -18,6 +18,8 @@ sealed interface BackendEvent {
         data class Failure(
             val errorMessage: String
         ) : DriveResult
+        /** Server returned 403 Forbidden — drive is unmounted for this session; no retry. */
+        data object PermissionDenied : DriveResult
     }
 
     sealed interface SyncAllResult {

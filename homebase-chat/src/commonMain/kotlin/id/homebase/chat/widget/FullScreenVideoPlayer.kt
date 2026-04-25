@@ -49,6 +49,7 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.upload_compressing
 import id.homebase.resources.upload_done
 import id.homebase.resources.upload_preparing
+import id.homebase.resources.upload_sending
 import id.homebase.resources.upload_uploading
 import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
@@ -195,6 +196,7 @@ fun FullScreenVideoPlayer(
                     val statusText = when (uploadStatus) {
                         UploadStatus.Preparing -> stringResource(MR.string.upload_preparing)
                         is UploadStatus.Processing -> "${stringResource(MR.string.upload_compressing)} ${(uploadStatus.progress * 100).toInt()}%"
+                        UploadStatus.Sending -> stringResource(MR.string.upload_sending)
                         is UploadStatus.Uploading -> "${stringResource(MR.string.upload_uploading)} ${(uploadStatus.progress * 100).toInt()}%"
                         UploadStatus.Completed -> stringResource(MR.string.upload_done)
                     }
