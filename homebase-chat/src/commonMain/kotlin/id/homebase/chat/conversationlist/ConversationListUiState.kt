@@ -98,6 +98,7 @@ sealed interface AutoConnectRowState {
 sealed interface UploadStatus {
     data object Preparing : UploadStatus
     data class Processing(val progress: Float, val phase: VideoProcessingPhase = VideoProcessingPhase.COMPRESSING) : UploadStatus
+    data object Sending : UploadStatus
     data class Uploading(val progress: Float) : UploadStatus
     data object Completed : UploadStatus
 }

@@ -130,8 +130,30 @@ class DriveMainIndexWrapper(
     fun countByIdentityAndDrive(identityId: Uuid, driveId: Uuid): Long =
         delegate.countByIdentityAndDrive(identityId, driveId).executeAsOne()
 
-    fun selectSoftDeletedFileIds(identityId: Uuid, driveId: Uuid): List<Uuid> =
-        delegate.selectSoftDeletedFileIds(identityId, driveId).executeAsList()
+    /**
+     * Row shape for the Defragmenter's streaming scan — carries enough to call
+     * [HomebaseFile.isSoftDeleted] and to page forward by rowId.
+     */
+    data class PagedScanRow(val rowId: Long, val fileId: Uuid, val jsonHeader: String)
+
+    /**
+     * Keyset-paged scan of a drive's rows. Caller passes `sinceRowId = 0` on
+     * the first call and then `sinceRowId = lastRowIdOfPreviousChunk` on each
+     * subsequent call until an empty list is returned.
+     */
+    fun selectFileIdAndJsonByDriveSince(
+        identityId: Uuid,
+        driveId: Uuid,
+        sinceRowId: Long,
+        limit: Long,
+    ): List<PagedScanRow> = delegate.selectFileIdAndJsonByDriveSince(
+        identityId,
+        driveId,
+        sinceRowId,
+        limit,
+    ) { rowId, fileId, jsonHeader ->
+        PagedScanRow(rowId = rowId, fileId = fileId, jsonHeader = jsonHeader)
+    }.executeAsList()
 
     suspend fun upsertDriveMainIndex(
         identityId: Uuid,

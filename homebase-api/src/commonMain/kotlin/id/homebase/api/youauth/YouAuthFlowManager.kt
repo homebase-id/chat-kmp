@@ -345,6 +345,15 @@ class YouAuthFlowManager(
             Logger.e(throwable = e, tag = TAG) { "Error during logout" }
         }
 
+        // Tear down background work that reads credentials BEFORE nulling them.
+        // Cancels in-flight DriveSync jobs and empties driveSyncs so the retry
+        // scheduler in DriveSyncManager.init can't schedule new work against
+        // cleared credentials (was a source of uncaught
+        // IllegalStateException: No active credentials set). stop() is idempotent;
+        // AuthConnectionCoordinator.disconnect() will call it again when the
+        // authState flip below lands.
+        driveSyncManager.stop()
+
         // Wipe all identity-scoped state BEFORE flipping _authState to Unauthenticated.
         // Emitting Unauthenticated tears down the authenticated nav graph (and with it
         // SettingsViewModel.viewModelScope, which is the coroutine currently running

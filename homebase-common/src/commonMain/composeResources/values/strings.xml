@@ -217,7 +217,7 @@
     <string name="defragmenter_stat_elapsed">Elapsed: %1$s</string>
     <string name="defragmenter_stat_eta">Estimated: %1$s</string>
     <string name="defragmenter_status_idle">Ready to analyze</string>
-    <string name="defragmenter_status_analyzing">Analyzing drive…</string>
+    <string name="defragmenter_status_analyzing">Analyzing drive… %1$d of %2$d</string>
     <string name="defragmenter_status_ready">Analysis complete — ready to defragment</string>
     <string name="defragmenter_status_running">Defragmenting</string>
     <string name="defragmenter_status_paused">Paused</string>
@@ -470,6 +470,7 @@
     <string name="upload_compressing">Compressing\u2026</string>
     <string name="upload_segmenting">Segmenting\u2026</string>
     <string name="upload_encrypting">Encrypting\u2026</string>
+    <string name="upload_sending">Sending\u2026</string>
     <string name="upload_uploading">Uploading\u2026</string>
     <string name="upload_finalizing">Finalizing\u2026</string>
     <string name="upload_done">Done</string>

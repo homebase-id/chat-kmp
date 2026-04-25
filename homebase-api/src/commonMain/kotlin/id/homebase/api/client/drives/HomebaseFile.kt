@@ -1,6 +1,7 @@
 package id.homebase.api.client.drives
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
@@ -31,6 +32,13 @@ data class HomebaseFile(
             throw Exception("File is deleted.")
         }
     }
+
+    // Belt-and-suspenders: `fileState == Deleted` is the real/new marker; the
+    // older `archivalStatus == Removed` hack still appears on some rows. Both
+    // paths are treated as soft-deleted by every consumer in the codebase.
+    fun isSoftDeleted(): Boolean =
+        fileState == FileState.Deleted ||
+            fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
 
     fun assertOriginalAuthor(odinId: OdinId) {
         val originalAuthor = fileMetadata.originalAuthor

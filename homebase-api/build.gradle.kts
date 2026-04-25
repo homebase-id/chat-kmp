@@ -31,6 +31,7 @@ kotlin {
         compileSdk = libs.versions.android.targetSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
         androidResources.enable = true
+        withHostTest {}
     }
 
     jvm() {
@@ -145,6 +146,15 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(desktopDep)
+        }
+        // Android host tests run on the JVM with android.jar stubs — the real
+        // AndroidSqliteDriver would throw "Stub!" at runtime, so we use the
+        // JDBC driver the same way jvmMain does.
+        getByName("androidHostTest").dependencies {
+            implementation(libs.sqldelight.sqlite.driver.get().toString()) {
+                exclude(group = "org.xerial", module = "sqlite-jdbc")
+            }
+            implementation(libs.sqlite.jdbc.crypt)
         }
     }
 

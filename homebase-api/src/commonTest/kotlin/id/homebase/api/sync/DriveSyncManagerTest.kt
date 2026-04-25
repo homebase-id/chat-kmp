@@ -26,6 +26,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -289,6 +290,106 @@ class DriveSyncManagerTest {
 
             assertTrue(emittedEvents.any { it is BackendEvent.SyncAllStopped && it.result is BackendEvent.SyncAllResult.Failure })
             job.cancel()
+        }
+        db.close()
+    }
+
+    @Test
+    fun permissionDeniedEventUnmountsDrive() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val eventBus = EventBus()
+            val driveId = Uuid.random()
+            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId to "Drive"))
+            manager.start()
+            runCurrent()
+
+            eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+            runCurrent()
+            assertIs<SyncState.Syncing>(manager.syncState.value)
+
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(driveId, 0, BackendEvent.DriveResult.PermissionDenied))
+            runCurrent()
+
+            // Drive removed — indicator must clear (Idle), not stay orange (Failed)
+            assertTrue(manager.driveStatuses.value.isEmpty())
+            assertEquals(SyncState.Idle, manager.syncState.value)
+
+            // No retry after 1 second (unlike Failure)
+            advanceTimeBy(1001)
+            runCurrent()
+            assertTrue(manager.driveStatuses.value.isEmpty())
+        }
+        db.close()
+    }
+
+    @Test
+    fun permissionDeniedDoesNotMarkOtherDrivesAsFailed() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val eventBus = EventBus()
+            val completedDrive = Uuid.random()
+            val deniedDrive = Uuid.random()
+            val manager = buildManager(
+                db, buildCredentials(), eventBus, backgroundScope,
+                mapOf(completedDrive to "OK Drive", deniedDrive to "Denied Drive")
+            )
+            manager.start()
+            runCurrent()
+
+            // First drive completes successfully
+            eventBus.emit(BackendEvent.DriveEvent.Started(completedDrive))
+            runCurrent()
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(completedDrive, 10, BackendEvent.DriveResult.Success))
+            runCurrent()
+
+            // Second drive is denied
+            eventBus.emit(BackendEvent.DriveEvent.Started(deniedDrive))
+            runCurrent()
+            eventBus.emit(BackendEvent.DriveEvent.Stopped(deniedDrive, 0, BackendEvent.DriveResult.PermissionDenied))
+            runCurrent()
+
+            // Sync indicator must go green, not stay orange
+            assertIs<SyncState.Completed>(manager.syncState.value)
+            assertTrue(manager.driveStatuses.value.containsKey(completedDrive))
+            assertFalse(manager.driveStatuses.value.containsKey(deniedDrive))
+        }
+        db.close()
+    }
+
+    @Test
+    fun mountDriveAddsNewDrive() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope, emptyMap())
+            manager.start()
+            runCurrent()
+            assertEquals(SyncState.Idle, manager.syncState.value)
+
+            val driveId = Uuid.random()
+            manager.mountDrive(driveId, "Extra Drive")
+            runCurrent()
+
+            assertTrue(manager.driveStatuses.value.containsKey(driveId))
+        }
+        db.close()
+    }
+
+    @Test
+    fun unmountDriveRemovesDriveAndClearsStatus() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val eventBus = EventBus()
+            val driveId = Uuid.random()
+            val manager = buildManager(db, buildCredentials(), eventBus, backgroundScope, mapOf(driveId to "Drive"))
+            manager.start()
+            runCurrent()
+
+            manager.unmountDrive(driveId)
+            runCurrent()
+
+            assertTrue(manager.driveStatuses.value.isEmpty())
+            assertEquals(SyncState.Idle, manager.syncState.value)
         }
         db.close()
     }

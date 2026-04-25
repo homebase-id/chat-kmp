@@ -52,6 +52,7 @@ class NotificationService(
     private val profileProvider: PublicProfileProviderCached,
     private val userPreferences: UserPreferences,
     private val credentialsManager: CredentialsManager,
+    private val pendingNotificationTap: PendingNotificationTap,
 ) {
 
     private var isListening = false
@@ -410,8 +411,26 @@ class NotificationService(
             val typeId = notification.options.typeId
             val tagId = notification.options.tagId
             val event = when (appId) {
-                Uuid.parse(AppConfig.APP_ID).toString() ->
+                Uuid.parse(AppConfig.APP_ID).toString() -> {
+                    // Only set the pending tap when BOTH conversationId and
+                    // messageId are present — a messageId-less payload is
+                    // ambient "new activity" and should not auto-navigate
+                    // into a specific conversation. The Channel emission
+                    // still fires so AppNavHost pops back to ChatList.
+                    val ids = extractChatTapIds(typeId, tagId)
+                    if (ids != null) {
+                        Logger.i(tag = "NotificationService") {
+                            "Setting pendingNotificationTap convo=${ids.first} msg=${ids.second}"
+                        }
+                        pendingNotificationTap.set(ids.first, ids.second)
+                    } else {
+                        Logger.i(tag = "NotificationService") {
+                            "Chat tap without full (convoId, messageId) — " +
+                                    "typeId=$typeId tagId=$tagId; no auto-navigate"
+                        }
+                    }
                     NotificationNavigationEvent.OpenConversation(typeId)
+                }
 
                 COMMUNITY_APP_ID ->
                     NotificationNavigationEvent.OpenUrl(
@@ -594,4 +613,20 @@ class NotificationService(
     fun reRegisterAsync() {
         scope.launch { reRegister() }
     }
+}
+
+/**
+ * Parses a chat notification's `typeId` (conversation) and `tagId`
+ * (message) into Uuids. Returns null if either is missing or malformed
+ * — the caller then skips setting the pending tap and the user lands
+ * on ChatList without an auto-jump.
+ *
+ * Extracted for unit testability (handleNotificationClicked has too
+ * many collaborators to mock directly).
+ */
+internal fun extractChatTapIds(typeId: String, tagId: String): Pair<Uuid, Uuid>? {
+    val convoUuid = Uuid.parseOrNull(typeId) ?: return null
+    val msgUuid = tagId.takeIf { it.isNotBlank() }?.let { Uuid.parseOrNull(it) }
+        ?: return null
+    return convoUuid to msgUuid
 }
