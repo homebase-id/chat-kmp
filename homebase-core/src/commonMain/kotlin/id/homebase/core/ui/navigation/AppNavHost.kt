@@ -176,19 +176,17 @@ fun AppNavHost(
                     Logger.i(tag = "AppNavHost") {
                         "OpenConversation received: id=$id, currentDest=$topRoute"
                     }
-                    // Gate on ChatList being *anywhere* in the back stack, not just
-                    // on top. Top-of-stack gating (currentBackStackEntryFlow) hangs
-                    // forever when the user is warm on Detail/Settings/etc. —
-                    // regression introduced by PR #322. currentBackStack returns
-                    // immediately here because ChatList sits underneath the current
-                    // top entry; the subsequent popBackStack pops back to it.
+                    // Gate on ChatList being *anywhere* in the back stack, not
+                    // just on top. Top-of-stack gating hangs forever when the
+                    // user is warm on Detail/Settings/etc. Conversation
+                    // resolution lives in ConversationListViewModel via the
+                    // PendingNotificationTap singleton — here we only manage
+                    // the back stack so the user ends up at ChatList.
                     val stack = navController.currentBackStack
                         .first { stack -> stack.any { it.destination.hasRoute(Route.ChatList::class) } }
                     Logger.i(tag = "AppNavHost") {
-                        "ChatList present in stack (size=${stack.size}), dispatching"
+                        "ChatList present in stack (size=${stack.size}), popping to it"
                     }
-                    val ok = navController.selectConversationOnChatList(id, scrollToBottom = true)
-                    Logger.i(tag = "AppNavHost") { "selectConversationOnChatList result=$ok" }
                     val popped = navController.popBackStack(Route.ChatList, inclusive = false)
                     Logger.i(tag = "AppNavHost") { "popBackStack(ChatList)=$popped" }
                 }

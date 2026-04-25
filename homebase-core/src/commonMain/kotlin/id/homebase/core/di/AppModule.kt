@@ -49,6 +49,7 @@ import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.ShareConversationCacheWriter
@@ -207,6 +208,7 @@ val appModule = module {
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
+    singleOf(::PendingNotificationTap)
     singleOf(::NotificationService)
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
