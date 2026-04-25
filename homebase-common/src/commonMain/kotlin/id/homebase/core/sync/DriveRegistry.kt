@@ -107,6 +107,35 @@ class DriveRegistry(
         loadDrives().any { it.drive.alias == driveId }
 
     /**
+     * Resolve the registry on login: try the local index first (fast, offline-safe,
+     * covers cold boot of returning users), then fall back to a single
+     * `getFileHeaderByUid` HTTP call (covers fresh login on a new device or one whose
+     * local DB was wiped). On both-empty or any fetch failure, returns an empty list
+     * so the caller proceeds with mandatory drives only — the observer will pick the
+     * file up on the next chat-drive sync.
+     *
+     * This eliminates the "first WS connect subscribes to mandatory only, then
+     * reconnects after the first sync delivers the registry file" race on fresh
+     * login. Callers should pass the result to both [AuthConnectionCoordinator.connect]
+     * (so the WS subscribes to the full set on the first connect) and [start]'s
+     * `initialBaseline` (so the observer doesn't fire spurious onMount when the
+     * chat-drive sync later writes the same file into the local index).
+     */
+    suspend fun bootstrap(): List<LabeledDrive> {
+        val local = loadDrives()
+        if (local.isNotEmpty()) return local
+        val chatDriveId = SystemDriveConstants.chatDrive.alias
+        val server = runCatching { getFileHeaderByUid(chatDriveId, REGISTRY_UNIQUE_ID) }
+            .getOrElse { e ->
+                Logger.w(tag = TAG, throwable = e) {
+                    "bootstrap: server fetch failed — falling back to empty (observer will pick up after first sync)"
+                }
+                return emptyList()
+            } ?: return emptyList()
+        return parseRegistryContent(server)
+    }
+
+    /**
      * Register [drive] in the cross-device registry. Idempotent: if [drive] is already
      * in the list this is a no-op with no network I/O.
      *
@@ -132,20 +161,27 @@ class DriveRegistry(
 
     /**
      * Start observing cross-device registry changes. Callers are expected to have
-     * already mounted the drives returned by [loadDrives] at connect time — [start]
-     * sets the diff baseline from the current local-DB state WITHOUT re-emitting
-     * [onMount] for those. Callbacks fire only for SUBSEQUENT changes.
+     * already mounted the drives in [initialBaseline] at connect time — [start] uses
+     * that set as the diff baseline WITHOUT re-emitting [onMount] for any of them.
+     * Callbacks fire only for SUBSEQUENT changes.
+     *
+     * Defaults to `loadDrives()` for the cold-boot case (returning user, registry
+     * already in local DB). On fresh login the caller should pass the result of
+     * [bootstrap] explicitly, since the local DB may not contain the registry file
+     * yet (it was fetched directly from the server).
      *
      * Safe to call repeatedly — the observer is cancelled and restarted.
      */
     suspend fun start(
         onMount: suspend (LabeledDrive) -> Unit,
         onUnmount: suspend (Uuid) -> Unit,
+        initialBaseline: Set<Uuid>? = null,
     ) {
         stop()
-        val initial = loadDrives()
+        val baseline = initialBaseline
+            ?: loadDrives().mapTo(HashSet()) { it.drive.alias }
         stateMutex.withLock {
-            currentDriveAliases = initial.mapTo(HashSet()) { it.drive.alias }
+            currentDriveAliases = baseline
         }
         observerJob = scope.launch {
             eventBus.events.collect { event ->

@@ -83,6 +83,20 @@ Writes are read-modify-write against the singleton file via
 from two devices land as `VersionTagMismatch`; the loser re-fetches and retries, merging its
 delta into the winner's list (up to `MAX_CONFLICT_RETRIES`).
 
+### Bootstrap on login
+
+`AuthConnectionCoordinator.onAuthStateChanged(Authenticated)` calls
+`DriveRegistry.bootstrap()` before opening the WebSocket. Bootstrap tries the local DB
+first (cold boot of a returning user — free, offline-safe) and falls back to a single
+`getFileHeaderByUid` HTTP call against the Chat drive if local is empty (fresh login,
+or local DB wiped). The result is mounted into `DriveSyncManager` AND passed
+explicitly to `connect()` and `start(initialBaseline=…)`, so the first WS connect
+already subscribes to the full set and the observer's diff baseline matches.
+
+Without bootstrap the fresh-login path would: connect WS with mandatory only → wait
+for the first sync cycle to deliver the registry file → observer fires → debounced
+WS reconnect with the full set. The targeted server fetch saves that round-trip.
+
 ### Cross-device propagation
 
 A drive activated on Device A updates the registry file; the Chat-drive sync engine delivers

@@ -286,6 +286,66 @@ class DriveRegistryTest {
         db.close()
     }
 
+    // ---------- bootstrap ----------
+
+    @Test
+    fun bootstrapReturnsLocalDrivesWithoutFetchingServerWhenLocalAvailable() = runTest {
+        val db = createTestDatabaseManager()
+        seedRegistryFile(db, listOf(feedLabeledDrive))
+        val recorder = WriteRecorder()
+        val registry = buildRegistry(db, recorder = recorder)
+
+        val drives = registry.bootstrap()
+
+        assertEquals(listOf(feedLabeledDrive.drive.alias), drives.map { it.drive.alias })
+        assertEquals(0, recorder.fetchCount, "bootstrap must not hit the server when local DB has the file")
+        db.close()
+    }
+
+    @Test
+    fun bootstrapFallsBackToServerWhenLocalEmpty() = runTest {
+        val db = createTestDatabaseManager()
+        val serverFile = buildRegistryFile(listOf(feedLabeledDrive))
+        val recorder = WriteRecorder(existingServerFile = serverFile)
+        val registry = buildRegistry(db, recorder = recorder)
+
+        val drives = registry.bootstrap()
+
+        assertEquals(listOf(feedLabeledDrive.drive.alias), drives.map { it.drive.alias })
+        assertEquals(1, recorder.fetchCount)
+        db.close()
+    }
+
+    @Test
+    fun bootstrapReturnsEmptyWhenLocalEmptyAndServerHasNoFile() = runTest {
+        val db = createTestDatabaseManager()
+        val recorder = WriteRecorder()  // existingServerFile = null
+        val registry = buildRegistry(db, recorder = recorder)
+
+        val drives = registry.bootstrap()
+
+        assertTrue(drives.isEmpty())
+        assertEquals(1, recorder.fetchCount)
+        db.close()
+    }
+
+    @Test
+    fun bootstrapFallsBackToEmptyWhenServerFetchThrows() = runTest {
+        val db = createTestDatabaseManager()
+        val recorder = WriteRecorder(
+            fetchResolver = { throw RuntimeException("simulated network failure") },
+        )
+        val registry = buildRegistry(db, recorder = recorder)
+
+        // Must NOT throw — bootstrap is best-effort. Caller proceeds with empty;
+        // observer picks up the file on the next chat-drive sync.
+        val drives = registry.bootstrap()
+
+        assertTrue(drives.isEmpty())
+        assertEquals(1, recorder.fetchCount)
+        db.close()
+    }
+
     // ---------- observer ----------
 
     @Test
@@ -305,6 +365,51 @@ class DriveRegistryTest {
         advanceUntilIdle()
 
         assertTrue(mounted.isEmpty(), "start() must not emit onMount for already-present drives")
+        assertTrue(unmounted.isEmpty())
+
+        registry.stop()
+        db.close()
+    }
+
+    @Test
+    fun startUsesExplicitInitialBaselineWhenProvided() = runTest {
+        // Models the fresh-login flow: bootstrap fetched the registry from the server,
+        // mounted the drives, but the local DB doesn't have the file yet. start() is
+        // given the bootstrapped baseline. When the chat-drive sync later writes the
+        // same file into the local index and emits BatchReceived, the diff against the
+        // baseline is empty — no spurious onMount.
+        val db = createTestDatabaseManager()
+        val eventBus = EventBus()
+        val registry = buildRegistry(db, eventBus = eventBus)
+
+        val mounted = mutableListOf<LabeledDrive>()
+        val unmounted = mutableListOf<Uuid>()
+        registry.start(
+            onMount = { mounted += it },
+            onUnmount = { unmounted += it },
+            initialBaseline = setOf(feedLabeledDrive.drive.alias),
+        )
+        advanceUntilIdle()
+
+        // First chat-drive sync delivers the registry file into the local DB. Without
+        // an explicit baseline this would be diff'd against an empty set and onMount
+        // would fire — the regression we're guarding against.
+        seedRegistryFile(db, listOf(feedLabeledDrive))
+        val registryFile = buildRegistryFile(listOf(feedLabeledDrive))
+        launch {
+            eventBus.emit(
+                BackendEvent.DriveEvent.BatchReceived(
+                    driveId = SystemDriveConstants.chatDrive.alias,
+                    totalCount = 1,
+                    batchCount = 1,
+                    latestModified = null,
+                    batchData = listOf(registryFile),
+                )
+            )
+        }.join()
+        advanceUntilIdle()
+
+        assertTrue(mounted.isEmpty(), "onMount must not fire — feed was already in the explicit baseline")
         assertTrue(unmounted.isEmpty())
 
         registry.stop()
@@ -485,6 +590,13 @@ class DriveRegistryTest {
     ) {
         val uploads = mutableListOf<UploadFileRequest>()
         val updates = mutableListOf<UpdateFileByUniqueIdRequest>()
+        var fetchCount = 0
+            private set
+
+        suspend fun fetch(): HomebaseFile? {
+            fetchCount++
+            return fetchResolver()
+        }
     }
 
     private fun TestScope.buildRegistry(
@@ -505,7 +617,7 @@ class DriveRegistryTest {
         return DriveRegistry(
             credentialsManager = credentialsManager,
             databaseManager = db,
-            getFileHeaderByUid = { _, _ -> recorder.fetchResolver() },
+            getFileHeaderByUid = { _, _ -> recorder.fetch() },
             uploadFile = { request ->
                 // Record the attempt regardless of outcome so retries are observable.
                 recorder.uploads += request

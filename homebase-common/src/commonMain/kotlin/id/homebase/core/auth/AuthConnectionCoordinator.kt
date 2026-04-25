@@ -95,20 +95,23 @@ class AuthConnectionCoordinator(
         when (state) {
             is YouAuthState.Authenticated -> {
                 onPostAuthenticated()
-                // Cold-load the registry's optional drives into DriveSyncManager before
-                // opening the WebSocket so the initial subscription includes them. The
-                // Koin factory only seeds mandatory drives, because the DB is not readable
-                // with an active identity at Koin construction time.
-                for (drive in driveRegistry.loadDrives()) {
+                // Resolve the cross-device registry: local DB on cold boot (free), or one
+                // targeted server fetch on fresh login. Either way we have the canonical
+                // list before opening the WebSocket, so the first WS connect already
+                // subscribes to the full set — no late observer-driven reconnect.
+                val initialDrives = driveRegistry.bootstrap()
+                for (drive in initialDrives) {
                     driveSyncManager.mountDrive(drive.drive.alias, drive.label)
                 }
-                connect()
-                // Observe cross-device registry changes. The registry files mounted above
-                // are already the diff baseline, so start() won't re-emit them; the observer
-                // only fires when another device activates or deactivates a drive.
+                connect(extraDrives = initialDrives)
+                // Observe cross-device registry changes. We seed the diff baseline with the
+                // bootstrap result so the chat-drive sync that later writes the same file
+                // into the local index doesn't trigger a spurious onMount for drives that
+                // are already mounted.
                 driveRegistry.start(
                     onMount = { drive -> mountDrive(drive, persist = false) },
                     onUnmount = { driveId -> unmountDrive(driveId, persist = false) },
+                    initialBaseline = initialDrives.mapTo(HashSet()) { it.drive.alias },
                 )
                 loadProfile()
             }
@@ -143,10 +146,17 @@ class AuthConnectionCoordinator(
      *
      * Guarded by [wsClient] null-check so it is safe to call repeatedly; only
      * the first call per session does anything.
+     *
+     * @param extraDrives optional drives to subscribe to in addition to
+     *   [mandatorySyncDrives]. The fresh-login path passes the bootstrap result
+     *   directly (because the local DB may not contain the registry file yet); all
+     *   other call sites — mid-session reconnects in particular — fall through to
+     *   `driveRegistry.loadDrives()`, which reads the (now-populated) local index.
      */
-    private suspend fun connect() {
+    private suspend fun connect(extraDrives: List<LabeledDrive>? = null) {
         if (wsClient != null) return
 
+        val optionalDrives = extraDrives ?: driveRegistry.loadDrives()
         _connectionState.update { it.copy(isConnecting = true) }
         wsClient =
             OdinWebSocketClient(
@@ -155,12 +165,7 @@ class AuthConnectionCoordinator(
                 scope = scope,
                 eventBus = eventBus,
                 databaseManager = databaseManager,
-                // [DriveRegistry.loadDrives] reads the synced local DB — by the time we get
-                // here, `onAuthStateChanged(Authenticated)` has already populated it from the
-                // Chat drive's local index (or it's empty on a fresh install). mid-session
-                // mountDrive/unmountDrive calls trigger a debounced reconnect that re-invokes
-                // this block, picking up the fresh registry state each time.
-                drives = (mandatorySyncDrives + driveRegistry.loadDrives()).map { it.drive },
+                drives = (mandatorySyncDrives + optionalDrives).map { it.drive },
                 // Fires asynchronously once the server handshake has completed.
                 // We mark the connection state and then run post-connect setup in a
                 // background coroutine:
