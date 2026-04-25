@@ -12,13 +12,13 @@ files mentioned below.
 
 A self-contained feature that:
 
-1. Shows up as a **toggleable icon** in the bottom navigation bar (or side rail).
+1. Shows up as a **toggleable icon** in the bottom navigation bar (or side rail for desktop).
 2. Has an **onboarding screen** the first time the user taps it, with *Set it up* and
-   *Dismiss* buttons.
+   *Dismiss* options.
 3. When setup it flips a runtime **activation flag** via an "Extend Permissions" dialog — which in
-   turn widens the set of drives the auth WebSocket subscribes to.
+   turn widens the set of drives the auth WebSocket subscribes to (and probably mounts it as an optional drive).
 4. Has a **Settings sub-page** with a switch to hide its icon and (optionally) a
-   biometrics switch.
+   biometrics switch plus other app specific settings.
 5. Optionally gates the main screen behind **device biometrics** on entry.
 
 Everything the user toggles is persisted in the encrypted local key/value store — no
@@ -49,6 +49,96 @@ homebase-core/src/commonMain/kotlin/id/homebase/core/ui/screens/foo/
 
 Class names are load-bearing: Koin's `viewModelOf(::FooViewModel)` binds by
 constructor reference, so renaming the VM requires an `AppModule.kt` update.
+
+---
+
+## Mandatory vs Optional Drives
+
+The sync engine distinguishes two categories of drives:
+
+| Category | Constant / Source | Examples |
+|---|---|---|
+| **Mandatory** | `mandatorySyncDrives` in `AppConfig.kt` | Chat, Contacts |
+| **Optional** | `DriveRegistry` (files on the Chat drive) | Feed, Vault, … |
+
+**Mandatory drives** (`chatLabeledDrive`, `contactLabeledDrive`) are always mounted. They cannot
+be removed and require no user action. These are the minimum set needed for the chat app to
+function. (Profile data is loaded via the public `/pub/profile` HTTP endpoint, not via the
+drive sync engine, so the profile drive is intentionally absent from the mandatory list.)
+
+**Optional drives** are persisted as a **single singleton file** on the user's **Chat drive**:
+
+- `fileType = RegistryDriveFileType` (4242)
+- `uniqueId = REGISTRY_UNIQUE_ID` (a fixed well-known UUID — exactly one such file per identity)
+- `appData.content = OdinSystemSerializer.serialize(List<LabeledDrive>)`
+
+The Chat drive is mandatory and synced to the local SQLDelight index on every device, so
+`DriveRegistry.loadDrives()` is a pure local read of one row by `(identityId, chatDrive,
+REGISTRY_UNIQUE_ID)` — offline-safe, no HTTP. The sync pipeline decrypts `appData.content`
+before storing (`ServerFile.decryptAppData`), so consumers read plaintext.
+
+Writes are read-modify-write against the singleton file via
+`DriveUploadProvider.uploadFile` (initial create, `versionTag=null`) or
+`updateFileByUniqueId` (subsequent edits, `versionTag=X`). The file itself is never deleted;
+"unmount" is just "remove this drive from the array and rewrite the file." Concurrent edits
+from two devices land as `VersionTagMismatch`; the loser re-fetches and retries, merging its
+delta into the winner's list (up to `MAX_CONFLICT_RETRIES`).
+
+### Bootstrap on login
+
+`AuthConnectionCoordinator.onAuthStateChanged(Authenticated)` calls
+`DriveRegistry.bootstrap()` before opening the WebSocket. Bootstrap tries the local DB
+first (cold boot of a returning user — free, offline-safe) and falls back to a single
+`getFileHeaderByUid` HTTP call against the Chat drive if local is empty (fresh login,
+or local DB wiped). The result is mounted into `DriveSyncManager` AND passed
+explicitly to `connect()` and `start(initialBaseline=…)`, so the first WS connect
+already subscribes to the full set and the observer's diff baseline matches.
+
+Without bootstrap the fresh-login path would: connect WS with mandatory only → wait
+for the first sync cycle to deliver the registry file → observer fires → debounced
+WS reconnect with the full set. The targeted server fetch saves that round-trip.
+
+### Cross-device propagation
+
+A drive activated on Device A updates the registry file; the Chat-drive sync engine delivers
+the updated file to Device B's local index; `DriveRegistry`'s `BatchReceived` observer matches
+on `uniqueId == REGISTRY_UNIQUE_ID`, diffs the new list against the in-memory baseline, and
+calls `AuthConnectionCoordinator.mountDrive(drive, persist = false)` for additions /
+`unmountDrive(driveId, persist = false)` for removals. Both paths hot-update DriveSyncManager
+and schedule a debounced WebSocket reconnect.
+
+The same channel handles unmount: removing a drive on Device A shrinks the list and writes a
+new revision; Device B's sync sees the updated file (it's still there, just with a smaller
+list), the observer diffs out the removed alias, and unmounts locally.
+
+### No default seed
+
+There is no "first-startup seeds Feed" behaviour. A fresh install starts with mandatory drives
+only. Feed (or any other add-on) appears on all devices only after the user explicitly
+activates it once, somewhere.
+
+### Activating an add-on drive at runtime
+
+When the user completes the *Extend Permissions* flow for a new add-on, call the single
+entry point on `AuthConnectionCoordinator`:
+
+```kotlin
+// Persists in DriveRegistry, hot-mounts in DriveSyncManager (HTTP polling starts
+// immediately) and schedules a debounced WebSocket reconnect (~500ms) so real-time
+// push arrives without waiting for an app restart. Safe to call multiple times in
+// quick succession — the reconnects coalesce.
+authConnectionCoordinator.mountDrive(fooLabeledDrive)
+```
+
+The symmetric `authConnectionCoordinator.unmountDrive(driveId)` handles user-initiated
+removal the same way (registry + sync manager + WS refresh).
+
+### Unmounting on 403 Forbidden
+
+If `DriveSyncManager` receives a `BackendEvent.DriveResult.PermissionDenied` event (emitted by
+`DriveSync` when the server returns 403), it calls `unmountDrive()` automatically. This clears the
+sync indicator without touching `DriveRegistry` — the drive will be attempted again on the next
+startup, which is intentional (session-only unmount, not a permanent removal).
 
 ---
 
@@ -203,6 +293,11 @@ sealed interface FooUiEvent {
 The **Settings VM** is simpler — one flat `FooSettingsUiState` mirroring the
 preferences, kept in sync via two `viewModelScope.launch { prefs.xxx.collect { … } }`
 blocks in `init`.
+
+> Step 9b extends `FooViewModel`'s constructor with `AuthConnectionCoordinator`
+> so the *Extend Permissions* click can run the single-call activation
+> (persist + hot-mount + WS refresh). The snippet above only shows the
+> preferences dependency to keep the onboarding state flow readable in isolation.
 
 > **Rule (from CLAUDE.md):** one-time events go in `SharedFlow`, persistent state in
 > `StateFlow`. Composables must use `collectAsStateWithLifecycle()`.
@@ -454,11 +549,9 @@ This is what the "Extend" button in the permission dialog actually does at runti
 
 ### 9a — `AppConfig.kt`
 
-Declare the feature's `LabeledDrive` and add an `activeSyncLabeledDrives(...)`
-overload that appends it when requested:
+Declare the feature's `LabeledDrive` (get the alias/type UUIDs from the server team):
 
 ```kotlin
-// Get real alias / type UUIDs from the server team before shipping.
 val fooLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("<server-provided-alias>"),
@@ -466,42 +559,29 @@ val fooLabeledDrive = LabeledDrive(
     ),
     label = "Foo",
 )
-
-fun activeSyncLabeledDrives(
-    includeVault: Boolean = false,
-    includeFoo: Boolean = false,
-): List<LabeledDrive> = buildList {
-    addAll(syncLabeledDrives)
-    if (includeVault) add(vaultLabeledDrive)
-    if (includeFoo)   add(fooLabeledDrive)
-}
 ```
 
-### 9b — `AuthConnectionCoordinator.kt`
+### 9b — Activation wiring (`FooViewModel.kt`)
 
-Inject `FooPreferences` and pass its activation flag into
-`activeSyncLabeledDrives(...)` when opening the WebSocket:
+When the user taps *Extend* in the permission dialog, call the single entry point on
+`AuthConnectionCoordinator`. It persists to `DriveRegistry`, hot-mounts in
+`DriveSyncManager`, and schedules a debounced WebSocket reconnect so real-time push
+notifications begin within ~500ms:
 
 ```kotlin
-class AuthConnectionCoordinator(
-    ...
-    private val vaultPreferences: VaultPreferences,
-    private val fooPreferences: FooPreferences,
-    ...
-) {
-    // inside connect():
-    drives = activeSyncLabeledDrives(
-        includeVault = vaultPreferences.activated.value,
-        includeFoo   = fooPreferences.activated.value,
-    ).map { it.drive }
+FooUiAction.PermissionExtendClicked -> viewModelScope.launch {
+    fooPreferences.setActivated(true)
+    authConnectionCoordinator.mountDrive(fooLabeledDrive)
+    _uiState.update { it.copy(showPermissionDialog = false) }
+    _events.tryEmit(FooUiEvent.Activated)
 }
 ```
 
-> **Limitation today:** `AuthConnectionCoordinator` reads `activated.value` once at
-> connect time. Flipping the toggle after login requires a reconnect to actually
-> widen the drive subscription. If your add-on needs live re-subscription, observe
-> the flow and trigger a reconnect — or file a TODO and document the workaround
-> ("sign out / sign back in after enabling").
+Inject `AuthConnectionCoordinator` into `FooViewModel` and register it in `AppModule.kt`.
+
+> **Activation is now hot.** `mountDrive()` coalesces bursts into a single WS reconnect,
+> so activating two add-ons back-to-back still results in one close+reopen. For the
+> symmetric removal path use `authConnectionCoordinator.unmountDrive(driveId)`.
 
 ---
 
@@ -512,30 +592,13 @@ Reference: `AppModule.kt`.
 ```kotlin
 single { FooPreferences(get()) }
 
-// Update DriveSyncManager factory to include the new drive
-single {
-    val vaultPrefs = get<VaultPreferences>()
-    val fooPrefs   = get<FooPreferences>()
-    val drives = activeSyncLabeledDrives(
-        includeVault = vaultPrefs.activated.value,
-        includeFoo   = fooPrefs.activated.value,
-    )
-    DriveSyncManager(get(), get(), get(), get(), get(),
-        drives.associate { it.drive.alias to it.label })
-}
+// AuthConnectionCoordinator is already wired to DriveRegistry and DriveSyncManager —
+// no per-add-on changes needed here. authConnectionCoordinator.mountDrive(fooLabeledDrive)
+// at activation time is the only registration step.
 
-// Update AuthConnectionCoordinator factory to pass the new prefs
-single {
-    AuthConnectionCoordinator(
-        ...
-        vaultPreferences = get(),
-        fooPreferences = get(),
-        onPostAuthenticated = { /* … */ }
-    )
-}
-
-// ViewModels
-viewModelOf(::FooViewModel)
+// ViewModels — inject AuthConnectionCoordinator if the onboarding flow needs to activate
+// a drive mid-session (i.e. every onboarding flow).
+viewModelOf(::FooViewModel)       // constructor: FooPreferences, AuthConnectionCoordinator
 viewModelOf(::FooSettingsViewModel)
 ```
 
@@ -568,10 +631,11 @@ Copy this into your PR description and tick off each wiring point:
 - [ ] Three `composable<Route.Foo…>` entries + event-collecting `LaunchedEffect`
 - [ ] `isTopLevelRoute()` updated to include `Route.Foo`
 - [ ] Settings row + `onNavigateToFooSettings` wired
-- [ ] `fooLabeledDrive` + `activeSyncLabeledDrives(includeFoo=…)` in `AppConfig`
-- [ ] `AuthConnectionCoordinator` receives `FooPreferences` and uses it
-- [ ] `AppModule`: `single { FooPreferences }`, two `viewModelOf`, updated
-      `DriveSyncManager` + `AuthConnectionCoordinator` factories
+- [ ] `fooLabeledDrive` constant in `AppConfig.kt` (do NOT add to
+      `mandatorySyncDrives` — optional drives live in `DriveRegistry`)
+- [ ] `AppModule`: `single { FooPreferences }`, two `viewModelOf` — no
+      changes to `DriveSyncManager`, `DriveRegistry`, or `AuthConnectionCoordinator`
+      bindings (they are generic and already wired)
 - [ ] (Optional) `FooBiometricAuth` expect + three actuals
 - [ ] `CLAUDE.md` UI checklist: Material 3 only, `stringResource`,
       `Icons.AutoMirrored.*` for directional icons, `collectAsStateWithLifecycle`,
@@ -581,11 +645,28 @@ Copy this into your PR description and tick off each wiring point:
 
 ## Known gotchas
 
+- **Activation briefly drops the WebSocket.** `authConnectionCoordinator.mountDrive()`
+  debounces by ~500ms and then close+reopens the WS so the new drive joins the
+  subscription. The user sees the online indicator blink. Coalescing means two rapid
+  activations produce one reconnect, not two, but expect *some* reconnect.
+- **403 unmount is session-only.** If the server returns 403 for a drive, `DriveSyncManager`
+  unmounts it automatically, clearing the sync indicator. The drive will be attempted again
+  on the next startup. This path deliberately does NOT trigger a WS refresh — reconnecting
+  would just re-subscribe and be rejected again. It also does NOT mutate the registry file
+  on the Chat drive — propagating a permission-denied condition as a cross-device
+  registry deletion would affect the user's other devices incorrectly. To permanently remove
+  a drive from the registry (for the whole identity), call
+  `authConnectionCoordinator.unmountDrive(driveId)` from a settings action.
+- **Cross-device propagation latency.** A change on Device A is visible to Device B only
+  after B's next Chat-drive sync cycle pulls the updated registry file. Expect a few seconds
+  (or an app re-open) for an activation/deactivation to reflect on other devices. First-boot
+  on a new device is similar: optional drives appear after the Chat drive has synced once.
+- **Offline writes throw.** `DriveRegistry.addDrive` / `removeDrive` go directly through the
+  HTTP upload path, not the outbox. An offline activation surfaces a failure to the caller
+  and the user must retry when online. Outbox integration is a planned follow-up.
 - **Placeholder drive UUIDs.** Vault currently ships with a stub `f47ac10b-…`.
   Get real alias/type UUIDs from the server team before enabling the drive in
   production — otherwise the WebSocket will subscribe to a non-existent drive.
-- **Activation does not hot-reload the WebSocket.** `AuthConnectionCoordinator`
-  snapshots `activated.value` at connect time. See Step 9b.
 - **Dismiss is sticky.** Dismissing onboarding only hides the icon
   (`iconVisible = false`) — it never flips `activated`. The user must re-enable
   the icon via Settings → *Show Foo icon in bottom bar* to see the onboarding

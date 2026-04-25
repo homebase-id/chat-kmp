@@ -12,7 +12,9 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
-import id.homebase.core.config.syncLabeledDrives
+import id.homebase.core.config.LabeledDrive
+import id.homebase.core.config.mandatorySyncDrives
+import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.avatars.AppConnectionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
 class AuthConnectionCoordinator(
     private val credentialsManager: CredentialsManager,
@@ -34,10 +37,19 @@ class AuthConnectionCoordinator(
     private val outboxSync: OutboxSync,
     private val eventBus: EventBus,
     private val databaseManager: DatabaseManager,
+    private val driveRegistry: DriveRegistry,
     private val onPostAuthenticated: () -> Unit = {},
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
     private var wsClient: OdinWebSocketClient? = null
+
+    // Coalesces bursts of mountDrive/unmountDrive calls into a single WebSocket reconnect.
+    // [OdinWebSocketClient] freezes its drive-subscription list at construction time, so we
+    // have to close and reopen the socket to pick up a registry change mid-session. If a user
+    // activates two add-ons back-to-back, we want one reconnect, not two.
+    private val refreshWsSubscription = DebouncedAction(scope, REFRESH_DEBOUNCE_MS) {
+        reconnectWebSocket()
+    }
 
     private val _connectionState = MutableStateFlow(AuthConnectionState())
     val connectionState: StateFlow<AuthConnectionState> = _connectionState.asStateFlow()
@@ -83,7 +95,24 @@ class AuthConnectionCoordinator(
         when (state) {
             is YouAuthState.Authenticated -> {
                 onPostAuthenticated()
-                connect()
+                // Resolve the cross-device registry: local DB on cold boot (free), or one
+                // targeted server fetch on fresh login. Either way we have the canonical
+                // list before opening the WebSocket, so the first WS connect already
+                // subscribes to the full set — no late observer-driven reconnect.
+                val initialDrives = driveRegistry.bootstrap()
+                for (drive in initialDrives) {
+                    driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+                }
+                connect(extraDrives = initialDrives)
+                // Observe cross-device registry changes. We seed the diff baseline with the
+                // bootstrap result so the chat-drive sync that later writes the same file
+                // into the local index doesn't trigger a spurious onMount for drives that
+                // are already mounted.
+                driveRegistry.start(
+                    onMount = { drive -> mountDrive(drive, persist = false) },
+                    onUnmount = { driveId -> unmountDrive(driveId, persist = false) },
+                    initialBaseline = initialDrives.mapTo(HashSet()) { it.drive.alias },
+                )
                 loadProfile()
             }
             is YouAuthState.Initializing -> {
@@ -117,10 +146,17 @@ class AuthConnectionCoordinator(
      *
      * Guarded by [wsClient] null-check so it is safe to call repeatedly; only
      * the first call per session does anything.
+     *
+     * @param extraDrives optional drives to subscribe to in addition to
+     *   [mandatorySyncDrives]. The fresh-login path passes the bootstrap result
+     *   directly (because the local DB may not contain the registry file yet); all
+     *   other call sites — mid-session reconnects in particular — fall through to
+     *   `driveRegistry.loadDrives()`, which reads the (now-populated) local index.
      */
-    private suspend fun connect() {
+    private suspend fun connect(extraDrives: List<LabeledDrive>? = null) {
         if (wsClient != null) return
 
+        val optionalDrives = extraDrives ?: driveRegistry.loadDrives()
         _connectionState.update { it.copy(isConnecting = true) }
         wsClient =
             OdinWebSocketClient(
@@ -129,7 +165,7 @@ class AuthConnectionCoordinator(
                 scope = scope,
                 eventBus = eventBus,
                 databaseManager = databaseManager,
-                drives = syncLabeledDrives.map { it.drive },
+                drives = (mandatorySyncDrives + optionalDrives).map { it.drive },
                 // Fires asynchronously once the server handshake has completed.
                 // We mark the connection state and then run post-connect setup in a
                 // background coroutine:
@@ -185,7 +221,56 @@ class AuthConnectionCoordinator(
         wsClient?.isInForeground = foreground
     }
 
+    /**
+     * Activate an optional add-on drive. When [persist] is true (default), appends the
+     * drive to the registry list file on the Chat drive so the activation syncs to the
+     * user's other devices. Hot-mounts the drive in [DriveSyncManager] (HTTP polling
+     * starts immediately) and schedules a debounced WebSocket reconnect so real-time
+     * push arrives within [REFRESH_DEBOUNCE_MS]. Multiple rapid calls coalesce.
+     *
+     * Pass `persist = false` when the activation originated elsewhere (e.g. another
+     * device already wrote the registry update, and the Chat-drive observer surfaced
+     * it locally) — persisting again would just churn the file with the same content.
+     */
+    suspend fun mountDrive(drive: LabeledDrive, persist: Boolean = true) {
+        if (persist) driveRegistry.addDrive(drive)
+        driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+        refreshWsSubscription.trigger()
+    }
+
+    /**
+     * Deactivate an optional add-on drive. When [persist] is true (default), removes the
+     * drive from the registry list file on the Chat drive so the change syncs to the
+     * user's other devices. Unmounts from [DriveSyncManager] and schedules a debounced
+     * WebSocket reconnect.
+     *
+     * Intended for user-initiated removals and for the Chat-drive observer's unmount
+     * callback (which passes `persist = false` because the change originated elsewhere).
+     * The 403/PermissionDenied auto-unmount in [DriveSyncManager] bypasses this path on
+     * purpose — re-subscribing would just get rejected again, and we do NOT want to
+     * propagate a permission-denied condition as a registry list mutation to other devices.
+     */
+    suspend fun unmountDrive(driveId: Uuid, persist: Boolean = true) {
+        if (persist) driveRegistry.removeDrive(driveId)
+        driveSyncManager.unmountDrive(driveId)
+        refreshWsSubscription.trigger()
+    }
+
+    // Close the current WebSocket and open a new one. [connect] reads the DriveRegistry
+    // fresh each call, so the new socket's drive subscription reflects the latest mount/
+    // unmount state. Called via [refreshWsSubscription] after the debounce window elapses.
+    // No-op when [wsClient] is null: logged-out or pre-auth bursts don't need a reconnect —
+    // the next organic [connect] call (on login or reconnect) will read the fresh registry.
+    private suspend fun reconnectWebSocket() {
+        val old = wsClient ?: return
+        wsClient = null
+        old.close()
+        connect()
+    }
+
     private suspend fun disconnect() {
+        refreshWsSubscription.cancel()
+        driveRegistry.stop()
         outboxSync.setOnline(false)
         // Keep isConnecting = true so the next login cycle correctly starts in
         // StartupState.Loading.  While logged out the auth state is Unauthenticated,
@@ -194,6 +279,10 @@ class AuthConnectionCoordinator(
         wsClient?.close()
         wsClient = null
         driveSyncManager.stop()
+    }
+
+    companion object {
+        private const val REFRESH_DEBOUNCE_MS = 500L
     }
 }
 

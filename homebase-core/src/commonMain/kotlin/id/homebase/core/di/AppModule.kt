@@ -44,7 +44,8 @@ import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
-import id.homebase.core.config.syncLabeledDrives
+import id.homebase.core.config.mandatorySyncDrives
+import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationService
@@ -81,9 +82,29 @@ val FeedPermissionQualifier = named("feedPermission")
 val appModule = module {
     single { UserPreferences(get()) }
 
+    // DriveRegistry reads/writes a cross-device list of optional drives from the user's
+    // Chat drive. See id.homebase.core.sync.DriveRegistry for the storage model.
     single {
-        DriveSyncManager(get(), get(), get(), get(), get(),
-            syncLabeledDrives.associate { it.drive.alias to it.label })
+        val uploader = get<id.homebase.api.client.drives.upload.DriveUploadProvider>()
+        val files = get<id.homebase.api.client.drives.files.DriveFileProvider>()
+        DriveRegistry(
+            credentialsManager = get(),
+            databaseManager = get(),
+            getFileHeaderByUid = { driveId, uniqueId -> files.getFileHeaderByUid(driveId, uniqueId) },
+            uploadFile = { request -> uploader.uploadFile(request) },
+            updateFileByUniqueId = { request -> uploader.updateFileByUniqueId(request) },
+            eventBus = get(),
+        )
+    }
+
+    // Seeded with mandatory drives only — optional drives from the registry are cold-loaded
+    // into DriveSyncManager by AuthConnectionCoordinator after authentication, because
+    // reading the registry requires active credentials (not available at Koin time).
+    single {
+        DriveSyncManager(
+            get(), get(), get(), get(), get(),
+            mandatorySyncDrives.associate { it.drive.alias to it.label },
+        )
     }
 
     // Bound here rather than in homebase-api's ApiModule because the logout hook
@@ -137,6 +158,7 @@ val appModule = module {
             outboxSync = get(),
             eventBus = get(),
             databaseManager = get(),
+            driveRegistry = get(),
             onPostAuthenticated = {
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
