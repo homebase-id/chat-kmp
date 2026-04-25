@@ -36,6 +36,7 @@ import id.homebase.resources.upload_preparing
 import id.homebase.resources.upload_compressing
 import id.homebase.resources.upload_segmenting
 import id.homebase.resources.upload_encrypting
+import id.homebase.resources.upload_sending
 import id.homebase.resources.upload_uploading
 import id.homebase.resources.upload_finalizing
 import id.homebase.resources.upload_done
@@ -166,6 +167,19 @@ internal fun UploadProgressOverlay(status: UploadStatus, modifier: Modifier = Mo
                     )
                     Text(
                         text = stringResource(MR.string.upload_preparing),
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+
+                UploadStatus.Sending -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(40.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.2f),
+                    )
+                    Text(
+                        text = stringResource(MR.string.upload_sending),
                         color = Color.White.copy(alpha = 0.8f),
                         style = MaterialTheme.typography.labelSmall,
                     )
