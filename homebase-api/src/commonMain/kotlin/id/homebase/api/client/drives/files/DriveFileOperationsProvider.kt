@@ -29,6 +29,12 @@ data class SendReadReceiptByTimeOutboxRequest(
 )
 
 @Serializable
+data class SendReadReceiptByFileIdsOutboxRequest(
+    val driveId: Uuid,
+    val fileIds: List<Uuid>,
+)
+
+@Serializable
 data class SendReadReceiptRequest(
     val files: List<Uuid>
 )

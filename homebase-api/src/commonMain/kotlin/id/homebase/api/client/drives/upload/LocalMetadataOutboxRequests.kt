@@ -11,7 +11,7 @@ data class UpdateLocalMetadataTagsOutboxRequest(
 )
 
 @Serializable
-data class UpdateLocalMetadataContentOutboxRequest(
+data class UpdateLocalAppdataContentOutboxRequest(
     val driveId: Uuid,
     val fileId: Uuid,
     val versionTag: String?,

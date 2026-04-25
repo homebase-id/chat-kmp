@@ -69,7 +69,7 @@ class ChatMessageStream(
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
     private val driveFileProvider: DriveFileProvider
-) {
+) : MessageLookup {
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
 
@@ -151,7 +151,7 @@ class ChatMessageStream(
         }
     }
 
-    suspend fun getMessage(messageId: Uuid): MessageUiModel? {
+    override suspend fun getMessage(messageId: Uuid): MessageUiModel? {
         val messageFile = getMessageFile(messageId) ?: return null
         return mapToMessageData(messageFile, credentialsManager, ::resolveDisplayName)
     }
@@ -250,7 +250,7 @@ class ChatMessageStream(
         )
     }
 
-    suspend fun getMessages(
+    override suspend fun getMessages(
         messageIds: List<Uuid>
     ): BatchResult<MessageUiModel> {
 
