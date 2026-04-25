@@ -29,6 +29,8 @@ enum class AutoConnectOutcome(val code: Int) {
     RecipientUnreachable(8),
     RecipientRejected(9),
     InvalidRequest(10),
+    RecipientIdentityNotConfigured(11),
+    RecipientRequiresUpgrade(12),
     Failed(99),
 
     // Sentinel for forward-compatibility — any server-side enum value we don't

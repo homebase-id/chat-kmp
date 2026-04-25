@@ -57,6 +57,8 @@
     <string name="auto_connect_duplicate_introductory_request">A request to %1$s is already in progress.</string>
     <string name="auto_connect_recipient_unreachable">Couldn't reach %1$s. Try again later.</string>
     <string name="auto_connect_recipient_rejected">%1$s isn't accepting connections right now.</string>
+    <string name="auto_connect_recipient_not_configured">%1$s hasn\'t finished setting up their identity yet.</string>
+    <string name="auto_connect_recipient_requires_upgrade">%1$s\'s server needs to be updated before you can connect.</string>
     <string name="auto_connect_invalid_request">Invalid request.</string>
     <string name="auto_connect_invalid_request_with_detail">Invalid request: %1$s.</string>
     <string name="auto_connect_failed_generic">Something went wrong. Try again.</string>
