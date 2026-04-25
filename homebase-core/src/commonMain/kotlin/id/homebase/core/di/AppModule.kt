@@ -90,8 +90,9 @@ val appModule = module {
         DriveRegistry(
             credentialsManager = get(),
             databaseManager = get(),
+            getFileHeaderByUid = { driveId, uniqueId -> files.getFileHeaderByUid(driveId, uniqueId) },
             uploadFile = { request -> uploader.uploadFile(request) },
-            hardDeleteFile = { driveId, fileId -> files.hardDeleteFile(driveId, fileId) },
+            updateFileByUniqueId = { request -> uploader.updateFileByUniqueId(request) },
             eventBus = get(),
         )
     }

@@ -65,20 +65,36 @@ The sync engine distinguishes two categories of drives:
 mounted. They cannot be removed and require no user action. These are the minimum set needed for the
 chat app to function.
 
-**Optional drives** are persisted as one file per mounted drive on the user's **Chat drive**
-(`fileType = RegistryDriveFileType (4242)`, `uniqueId = drive.alias`,
-`appData.content = serialized LabeledDrive`). The Chat drive is already mandatory and synced
-to the local SQLDelight index on every device, so `DriveRegistry.loadDrives()` is a pure local
-read — offline-safe and synchronous with respect to network. Writes go to the Chat drive via
-`DriveUploadProvider.uploadFile` (new) and `DriveFileProvider.hardDeleteFile` (remove); the
-standard Chat-drive sync machinery brings changes from other devices back into the local index.
+**Optional drives** are persisted as a **single singleton file** on the user's **Chat drive**:
+
+- `fileType = RegistryDriveFileType` (4242)
+- `uniqueId = REGISTRY_UNIQUE_ID` (a fixed well-known UUID — exactly one such file per identity)
+- `appData.content = OdinSystemSerializer.serialize(List<LabeledDrive>)`
+
+The Chat drive is mandatory and synced to the local SQLDelight index on every device, so
+`DriveRegistry.loadDrives()` is a pure local read of one row by `(identityId, chatDrive,
+REGISTRY_UNIQUE_ID)` — offline-safe, no HTTP. The sync pipeline decrypts `appData.content`
+before storing (`ServerFile.decryptAppData`), so consumers read plaintext.
+
+Writes are read-modify-write against the singleton file via
+`DriveUploadProvider.uploadFile` (initial create, `versionTag=null`) or
+`updateFileByUniqueId` (subsequent edits, `versionTag=X`). The file itself is never deleted;
+"unmount" is just "remove this drive from the array and rewrite the file." Concurrent edits
+from two devices land as `VersionTagMismatch`; the loser re-fetches and retries, merging its
+delta into the winner's list (up to `MAX_CONFLICT_RETRIES`).
 
 ### Cross-device propagation
 
-A drive activated on Device A uploads a registry file; the Chat-drive sync engine delivers it
-to Device B's local index; `DriveRegistry`'s `BatchReceived` observer notices the new file,
-calls `AuthConnectionCoordinator.mountDrive(drive, persist = false)`, which hot-mounts the
-drive and schedules a debounced WebSocket reconnect. Symmetric for unmount.
+A drive activated on Device A updates the registry file; the Chat-drive sync engine delivers
+the updated file to Device B's local index; `DriveRegistry`'s `BatchReceived` observer matches
+on `uniqueId == REGISTRY_UNIQUE_ID`, diffs the new list against the in-memory baseline, and
+calls `AuthConnectionCoordinator.mountDrive(drive, persist = false)` for additions /
+`unmountDrive(driveId, persist = false)` for removals. Both paths hot-update DriveSyncManager
+and schedule a debounced WebSocket reconnect.
+
+The same channel handles unmount: removing a drive on Device A shrinks the list and writes a
+new revision; Device B's sync sees the updated file (it's still there, just with a smaller
+list), the observer diffs out the removed alias, and unmounts locally.
 
 ### No default seed
 
@@ -621,16 +637,18 @@ Copy this into your PR description and tick off each wiring point:
 - **403 unmount is session-only.** If the server returns 403 for a drive, `DriveSyncManager`
   unmounts it automatically, clearing the sync indicator. The drive will be attempted again
   on the next startup. This path deliberately does NOT trigger a WS refresh — reconnecting
-  would just re-subscribe and be rejected again. It also does NOT delete the registry marker
-  file on the Chat drive — propagating a permission-denied condition as a cross-device
+  would just re-subscribe and be rejected again. It also does NOT mutate the registry file
+  on the Chat drive — propagating a permission-denied condition as a cross-device
   registry deletion would affect the user's other devices incorrectly. To permanently remove
   a drive from the registry (for the whole identity), call
   `authConnectionCoordinator.unmountDrive(driveId)` from a settings action.
-- **Cross-device unmount latency.** Removing a drive on Device A hard-deletes the registry
-  file on the Chat drive; Device B sees the change only after its next Chat-drive sync cycle.
-  Expect a few seconds (or a re-open of the app) for the drive to disappear on the other
-  device. First-boot on a new device is similar: optional drives appear after the Chat drive
-  has synced once, not instantly on login.
+- **Cross-device propagation latency.** A change on Device A is visible to Device B only
+  after B's next Chat-drive sync cycle pulls the updated registry file. Expect a few seconds
+  (or an app re-open) for an activation/deactivation to reflect on other devices. First-boot
+  on a new device is similar: optional drives appear after the Chat drive has synced once.
+- **Offline writes throw.** `DriveRegistry.addDrive` / `removeDrive` go directly through the
+  HTTP upload path, not the outbox. An offline activation surfaces a failure to the caller
+  and the user must retry when online. Outbox integration is a planned follow-up.
 - **Placeholder drive UUIDs.** Vault currently ships with a stub `f47ac10b-…`.
   Get real alias/type UUIDs from the server team before enabling the drive in
   production — otherwise the WebSocket will subscribe to a non-existent drive.
