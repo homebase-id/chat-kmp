@@ -80,6 +80,13 @@ class PendingNotificationTap(
     }
 
     fun clear() {
+        val previous = _state.value
+        if (previous != null) {
+            // DEBUG so the per-action chatter doesn't pollute INFO logs. The interesting
+            // case is "tap was set then cleared without resolving" — pair this with the
+            // `Setting pendingNotificationTap` line at INFO to reconstruct what happened.
+            Logger.d(tag = TAG) { "cleared (was conv=${previous.conversationId})" }
+        }
         expiryJob?.cancel()
         _state.value = null
     }
@@ -87,6 +94,7 @@ class PendingNotificationTap(
     fun clearIfMatches(conversationId: Uuid) {
         val current = _state.value ?: return
         if (current.conversationId == conversationId) {
+            Logger.d(tag = TAG) { "cleared on match (conv=$conversationId)" }
             expiryJob?.cancel()
             // compareAndSet: another set() may have replaced the tap between our read
             // and now — leaving the newer tap intact is the correct behavior.
