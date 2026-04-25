@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -224,15 +225,18 @@ class DriveSyncManager(
         if (alreadyExists) return
 
         val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
-        runCatching {
+        val sync = try {
             DriveSync(identityId, driveId, driveQueryProvider, databaseManager, eventBus, scope)
-        }.onSuccess { sync ->
-            driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
-            _driveStatuses.update { it + (driveId to DriveStatus(driveId, label, DriveState.Initialized)) }
-            sync.sync()
-        }.onFailure { e ->
+        } catch (e: CancellationException) {
+            // Don't swallow cancellation — let the caller's scope tear down cleanly.
+            throw e
+        } catch (e: Exception) {
             Logger.e("DriveSyncManager: mountDrive failed for $driveId: ${e.message}", e)
+            return
         }
+        driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
+        _driveStatuses.update { it + (driveId to DriveStatus(driveId, label, DriveState.Initialized)) }
+        sync.sync()
     }
 
     /**
