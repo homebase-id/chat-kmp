@@ -208,7 +208,11 @@ val appModule = module {
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
-    singleOf(::PendingNotificationTap)
+    // singleOf(::PendingNotificationTap) would force Koin to resolve every
+    // constructor parameter from the container — including the Duration TTL
+    // and the CoroutineScope, which are intentionally Kotlin-default args.
+    // Use the explicit lambda form so the defaults take effect.
+    single { PendingNotificationTap() }
     singleOf(::NotificationService)
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
