@@ -3,11 +3,9 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
@@ -404,8 +402,7 @@ class ChatMessageStream(
 
                 val versionTag = header.fileMetadata.versionTag ?: Uuid.NIL
                 val content = appData.content
-                val isDeleted = header.fileState == FileState.Deleted ||
-                        header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
+                val isDeleted = header.isSoftDeleted()
 
                 if (isDeleted) {
                     val deletedUserDate = if (appData.userDate == null)
@@ -483,7 +480,14 @@ class ChatMessageStream(
                             authorSpecificDate
                         } else {
                             if (appData.userDate == null) {
-                                Logger.w {
+                                // Debug-level: legacy messages from older web/RN clients
+                                // that never captured userDate. Fallback to the
+                                // server-stamped authorSpecificDate is correct; no
+                                // action is required. Logged because when debugging
+                                // display-time issues it's useful to identify which
+                                // messages took the fallback path. Was Warn; demoted
+                                // to Debug because it fires ~4k times per login.
+                                Logger.d {
                                     "Message (uid: ${appData.uniqueId}) with no version and not edited has null userDate. " +
                                         "using authorSpecificDate. See file: https://${domain}/owner/drives/9ff813aff2d61e2f9b9db189e72d1a11_66ea8355ae4155c39b5a719166b510e3/${appData.uniqueId}"
                                 }
@@ -494,8 +498,8 @@ class ChatMessageStream(
 
                     } else {
                         if (appData.userDate == null) {
-                            Logger.w { "Message (uid: ${appData.uniqueId}) with version ${messageAppData.version} has null userDate. using authorSpecificDate" }
-                            Logger.w { "See File here: https://${domain}/owner/drives/9ff813aff2d61e2f9b9db189e72d1a11_66ea8355ae4155c39b5a719166b510e3/${appData.uniqueId}" }
+                            Logger.d { "Message (uid: ${appData.uniqueId}) with version ${messageAppData.version} has null userDate. using authorSpecificDate" }
+                            Logger.d { "See File here: https://${domain}/owner/drives/9ff813aff2d61e2f9b9db189e72d1a11_66ea8355ae4155c39b5a719166b510e3/${appData.uniqueId}" }
                             authorSpecificDate
                         } else
                             UnixTimeUtc(appData.userDate!!)

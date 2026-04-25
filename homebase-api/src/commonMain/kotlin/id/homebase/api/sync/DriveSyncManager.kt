@@ -6,8 +6,9 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +21,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 class DriveSyncManager(
@@ -36,6 +38,10 @@ class DriveSyncManager(
     private var driveSyncs: Map<Uuid, DriveSync> = emptyMap()
     private val driveSyncsMutex = Mutex()
     @kotlin.concurrent.Volatile private var isRunning = false
+
+    // Set by clearStorage(), consumed by the next start(). Lets a freshly constructed
+    // DriveSync detect and loudly complain if a cursor survived logout.
+    @kotlin.concurrent.Volatile private var expectFreshCursors = false
 
     private val _driveStatuses = MutableStateFlow<Map<Uuid, DriveStatus>>(emptyMap())
     val driveStatuses: StateFlow<Map<Uuid, DriveStatus>> = _driveStatuses.asStateFlow()
@@ -99,6 +105,10 @@ class DriveSyncManager(
                                 driveSyncsMutex.withLock { driveSyncs[event.driveId] }?.sync()
                             }
                         }
+                        is BackendEvent.DriveResult.PermissionDenied -> {
+                            Logger.w { "DriveSyncManager: drive ${event.driveId} denied (403) — unmounting for this session" }
+                            scope.launch { unmountDrive(event.driveId) }
+                        }
                     }
                     else -> Unit
                 }
@@ -114,8 +124,16 @@ class DriveSyncManager(
     }
 
     suspend fun start() {
-        val credentials = credentialsManager.requireActiveCredentials()
+        // getActiveCredentials() + null-check instead of requireActiveCredentials()
+        // so a logout race can't crash the caller. Not all callers try-catch this.
+        val credentials = credentialsManager.getActiveCredentials() ?: run {
+            Logger.w { "DriveSyncManager.start() skipped — no active credentials" }
+            return
+        }
         val identityId = credentials.getIdentityId()
+
+        val freshLogin = expectFreshCursors
+        expectFreshCursors = false
 
         drives.forEach { (driveId, label) ->
             val alreadyExists = driveSyncsMutex.withLock { driveSyncs.containsKey(driveId) }
@@ -131,7 +149,8 @@ class DriveSyncManager(
                     driveQueryProvider = driveQueryProvider,
                     databaseManager = databaseManager,
                     eventBus = eventBus,
-                    scope = scope
+                    scope = scope,
+                    expectFreshCursor = freshLogin,
                 )
             }.onSuccess { sync ->
                 driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
@@ -195,16 +214,69 @@ class DriveSyncManager(
         _driveStatuses.update { emptyMap() }
     }
 
-    fun clearStorage(): Job {
-        val snapshot = driveSyncs.values.toList()
-        return scope.launch {
-            snapshot
-                .map { sync ->
-                    launch {
-                        sync.clearStorage()
-                    }
-                }
-                .joinAll()
+    /**
+     * Dynamically mounts a drive into the sync engine (e.g. when an add-on is activated
+     * mid-session). Starts an HTTP-polling sync immediately; real-time WebSocket push
+     * notifications will arrive only after the next reconnect.
+     */
+    suspend fun mountDrive(driveId: Uuid, label: String) {
+        if (!isRunning) { Logger.w { "mountDrive() skipped — not running" }; return }
+        val alreadyExists = driveSyncsMutex.withLock { driveSyncs.containsKey(driveId) }
+        if (alreadyExists) return
+
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        val sync = try {
+            DriveSync(identityId, driveId, driveQueryProvider, databaseManager, eventBus, scope)
+        } catch (e: CancellationException) {
+            // Don't swallow cancellation — let the caller's scope tear down cleanly.
+            throw e
+        } catch (e: Exception) {
+            Logger.e("DriveSyncManager: mountDrive failed for $driveId: ${e.message}", e)
+            return
         }
+        driveSyncsMutex.withLock { driveSyncs = driveSyncs + (driveId to sync) }
+        _driveStatuses.update { it + (driveId to DriveStatus(driveId, label, DriveState.Initialized)) }
+        sync.sync()
+    }
+
+    /**
+     * Removes a drive from active sync for the current session. Does NOT modify [DriveRegistry] —
+     * the drive will be attempted again on the next app startup. Use this for session-level
+     * permission failures (403) so the sync indicator clears without altering user configuration.
+     */
+    suspend fun unmountDrive(driveId: Uuid) {
+        val sync = driveSyncsMutex.withLock {
+            val s = driveSyncs[driveId]
+            driveSyncs = driveSyncs - driveId
+            s
+        } ?: return
+        sync.cancel()
+        _driveStatuses.update { it - driveId }
+        Logger.i { "DriveSyncManager: unmounted drive $driveId" }
+    }
+
+    // Runs under NonCancellable because the typical caller is
+    // YouAuthFlowManager.logout() on SettingsViewModel.viewModelScope, and that scope is
+    // cancelled as soon as the auth-state flip to Unauthenticated tears the settings
+    // screen down. Without this, the wipe would be interrupted mid-flight and leave the
+    // KeyValue / Outbox / AppNotifications / ConnectionCache tables stale across logins.
+    suspend fun clearStorage() = withContext(NonCancellable) {
+        val snapshot = driveSyncsMutex.withLock { driveSyncs.values.toList() }
+
+        // Zero per-drive in-memory state (cursor fields) before the SQL wipe so no
+        // DriveSync can lazily re-materialize a cursor from a row that's about to be
+        // dropped.
+        snapshot.forEach { it.resetInMemoryState() }
+
+        // One DROP + CREATE + VACUUM of every table in OdinDatabase. Replaces the
+        // previous per-table deleteAll() chain, which was observed leaving Outbox
+        // rows across logout/login with their retry counters intact. DROP is the
+        // unforgeable variant — open transactions, stale caches, and stray driver
+        // references can't carry rows across it. Verification probes inside
+        // wipeAndRecreate() log an error if either of those loopholes actually fires.
+        databaseManager.wipeAndRecreate()
+
+        // Signal the next start() that any cursor it finds is a bug.
+        expectFreshCursors = true
     }
 }

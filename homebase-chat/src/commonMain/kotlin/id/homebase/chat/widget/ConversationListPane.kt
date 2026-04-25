@@ -54,7 +54,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
@@ -89,7 +91,7 @@ import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ConversationListPane(
     uiState: ConversationListUiState,
@@ -114,6 +116,11 @@ fun ConversationListPane(
         if (uiState.isSearchActive) {
             focusRequesterSearch.requestFocus()
         }
+    }
+
+    @Suppress("DEPRECATION") BackHandler(enabled = uiState.isSearchActive) {
+        onUiAction(ConversationListUiAction.SearchBackClicked)
+        searchTextState.clearText()
     }
 
     BoxWithConstraints(modifier = Modifier.focusRequester(focusRequesterNone).focusable()) {
@@ -409,7 +416,7 @@ fun ConversationListPane(
                         }
                     }
 
-                    if (uiState.archivedCount > 0) {
+                    if (uiState.archivedCount > 0 && !uiState.isSearchActive) {
                         item {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),

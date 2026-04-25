@@ -48,7 +48,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
-) {
+) : ConversationLoader {
 
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
@@ -66,9 +66,30 @@ class ConversationStream(
         _shareableConversations.asStateFlow()
 
     // region Recovery: missing or deleted conversation file
-    /** Called when a message arrives for a conversation that is missing or soft-deleted.
-     *  Wired in AppModule to ConversationService.recoverConversation(). */
+    /** Hook for explicit (non-sync) conversation recovery.
+     *
+     *  Wired in AppModule to ConversationService.recoverConversation().
+     *  Currently has no live caller — the previous sync-handler triggers
+     *  were removed because enqueuing a server write from inside a
+     *  drive-sync batch produced spurious conflicts (real file later in
+     *  sync, or transfer-to-self). The plumbing is retained so a future
+     *  explicit-recovery path (e.g. ensure-file-on-send, or a post-sync
+     *  reconciliation pass) can wire in without touching DI. */
     var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
+    // endregion
+
+    // region Placeholder reconciliation
+    // Conversation IDs whose in-memory placeholder hasn't yet been replaced
+    // by a real fileType=8888 file from the sync stream. Populated when the
+    // orphan branch in processMessageBatchIncrementally creates a placeholder;
+    // drained in processConversationBatchIncrementally when a real file
+    // arrives with a matching id; any remaining ids at DriveEvent.Stopped
+    // get persisted to local DB so the conversation survives an app restart.
+    //
+    // Only mutated from inside the sequential `eventBus.events.collect { ... }`
+    // loop in init, so no synchronization is needed. The reconciliation
+    // coroutine takes a snapshot before the set is cleared.
+    private val placeholderIds = mutableSetOf<Uuid>()
     // endregion
 
     // region Auto-unarchive: incoming message for archived conversation
@@ -102,6 +123,26 @@ class ConversationStream(
 
                     is BackendEvent.DriveEvent.Stopped -> {
                         Logger.d("ConversationStream: Stopped(totalCount=${event.totalCount})")
+                        // If placeholders remain after sync completion, the real
+                        // conversation files genuinely didn't arrive — persist
+                        // the placeholders to local DB so they survive restart.
+                        // Only on success: on failure we'd prefer to retry on the
+                        // next sync rather than commit a speculative placeholder.
+                        if (event.result is BackendEvent.DriveResult.Success &&
+                            placeholderIds.isNotEmpty()
+                        ) {
+                            val toReconcile = placeholderIds.toSet()
+                            placeholderIds.clear()
+                            scope.launch {
+                                try {
+                                    reconcileUnresolvedPlaceholders(toReconcile)
+                                } catch (e: Exception) {
+                                    Logger.e(e) {
+                                        "ConversationStream: placeholder reconciliation FAILED: ${e.message}"
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     is BackendEvent.DriveEvent.BatchReceived -> {
@@ -207,20 +248,13 @@ class ConversationStream(
                 )
                 updateConversationFromNewMessage(revived, m)
 
-                // Trigger server-side revival via unified recovery
-                val revivalAuthor = m.originalAuthor
-                if (revivalAuthor != null) {
-                    scope.launch {
-                        try {
-                            onRecoverConversation?.invoke(m.conversationId, revivalAuthor)
-                            Logger.i("ConversationStream: deleted conversation ${m.conversationId} — recovery triggered successfully")
-                        } catch (e: Exception) {
-                            Logger.e(e) { "ConversationStream: deleted conversation ${m.conversationId} — recovery FAILED: ${e.message}" }
-                        }
-                    }
-                } else {
-                    Logger.w("ConversationStream: deleted conversation ${m.conversationId} — cannot recover, originalAuthor is null")
-                }
+                // Intentionally do NOT trigger server-side recovery here. A
+                // drive-sync batch handler is the wrong place to enqueue
+                // outbox items — see the orphan branch below for the full
+                // rationale. If the server keeps delivering messages for a
+                // locally-deleted conversation, that conversation is
+                // already alive server-side; we simply re-align local state
+                // to match.
                 continue
             }
             // endregion
@@ -271,23 +305,28 @@ class ConversationStream(
                         isGroup = !isOneToOne
                     )
 
-                // region Recovery: missing conversation file
+                // region Placeholder: conversation file not yet synced
+                // Insert a UI placeholder so the message is visible now.
+                // Intentionally do NOT enqueue a server-side recovery from
+                // here. A drive-sync handler reads server state; enqueuing
+                // a server write from inside that read produced spurious
+                // "File already exists with ClientUniqueId" conflicts
+                // (when the real conversation file is simply later in the
+                // sync order) and "Cannot transfer to yourself" rejections
+                // (when originalAuthor == self for groups we started), for
+                // every login. Recovery is now self-healing:
+                //   1. If the real conversation file exists on the server
+                //      (the common case), it will arrive in a later sync
+                //      batch and replace this placeholder via
+                //      processConversationBatchIncrementally →
+                //      updateConversation.
+                //   2. If the server truly lacks the file, the placeholder
+                //      stays until the user interacts with the
+                //      conversation. A follow-up will add "ensure
+                //      conversation file on send" to close that gap.
                 Logger.w("ConversationStream: orphaned conversation ${m.conversationId} from=${m.originalAuthor} isOneToOne=$isOneToOne, creating placeholder")
                 insertNewConversation(emptyConversation)
-
-                if (m.originalAuthor != null) {
-                    Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — triggering recovery for author=${m.originalAuthor}")
-                    scope.launch {
-                        try {
-                            onRecoverConversation?.invoke(m.conversationId, m.originalAuthor)
-                            Logger.i("ConversationStream: orphaned conversation ${m.conversationId} — recovery triggered successfully")
-                        } catch (e: Exception) {
-                            Logger.e(e) { "ConversationStream: orphaned conversation ${m.conversationId} — recovery FAILED: ${e.message}" }
-                        }
-                    }
-                } else {
-                    Logger.w("ConversationStream: orphaned conversation ${m.conversationId} — cannot recover, originalAuthor is null")
-                }
+                placeholderIds += m.conversationId
                 // endregion
             } else {
                 updateConversationFromNewMessage(matchingConversation, m)
@@ -326,7 +365,7 @@ class ConversationStream(
         }
     }
 
-    suspend fun loadConversation(conversationId: Uuid) {
+    override suspend fun loadConversation(conversationId: Uuid) {
         val c = credentialsManager.requireActiveCredentials()
 
         val conversationFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
@@ -365,6 +404,9 @@ class ConversationStream(
             } else {
                 updateConversation(matchingConversation, c)
             }
+            // A real file has now arrived for this id; it no longer needs
+            // reconciliation. Safe whether or not it was ever a placeholder.
+            placeholderIds -= c.id
         }
 
         // Sort by descending timestamp (adjust based on your UI needs)
@@ -379,6 +421,45 @@ class ConversationStream(
 
         _conversations.value = _conversations.value.copy(items = currentList)
     }
+
+    // region Placeholder reconciliation
+    /**
+     * Persist any in-memory placeholders whose real conversation file did
+     * not arrive during the just-completed drive sync. Fired from the
+     * [BackendEvent.DriveEvent.Stopped] handler for the chat drive.
+     *
+     * Each placeholder is written as a local-only row via
+     * [OptimisticWriter.writeLocalOnlyConversationPlaceholder] — NO outbox
+     * enqueue, NO server distribution. The row's `modified` timestamp is
+     * set to 0 so a later-arriving real server file cleanly supersedes it
+     * via the DriveMainIndex upsert guard.
+     */
+    private suspend fun reconcileUnresolvedPlaceholders(ids: Set<Uuid>) {
+        if (ids.isEmpty()) return
+        Logger.i("ConversationStream: reconciling ${ids.size} placeholder(s) — persisting to local DB")
+
+        for (id in ids) {
+            val existing = _conversations.value.items.find { it.id == id }
+            if (existing == null) {
+                Logger.w("ConversationStream: placeholder $id vanished before reconciliation, skipping")
+                continue
+            }
+            val participants = existing.participants.filterNotNull()
+            try {
+                optimisticWriter.writeLocalOnlyConversationPlaceholder(
+                    driveId = chatDrive,
+                    conversationId = id,
+                    participants = participants,
+                    isGroup = existing.isGroup,
+                )
+            } catch (e: Exception) {
+                Logger.e(e) {
+                    "ConversationStream: failed to persist placeholder id=$id: ${e.message}"
+                }
+            }
+        }
+    }
+    // endregion
 
     private suspend fun updateConversation(
         existing: ConversationUiModel,

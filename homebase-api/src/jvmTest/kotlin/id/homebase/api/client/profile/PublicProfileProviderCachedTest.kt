@@ -4,6 +4,7 @@ import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import co.touchlab.kermit.platformLogWriter
+import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
@@ -232,6 +233,33 @@ class PublicProfileProviderCachedTest {
         assertTrue(
             requestCount > countAfterPopulate,
             "after clearCaches, next call must reach the network"
+        )
+    }
+
+    /**
+     * Mirror of DriveFileProviderCachedTest's per-cache-resilience assertion.
+     * A single FileKache ctor failure must not hide the healthy sibling row.
+     * Plants a regular file at the profile cache path so `createDirectories`
+     * throws, exercising the tombstone + sentinel return.
+     */
+    @Test
+    fun `getCacheStats returns sentinel for broken cache without hiding the healthy one`() = runTest {
+        Files.write(Path.of(tempDir, "homebase-public-profiles"), ByteArray(0))
+
+        val stats = provider.getCacheStats()
+
+        assertEquals(2, stats.size, "both rows must be returned even if one ctor failed")
+
+        val profile = stats.single { it.id == "public_profiles" }
+        val image = stats.single { it.id == "public_images" }
+
+        assertEquals(
+            CacheStats.UNAVAILABLE, profile.sizeBytes,
+            "broken profile cache must be marked unavailable via the sentinel"
+        )
+        assertTrue(
+            image.sizeBytes != CacheStats.UNAVAILABLE,
+            "healthy image cache must NOT be marked unavailable (got sizeBytes=${image.sizeBytes})"
         )
     }
 }

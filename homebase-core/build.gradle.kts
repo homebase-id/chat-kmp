@@ -23,6 +23,7 @@ kotlin {
         namespace = "id.homebase.core"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
+        withHostTest {}
     }
 
     jvm()
@@ -70,6 +71,7 @@ kotlin {
             implementation(libs.jetbrains.compose.material3)
             implementation(libs.jetbrains.compose.material.icons.extended)
             implementation(libs.jetbrains.compose.material3.adaptive)
+            implementation(libs.jetbrains.compose.ui.backhandler)
             implementation(libs.jetbrains.compose.ui.tooling.preview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
@@ -98,6 +100,10 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.koin.android)
+            implementation(libs.play.app.update)
+        }
+        jvmMain.dependencies {
+                implementation(libs.conveyor.control)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -136,4 +142,14 @@ tasks.withType<Test>().configureEach {
             excludeTestsMatching("id.homebase.core.ui.navigation.NotificationTapColdStartTest.broken_top_only_gate_hangs_when_on_detail")
         }
     }
+}
+
+// `withHostTest {}` is enabled above so AGP 9.2 stops warning about commonTest
+// with no Android host-test runner. However, most commonTest files here use
+// `runComposeUiTest {}` (compose-ui-test), which resolves to a Skiko-backed
+// implementation on JVM but hits null-returning Android API stubs when run
+// against the mocked Android host-test classpath. Disable the task until
+// those tests are migrated to jvmTest/.
+tasks.matching { it.name == "testAndroidHostTest" }.configureEach {
+    enabled = false
 }

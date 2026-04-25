@@ -26,9 +26,11 @@ import id.homebase.api.toBase64
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatProtocol
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import id.homebase.chat.services.convo.ConversationAppDataJson
 import id.homebase.chat.services.convo.ConversationLocalAppDataJson
 import kotlin.uuid.Uuid
 
@@ -123,6 +125,109 @@ class OptimisticWriter(
 
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Optimistic insert failed for uniqueId=${unecryptedMetadata.appData.uniqueId} groupId=${unecryptedMetadata.appData.groupId}" }
+            throw e
+        }
+    }
+
+    /**
+     * Persist a local-only conversation-file placeholder for an orphaned
+     * conversation (one whose messages arrived but whose conversation file
+     * never synced down). Called by the post-sync reconciliation in
+     * [id.homebase.chat.services.convo.ConversationStream] after the chat
+     * drive emits [BackendEvent.DriveEvent.Stopped] with any placeholders
+     * still unresolved.
+     *
+     * Strictly local: no `outboxSync.tryEnqueue`, no server distribution,
+     * no `isPendingSendTag`. The row exists only so the conversation
+     * survives an app restart — without it, the orphan's messages would
+     * be stranded in DriveMainIndex with no UI surface.
+     *
+     * The `updated` field is deliberately set to [UnixTimeUtc.ZeroTime].
+     * DriveMainIndex's upsert guard at DriveMainIndex.sq:68
+     * (`WHERE excluded.modified > DriveMainIndex.modified`) only allows
+     * an incoming row to replace an existing one when its modified is
+     * strictly greater. Any non-zero server-side `modified` passes that
+     * guard cleanly, so when a peer eventually creates the real
+     * conversation file and we sync it down, the placeholder is replaced
+     * in place (same uniqueId, new fileId/keyHeader/versionTag). A
+     * non-zero `updated` here would silently block the real file and
+     * make the "Conversation missing..." placeholder permanent.
+     */
+    suspend fun writeLocalOnlyConversationPlaceholder(
+        driveId: Uuid,
+        conversationId: Uuid,
+        participants: List<OdinId>,
+        isGroup: Boolean,
+    ) {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val domain = credentials.domain
+        val created = UnixTimeUtc.now()
+
+        val content = ConversationAppDataJson(
+            title = "",
+            recipients = participants,
+            version = 1,
+        )
+
+        val file = HomebaseFile(
+            fileId = Uuid.random(),
+            driveId = driveId,
+            serverFileIsEncrypted = true,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            keyHeader = KeyHeader.newRandom16(),
+            fileMetadata = FileMetadata(
+                appData = AppFileMetaData(
+                    uniqueId = conversationId,
+                    tags = if (isGroup) listOf(ChatProtocol.ConversationGroupTag) else null,
+                    fileType = ChatProtocol.ConversationFileType,
+                    dataType = 0,
+                    groupId = conversationId,
+                    userDate = null,
+                    content = OdinSystemSerializer.serialize(content),
+                    previewThumbnail = null,
+                    archivalStatus = null,
+                ),
+                localAppData = LocalAppMetadata(
+                    tags = emptyList(),
+                ),
+                created = created,
+                updated = UnixTimeUtc.ZeroTime,
+                isEncrypted = true,
+                senderOdinId = domain,
+                originalAuthor = domain,
+                versionTag = null,
+                payloads = null,
+            ),
+            serverMetadata = ServerMetadata(
+                accessControlList = AccessControlList(
+                    requiredSecurityGroup = "Owner"
+                ),
+                allowDistribution = true,
+                fileSystemType = FileSystemType.Standard,
+                fileByteCount = 100,
+                originalRecipientCount = participants.size,
+                transferHistory = null,
+            ),
+            priority = 100,
+            fileByteCount = 100,
+        )
+
+        try {
+            fileProcessor.baseUpsertEntryZapZap(
+                identityId = credentials.getIdentityId(),
+                driveId = driveId,
+                fileHeaders = listOf(file),
+                cursor = null,
+            )
+            Logger.d(tag = TAG) {
+                "writeLocalOnlyConversationPlaceholder: persisted uniqueId=$conversationId " +
+                        "driveId=$driveId participants=${participants.size} isGroup=$isGroup"
+            }
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) {
+                "writeLocalOnlyConversationPlaceholder FAILED for uniqueId=$conversationId"
+            }
             throw e
         }
     }

@@ -193,3 +193,28 @@ writing or modifying any screen/composable, verify:
 - Provide `contentDescription` on all meaningful icons/images for accessibility
 - UiState should be a flat `data class` with `_uiState.update { }` pattern
 - One-time events (navigation, snackbar) should use separate `SharedFlow`, not stored in UiState
+
+## Strings & Unicode
+
+User-entered text (messages, descriptions, names, link previews) can contain emoji and other
+non-BMP characters that Kotlin `String` stores as UTF-16 surrogate pairs. Chopping such a
+string with `take(n)`, `substring(0, n)`, `dropLast`, `subSequence`, etc. can split a
+surrogate pair in half and produce a lone surrogate that breaks rendering and downstream
+serialization.
+
+- To truncate user content to a length budget, use `String.truncateToCodePoints(n)` from
+  `id.homebase.api.util.StringExtensions` — it advances past surrogate pairs.
+- For avatar initials from a display name, use `String.initials()` from
+  `id.homebase.core.util.StringExtensions` — it splits on whitespace and returns
+  first-of-first + first-of-last uppercased. Do not write `name.take(2).uppercase()`.
+- `take`/`substring` remain correct for known-ASCII content: URLs, hex/base64, UUIDs,
+  device tokens, byte arrays.
+
+## Adding New Top-Level Features (Add-on Apps)
+
+When adding a self-contained feature that surfaces as an icon in the bottom navigation bar
+(Vault-style — onboarding flow, extend-permissions dialog, settings toggle for icon
+visibility, optional biometric gate), follow the recipe in
+[`ADDING_ADDON_APPS.md`](ADDING_ADDON_APPS.md). It covers preferences with stable UUIDs,
+routing, `AppNavHost` wiring, `AuthConnectionCoordinator` drive subscription, DI, and the
+expect/actual biometric layer.

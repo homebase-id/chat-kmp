@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
@@ -20,6 +21,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_public
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 
 @Composable
 fun PublicAvatar(
@@ -29,6 +31,13 @@ fun PublicAvatar(
     modifier: Modifier = Modifier
 ) {
     val imageUrl = "https://$odinId/pub/image"
+
+    // Defense in depth. SingletonImageLoader is also rewired to this
+    // instance in AppModule.{android,desktop,native}.kt, so a caller that
+    // forgets `imageLoader=` still lands on the configured loader. Passing
+    // explicitly here mirrors HomebaseImage.kt:82,146 and survives any
+    // future Coil upgrade that changes singleton resolution semantics.
+    val imageLoader: ImageLoader = koinInject()
 
     val clickableModifier =
         if (options.onClick != null) {
@@ -44,6 +53,7 @@ fun PublicAvatar(
 
     SubcomposeAsyncImage(
         model = imageUrl,
+        imageLoader = imageLoader,
         contentDescription = stringResource(MR.string.avatar_public),
         contentScale = options.contentScale,
         modifier = clickableModifier

@@ -26,6 +26,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.FallbackAvatar
 import id.homebase.core.util.applyDefaultStyling
+import id.homebase.core.util.applyMarkDownContent
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.initials
 import kotlin.time.Instant
@@ -41,7 +42,7 @@ fun MessageSearchItem(
 ) {
     // See ConversationItem.kt ConversationMessagePreview for why remember is required here
     val textState = remember(message) {
-        RichTextState().applyDefaultStyling().also { it.setMarkdown(message) }
+        RichTextState().applyDefaultStyling().applyMarkDownContent(message)
     }
     Row(
         modifier = Modifier

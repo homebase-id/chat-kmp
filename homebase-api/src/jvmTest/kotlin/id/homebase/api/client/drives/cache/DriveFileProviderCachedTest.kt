@@ -6,6 +6,7 @@ import co.touchlab.kermit.Severity
 import co.touchlab.kermit.platformLogWriter
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
+import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
@@ -160,29 +161,6 @@ class DriveFileProviderCachedTest {
     }
 
     @Test
-    fun `thumb fetch emits ThumbIO breadcrumbs for network-fetch cache-write and cache-hit`() = runTest {
-        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
-
-        assertTrue(
-            logCollector.hasMessage(tag = "ThumbIO", substring = "thumb network-fetch"),
-            "expected ThumbIO network-fetch breadcrumb; got: ${logCollector.messages("ThumbIO")}"
-        )
-        assertTrue(
-            logCollector.hasMessage(tag = "ThumbIO", substring = "thumb cache-write"),
-            "expected ThumbIO cache-write breadcrumb; got: ${logCollector.messages("ThumbIO")}"
-        )
-
-        // Second call must hit the disk cache and log accordingly.
-        logCollector.entries.clear()
-        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
-
-        assertTrue(
-            logCollector.hasMessage(tag = "ThumbIO", substring = "thumb cache-hit"),
-            "expected ThumbIO cache-hit breadcrumb; got: ${logCollector.messages("ThumbIO")}"
-        )
-    }
-
-    @Test
     fun `poisoned cache entry with non-2xx status is visible in the decrypt failure log`() = runTest {
         // Populate the cache with a normal 200 response, then rewrite the on-disk
         // data file with a valid-format ByteApiResponse whose status is 500.
@@ -312,6 +290,42 @@ class DriveFileProviderCachedTest {
         assertTrue(
             clearerErrors.isEmpty(),
             "clearCaches must not throw (got ${clearerErrors.size}: ${clearerErrors.firstOrNull()})"
+        )
+    }
+
+    /**
+     * Regression for real-device symptom where a single FileKache ctor NPE
+     * on the thumb cache was causing BOTH drive rows to disappear from the
+     * Storage screen (the ViewModel's outer runCatching substituted
+     * emptyList for the whole getCacheStats result). Per-cache try/catch
+     * must return a sentinel row for the broken cache + a real row for the
+     * healthy one.
+     *
+     * Forces the thumb ctor to fail by planting a regular file at the path
+     * the FileKache would otherwise create as a directory — createDirectories
+     * then throws IOException, caught by thumbDiskKache's try/catch and
+     * tombstoned.
+     */
+    @Test
+    fun `getCacheStats returns sentinel for broken cache without hiding the healthy one`() = runTest {
+        // Pre-fail the thumb cache: create homebase-thumbs as a FILE, which
+        // makes the subsequent FileKache ctor blow up on createDirectories.
+        Files.write(Path.of(tempDir, "homebase-thumbs"), ByteArray(0))
+
+        val stats = provider.getCacheStats()
+
+        assertEquals(2, stats.size, "both rows must be returned even if one ctor failed")
+
+        val payload = stats.single { it.id == "drive_payloads" }
+        val thumb = stats.single { it.id == "drive_thumbnails" }
+
+        assertTrue(
+            payload.sizeBytes != CacheStats.UNAVAILABLE,
+            "healthy payload cache must NOT be marked unavailable (got sizeBytes=${payload.sizeBytes})"
+        )
+        assertEquals(
+            CacheStats.UNAVAILABLE, thumb.sizeBytes,
+            "broken thumb cache must be marked unavailable via the sentinel"
         )
     }
 

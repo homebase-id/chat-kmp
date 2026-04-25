@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.query.QueryBatchCursor
@@ -33,7 +34,8 @@ class DriveSync(
     private val driveQueryProvider: DriveQueryProvider, // TODO: <- can we get rid of this?
     private val databaseManager: DatabaseManager,
     private val eventBus: EventBus,
-    scope: CoroutineScope? = null
+    scope: CoroutineScope? = null,
+    expectFreshCursor: Boolean = false,
 ) {
     // Background work is Network and DB bound, so using IO
     private val scope = scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -47,21 +49,16 @@ class DriveSync(
     //TODO: Consider having a (readable) "last modified" which holds the largest timestamp of last-modified
 
     init {
-        // Load cursor from database
         val cursorStorage = CursorStorage(databaseManager, driveId)
-        cursor = cursorStorage.loadCursor()
+        cursor = cursorStorage.loadCursor(expectFresh = expectFreshCursor)
     }
 
 
-    // Wipe all synced data on logout — nothing should survive for security
-    suspend fun clearStorage() {
-        databaseManager.driveMainIndex.deleteAll()
-        databaseManager.driveTagIndex.deleteAll()
-        databaseManager.driveLocalTagIndex.deleteAll()
-        databaseManager.chatReadCount.deleteAll()
-        databaseManager.keyValue.deleteByKey(driveId)
-        val cursorStorage = CursorStorage(databaseManager, driveId)
-        cursorStorage.deleteCursor()
+    // Reset in-memory sync state on logout. Every SQL table this drive touches is
+    // wiped centrally by DatabaseManager.wipeAndRecreate(), so this method only has
+    // to zero the cursor we hold in memory — without this the next session would
+    // resume from a stale QueryBatchCursor that no longer matches on-disk rows.
+    fun resetInMemoryState() {
         cursor = null
     }
 
@@ -188,6 +185,13 @@ class DriveSync(
                     if (!queryBatchResponse.hasMoreRows)
                         break
                     retryCount = 0
+                } catch (e: ForbiddenException) {
+                    Logger.w("DriveSync: drive $driveId returned 403 Forbidden — unmounting for this session")
+                    killroy.value = false
+                    eventBus.emit(
+                        BackendEvent.DriveEvent.Stopped(driveId, totalCount, BackendEvent.DriveResult.PermissionDenied)
+                    )
+                    break
                 } catch (e: Exception) {
                     val isTransientNetworkError = e::class.simpleName == "SocketException" ||
                         e.message?.contains("Software caused connection abort") == true ||

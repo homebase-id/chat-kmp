@@ -41,9 +41,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -183,31 +184,28 @@ fun MessageBubbleRaw(
 
     val deletedText = stringResource(MR.string.chat_message_deleted)
     val textState =
-        remember(message.isDeleted, message.content, searchQuery, isCurrentSearchResult) {
+        remember(message.isDeleted, message.content) {
             RichTextState()
                 .applyDefaultStyling(linkColor = if (sentByYou) DarkColors.Primary else LightColors.Primary)
                 .applyMarkDownContent(if (message.isDeleted) deletedText else message.content)
-                .also { state ->
-                    if (searchQuery.isNotEmpty()) {
-                        val plainText = state.annotatedString.text
-                        val lowerQuery = searchQuery.lowercase()
-                        val lowerText = plainText.lowercase()
-                        var startIndex = 0
-                        while (true) {
-                            val idx = lowerText.indexOf(lowerQuery, startIndex)
-                            if (idx == -1) break
-                            val highlightColor = if (isCurrentSearchResult)
-                                Color(0xFFFF8C00).copy(alpha = 0.6f)
-                            else
-                                Color(0xFFFFEB3B).copy(alpha = 0.5f)
-                            state.addSpanStyle(
-                                spanStyle = SpanStyle(background = highlightColor),
-                                TextRange(idx, idx + lowerQuery.length)
-                            )
-                            startIndex = idx + lowerQuery.length
-                        }
-                    }
-                }
+        }
+    // When a search query is active we render a plain AnnotatedString instead of RichText,
+    // so that the string the highlight offsets are computed against is exactly the string
+    // being drawn. RichTextState can reassemble its annotatedString to a different length
+    // at layout time (markdown tokens), which would leave stale SpanStyle ranges and crash
+    // String.subSequence during draw.
+    val highlightedText: AnnotatedString? =
+        remember(message.isDeleted, message.content, searchQuery, isCurrentSearchResult) {
+            if (message.isDeleted) return@remember null
+            val highlightColor = if (isCurrentSearchResult)
+                Color(0xFFFF8C00).copy(alpha = 0.6f)
+            else
+                Color(0xFFFFEB3B).copy(alpha = 0.5f)
+            buildSearchHighlightedText(
+                plain = message.content,
+                searchQuery = searchQuery,
+                highlightColor = highlightColor,
+            )
         }
 
     val shape = remember {
@@ -369,6 +367,13 @@ fun MessageBubbleRaw(
                                         onTextLayout = { textLayoutResult = it },
                                         fontSize = size,
                                         style = MaterialTheme.typography.displaySmall,
+                                        color = contentColor
+                                    )
+                                } else if (highlightedText != null) {
+                                    Text(
+                                        text = highlightedText,
+                                        onTextLayout = { textLayoutResult = it },
+                                        style = MaterialTheme.typography.bodyLarge,
                                         color = contentColor
                                     )
                                 } else {
@@ -609,6 +614,38 @@ fun MessageBubbleRaw(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Build an [AnnotatedString] that highlights every case-insensitive occurrence of
+ * [searchQuery] inside [plain] with a background [highlightColor]. Returns null when
+ * the query is empty or produces no matches, so the caller can decide whether to skip
+ * the highlight code path entirely.
+ *
+ * Every produced span end is clamped to `plain.length`. This is an invariant the
+ * renderer relies on: a span whose end exceeds the drawn string triggers
+ * `String.subSequence` inside Compose's text layout and crashes the main thread.
+ */
+internal fun buildSearchHighlightedText(
+    plain: String,
+    searchQuery: String,
+    highlightColor: Color,
+): AnnotatedString? {
+    if (searchQuery.isEmpty()) return null
+    val lowerQuery = searchQuery.lowercase()
+    val lowerText = plain.lowercase()
+    if (!lowerText.contains(lowerQuery)) return null
+    return buildAnnotatedString {
+        append(plain)
+        var startIndex = 0
+        while (true) {
+            val idx = lowerText.indexOf(lowerQuery, startIndex)
+            if (idx == -1) break
+            val endIdx = (idx + lowerQuery.length).coerceAtMost(plain.length)
+            addStyle(SpanStyle(background = highlightColor), idx, endIdx)
+            startIndex = endIdx
         }
     }
 }

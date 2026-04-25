@@ -77,13 +77,22 @@ data class PendingOutgoingMessage(
 )
 
 sealed interface MessageListUiSheet {
-    data class ConnectIdentities(val identities: List<OdinId>) : MessageListUiSheet
+    data class ConnectIdentities(
+        val identities: List<OdinId>,
+        val autoConnectStates: Map<OdinId, AutoConnectRowState> = emptyMap(),
+    ) : MessageListUiSheet
     data class ForwardMessage(
         val message: MessageUiModel,
         val recipients: ImmutableList<RecipientGroupModel>,
         val selectedRecipients: ImmutableList<RecipientModel> = persistentListOf(),
         val searchTextState: TextFieldState = TextFieldState(),
     ) : MessageListUiSheet
+}
+
+sealed interface AutoConnectRowState {
+    data object Connecting : AutoConnectRowState
+    data object Succeeded : AutoConnectRowState
+    data class Failed(val res: StringResource, val args: List<Any> = emptyList()) : AutoConnectRowState
 }
 
 sealed interface UploadStatus {

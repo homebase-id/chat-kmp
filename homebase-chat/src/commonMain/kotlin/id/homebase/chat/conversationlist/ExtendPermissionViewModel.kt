@@ -6,36 +6,31 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
-import id.homebase.core.config.getPermissionExtensionConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
 
-/**
- * ViewModel that checks for missing app permissions on startup and exposes a UI state to drive the
- * extend permission dialog.
- *
- * This is the KMP equivalent of the React Native `ExtendPermissionDialog` component's
- * permission-checking logic.
- */
 class ExtendPermissionViewModel(
-        private val securityContextProvider: SecurityContextProvider,
-        private val credentialsManager: CredentialsManager,
-        private val eventBus: EventBus,
+    private val securityContextProvider: SecurityContextProvider,
+    private val credentialsManager: CredentialsManager,
+    private val eventBus: EventBus,
+    private val config: PermissionExtensionConfig,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ExtendPermissionUiState>(ExtendPermissionUiState.Idle)
     val uiState: StateFlow<ExtendPermissionUiState> = _uiState.asStateFlow()
 
+    private val _permissionsGranted = MutableStateFlow(false)
+    val permissionsGranted: StateFlow<Boolean> = _permissionsGranted.asStateFlow()
+
     init {
         viewModelScope.launch { checkPermissions() }
 
-        // Re-check permissions when a drive subscription is rejected at the WebSocket level.
-        // This lets the user extend permissions without restarting the app.
         viewModelScope.launch {
             eventBus.events
                 .filterIsInstance<BackendEvent.DriveAuthorizationFailed>()
@@ -48,27 +43,32 @@ class ExtendPermissionViewModel(
         try {
             val domain = credentialsManager.requireActiveCredentials().domain.domainName
             val manager = PermissionExtensionManager.create(securityContextProvider, domain)
-            val config = getPermissionExtensionConfig()
             val result = manager.getMissingPermissions(config)
 
             if (result != null && result.hasMissingPermissions) {
                 Logger.i(tag = TAG) {
                     "Missing permissions detected: drives=${result.missingDrives.size}, permissions=${result.missingPermissions.size}, allConnected=${result.missingAllConnectedCircle}"
                 }
+                _permissionsGranted.value = false
                 _uiState.value =
-                        ExtendPermissionUiState.ShowDialog(
-                                extendPermissionUrl = result.extendPermissionUrl,
-                                appName = config.appName
-                        )
+                    ExtendPermissionUiState.ShowDialog(
+                        extendPermissionUrl = result.extendPermissionUrl,
+                        appName = config.appName
+                    )
             } else {
                 Logger.d(tag = TAG) { "All permissions are granted" }
+                _permissionsGranted.value = true
             }
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error checking permissions: ${e.message}" }
         }
     }
 
-    /** Dismiss the permission dialog. Won't show again for this session. */
+    fun recheckPermissions() {
+        _uiState.value = ExtendPermissionUiState.Idle
+        viewModelScope.launch { checkPermissions() }
+    }
+
     fun dismissDialog() {
         _uiState.value = ExtendPermissionUiState.Dismissed
     }

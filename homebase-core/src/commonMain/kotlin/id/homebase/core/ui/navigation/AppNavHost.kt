@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -70,8 +70,11 @@ import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.connections.ConnectionsScreen
+import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
+import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
+import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
@@ -585,6 +588,18 @@ fun AppNavHost(
                         if (isAuthenticated) {
                             HelpScreen(
                                 viewModel = koinViewModel(),
+                                onBackClick = { navController.popBackStack() },
+                                onNavigateToDeveloperMenu = {
+                                    navController.navigate(Route.DeveloperMenu)
+                                },
+                            )
+                        }
+                    }
+
+                    composable<Route.DeveloperMenu> {
+                        if (isAuthenticated) {
+                            DeveloperMenuScreen(
+                                viewModel = koinViewModel(),
                                 onBackClick = { navController.popBackStack() })
                         }
                     }
@@ -593,7 +608,20 @@ fun AppNavHost(
                         if (isAuthenticated) {
                             StorageSettingsScreen(
                                 viewModel = koinViewModel(),
-                                onBackClick = { navController.popBackStack() })
+                                onBackClick = { navController.popBackStack() },
+                                onNavigateToDefragmenter = {
+                                    navController.navigate(Route.Defragmenter)
+                                },
+                            )
+                        }
+                    }
+
+                    composable<Route.Defragmenter> {
+                        if (isAuthenticated) {
+                            DefragmenterScreen(
+                                viewModel = koinViewModel(),
+                                onClose = { navController.popBackStack() },
+                            )
                         }
                     }
                 }

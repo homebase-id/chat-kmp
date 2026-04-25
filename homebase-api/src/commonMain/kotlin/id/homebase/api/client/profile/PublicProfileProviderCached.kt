@@ -30,19 +30,19 @@ import kotlin.time.Clock
  * Storage-screen rows:
  * - `public_profiles` — serialized [ProfileCard] JSON (display name, bio,
  *   links, email list, avatar URL, etc.). Directory
- *   `homebase-public-profiles`, cap 50 MB.
+ *   `homebase-public-profiles`, cap 10 MB.
  * - `public_images`   — raw avatar image bytes. Directory
  *   `homebase-public-images`, cap 200 MB.
  *
  * The split is deliberate, not incidental. Profile JSON is small (~1–10 KB)
- * and read on every ContactName render and notification hydration; avatar
- * bytes are an order of magnitude larger and sit behind Coil's in-memory
- * cache, so their disk hit rate is lower. A single merged FileKache would
- * let a burst of avatar loads evict the much smaller, much hotter profile
- * JSON under LRU pressure. Keeping them on separate caps (50 MB profiles,
- * 200 MB images) pins the small-hot tier. It also lets the two caps be
- * tuned independently and shows up as two distinct rows on the Storage
- * settings screen.
+ * and used as a sparse fallback for identities without a local contact-drive
+ * record — push senders, forward-sheet targets, unmet-peer [id.homebase.core.widget.ContactName]
+ * renders. Avatar bytes are an order of magnitude larger. A single merged
+ * FileKache would let a burst of avatar loads evict profile JSON entries
+ * under shared-pool LRU pressure; separate caps (10 MB profiles, 200 MB
+ * images) protect the small tier from the large one regardless of relative
+ * request rates. It also lets the two caps be tuned independently and
+ * shows up as two distinct rows on the Storage settings screen.
  *
  * A separate in-memory [notFoundCache] records 404 responses so repeated
  * lookups of missing identities skip the network. Transient failures
@@ -66,6 +66,10 @@ class PublicProfileProviderCached(
     private val directory = fileOperationsProvider.getCacheDirectory()
 
     private val lock = Mutex()
+    // TODO: unbounded growth — keyLocks gains one entry per unique cacheKey
+    //  ever touched and never drops any. Over a long session this leaks
+    //  memory. Same shape in DriveFileProviderCached. Fix with a
+    //  weak-valued map or a periodic prune keyed on last-use timestamp.
     private val keyLocks = mutableMapOf<String, Mutex>()
 
     // Immutable set — always replaced, never mutated in-place.
@@ -76,23 +80,54 @@ class PublicProfileProviderCached(
 
     private var _profileDiskKache: FileKache? = null
     private var _imageDiskKache: FileKache? = null
+    @Volatile private var profileKacheFailure: Throwable? = null
+    @Volatile private var imageKacheFailure: Throwable? = null
     private val kacheMutex = Mutex()
 
     // Always acquires kacheMutex — the previous `by lazy { runBlocking { ... } }`
     // handed out a permanent FileKache reference that a concurrent clearCaches()
     // could poison with .clear(). Mirrors DriveFileProviderCached post-fix.
+    //
+    // createDirectories + tombstone on construction failure: observed on one
+    // Android device that FileKache(…) throws `getClass() on null` from
+    // mayakapps/kache internals when the managed directory is missing.
+    // Pre-create the dir and tombstone the first construction exception so we
+    // don't spam retries for the rest of the session. clearCaches() resets
+    // the tombstone.
     private suspend fun profileDiskKache(): FileKache = kacheMutex.withLock {
-        _profileDiskKache ?: FileKache(
-            directory = "$directory/homebase-public-profiles",
-            maxSize = 50L * 1024L * 1024L
-        ).also { _profileDiskKache = it }
+        _profileDiskKache?.let { return@withLock it }
+        profileKacheFailure?.let { throw it }
+
+        val dir = "$directory/homebase-public-profiles"
+        try {
+            fileSystem.createDirectories(dir.toPath())
+            FileKache(directory = dir, maxSize = 10L * 1024L * 1024L)
+                .also { _profileDiskKache = it }
+        } catch (e: Throwable) {
+            Logger.e(tag = "PublicProfileIO", throwable = e) {
+                "FileKache construction FAILED (profile) — disabling disk cache for this session"
+            }
+            profileKacheFailure = e
+            throw e
+        }
     }
 
     private suspend fun imageDiskKache(): FileKache = kacheMutex.withLock {
-        _imageDiskKache ?: FileKache(
-            directory = "$directory/homebase-public-images",
-            maxSize = 200L * 1024L * 1024L
-        ).also { _imageDiskKache = it }
+        _imageDiskKache?.let { return@withLock it }
+        imageKacheFailure?.let { throw it }
+
+        val dir = "$directory/homebase-public-images"
+        try {
+            fileSystem.createDirectories(dir.toPath())
+            FileKache(directory = dir, maxSize = 200L * 1024L * 1024L)
+                .also { _imageDiskKache = it }
+        } catch (e: Throwable) {
+            Logger.e(tag = "PublicProfileIO", throwable = e) {
+                "FileKache construction FAILED (image) — disabling disk cache for this session"
+            }
+            imageKacheFailure = e
+            throw e
+        }
     }
 
     // =========================================================
@@ -160,6 +195,11 @@ class PublicProfileProviderCached(
         kacheMutex.withLock {
             _profileDiskKache = null
             _imageDiskKache = null
+            // Reset the ctor tombstones — see DriveFileProviderCached.clearCaches
+            // for the full rationale. This is the Clear-caches-button recovery
+            // path for a tombstoned FileKache ctor failure.
+            profileKacheFailure = null
+            imageKacheFailure = null
 
             try {
                 fileSystem.deleteRecursively(profileDir)
@@ -176,21 +216,25 @@ class PublicProfileProviderCached(
         notFoundCache = emptySet()
     }
 
+    // Per-cache try/catch — see DriveFileProviderCached.getCacheStats for the
+    // rationale. Same shape here for symmetry.
     suspend fun getCacheStats(): List<CacheStats> {
-        val profile = profileDiskKache()
-        val image = imageDiskKache()
-        return listOf(
-            CacheStats(
-                id = "public_profiles",
-                sizeBytes = profile.size,
-                maxBytes = profile.maxSize,
-            ),
-            CacheStats(
-                id = "public_images",
-                sizeBytes = image.size,
-                maxBytes = image.maxSize,
-            ),
-        )
+        val out = ArrayList<CacheStats>(2)
+        try {
+            val profile = profileDiskKache()
+            out.add(CacheStats(id = "public_profiles", sizeBytes = profile.size, maxBytes = profile.maxSize))
+        } catch (e: Throwable) {
+            Logger.w(tag = "PublicProfileIO", throwable = e) { "public_profiles stats unavailable" }
+            out.add(CacheStats(id = "public_profiles", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
+        }
+        try {
+            val image = imageDiskKache()
+            out.add(CacheStats(id = "public_images", sizeBytes = image.size, maxBytes = image.maxSize))
+        } catch (e: Throwable) {
+            Logger.w(tag = "PublicProfileIO", throwable = e) { "public_images stats unavailable" }
+            out.add(CacheStats(id = "public_images", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
+        }
+        return out
     }
 
     // =========================================================
@@ -263,7 +307,12 @@ class PublicProfileProviderCached(
                     null
                 }
 
-                else -> throw Exception("Fetch failed: ${response.status}")
+                else -> {
+                    Logger.w(tag = "PublicProfileIO") {
+                        "unexpected status=${response.status.value} key=$cacheKey"
+                    }
+                    throw Exception("Fetch failed: ${response.status}")
+                }
             }
         }
     }

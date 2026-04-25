@@ -95,6 +95,8 @@ class NotificationService(
                 if (id != null) conversationMessageCounts.remove(id.toString())
             }
         }
+        // Route clicks from platform backends (Nucleus on JVM) back to this service.
+        NotificationClickRouter.handler = { data -> handleNotificationClicked(data) }
     }
 
     /** Clears the accumulated message count for a conversation (e.g. on mark-as-read). */
@@ -316,14 +318,18 @@ class NotificationService(
                 if (isAppInForeground) {
                     // Show in-app banner instead of system notification
                     _inAppNotificationEvents.tryEmit(richData)
-                } else if (Platform.osName == "Android") {
-                    // Android: display rich notification from app code (no service extension)
-                    if (shouldAlert) lastAlertMark = TimeSource.Monotonic.markNow()
-                    showRichNotification(richData)
-                    BadgeManager.increment()
-                } else {
+                } else if (Platform.osName.contains("iOS", ignoreCase = true) ||
+                    Platform.osName.contains("iPadOS", ignoreCase = true)
+                ) {
                     // iOS: Notification Service Extension handles background display;
                     // posting here would create a duplicate notification.
+                    BadgeManager.increment()
+                } else {
+                    // Android + Desktop (Windows/macOS/Linux): display rich notification
+                    // from app code. On desktop this routes through Nucleus via
+                    // RichNotificationDisplayer.
+                    if (shouldAlert) lastAlertMark = TimeSource.Monotonic.markNow()
+                    showRichNotification(richData)
                     BadgeManager.increment()
                 }
             } catch (e: Exception) {

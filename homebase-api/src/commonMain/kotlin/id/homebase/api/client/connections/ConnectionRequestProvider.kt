@@ -144,6 +144,35 @@ class ConnectionRequestProvider(
     }
 
     // ------------------------------------------------------------
+    // AUTO-CONNECT
+    // ------------------------------------------------------------
+
+    /**
+     * Sends a connection request on the app-origin auto-connect path. The server runs the
+     * recipient's auto-accept synchronously, so a single HTTP call can resolve the whole flow
+     * and return a typed [ConnectionRequestResult]. Non-2xx responses throw — callers treat transport
+     * / auth failures separately from in-band [AutoConnectOutcome]s.
+     */
+    suspend fun autoConnect(
+        request: ConnectionRequestHeader
+    ): ConnectionRequestResult {
+
+        val creds = requireCreds()
+
+        val endpoint = "/connections/requests/auto-connect"
+
+        val response = encryptedPostJson(
+            url = apiUrl(creds.domain, endpoint),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(request),
+            secret = creds.secret
+        )
+
+        throwForFailure(response)
+        return deserialize(response.body)
+    }
+
+    // ------------------------------------------------------------
     // ACCEPT (PUT)
     // ------------------------------------------------------------
 

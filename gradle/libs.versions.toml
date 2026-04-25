@@ -1,5 +1,5 @@
 [versions]
-agp = "9.1.1"
+agp = "9.2.0"
 android-compileSdk = "36"
 android-minSdk = "27"
 android-targetSdk = "36"
@@ -17,7 +17,9 @@ composeMultiplatform = "1.10.3"
 composeHotReload = "1.1.0-rc01"
 composenativetray = "1.2.0"
 composenativewebview = "1.0.0-beta-01"
+nucleus = "1.14.1"
 conveyor = "2.0"
+conveyorControl = "1.1"
 ffmpegKit = "1.0"
 vlcj = "4.8.2"
 jetbrains-compose-material3 = "1.9.0"
@@ -63,6 +65,7 @@ google-services = "4.4.4"
 sharetarget = "1.2.0"
 playPublisher = "4.0.0"
 buildconfig = "6.0.9"
+play-app-update = "2.1.0"
 
 [libraries]
 ffmpeg-kit = { module = "id.homebase.libs:ffmpeg-kit", version.ref = "ffmpegKit" }
@@ -171,6 +174,12 @@ kache-file = { module = "com.mayakapps.kache:file-kache", version.ref = "kache" 
 kache = { module = "com.mayakapps.kache:kache", version.ref = "kache" }
 composenativetray = { module = "io.github.kdroidfilter:composenativetray", version.ref = "composenativetray" }
 composenativewebview = { module = "io.github.kdroidfilter:composewebview", version.ref = "composenativewebview" }
+conveyor-control = { module = "dev.hydraulic.conveyor:conveyor-control", version.ref = "conveyorControl" }
+play-app-update = { module = "com.google.android.play:app-update-ktx", version.ref = "play-app-update" }
+nucleus-notification-common = { module = "io.github.kdroidfilter:nucleus.notification-common", version.ref = "nucleus" }
+nucleus-notification-windows = { module = "io.github.kdroidfilter:nucleus.notification-windows", version.ref = "nucleus" }
+nucleus-notification-macos = { module = "io.github.kdroidfilter:nucleus.notification-macos", version.ref = "nucleus" }
+nucleus-notification-linux = { module = "io.github.kdroidfilter:nucleus.notification-linux", version.ref = "nucleus" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
