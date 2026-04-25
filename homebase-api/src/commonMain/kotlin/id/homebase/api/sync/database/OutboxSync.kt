@@ -371,6 +371,9 @@ class OutboxSync(
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
     ): Boolean {
+        Logger.d(tag = "MarkAsRead") {
+            "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): drive=${request.driveId} fileId=${request.fileId} hasIv=${request.iv != null} sendNow=$sendNow"
+        }
         val enqueued = tryEnqueue(
             driveId = request.driveId,
             uniqueId = request.fileId,
@@ -379,6 +382,9 @@ class OutboxSync(
             uploadType = DriveOutboxUploader.UpdateLocalMetadataContent,
             json = OdinSystemSerializer.serialize(request)
         )
+        Logger.d(tag = "MarkAsRead") {
+            "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): enqueued=$enqueued drive=${request.driveId} fileId=${request.fileId}"
+        }
 
         if (enqueued && sendNow) {
             // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
@@ -423,6 +429,9 @@ class OutboxSync(
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
     ): Boolean {
+        Logger.d(tag = "MarkAsRead") {
+            "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): drive=${request.driveId} fileIdsCount=${request.fileIds.size} sendNow=$sendNow"
+        }
         val enqueued = tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(),
@@ -431,6 +440,9 @@ class OutboxSync(
             uploadType = DriveOutboxUploader.SendReadReceiptByFileIds,
             json = OdinSystemSerializer.serialize(request)
         )
+        Logger.d(tag = "MarkAsRead") {
+            "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): enqueued=$enqueued drive=${request.driveId}"
+        }
 
         if (enqueued && sendNow) {
             // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not

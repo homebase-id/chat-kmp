@@ -262,23 +262,49 @@ class DriveOutboxUploader(
 
     private suspend fun updateLocalMetadataContent(outboxRecord: Outbox) {
         val request = OdinSystemSerializer.deserialize<UpdateLocalAppdataContentOutboxRequest>(outboxRecord.json.decodeToString())
+        Logger.d(tag = "MarkAsRead") {
+            "DriveOutboxUploader.updateLocalMetadataContent: outboxRow=${outboxRecord.uniqueId} drive=${request.driveId} fileId=${request.fileId} hasIv=${request.iv != null}"
+        }
         val file = fileProvider.getFileHeader(request.driveId, request.fileId)
             ?: error("File not found for local metadata content update: ${request.fileId}")
         val versionTag = request.versionTag
             ?: file.fileMetadata.localAppData?.versionTag?.toString()
-        driveUploadProvider.uploadLocalMetadataContent(
-            driveId = request.driveId,
-            file = file,
-            localAppData = LocalAppData(versionTag = versionTag, content = request.content, iv = request.iv)
-        )
+        try {
+            driveUploadProvider.uploadLocalMetadataContent(
+                driveId = request.driveId,
+                file = file,
+                localAppData = LocalAppData(versionTag = versionTag, content = request.content, iv = request.iv)
+            )
+            Logger.d(tag = "MarkAsRead") {
+                "DriveOutboxUploader.updateLocalMetadataContent: server accepted — outboxRow=${outboxRecord.uniqueId} fileId=${request.fileId} versionTag=$versionTag"
+            }
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = "MarkAsRead") {
+                "DriveOutboxUploader.updateLocalMetadataContent: FAILED outboxRow=${outboxRecord.uniqueId} drive=${request.driveId} fileId=${request.fileId}"
+            }
+            throw t
+        }
     }
 
     private suspend fun sendReadReceiptByFileIds(outboxRecord: Outbox) {
         val request = OdinSystemSerializer.deserialize<SendReadReceiptByFileIdsOutboxRequest>(outboxRecord.json.decodeToString())
-        operationsProvider.sendReadReceiptBatch(
-            driveId = request.driveId,
-            fileIds = request.fileIds,
-        )
+        Logger.d(tag = "MarkAsRead") {
+            "DriveOutboxUploader.sendReadReceiptByFileIds: outboxRow=${outboxRecord.uniqueId} drive=${request.driveId} fileIdsCount=${request.fileIds.size}"
+        }
+        try {
+            operationsProvider.sendReadReceiptBatch(
+                driveId = request.driveId,
+                fileIds = request.fileIds,
+            )
+            Logger.d(tag = "MarkAsRead") {
+                "DriveOutboxUploader.sendReadReceiptByFileIds: server accepted — outboxRow=${outboxRecord.uniqueId}"
+            }
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = "MarkAsRead") {
+                "DriveOutboxUploader.sendReadReceiptByFileIds: FAILED outboxRow=${outboxRecord.uniqueId} drive=${request.driveId}"
+            }
+            throw t
+        }
     }
 
     private suspend fun toggleReaction(outboxRecord: Outbox) {

@@ -45,12 +45,14 @@ class ChatMessageActionService(
 
     suspend fun markAsReadByFiles(conversationId: Uuid, messageIds: List<Uuid>) {
 
-        Logger.d { "Attempting mark-as-read for messageIds: ${messageIds.size}" }
+        Logger.d(tag = TAG) { "enter convo=$conversationId messageIds=${messageIds.size}" }
 
         val batch = messageLookup.getMessages(messageIds)
         val domain = credentialsManager.requireActiveDomain()
 
-        Logger.d { "Attempting mark-as-read for batch count: ${batch.records.size}" }
+        Logger.d(tag = TAG) {
+            "lookup matched=${batch.records.size}/${messageIds.size} domain=$domain"
+        }
 
         val unreadRecords = batch.records
             .filter {
@@ -60,22 +62,35 @@ class ChatMessageActionService(
                         !it.isAuthoredBy(domain)
             }
 
+        Logger.d(tag = TAG) {
+            val excluded = batch.records.size - unreadRecords.size
+            "filter eligible=${unreadRecords.size} excluded=$excluded " +
+                    "(excluded reasons: self-authored | already-read | deleted | pending-send)"
+        }
+
         if (unreadRecords.isEmpty()) {
-            // Nothing to do — this is the common case when the user
-            // scrolls past self-authored or already-read messages.
+            Logger.d(tag = TAG) {
+                "no eligible records — early return; convo=$conversationId no outbox row, no enrich"
+            }
             return
         }
 
         val newReadTime = unreadRecords.maxOf { it.userDate }
+        Logger.d(tag = TAG) {
+            "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} " +
+                    "(max userDate over ${unreadRecords.size} eligible records)"
+        }
 
-        Logger.d { "Calling mark-as-read for unread-records count: ${unreadRecords.size}" }
-
+        val fileIds = unreadRecords.map { it.fileId }
         val enqueued = outboxSync.tryEnqueue(
             request = SendReadReceiptByFileIdsOutboxRequest(
                 driveId = chatDrive,
-                fileIds = unreadRecords.map { it.fileId },
+                fileIds = fileIds,
             )
         )
+        Logger.d(tag = TAG) {
+            "enqueue receipt: enqueued=$enqueued drive=$chatDrive fileIdsCount=${fileIds.size}"
+        }
 
         if (enqueued) {
             // Optimistic local upsert — the read-receipt send is now fire-and-forget
@@ -85,16 +100,44 @@ class ChatMessageActionService(
             unreadRecords
                 .distinctBy { it.conversationId }
                 .forEach {
-                    Logger.d { "Upserting chatReadCount->lastReadTime: ${it.conversationId}" }
+                    Logger.d(tag = TAG) {
+                        "upsert chatReadCount.lastReadTime convo=${it.conversationId} ms=${newReadTime.toEpochMilliseconds()}"
+                    }
                     dbm.chatReadCount.upsertLastReadTime(
                         it.conversationId,
                         UnixTimeUtc(newReadTime)
                     )
                 }
 
-            localLastReadUpdater.updateLocalLastReadTime(conversationId, UnixTimeUtc(newReadTime))
+            Logger.d(tag = TAG) {
+                "→ localLastReadUpdater.updateLocalLastReadTime(convo=$conversationId, ms=${newReadTime.toEpochMilliseconds()})"
+            }
+            try {
+                localLastReadUpdater.updateLocalLastReadTime(
+                    conversationId,
+                    UnixTimeUtc(newReadTime)
+                )
+                Logger.d(tag = TAG) { "← localLastReadUpdater returned ok" }
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) {
+                    "localLastReadUpdater THREW — likely the WIP TODO()s in ConversationService.updateLocalLastReadTime; " +
+                            "unreadCountEnricher will NOT run, UI unread count may stay stale"
+                }
+                throw t
+            }
+
+            Logger.d(tag = TAG) { "→ unreadCountEnricher.enrichConversationWithUnreadCounts(convo=$conversationId)" }
             unreadCountEnricher.enrichConversationWithUnreadCounts(conversationId)
+            Logger.d(tag = TAG) { "← unreadCountEnricher returned" }
+        } else {
+            Logger.w(tag = TAG) {
+                "outbox.tryEnqueue returned false — skipped DB upsert + enrich; convo=$conversationId"
+            }
         }
+    }
+
+    private companion object {
+        const val TAG = "MarkAsRead"
     }
 
     suspend fun toggleReaction(conversationId: Uuid, messageId: Uuid, emoji: String):

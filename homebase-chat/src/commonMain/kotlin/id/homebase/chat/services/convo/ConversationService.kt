@@ -16,7 +16,6 @@ import id.homebase.api.client.drives.upload.FileIdFileIdentifier
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
-import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
@@ -1159,26 +1158,34 @@ class ConversationService(
 
     override suspend fun updateLocalLastReadTime(conversationId: Uuid, newLastReadTime: UnixTimeUtc) {
 
-        val convo = requireConversation(conversationId)
-
-        if (newLastReadTime> UnixTimeUtc(convo.lastRead))
-        {
-            // update the single newLastReadTime field
-
-            // recreate content, etc.
-
-            val request = UpdateLocalAppdataContentOutboxRequest(
-                driveId = TODO(),
-                fileId = TODO(),
-                versionTag = TODO(),
-                content = TODO(),
-                iv = TODO()
-            )
-
-            outboxSync.tryEnqueue(request)
-
-            dbm.chatReadCount.upsertLastReadTime(conversationId, newLastReadTime)
+        Logger.d(tag = "MarkAsRead") {
+            "ConversationService.updateLocalLastReadTime: enter convo=$conversationId newMs=${newLastReadTime.milliseconds}"
         }
+
+        val convo = requireConversation(conversationId)
+        val currentMs = UnixTimeUtc(convo.lastRead).milliseconds
+        val willAdvance = newLastReadTime > UnixTimeUtc(convo.lastRead)
+        Logger.d(tag = "MarkAsRead") {
+            "ConversationService.updateLocalLastReadTime: convo=$conversationId currentMs=$currentMs " +
+                    "newMs=${newLastReadTime.milliseconds} willAdvance=$willAdvance"
+        }
+
+        if (!willAdvance) return
+
+        val request = optimisticWriter.stampConversationLastReadTime(
+            driveId = chatDrive,
+            conversationId = conversationId,
+            newLastReadTime = newLastReadTime,
+        )
+        if (request == null) {
+            Logger.w(tag = "MarkAsRead") {
+                "ConversationService.updateLocalLastReadTime: stampConversationLastReadTime returned null — conversation file missing or optimistic write failed; convo=$conversationId"
+            }
+            return
+        }
+
+        outboxSync.tryEnqueue(request)
+        dbm.chatReadCount.upsertLastReadTime(conversationId, newLastReadTime)
     }
 
 }

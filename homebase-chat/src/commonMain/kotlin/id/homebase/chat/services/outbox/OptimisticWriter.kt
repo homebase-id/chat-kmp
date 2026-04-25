@@ -498,19 +498,45 @@ class OptimisticWriter(
         return Pair(resultType, existingFile)
     }
 
+    suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalAppdataContentOutboxRequest? =
+        stampConversationLocalAppData(driveId, conversationId, "stampConversationExitedAt") {
+            it.copy(lastExitedAt = UnixTimeUtc())
+        }
+
+    suspend fun stampConversationLastReadTime(
+        driveId: Uuid,
+        conversationId: Uuid,
+        newLastReadTime: UnixTimeUtc,
+    ): UpdateLocalAppdataContentOutboxRequest? =
+        stampConversationLocalAppData(driveId, conversationId, "stampConversationLastReadTime") {
+            it.copy(lastReadTime = newLastReadTime)
+        }
+
     @OptIn(ExperimentalEncodingApi::class)
-    suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalAppdataContentOutboxRequest? {
+    private suspend fun stampConversationLocalAppData(
+        driveId: Uuid,
+        conversationId: Uuid,
+        opName: String,
+        mutate: (ConversationLocalAppDataJson) -> ConversationLocalAppDataJson,
+    ): UpdateLocalAppdataContentOutboxRequest? {
+        Logger.d(tag = "MarkAsRead") {
+            "OptimisticWriter.$opName: enter convo=$conversationId drive=$driveId"
+        }
         val credentials = credentialsManager.requireActiveCredentials()
 
         val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), driveId, conversationId
-        ) ?: return null
+        ) ?: run {
+            Logger.w(tag = "MarkAsRead") {
+                "OptimisticWriter.$opName: convo=$conversationId NOT FOUND in DriveMainIndex — skipping"
+            }
+            return null
+        }
 
         val existing = existingFile.fileMetadata.localAppData?.content?.let {
             try { OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it) } catch (_: Throwable) { null }
         }
-        val updatedLocalAppData = (existing ?: ConversationLocalAppDataJson())
-            .copy(lastExitedAt = UnixTimeUtc())
+        val updatedLocalAppData = mutate(existing ?: ConversationLocalAppDataJson())
         val content = OdinSystemSerializer.serialize(updatedLocalAppData)
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
@@ -558,6 +584,9 @@ class OptimisticWriter(
                     source = BackendEvent.SyncSource.DriveSync
                 )
             )
+            Logger.d(tag = "MarkAsRead") {
+                "OptimisticWriter.$opName: optimistic local upsert ok convo=$conversationId fileId=${existingFile.fileId} encrypted=${existingFile.serverFileIsEncrypted} → returning UpdateLocalAppdataContentOutboxRequest"
+            }
             UpdateLocalAppdataContentOutboxRequest(
                 driveId = driveId,
                 fileId = existingFile.fileId,
@@ -566,7 +595,8 @@ class OptimisticWriter(
                 iv = ivBase64
             )
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "stampConversationExitedAt failed for conversationId=$conversationId" }
+            Logger.e(throwable = e, tag = TAG) { "$opName failed for conversationId=$conversationId" }
+            Logger.e(throwable = e, tag = "MarkAsRead") { "OptimisticWriter.$opName FAILED convo=$conversationId" }
             null
         }
     }
