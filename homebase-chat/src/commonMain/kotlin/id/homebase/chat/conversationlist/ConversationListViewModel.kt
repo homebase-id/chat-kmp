@@ -348,6 +348,27 @@ class ConversationListViewModel(
                 }
         }
 
+        // Once the message is durably queued in the outbox, leave the
+        // "Preparing…" state — local prep is done, the network handoff is
+        // the only thing left. Show the generic "Sending…" spinner until
+        // the upload reports progress or completes. Don't move backwards
+        // from Processing/Uploading/Completed if those somehow arrive
+        // first.
+        viewModelScope.launch {
+            eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemEnqueued }
+                .collect { event ->
+                    event as BackendEvent.OutboxEvent.ItemEnqueued
+                    _messagesUiState.update { state ->
+                        val current = state.uploadProgress[event.uniqueId]
+                        if (current is UploadStatus.Preparing) {
+                            state.copy(
+                                uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Sending)).toPersistentMap()
+                            )
+                        } else state
+                    }
+                }
+        }
+
         viewModelScope.launch {
             eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemCompleted }
                 .collect { event ->
