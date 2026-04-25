@@ -429,6 +429,13 @@ class ConversationListViewModel(
         // selectConversation once. A user-initiated tap on a different
         // conversation (onAction.ConversationClicked) clears the pending
         // tap so a stale notification can't yank them away.
+        //
+        // Note on combine first-emit semantics: combine fires immediately on
+        // collect with the current values of both upstream flows. If a tap is
+        // already pending AND the conversation is already in the list when
+        // CLVM is created (returning user, instant cold-load), selectConversation
+        // fires during VM init. That's intentional — it's the right behavior —
+        // but worth knowing when reading a stack trace.
         viewModelScope.launch {
             combine(
                 pendingNotificationTap.state,
@@ -454,6 +461,11 @@ class ConversationListViewModel(
     }
 
     override fun onCleared() {
+        // PendingNotificationTap is a Koin singleton — clearing it from this per-VM
+        // hook is intentional: when CLVM is destroyed (config change, navigation
+        // away, process-recovery), an unresolved tap from THIS session must not
+        // auto-resolve in the next CLVM instance and yank the user somewhere
+        // unexpected.
         pendingNotificationTap.clear()
         super.onCleared()
     }

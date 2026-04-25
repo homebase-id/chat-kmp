@@ -52,6 +52,7 @@ class PendingNotificationTap(
     data class Tap(
         val conversationId: Uuid,
         val messageId: Uuid,
+        /** Captured for diagnostic logging; not part of the equality contract. */
         val createdAt: Instant,
     )
 
@@ -61,6 +62,12 @@ class PendingNotificationTap(
     @Volatile
     private var expiryJob: Job? = null
 
+    /**
+     * Set a fresh pending tap. Any previous tap is overwritten and its TTL timer
+     * cancelled — the new tap starts a new countdown. Safe to call from any context;
+     * non-suspend by design so action handlers (e.g. `onAction.ConversationClicked`)
+     * can call it without a coroutine.
+     */
     fun set(conversationId: Uuid, messageId: Uuid) {
         expiryJob?.cancel()
         val tap = Tap(conversationId, messageId, Clock.System.now())
@@ -91,6 +98,12 @@ class PendingNotificationTap(
         _state.value = null
     }
 
+    /**
+     * Intended for the resolver in `ConversationListViewModel`: clear the tap iff
+     * the one we're clearing is still the active one. The compareAndSet inside
+     * protects against a racing fresh `set()` between read and clear — a newer
+     * tap from a second notification mid-resolution must not be clobbered.
+     */
     fun clearIfMatches(conversationId: Uuid) {
         val current = _state.value ?: return
         if (current.conversationId == conversationId) {
