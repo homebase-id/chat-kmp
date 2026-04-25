@@ -20,6 +20,7 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.config.LabeledDrive
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -125,13 +126,17 @@ class DriveRegistry(
         val local = loadDrives()
         if (local.isNotEmpty()) return local
         val chatDriveId = SystemDriveConstants.chatDrive.alias
-        val server = runCatching { getFileHeaderByUid(chatDriveId, REGISTRY_UNIQUE_ID) }
-            .getOrElse { e ->
-                Logger.w(tag = TAG, throwable = e) {
-                    "bootstrap: server fetch failed — falling back to empty (observer will pick up after first sync)"
-                }
-                return emptyList()
-            } ?: return emptyList()
+        val server = try {
+            getFileHeaderByUid(chatDriveId, REGISTRY_UNIQUE_ID)
+        } catch (e: CancellationException) {
+            // Don't swallow cancellation — let the caller's scope tear down cleanly.
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) {
+                "bootstrap: server fetch failed — falling back to empty (observer will pick up after first sync)"
+            }
+            return emptyList()
+        } ?: return emptyList()
         return parseRegistryContent(server)
     }
 
@@ -323,13 +328,16 @@ class DriveRegistry(
 
     private fun parseRegistryContent(file: HomebaseFile): List<LabeledDrive> {
         val content = file.fileMetadata.appData.content ?: return emptyList()
-        return runCatching { OdinSystemSerializer.deserialize<List<LabeledDrive>>(content) }
-            .getOrElse {
-                Logger.w(tag = TAG, throwable = it) {
-                    "parseRegistryContent: corrupt content in registry file — returning empty list"
-                }
-                emptyList()
+        return try {
+            OdinSystemSerializer.deserialize<List<LabeledDrive>>(content)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) {
+                "parseRegistryContent: corrupt content in registry file — returning empty list"
             }
+            emptyList()
+        }
     }
 
     companion object {

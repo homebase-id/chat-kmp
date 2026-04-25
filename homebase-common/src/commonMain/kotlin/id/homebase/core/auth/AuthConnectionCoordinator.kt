@@ -222,15 +222,15 @@ class AuthConnectionCoordinator(
     }
 
     /**
-     * Activate an optional add-on drive. When [persist] is true (default), uploads a
-     * registry marker to the Chat drive so the activation syncs to the user's other
-     * devices. Hot-mounts the drive in [DriveSyncManager] (HTTP polling starts
-     * immediately) and schedules a debounced WebSocket reconnect so real-time push
-     * arrives within [REFRESH_DEBOUNCE_MS]. Multiple rapid calls coalesce.
+     * Activate an optional add-on drive. When [persist] is true (default), appends the
+     * drive to the registry list file on the Chat drive so the activation syncs to the
+     * user's other devices. Hot-mounts the drive in [DriveSyncManager] (HTTP polling
+     * starts immediately) and schedules a debounced WebSocket reconnect so real-time
+     * push arrives within [REFRESH_DEBOUNCE_MS]. Multiple rapid calls coalesce.
      *
      * Pass `persist = false` when the activation originated elsewhere (e.g. another
-     * device already uploaded the marker, and the Chat-drive observer surfaced it
-     * locally) — persisting again would be a no-op on the server but wastes work.
+     * device already wrote the registry update, and the Chat-drive observer surfaced
+     * it locally) — persisting again would just churn the file with the same content.
      */
     suspend fun mountDrive(drive: LabeledDrive, persist: Boolean = true) {
         if (persist) driveRegistry.addDrive(drive)
@@ -239,15 +239,16 @@ class AuthConnectionCoordinator(
     }
 
     /**
-     * Deactivate an optional add-on drive. When [persist] is true (default), hard-deletes
-     * the registry marker from the Chat drive so the removal syncs to other devices.
-     * Unmounts from [DriveSyncManager] and schedules a debounced WebSocket reconnect.
+     * Deactivate an optional add-on drive. When [persist] is true (default), removes the
+     * drive from the registry list file on the Chat drive so the change syncs to the
+     * user's other devices. Unmounts from [DriveSyncManager] and schedules a debounced
+     * WebSocket reconnect.
      *
      * Intended for user-initiated removals and for the Chat-drive observer's unmount
-     * callback (which passes `persist = false` because the deletion originated elsewhere).
+     * callback (which passes `persist = false` because the change originated elsewhere).
      * The 403/PermissionDenied auto-unmount in [DriveSyncManager] bypasses this path on
      * purpose — re-subscribing would just get rejected again, and we do NOT want to
-     * propagate a permission-denied condition as a registry deletion to other devices.
+     * propagate a permission-denied condition as a registry list mutation to other devices.
      */
     suspend fun unmountDrive(driveId: Uuid, persist: Boolean = true) {
         if (persist) driveRegistry.removeDrive(driveId)
