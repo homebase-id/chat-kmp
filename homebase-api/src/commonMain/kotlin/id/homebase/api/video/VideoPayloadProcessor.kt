@@ -5,10 +5,12 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.utils.io.core.toByteArray
+import kotlin.uuid.Uuid
 
 
 class VideoPayloadProcessor(
@@ -220,18 +222,21 @@ class VideoPayloadProcessor(
         )
     }
 
-    private suspend fun encryptVideoFile(
+    internal suspend fun encryptVideoFile(
         inputPath: String,
         keyHeader: KeyHeader
     ): String {
-        val bytes = fileOperationsProvider.readFileBytes(inputPath)
-        val encrypted = keyHeader.encryptDataAes(bytes)
-
-        return fileOperationsProvider.writeBytesToTempFile(
-            encrypted,
-            "video-encrypted",
-            ".bin"
+        val outputPath =
+            "${fileOperationsProvider.getCacheDirectory()}/video-encrypted-${Uuid.random()}.bin"
+        fileOperationsProvider.writeStream(
+            path = outputPath,
+            data = AesCbc.streamEncryptWithCbc(
+                dataStream = fileOperationsProvider.readFileAsFlow(inputPath),
+                key = keyHeader.aesKey,
+                iv = keyHeader.iv,
+            ),
         )
+        return outputPath
     }
 
     private suspend fun detectVideoCodec(filePath: String): String {

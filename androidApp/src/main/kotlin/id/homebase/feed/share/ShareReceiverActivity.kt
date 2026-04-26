@@ -27,7 +27,6 @@ import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.FFmpegUtils
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
@@ -427,19 +426,19 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         return null
     }
 
-    private suspend fun convertToAttachmentFiles(files: List<SharedFile>): List<AttachmentPendingFile> {
+    private fun convertToAttachmentFiles(files: List<SharedFile>): List<AttachmentPendingFile> {
         return files.map { sharedFile ->
             val platformFile = PlatformFile(java.io.File(sharedFile.path))
             when {
                 sharedFile.mimeType.startsWith("image/") ->
                     AttachmentPendingFile.FileImage(Uuid.random(), platformFile)
-                sharedFile.mimeType.startsWith("video/") -> {
-                    val thumbnailPath = FFmpegUtils.grabThumbnail(sharedFile.path)
-                    val thumbnailBytes = thumbnailPath?.let {
-                        java.io.File(it).readBytes()
-                    }
-                    AttachmentPendingFile.FileVideo(Uuid.random(), platformFile, thumbnailBytes)
-                }
+                sharedFile.mimeType.startsWith("video/") ->
+                    // Editor renders the poster via Coil's VideoFrameDecoder when bytes
+                    // are null; the upload pipeline extracts its own thumbnails from the
+                    // file path inside VideoPayloadProcessor. So we don't need to do any
+                    // synchronous extraction here — that was the slowest part of opening
+                    // the share preview for big videos.
+                    AttachmentPendingFile.FileVideo(Uuid.random(), platformFile, thumbnailBytes = null)
                 else ->
                     AttachmentPendingFile.File(Uuid.random(), platformFile)
             }

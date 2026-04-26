@@ -23,6 +23,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -2763,13 +2764,16 @@ class ConversationListViewModel(
                 }
             }
 
-            // Refine image aspect ratios off the main path.
+            // Refine image aspect ratios off the main path. Try a header-only parser
+            // first so we don't allocate the full image bytes just to read width/height;
+            // fall back to the full-bytes decoder for formats we can't sniff (e.g. HEIC).
             if (imagePathsToRefine.isNotEmpty()) {
                 viewModelScope.launch {
                     imagePathsToRefine.forEach { (payloadKey, path) ->
                         val aspect = runCatching {
-                            val bytes = fileOperationsProvider.readFileBytes(path)
-                            val size = ImageUtils.getNaturalSize(bytes)
+                            val header = fileOperationsProvider.readFileHeaderBytes(path)
+                            val size = ImageHeaderParser.parse(header)
+                                ?: ImageUtils.getNaturalSize(fileOperationsProvider.readFileBytes(path))
                             if (size.pixelWidth > 0 && size.pixelHeight > 0)
                                 size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
                             else null

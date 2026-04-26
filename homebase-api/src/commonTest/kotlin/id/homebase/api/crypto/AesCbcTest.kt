@@ -339,4 +339,60 @@ class AesCbcTest {
             AesCbc.streamDecryptWithCbc(dataStream, key, iv).toList()
         }
     }
+
+    // ========================================================================
+    // Arbitrary chunk shape — pins the fix for the previously-broken contract
+    // (every chunk had to be a multiple of 16 bytes, which crashed for sub-block
+    // tails and could silently produce wrong ciphertext for unaligned chunks).
+    // ========================================================================
+
+    private suspend fun assertStreamMatchesBulk(
+        plaintext: ByteArray,
+        chunks: List<ByteArray>,
+    ) {
+        val key = ByteArrayUtil.getRndByteArray(16)
+        val iv = ByteArrayUtil.getRndByteArray(16)
+
+        val streamed = mutableListOf<ByteArray>()
+        AesCbc.streamEncryptWithCbc(flowOf(*chunks.toTypedArray()), key, iv).toList(streamed)
+        val streamedBytes = streamed.fold(ByteArray(0)) { acc, b -> acc + b }
+        val bulkBytes = AesCbc.encrypt(plaintext, key, iv)
+        assertEquals(bulkBytes.contentToString(), streamedBytes.contentToString())
+    }
+
+    @Test
+    fun streamEncrypt_singleSubBlockChunk_matchesBulk() = runTest {
+        listOf(1, 7, 15).forEach { size ->
+            val plaintext = ByteArray(size) { (it + 1).toByte() }
+            assertStreamMatchesBulk(plaintext, listOf(plaintext))
+        }
+    }
+
+    @Test
+    fun streamEncrypt_unalignedFinalChunk_matchesBulk() = runTest {
+        listOf(1, 7, 15).forEach { tailSize ->
+            val head = ByteArray(65536) { it.toByte() }
+            val tail = ByteArray(tailSize) { (0xFF - it).toByte() }
+            assertStreamMatchesBulk(head + tail, listOf(head, tail))
+        }
+    }
+
+    @Test
+    fun streamEncrypt_unalignedSourceChunks_matchesBulk() = runTest {
+        // No individual chunk is block-aligned, and they cross multiple block
+        // boundaries — exercises the carry buffer's combine-and-peel logic.
+        val a = ByteArray(17) { it.toByte() }
+        val b = ByteArray(17) { (it + 17).toByte() }
+        val c = ByteArray(17) { (it + 34).toByte() }
+        assertStreamMatchesBulk(a + b + c, listOf(a, b, c))
+    }
+
+    @Test
+    fun streamEncrypt_emptyChunkInMiddle_matchesBulk() = runTest {
+        // Defensive: producers may emit empty chunks. They must be skipped without
+        // affecting chaining.
+        val a = ByteArray(16) { it.toByte() }
+        val b = ByteArray(16) { (it + 16).toByte() }
+        assertStreamMatchesBulk(a + b, listOf(a, ByteArray(0), b))
+    }
 }
