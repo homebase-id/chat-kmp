@@ -75,6 +75,12 @@ class EditorModel internal constructor(
 
         applyFixedRatio()
 
+        // Seed inBoundsMemory so postEdit's restore-on-bad-crop path falls
+        // back to a correct initial state instead of the default identity
+        // (which would map natural-pixel space onto canonical bounds and
+        // render the image at a totally wrong scale/position).
+        inBoundsMemory.push(mainImage, hierarchy.cropEditorElement)
+
         if (!visibleViewPort.isEmpty()) {
             hierarchy.updateViewToCrop(visibleViewPort, viewportScaleIn)
         }
