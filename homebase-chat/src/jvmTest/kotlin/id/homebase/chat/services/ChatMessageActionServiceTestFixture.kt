@@ -4,6 +4,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
@@ -14,12 +15,15 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.UnreadCountEnricher
@@ -35,6 +39,7 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.TestScope
+import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -172,6 +177,174 @@ class ChatMessageActionServiceTestFixture : AutoCloseable {
             hasMore = false,
         )
         return id
+    }
+
+    /**
+     * Seed a 1:1 conversation between [testDomain] and [other] into the in-memory
+     * DB so `conversationService.getConversation(convoId)` returns it with the
+     * expected participants list. Used by deleteMessage tests that need a real
+     * conversation row to compute recipients.
+     */
+    suspend fun seedOneOnOneConversation(
+        other: String,
+        conversationId: Uuid = Uuid.random(),
+    ): Uuid {
+        val fileId = Uuid.random()
+        val now = Clock.System.now().epochSeconds
+        val participants = listOf(testDomain, other)
+        val recipientsJson = participants.joinToString(",") { "\"$it\"" }
+        val contentJson = """{"title":"","version":1,"recipients":[$recipientsJson]}"""
+        val escaped = contentJson.replace("\"", "\\\"")
+        insertFile(
+            """{
+              "fileId": "$fileId",
+              "driveId": "$chatDriveId",
+              "fileState": "active",
+              "fileSystemType": "standard",
+              "serverFileIsEncrypted": "false",
+              "keyHeader": {
+                "iv": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                "aesKey": {"bytes": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}
+              },
+              "fileMetadata": {
+                "globalTransitId": "${Uuid.random()}",
+                "created": ${now}000,
+                "updated": ${now}000,
+                "transitCreated": ${now}000,
+                "transitUpdated": 0,
+                "isEncrypted": false,
+                "senderOdinId": "$testDomain",
+                "originalAuthor": "$testDomain",
+                "appData": {
+                  "uniqueId": "$conversationId",
+                  "tags": null,
+                  "fileType": ${ChatProtocol.ConversationFileType},
+                  "dataType": 0,
+                  "groupId": null,
+                  "userDate": ${now}000,
+                  "content": "$escaped",
+                  "previewThumbnail": null,
+                  "archivalStatus": 0
+                },
+                "localAppData": null,
+                "referencedFile": null,
+                "reactionPreview": null,
+                "versionTag": "${Uuid.random()}",
+                "payloads": [],
+                "dataSource": null
+              },
+              "serverMetadata": {
+                "accessControlList": {
+                  "requiredSecurityGroup": "owner",
+                  "circleIdList": null,
+                  "odinIdList": null
+                },
+                "doNotIndex": false,
+                "allowDistribution": true,
+                "fileSystemType": "standard",
+                "fileByteCount": 100,
+                "originalRecipientCount": 1,
+                "transferHistory": null
+              },
+              "priority": 300,
+              "fileByteCount": 100
+            }"""
+        )
+        return conversationId
+    }
+
+    /**
+     * Seed a chat-message file row into DriveMainIndex AND register it with the
+     * fake messageLookup. Returns the message uniqueId.
+     *
+     * Both pieces are required because `ChatMessageActionService.deleteMessage`
+     * looks the message up via [MessageLookup] (for conversationId/authorship)
+     * AND independently resolves its fileId via QueryBatch over DriveMainIndex
+     * (`requireFileId(messageId)`).
+     */
+    suspend fun seedDeletableMessage(
+        conversationId: Uuid,
+        senderDomain: String = testDomain,
+        userDateMs: Long = 100L,
+        id: Uuid = Uuid.random(),
+        fileId: Uuid = Uuid.random(),
+    ): Uuid {
+        // 1) FakeMessageLookup record (so getMessage(id) returns non-null).
+        seedMessage(
+            conversationId = conversationId,
+            senderDomain = senderDomain,
+            userDateMs = userDateMs,
+            id = id,
+            fileId = fileId,
+        )
+
+        // 2) Real DriveMainIndex row keyed by uniqueId=id so requireFileId(id) finds it.
+        val now = Clock.System.now().epochSeconds
+        insertFile(
+            """{
+              "fileId": "$fileId",
+              "driveId": "$chatDriveId",
+              "fileState": "active",
+              "fileSystemType": "standard",
+              "serverFileIsEncrypted": "false",
+              "keyHeader": {
+                "iv": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                "aesKey": {"bytes": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}
+              },
+              "fileMetadata": {
+                "globalTransitId": "${Uuid.random()}",
+                "created": ${userDateMs}000,
+                "updated": ${userDateMs}000,
+                "transitCreated": ${userDateMs}000,
+                "transitUpdated": 0,
+                "isEncrypted": false,
+                "senderOdinId": "$senderDomain",
+                "originalAuthor": "$senderDomain",
+                "appData": {
+                  "uniqueId": "$id",
+                  "tags": null,
+                  "fileType": ${ChatProtocol.MessageFileType},
+                  "dataType": 0,
+                  "groupId": "$conversationId",
+                  "userDate": ${userDateMs}000,
+                  "content": "",
+                  "previewThumbnail": null,
+                  "archivalStatus": 0
+                },
+                "localAppData": null,
+                "referencedFile": null,
+                "reactionPreview": null,
+                "versionTag": "${Uuid.random()}",
+                "payloads": [],
+                "dataSource": null
+              },
+              "serverMetadata": {
+                "accessControlList": {
+                  "requiredSecurityGroup": "owner",
+                  "circleIdList": null,
+                  "odinIdList": null
+                },
+                "doNotIndex": false,
+                "allowDistribution": true,
+                "fileSystemType": "standard",
+                "fileByteCount": 50,
+                "originalRecipientCount": 1,
+                "transferHistory": null
+              },
+              "priority": 300,
+              "fileByteCount": 50
+            }"""
+        )
+        return id
+    }
+
+    private suspend fun insertFile(jsonHeader: String) {
+        val header = OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader)
+        val processor = MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
+        val record = processor.convertFileHeaderToDriveMainIndexRecord(
+            testIdentityId, chatDriveId, header
+        )
+        MainIndexMetaHelpers.upsertDriveMainIndex(dbm, record)
     }
 
     /**
