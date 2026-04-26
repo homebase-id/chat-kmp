@@ -3,6 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,11 +37,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,8 +52,8 @@ import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import id.homebase.api.isIos
+import id.homebase.core.gallery.GalleryCache
 import id.homebase.core.gallery.GalleryImage
-import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.gallery.rememberGalleryPermissionState
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.isMobile
@@ -66,7 +67,6 @@ import id.homebase.resources.chat_no_gallery_items
 import id.homebase.resources.chat_select_more_photos
 import id.homebase.resources.go_to_settings
 import id.homebase.resources.manage
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
@@ -98,15 +98,12 @@ fun AttachmentGallery(
     if (isMobile()) {
         // Get ImageLoader with HomebaseImageFetcher from Koin DI
         val imageLoader: ImageLoader = koinInject()
-        val scope = rememberCoroutineScope()
-        val galleryLoader = koinInject<PlatformGalleryManager>()
-        val galleryItems = remember { mutableStateListOf<GalleryImage>() }
+        val galleryCache = koinInject<GalleryCache>()
+        val galleryItems by galleryCache.items.collectAsStateWithLifecycle()
         val galleryPermissionState = rememberGalleryPermissionState(
             onGalleryPermissionGranted = {
-                scope.launch {
-                    galleryItems.clear()
-                    galleryItems.addAll(galleryLoader.fetchGalleryImages())
-                }
+                // Permission flipped on — kick the cache to refresh now that we can read.
+                galleryCache.refresh()
             }
         )
 
@@ -143,8 +140,7 @@ fun AttachmentGallery(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
 
-                        items(galleryItems.size) { index ->
-                            val galleryImage = galleryItems[index]
+                        items(galleryItems, key = { it.id }) { galleryImage ->
                             Box(
                                 contentAlignment = Alignment.Center
                             ) {
@@ -164,6 +160,20 @@ fun AttachmentGallery(
                                         contentDescription = null,
                                         tint = Color.White.copy(alpha = 0.85f)
                                     )
+                                    val duration = galleryImage.durationMs
+                                    if (duration != null && duration > 0) {
+                                        Text(
+                                            text = formatDuration(duration),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White,
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(6.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color.Black.copy(alpha = 0.55f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -271,6 +281,18 @@ fun AttachmentOptions(
 //                }
 //            }
         }
+    }
+}
+
+private fun formatDuration(durationMs: Long): String {
+    val totalSeconds = durationMs / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        "$hours:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+    } else {
+        "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
     }
 }
 
