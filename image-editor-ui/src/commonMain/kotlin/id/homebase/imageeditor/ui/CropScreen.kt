@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -124,6 +125,10 @@ fun CropScreen(
                 // animated one (otherwise pointer mapping lags by 250ms).
                 val rawSnapshot = viewModel.matrixSnapshot
                 val animatedSnapshot = rememberAnimatedSnapshot(rawSnapshot)
+                // The pointerInput key inside cropGestures is Unit so the
+                // gesture loop survives a frame-rate snapshot churn; the
+                // gesture handler reads the latest snapshot via this State.
+                val snapshotState = rememberUpdatedState(rawSnapshot)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -142,7 +147,7 @@ fun CropScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .cropGestures(
-                                snapshot = rawSnapshot,
+                                snapshotState = snapshotState,
                                 thumbHitRadius = THUMB_HIT_RADIUS,
                                 callbacks = callbacks,
                                 isShowingGridState = gridState,

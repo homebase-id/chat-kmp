@@ -4,6 +4,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -24,23 +25,29 @@ import kotlin.math.hypot
  * Compose pointer modifier driving the cropper. First-pointer-down decides
  * whether the gesture targets a corner thumb or pans/zooms the main image —
  * the two modes never overlap.
+ *
+ * The [snapshotState] holder is read fresh at each gesture start so the
+ * pointerInput key stays stable across recompositions; otherwise the gesture
+ * loop would restart every time `snapshotMatrices()` fires (i.e., on every
+ * gesture frame after the live-cropRect change), losing its mode mid-drag.
  */
 fun Modifier.cropGestures(
-    snapshot: MatrixSnapshot,
+    snapshotState: State<MatrixSnapshot>,
     thumbHitRadius: Dp,
     callbacks: CropGestureCallbacks,
     isShowingGridState: MutableState<Boolean>,
-): Modifier = pointerInput(snapshot) {
+): Modifier = pointerInput(Unit) {
     val hitRadiusPx = thumbHitRadius.toPx()
     awaitEachGesture {
         val firstDown = awaitFirstDown(requireUnconsumed = false)
         val firstPos = firstDown.position
-        val thumb = hitTestThumb(firstPos, snapshot, hitRadiusPx)
+        val snapshotAtStart = snapshotState.value
+        val thumb = hitTestThumb(firstPos, snapshotAtStart, hitRadiusPx)
 
         isShowingGridState.value = true
         try {
             if (thumb != null) {
-                handleThumbDrag(snapshot, thumb, firstDown.id, firstPos, callbacks)
+                handleThumbDrag(snapshotAtStart, thumb, firstDown.id, firstPos, callbacks)
             } else {
                 handleImageTransform(firstDown.id, firstPos, callbacks)
             }
