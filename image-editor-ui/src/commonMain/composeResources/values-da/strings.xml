@@ -5,6 +5,9 @@
     <string name="crop_action_cancel">Annuller</string>
     <string name="crop_action_back">Tilbage</string>
     <string name="crop_action_rotate">Roter</string>
+    <string name="crop_action_flip">Vend vandret</string>
+    <string name="crop_action_lock_aspect">Lås billedformat</string>
+    <string name="crop_action_lock_aspect_off">Lås billedformat op</string>
     <string name="crop_action_reset">Nulstil</string>
     <string name="crop_action_undo">Fortryd</string>
     <string name="crop_action_redo">Gendan</string>

@@ -84,6 +84,9 @@ class CropEditorViewModel(
             }
             previewBitmap = prep.previewBytes.toImageBitmap()
             model.onImageReady(prep.naturalSize)
+            // Default aspect = Free → start unlocked so the user can drag
+            // any corner without being constrained.
+            model.setCropAspectLock(false)
             if (!visibleViewportPx.isEmpty()) {
                 model.setVisibleViewPort(visibleViewportPx)
             }
@@ -135,10 +138,12 @@ class CropEditorViewModel(
             }
             CropEditorUiAction.ResetClicked -> {
                 model.reset()
+                model.setCropAspectLock(false)
                 snapshotMatrices()
                 _uiState.update {
                     it.copy(
                         aspectMode = AspectMode.Free,
+                        cropAspectLocked = false,
                         freeRotationDegrees = 0f,
                         canUndo = false,
                         canRedo = false,
@@ -150,12 +155,27 @@ class CropEditorViewModel(
                 snapshotMatrices()
                 refreshUndoRedo()
             }
+            CropEditorUiAction.FlipHorizontalClicked -> {
+                model.flipHorizontal()
+                snapshotMatrices()
+                refreshUndoRedo()
+            }
             is CropEditorUiAction.AspectChanged -> {
                 model.pushUndoPoint()
                 model.setFixedRatio(action.aspect.ratio)
+                // Selecting a fixed-ratio chip auto-locks; "Free" auto-unlocks.
+                val locked = action.aspect.ratio != null
+                model.setCropAspectLock(locked)
                 snapshotMatrices()
-                _uiState.update { it.copy(aspectMode = action.aspect) }
+                _uiState.update {
+                    it.copy(aspectMode = action.aspect, cropAspectLocked = locked)
+                }
                 refreshUndoRedo()
+            }
+            CropEditorUiAction.AspectLockToggled -> {
+                val newLocked = !uiState.value.cropAspectLocked
+                model.setCropAspectLock(newLocked)
+                _uiState.update { it.copy(cropAspectLocked = newLocked) }
             }
             is CropEditorUiAction.FreeRotationChanged -> {
                 model.setMainImageEditorMatrixRotation(action.degrees)

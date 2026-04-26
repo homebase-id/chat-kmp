@@ -24,6 +24,8 @@ data class CropEditorUiState(
     val isLoading: Boolean = true,
     val naturalSize: Size? = null,
     val aspectMode: AspectMode = AspectMode.Free,
+    /** True when thumb-drag preserves the current crop's aspect ratio. */
+    val cropAspectLocked: Boolean = false,
     val freeRotationDegrees: Float = 0f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,

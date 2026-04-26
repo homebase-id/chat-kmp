@@ -12,7 +12,9 @@ sealed interface CropEditorUiAction {
     data object RedoClicked : CropEditorUiAction
     data object ResetClicked : CropEditorUiAction
     data object Rotate90ClockwiseClicked : CropEditorUiAction
+    data object FlipHorizontalClicked : CropEditorUiAction
     data class AspectChanged(val aspect: AspectMode) : CropEditorUiAction
+    data object AspectLockToggled : CropEditorUiAction
 
     /**
      * Free-rotation dial committed a new value (in degrees, [-45, 45]).

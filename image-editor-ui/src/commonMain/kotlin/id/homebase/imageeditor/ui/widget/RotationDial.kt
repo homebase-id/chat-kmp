@@ -1,30 +1,63 @@
+/*
+ * Translated from Signal-Android's `RotationDial.kt` (AGPL-3.0).
+ * Original copyright: 2026 Signal Messenger, LLC.
+ * Source: feature/media-send/src/main/java/org/signal/mediasend/edit/RotationDial.kt
+ */
 package id.homebase.imageeditor.ui.widget
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
+private const val MAX_DEGREES: Float = 44.99999f
+private const val MIN_DEGREES: Float = -44.99999f
+
+private val SPACE_BETWEEN_INDICATORS = 12.dp
+private val INDICATOR_WIDTH = 1.dp
+private val MINOR_INDICATOR_HEIGHT = 12.dp
+private val MAJOR_INDICATOR_HEIGHT = 24.dp
+
 /**
- * Free-rotation dial: horizontal slider in [-45, +45] degrees with snap-to-0
- * when the user releases within ±1°.
+ * Horizontal tick-tape dial for free rotation, in [-45°, +45°].
  *
- * Algorithm/UX inspired by Signal-Android's `RotationDial.kt` (AGPL-3.0); the
- * Compose implementation is original.
+ * Drag left/right to rotate. Snaps to 0° when within rounding distance during
+ * a drag. Per-degree haptic tick during drag.
  */
 @Composable
 fun RotationDial(
@@ -32,36 +65,154 @@ fun RotationDial(
     onValueChange: (Float) -> Unit,
     onRelease: () -> Unit,
     modifier: Modifier = Modifier,
-    label: String = "",
+    @Suppress("UNUSED_PARAMETER") label: String = "",
 ) {
-    var currentValue by remember(valueDegrees) { mutableStateOf(valueDegrees) }
-    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(text = label)
-            Text(text = "${currentValue.roundToInt()}°")
-        }
-        Slider(
-            value = currentValue,
-            onValueChange = {
-                currentValue = it
-                onValueChange(it)
-            },
-            onValueChangeFinished = {
-                if (abs(currentValue) < SNAP_TO_ZERO_THRESHOLD) {
-                    currentValue = 0f
-                    onValueChange(0f)
+    val hapticFeedback = LocalHapticFeedback.current
+    val spaceBetweenIndicatorsPx = with(LocalDensity.current) { SPACE_BETWEEN_INDICATORS.toPx() }
+
+    var degrees by remember(valueDegrees) { mutableFloatStateOf(valueDegrees) }
+    var isInGesture by remember { mutableStateOf(false) }
+
+    val snapDegrees = calculateSnapDegrees(degrees, isInGesture)
+    val dialDegrees = getDialDegrees(snapDegrees)
+    val displayDegree = dialDegrees.roundToInt()
+
+    val modFiveColor = MaterialTheme.colorScheme.onSurface
+    val minorColor = MaterialTheme.colorScheme.outline
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(percent = 50))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    down.consume()
+
+                    isInGesture = true
+
+                    drag(down.id) { change ->
+                        val dragAmount = change.positionChange().x
+                        change.consume()
+
+                        val degreeIncrement = -dragAmount / spaceBetweenIndicatorsPx
+                        val prevDialDegrees = getDialDegrees(degrees)
+                        val newDialDegrees = getDialDegrees(degrees + degreeIncrement)
+
+                        val offEndOfMax = prevDialDegrees >= MAX_DEGREES / 2f && newDialDegrees <= MIN_DEGREES / 2f
+                        val offEndOfMin = newDialDegrees >= MAX_DEGREES / 2f && prevDialDegrees <= MIN_DEGREES / 2f
+
+                        if (prevDialDegrees.roundToInt() != newDialDegrees.roundToInt()) {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
+
+                        val newDegrees = when {
+                            offEndOfMax -> degrees + (MAX_DEGREES - prevDialDegrees)
+                            offEndOfMin -> degrees - (MAX_DEGREES - abs(prevDialDegrees))
+                            else -> degrees + degreeIncrement
+                        }
+
+                        degrees = newDegrees
+                        val newSnapDegrees = calculateSnapDegrees(newDegrees, true)
+                        onValueChange(newSnapDegrees)
+                    }
+
+                    isInGesture = false
+                    val finalSnapDegrees = calculateSnapDegrees(degrees, false)
+                    onValueChange(finalSnapDegrees)
+                    onRelease()
                 }
-                onRelease()
-            },
-            valueRange = -MAX_DEG..MAX_DEG,
-            colors = SliderDefaults.colors(),
-        )
+            }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+            val canvasWidth = size.width
+            val canvasHeight = size.height
+            val centerY = canvasHeight / 2f
+            val indicatorWidthPx = INDICATOR_WIDTH.toPx()
+            val minorHeightPx = MINOR_INDICATOR_HEIGHT.toPx()
+            val majorHeightPx = MAJOR_INDICATOR_HEIGHT.toPx()
+            val spacingPx = SPACE_BETWEEN_INDICATORS.toPx()
+
+            val approximateCenterDegree = dialDegrees.roundToInt()
+            val fractionalOffset = dialDegrees - approximateCenterDegree
+            val dialOffset = spacingPx * fractionalOffset
+
+            val centerX = canvasWidth / 2f
+            val startX = centerX - dialOffset
+
+            fun heightForDegree(degree: Int): Float =
+                if (degree == 0) majorHeightPx else minorHeightPx
+
+            var currentDegree = approximateCenterDegree
+            var x = startX
+            while (x < canvasWidth && currentDegree <= ceil(MAX_DEGREES).toInt()) {
+                val h = heightForDegree(currentDegree)
+                val color = if (currentDegree % 5 == 0) modFiveColor else minorColor
+                drawRect(
+                    color = color,
+                    topLeft = Offset(x - indicatorWidthPx / 2f, centerY - h / 2f),
+                    size = Size(indicatorWidthPx, h),
+                )
+                x += spacingPx
+                currentDegree += 1
+            }
+
+            currentDegree = approximateCenterDegree - 1
+            x = startX - spacingPx
+            while (x >= 0 && currentDegree >= floor(MIN_DEGREES).toInt()) {
+                val h = heightForDegree(currentDegree)
+                val color = if (currentDegree % 5 == 0) modFiveColor else minorColor
+                drawRect(
+                    color = color,
+                    topLeft = Offset(x - indicatorWidthPx / 2f, centerY - h / 2f),
+                    size = Size(indicatorWidthPx, h),
+                )
+                x -= spacingPx
+                currentDegree -= 1
+            }
+
+            val centerHeight = heightForDegree(approximateCenterDegree)
+            drawRect(
+                color = modFiveColor,
+                topLeft = Offset(centerX - indicatorWidthPx / 2f, centerY - centerHeight / 2f),
+                size = Size(indicatorWidthPx, centerHeight),
+            )
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxHeight(),
+        ) {
+            Text(
+                text = "$displayDegree",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 15.sp,
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(start = 16.dp, end = 24.dp),
+            )
+
+            VerticalDivider(
+                thickness = Dp.Hairline,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.fillMaxHeight().padding(vertical = 22.dp),
+            )
+        }
     }
 }
 
-private const val MAX_DEG: Float = 45f
-private const val SNAP_TO_ZERO_THRESHOLD: Float = 1f
+private fun getDialDegrees(degrees: Float): Float {
+    val alpha = degrees % 360f
+    if (alpha % 90 == 0f) return 0f
+    val beta = floor(alpha / 90f)
+    val offset = alpha - beta * 90f
+    return if (offset > 45f) offset - 90f else offset
+}
+
+private fun calculateSnapDegrees(degrees: Float, isInGesture: Boolean): Float {
+    if (!isInGesture) return degrees
+    val dialDegrees = getDialDegrees(degrees)
+    return if (dialDegrees.roundToInt() == 0) degrees - dialDegrees else degrees
+}

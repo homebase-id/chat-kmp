@@ -28,6 +28,7 @@ import id.homebase.imageeditor.ui.widget.CropTopBar
 import id.homebase.imageeditor.ui.widget.RotationDial
 import id.homebase.imageeditor.ui.widget.THUMB_HIT_RADIUS
 import id.homebase.imageeditor.ui.widget.cropGestures
+import id.homebase.imageeditor.ui.widget.rememberAnimatedSnapshot
 import id.homebase.imageeditor.ui.widget.rememberCropGridState
 import id.homebase.imageeditor.ui.widget.CropGestureCallbacks
 import org.jetbrains.compose.resources.stringResource
@@ -77,10 +78,13 @@ fun CropScreen(
                 )
                 CropBottomBar(
                     aspectMode = uiState.aspectMode,
+                    aspectLocked = uiState.cropAspectLocked,
                     canUndo = uiState.canUndo,
                     canRedo = uiState.canRedo,
                     onAspectChange = { viewModel.onUiAction(CropEditorUiAction.AspectChanged(it)) },
+                    onAspectLockToggle = { viewModel.onUiAction(CropEditorUiAction.AspectLockToggled) },
                     onRotate90 = { viewModel.onUiAction(CropEditorUiAction.Rotate90ClockwiseClicked) },
+                    onFlipHorizontal = { viewModel.onUiAction(CropEditorUiAction.FlipHorizontalClicked) },
                     onReset = { viewModel.onUiAction(CropEditorUiAction.ResetClicked) },
                     onUndo = { viewModel.onUiAction(CropEditorUiAction.UndoClicked) },
                     onRedo = { viewModel.onUiAction(CropEditorUiAction.RedoClicked) },
@@ -113,6 +117,13 @@ fun CropScreen(
                     onZoomImage = { scale, cx, cy -> viewModel.zoomMainImage(scale, cx to cy) },
                     onCommitImage = { viewModel.commitMainImageGesture() },
                 )
+                // Animate viewLocal smoothly so the post-release reflow after a
+                // thumb drag commit doesn't read as a "snap-zoom". The raw
+                // snapshot is still used for the gesture handler — its inverse
+                // matrix needs the *target* viewLocal, not the in-flight
+                // animated one (otherwise pointer mapping lags by 250ms).
+                val rawSnapshot = viewModel.matrixSnapshot
+                val animatedSnapshot = rememberAnimatedSnapshot(rawSnapshot)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -122,16 +133,16 @@ fun CropScreen(
                 ) {
                     CropImageCanvas(
                         bitmap = viewModel.previewBitmap,
-                        snapshot = viewModel.matrixSnapshot,
+                        snapshot = animatedSnapshot,
                         modifier = Modifier.fillMaxSize(),
                     )
                     CropOverlay(
-                        snapshot = viewModel.matrixSnapshot,
+                        snapshot = animatedSnapshot,
                         showGrid = gridState.value,
                         modifier = Modifier
                             .fillMaxSize()
                             .cropGestures(
-                                snapshot = viewModel.matrixSnapshot,
+                                snapshot = rawSnapshot,
                                 thumbHitRadius = THUMB_HIT_RADIUS,
                                 callbacks = callbacks,
                                 isShowingGridState = gridState,

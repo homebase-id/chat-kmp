@@ -5,6 +5,9 @@
     <string name="crop_action_cancel">Cancel</string>
     <string name="crop_action_back">Back</string>
     <string name="crop_action_rotate">Rotate</string>
+    <string name="crop_action_flip">Flip horizontally</string>
+    <string name="crop_action_lock_aspect">Lock aspect ratio</string>
+    <string name="crop_action_lock_aspect_off">Unlock aspect ratio</string>
     <string name="crop_action_reset">Reset</string>
     <string name="crop_action_undo">Undo</string>
     <string name="crop_action_redo">Redo</string>

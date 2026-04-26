@@ -7,11 +7,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.animation.Crossfade
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
 import androidx.compose.material3.AssistChip
@@ -27,6 +31,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.imageeditor.core.AspectMode
 import id.homebase.imageeditor.ui.crop_action_back
+import id.homebase.imageeditor.ui.crop_action_flip
+import id.homebase.imageeditor.ui.crop_action_lock_aspect
+import id.homebase.imageeditor.ui.crop_action_lock_aspect_off
 import id.homebase.imageeditor.ui.crop_action_redo
 import id.homebase.imageeditor.ui.crop_action_reset
 import id.homebase.imageeditor.ui.crop_action_rotate
@@ -73,10 +80,13 @@ fun CropTopBar(
 @Composable
 fun CropBottomBar(
     aspectMode: AspectMode,
+    aspectLocked: Boolean,
     canUndo: Boolean,
     canRedo: Boolean,
     onAspectChange: (AspectMode) -> Unit,
+    onAspectLockToggle: () -> Unit,
     onRotate90: () -> Unit,
+    onFlipHorizontal: () -> Unit,
     onReset: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
@@ -106,6 +116,23 @@ fun CropBottomBar(
                 imageVector = Icons.Default.Rotate90DegreesCw,
                 contentDescription = stringResource(Res.string.crop_action_rotate),
             )
+        }
+        IconButton(onClick = onFlipHorizontal) {
+            Icon(
+                imageVector = Icons.Default.Flip,
+                contentDescription = stringResource(Res.string.crop_action_flip),
+            )
+        }
+        IconButton(onClick = onAspectLockToggle) {
+            Crossfade(targetState = aspectLocked) { locked ->
+                Icon(
+                    imageVector = if (locked) Icons.Default.Lock else Icons.Default.LockOpen,
+                    contentDescription = stringResource(
+                        if (locked) Res.string.crop_action_lock_aspect_off
+                        else Res.string.crop_action_lock_aspect
+                    ),
+                )
+            }
         }
         AssistChip(
             onClick = onReset,
