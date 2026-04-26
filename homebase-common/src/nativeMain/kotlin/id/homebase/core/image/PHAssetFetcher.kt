@@ -10,96 +10,130 @@ import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
 import coil3.request.Options
+import coil3.size.Dimension
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.CoreGraphics.CGSizeMake
+import platform.Foundation.NSData
 import platform.Photos.PHAsset
+import platform.Photos.PHAssetMediaTypeVideo
+import platform.Photos.PHImageContentModeAspectFill
 import platform.Photos.PHImageManager
 import platform.Photos.PHImageRequestOptions
 import platform.Photos.PHImageRequestOptionsDeliveryModeHighQualityFormat
+import platform.UIKit.UIImage
+import platform.UIKit.UIImageJPEGRepresentation
 import platform.posix.memcpy
 import kotlin.coroutines.resume
 
 /**
- * Coil Fetcher for loading iOS PHAsset images using the Photos framework.
+ * Coil Fetcher for loading iOS PHAsset thumbnails / images.
  *
- * This fetcher handles URIs with the format: "ph://localIdentifier"
- * where localIdentifier is the PHAsset's localIdentifier string.
+ * Accepts URIs of the form `ph://localIdentifier`. For images, uses the binary asset
+ * data path (preserves orientation). For VIDEO assets, uses requestImageForAsset which
+ * extracts a representative frame — `requestImageDataAndOrientationForAsset` returns
+ * nothing for videos.
  */
 class PHAssetFetcher(
     private val data: String,
-    private val options: Options
+    private val options: Options,
 ) : Fetcher {
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun fetch(): FetchResult? {
-        // Extract the local identifier from the URI
-        println("PHAssetFetcher.fetch() called with data: $data")
-        val localIdentifier = if (data.startsWith("ph://")) {
-            data.removePrefix("ph://")
-        } else {
-            data
-        }
+        val localIdentifier = data.removePrefix("ph://")
 
-        // Fetch the PHAsset
         val fetchResult = PHAsset.fetchAssetsWithLocalIdentifiers(
             listOf(localIdentifier),
-            options = null
+            options = null,
         )
-
-        if (fetchResult.count == 0uL) {
-            return null
-        }
-
+        if (fetchResult.count == 0uL) return null
         val asset = fetchResult.firstObject as? PHAsset ?: return null
 
-        // Request the image from PHImageManager
-        val imageData = suspendCancellableCoroutine { continuation ->
+        val isVideo = asset.mediaType == PHAssetMediaTypeVideo
+        return if (isVideo) {
+            fetchVideoFrame(asset)
+        } else {
+            fetchImageData(asset)
+        }
+    }
+
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    private suspend fun fetchImageData(asset: PHAsset): FetchResult? {
+        val nsData = suspendCancellableCoroutine<NSData?> { continuation ->
             val requestOptions = PHImageRequestOptions().apply {
                 setNetworkAccessAllowed(true)
-                setResizeMode(PHImageRequestOptionsDeliveryModeHighQualityFormat)
+                setDeliveryMode(PHImageRequestOptionsDeliveryModeHighQualityFormat)
                 setSynchronous(false)
             }
 
             PHImageManager.defaultManager().requestImageDataAndOrientationForAsset(
                 asset,
-                options = requestOptions
-            ) { data, _, _, info ->
+                options = requestOptions,
+            ) { d, _, _, info ->
                 if (continuation.isActive) {
                     val isDegraded = info?.get(platform.Photos.PHImageResultIsDegradedKey) as? Boolean ?: false
-
-                    // On a physical device, this might be called with a null 'data'
-                    // first if the asset is downloading from iCloud.
-                    if (data != null) {
-                        continuation.resume(data)
-                    } else if (!isDegraded) {
-                        // If it's not degraded and data is still null, the fetch failed.
-                        continuation.resume(null)
-                    }
+                    if (d != null) continuation.resume(d)
+                    else if (!isDegraded) continuation.resume(null)
                 }
             }
+        } ?: return null
+
+        return imageFromNSData(nsData)
+    }
+
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    private suspend fun fetchVideoFrame(asset: PHAsset): FetchResult? {
+        // Pick the best target size from the Coil request — falls back to a sane
+        // thumbnail size if the layout hasn't measured yet.
+        val targetSize = run {
+            val w = (options.size.width as? Dimension.Pixels)?.px?.toDouble() ?: 640.0
+            val h = (options.size.height as? Dimension.Pixels)?.px?.toDouble() ?: 640.0
+            CGSizeMake(w, h)
         }
 
-        if (imageData == null) {
-            return null
-        }
+        val uiImage = suspendCancellableCoroutine<UIImage?> { continuation ->
+            val requestOptions = PHImageRequestOptions().apply {
+                setNetworkAccessAllowed(true)
+                setDeliveryMode(PHImageRequestOptionsDeliveryModeHighQualityFormat)
+                setSynchronous(false)
+            }
 
-        // Convert NSData to ByteArray
-        val bytes = ByteArray(imageData.length.toInt())
+            PHImageManager.defaultManager().requestImageForAsset(
+                asset = asset,
+                targetSize = targetSize,
+                contentMode = PHImageContentModeAspectFill,
+                options = requestOptions,
+            ) { image, info ->
+                if (continuation.isActive) {
+                    val isDegraded = info?.get(platform.Photos.PHImageResultIsDegradedKey) as? Boolean ?: false
+                    if (image != null) continuation.resume(image)
+                    else if (!isDegraded) continuation.resume(null)
+                }
+            }
+        } ?: return null
+
+        // Convert UIImage → JPEG bytes → Skia Image. We pay one JPEG encode per frame
+        // so the rest of the Coil pipeline can decode like any other image.
+        val jpegData = UIImageJPEGRepresentation(uiImage, 0.85) ?: return null
+        return imageFromNSData(jpegData)
+    }
+
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    private fun imageFromNSData(nsData: NSData): FetchResult {
+        val bytes = ByteArray(nsData.length.toInt())
         bytes.usePinned { pinned ->
-            memcpy(pinned.addressOf(0), imageData.bytes, imageData.length)
+            memcpy(pinned.addressOf(0), nsData.bytes, nsData.length)
         }
-
-        // Convert ByteArray to Skia Image to ImageBitmap to Coil Image
         val skiaImage = org.jetbrains.skia.Image.makeFromEncoded(bytes)
         val imageBitmap = skiaImage.toComposeImageBitmap()
-
         return ImageFetchResult(
             image = imageBitmap.asSkiaBitmap().asImage(),
             isSampled = false,
-            dataSource = DataSource.DISK
+            dataSource = DataSource.DISK,
         )
     }
 
@@ -107,19 +141,17 @@ class PHAssetFetcher(
         override fun create(
             data: Any,
             options: Options,
-            imageLoader: ImageLoader
+            imageLoader: ImageLoader,
         ): Fetcher? {
-            if (data !is Uri) {
-                return null
+            // Accept both Coil Uri and bare String models — the editor passes the URI
+            // straight through (no HomebaseImageData wrapper) for pending local items.
+            val uri = when (data) {
+                is Uri -> data.toString()
+                is String -> data
+                else -> return null
             }
-            val uri = data.toString()
-            // Only handle URIs starting with "ph://" or PHAsset localIdentifiers
-            if (!uri.startsWith("ph://") && !uri.contains("/L0/")) {
-                return null
-            }
+            if (!uri.startsWith("ph://") && !uri.contains("/L0/")) return null
             return PHAssetFetcher(uri, options)
         }
     }
 }
-
-

@@ -14,6 +14,7 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.audio.JvmAudioPlayer
 import id.homebase.core.audio.JvmAudioRecorder
 import id.homebase.core.audio.JvmWaveFormGenerator
+import id.homebase.core.gallery.GalleryCache
 import id.homebase.core.gallery.JvmGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
@@ -34,6 +35,7 @@ actual fun platformModule(): Module = module {
     single { ShareCacheStorage() }
     single { createSettings() }
     single<PlatformGalleryManager> { JvmGalleryManager() }
+    single { GalleryCache(get<PlatformGalleryManager>()) }
     single<PlatformInfo> { JvmPlatformInfo() }
     single<AudioRecorder> { JvmAudioRecorder() }
     single<AudioPlayer> { JvmAudioPlayer() }

@@ -14,6 +14,8 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.audio.IOSAudioPlayer
 import id.homebase.core.audio.IOSAudioRecorder
 import id.homebase.core.audio.IOSWaveFormGenerator
+import id.homebase.core.gallery.GalleryCache
+import id.homebase.core.gallery.IOSGalleryLibraryObserver
 import id.homebase.core.gallery.IOSGalleryManager
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
@@ -34,6 +36,10 @@ actual fun platformModule(): Module = module {
     single { ShareCacheStorage() }
     single { createSettings() }
     single<PlatformGalleryManager> { IOSGalleryManager() }
+    single { GalleryCache(get<PlatformGalleryManager>()) }
+    // Held as its own singleton so PHPhotoLibrary's weak observer reference is
+    // backed by something with Application-scoped lifetime.
+    single(createdAtStart = true) { IOSGalleryLibraryObserver(get<GalleryCache>()) }
     single<PlatformInfo> { IOSPlatformInfo() }
     single<AudioRecorder> { IOSAudioRecorder() }
     single<AudioPlayer> { IOSAudioPlayer() }
