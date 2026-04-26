@@ -25,6 +25,13 @@ class EditorModel internal constructor(
     private var size: Size = Size(1024, 1024)
     private val visibleViewPort: RectF = RectF()
 
+    /**
+     * Shrink factor applied to the visible viewport when fitting the crop
+     * frame. Signal uses 0.8 so the corner thumbs sit inside the screen
+     * edges (away from system edge-swipe gesture zones on Android).
+     */
+    var viewportScaleIn: Float = 0.8f
+
     /** Optional per-mode constraint; null means free aspect. */
     private var fixedRatio: Float? = null
 
@@ -69,7 +76,7 @@ class EditorModel internal constructor(
         applyFixedRatio()
 
         if (!visibleViewPort.isEmpty()) {
-            hierarchy.updateViewToCrop(visibleViewPort)
+            hierarchy.updateViewToCrop(visibleViewPort, viewportScaleIn)
         }
 
         undoRedoStacks.clear()
@@ -110,7 +117,7 @@ class EditorModel internal constructor(
     /** Tell the model how big the visible viewport is in screen pixels. */
     fun setVisibleViewPort(rect: RectF) {
         visibleViewPort.set(rect)
-        hierarchy.updateViewToCrop(visibleViewPort)
+        hierarchy.updateViewToCrop(visibleViewPort, viewportScaleIn)
     }
 
     fun getCropRect(): RectF = hierarchy.getCropRect()
@@ -175,7 +182,7 @@ class EditorModel internal constructor(
 
     private fun flipRotate(degrees: Float, scaleX: Int, scaleY: Int) {
         pushUndoPoint()
-        hierarchy.flipRotate(degrees, scaleX, scaleY, visibleViewPort)
+        hierarchy.flipRotate(degrees, scaleX, scaleY, visibleViewPort, viewportScaleIn)
     }
 
     // -------- Free rotation around parent's origin --------
@@ -250,7 +257,7 @@ class EditorModel internal constructor(
         val popped = undoRedoStacks.undo.pop() ?: return
         undoRedoStacks.redo.tryPush(current, hierarchy.root)
         popped.applyTo(hierarchy.root)
-        hierarchy.updateViewToCrop(visibleViewPort)
+        hierarchy.updateViewToCrop(visibleViewPort, viewportScaleIn)
         inBoundsMemory.push(hierarchy.mainImage(), hierarchy.cropEditorElement)
     }
 
@@ -260,7 +267,7 @@ class EditorModel internal constructor(
         val popped = undoRedoStacks.redo.pop() ?: return
         undoRedoStacks.undo.tryPush(current, hierarchy.root)
         popped.applyTo(hierarchy.root)
-        hierarchy.updateViewToCrop(visibleViewPort)
+        hierarchy.updateViewToCrop(visibleViewPort, viewportScaleIn)
         inBoundsMemory.push(hierarchy.mainImage(), hierarchy.cropEditorElement)
     }
 
@@ -290,7 +297,7 @@ class EditorModel internal constructor(
             inBoundsMemory.push(mainImage, cropEl)
         }
 
-        hierarchy.updateViewToCrop(visibleViewPort)
+        hierarchy.updateViewToCrop(visibleViewPort, viewportScaleIn)
     }
 
     private fun tryToScaleToFit(element: EditorElement, atMost: Float): Boolean {
@@ -378,7 +385,7 @@ class EditorModel internal constructor(
         undoRedoStacks.clear()
         cropUndoRedoStacks.clear()
         if (!visibleViewPort.isEmpty()) {
-            hierarchy.updateViewToCrop(visibleViewPort)
+            hierarchy.updateViewToCrop(visibleViewPort, viewportScaleIn)
         }
     }
 

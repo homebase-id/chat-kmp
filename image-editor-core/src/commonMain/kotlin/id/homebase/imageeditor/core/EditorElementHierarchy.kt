@@ -81,22 +81,35 @@ class EditorElementHierarchy private constructor(val root: EditorElement) {
 
     /**
      * Re-frames `view` so the current crop fits centered inside `visibleViewPort`.
+     *
+     * @param scaleIn shrink factor in [0, 1] applied to the viewport before
+     *   fitting. Signal uses 0.8 so the image (and its corner thumbs) sit
+     *   inside the screen edges, away from system swipe-gesture zones.
      */
-    fun updateViewToCrop(visibleViewPort: RectF) {
+    fun updateViewToCrop(visibleViewPort: RectF, scaleIn: Float = 1f) {
         val dst = RectF()
         getCropFinalMatrix().mapRect(dst, Bounds.fullBounds())
+        val target = if (scaleIn >= 1f) {
+            visibleViewPort
+        } else {
+            val cx = visibleViewPort.centerX()
+            val cy = visibleViewPort.centerY()
+            val halfW = visibleViewPort.width() * 0.5f * scaleIn
+            val halfH = visibleViewPort.height() * 0.5f * scaleIn
+            RectF(cx - halfW, cy - halfH, cx + halfW, cy + halfH)
+        }
         val temp = Matrix2D()
-        temp.setRectToRect(dst, visibleViewPort, Matrix2D.ScaleToFit.CENTER)
+        temp.setRectToRect(dst, target, Matrix2D.ScaleToFit.CENTER)
         view.localMatrix.set(temp)
     }
 
     /** Apply a snap rotation (90/180/270) and/or flip to `flipRotate`. */
-    fun flipRotate(degrees: Float, scaleX: Int, scaleY: Int, visibleViewPort: RectF) {
+    fun flipRotate(degrees: Float, scaleX: Int, scaleY: Int, visibleViewPort: RectF, scaleIn: Float = 1f) {
         val newLocal = Matrix2D(flipRotate.localMatrix)
         if (degrees != 0f) newLocal.postRotate(degrees)
         newLocal.postScale(scaleX.toFloat(), scaleY.toFloat())
         flipRotate.localMatrix.set(newLocal)
-        updateViewToCrop(visibleViewPort)
+        updateViewToCrop(visibleViewPort, scaleIn)
     }
 
     /**
