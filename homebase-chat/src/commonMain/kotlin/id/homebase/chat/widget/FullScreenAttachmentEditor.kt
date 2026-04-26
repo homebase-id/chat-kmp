@@ -236,45 +236,16 @@ fun FullScreenAttachmentEditor(
                 )
             }
 
-            // Crop icon overlay — for image attachments (file picker, clipboard paste,
-            // share-receiver) and gallery picks. Hidden for video/audio/file.
-            val currentAttachment = data.attachments.getOrNull(pagerState.currentPage)
-            if (currentAttachment is AttachmentPendingFile.FileImage ||
-                currentAttachment is AttachmentPendingFile.Gallery
-            ) {
-                IconButton(
-                    onClick = { onCropImage(data.conversationId, currentAttachment!!.attachmentId) },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(16.dp),
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Crop,
-                        contentDescription = stringResource(MR.string.crop),
-                    )
-                }
-            }
         }
 
+        // Attachment-strip row: thumbnails for every queued attachment with a
+        // trailing "+" to add another. This row is just about managing the
+        // collection of attachments — actions on the current one live below.
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(
-                onClick = { onSaveFile(data.attachments[pagerState.currentPage]) },
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = stringResource(MR.string.save)
-                )
-            }
             LazyRow(
                 modifier = Modifier.weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -379,6 +350,47 @@ fun FullScreenAttachmentEditor(
                     imageVector = Icons.Default.Add,
                     contentDescription = stringResource(MR.string.chat_message_add_gallery_image)
                 )
+            }
+        }
+
+        // Edit-tools row (Signal convention): actions on the current
+        // attachment — crop (image only), download. Future tools (filters,
+        // markup) would join this row.
+        val currentAttachment = data.attachments.getOrNull(pagerState.currentPage)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (currentAttachment is AttachmentPendingFile.FileImage ||
+                currentAttachment is AttachmentPendingFile.Gallery
+            ) {
+                IconButton(
+                    onClick = { onCropImage(data.conversationId, currentAttachment.attachmentId) },
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Crop,
+                        contentDescription = stringResource(MR.string.crop),
+                    )
+                }
+            }
+            if (currentAttachment != null) {
+                IconButton(
+                    onClick = { onSaveFile(currentAttachment) },
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = stringResource(MR.string.save),
+                    )
+                }
             }
         }
 
