@@ -479,5 +479,6 @@
     <string name="feed_error_retry">Retry</string>
     <string name="pending_attachment_one">1 attachment</string>
     <string name="pending_attachment_many">%1$d attachments</string>
+    <string name="crop">Crop</string>
 
 </resources>

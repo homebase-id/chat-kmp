@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayCircle
@@ -58,6 +59,7 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_message_remove_gallery_image
+import id.homebase.resources.crop
 import id.homebase.resources.menu_back
 import id.homebase.resources.save
 import io.github.vinceglb.filekit.name
@@ -80,6 +82,7 @@ fun FullScreenAttachmentEditor(
     onRemoveFile: (conversationId: Uuid, attachmentId: Uuid) -> Unit,
     onSendMessage: (conversationId: Uuid, message: String, files: List<AttachmentPendingFile>) -> Unit,
     onDismiss: () -> Unit,
+    onCropImage: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
 ) {
     val isFileMode = data.attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -233,6 +236,27 @@ fun FullScreenAttachmentEditor(
                 )
             }
 
+            // Crop icon overlay — for image attachments (file picker, clipboard paste,
+            // share-receiver) and gallery picks. Hidden for video/audio/file.
+            val currentAttachment = data.attachments.getOrNull(pagerState.currentPage)
+            if (currentAttachment is AttachmentPendingFile.FileImage ||
+                currentAttachment is AttachmentPendingFile.Gallery
+            ) {
+                IconButton(
+                    onClick = { onCropImage(data.conversationId, currentAttachment!!.attachmentId) },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Crop,
+                        contentDescription = stringResource(MR.string.crop),
+                    )
+                }
+            }
         }
 
         Row(

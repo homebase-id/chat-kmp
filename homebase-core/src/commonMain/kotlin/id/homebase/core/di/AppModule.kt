@@ -259,4 +259,9 @@ val appModule = module {
 expect fun platformModule(): Module
 
 /** All Koin modules for the application. */
-val allModules = listOf(platformModule(), apiModule, appModule)
+val allModules = listOf(
+    platformModule(),
+    apiModule,
+    appModule,
+    id.homebase.imageeditor.ui.di.imageEditorModule,
+)

@@ -407,4 +407,6 @@
     <string name="emoji_search_placeholder">Søg efter emoji</string>
     <string name="emoji_none_found">Ingen emojis fundet</string>
 
+    <string name="crop">Beskær</string>
+
 </resources>
