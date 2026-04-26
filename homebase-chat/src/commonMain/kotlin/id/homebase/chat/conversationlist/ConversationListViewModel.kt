@@ -513,7 +513,6 @@ class ConversationListViewModel(
                 .collect { (tap, convosState) ->
                     val resolved = resolveNotificationTap(
                         tap = tap,
-                        dataReady = convosState.dataReady,
                         conversationIds = convosState.items.map { it.id }.toSet(),
                     ) ?: return@collect
                     Logger.i(tag = "ConversationListViewModel") {
@@ -526,6 +525,33 @@ class ConversationListViewModel(
                     )
                     pendingNotificationTap.clearIfMatches(resolved.conversationId)
                 }
+        }
+
+        // Fast-path: when a notification tap arrives, kick a direct DB
+        // lookup for the target conversation off the Main dispatcher.
+        // ConversationStream.loadConversation runs one
+        // selectHomebaseFileByUnique against DriveMainIndex; if the file
+        // is in the local DB (which it usually is — the background sync
+        // that delivered the push wrote it), insertNewConversation /
+        // updateConversation mutates _conversations.items, which re-emits
+        // the StateFlow and lets the deferred resolver above fire
+        // immediately. Without this kick, the resolver waits for the
+        // full ConversationStream.start() enrichment pipeline (or, on a
+        // warm VM, for the next sync batch) — which is what made
+        // notification taps feel like they were gated on the drive-sync
+        // spinner. Dispatchers.IO so the kick can't be queued behind
+        // enrichWithUnreadCounts on Main.
+        viewModelScope.launch {
+            pendingNotificationTap.state.collect { tap ->
+                if (tap == null) return@collect
+                val convoId = tap.conversationId
+                val alreadyLoaded = conversationStream.conversations.value.items
+                    .any { it.id == convoId }
+                if (alreadyLoaded) return@collect
+                launch(Dispatchers.IO) {
+                    conversationStream.loadConversation(convoId)
+                }
+            }
         }
     }
 
@@ -2950,18 +2976,25 @@ internal fun synthesizeOwnerSession(
 /**
  * Decides whether a pending notification tap is ready to be resolved
  * against the current conversation list snapshot. Returns the tap
- * when the conversation list is ready AND contains the tap's
- * conversation id — caller then routes to the conversation + message.
- * Returns null when there's nothing to do yet (sync still pending).
+ * when the snapshot already contains the tap's conversation id —
+ * caller then routes to the conversation + message.
+ *
+ * No `dataReady` gate: a fast-path collector in the VM force-loads
+ * the tap's conversation directly from the local DB the moment a tap
+ * is set, so by the time the conversation appears in `items` we know
+ * it's locally available and safe to navigate to — even if
+ * `ConversationStream.start()` hasn't finished its full enrichment
+ * pipeline. The deferred fallback (sync delivers the conversation
+ * later) keeps working because `processConversationBatchIncrementally`
+ * also mutates `items`, which re-emits the StateFlow.
  *
  * Pure function so unit tests can exercise the resolution policy
  * without spinning up a VM.
  */
 internal fun resolveNotificationTap(
     tap: PendingNotificationTap.Tap?,
-    dataReady: Boolean,
     conversationIds: Set<Uuid>,
 ): PendingNotificationTap.Tap? {
-    if (tap == null || !dataReady) return null
+    if (tap == null) return null
     return tap.takeIf { conversationIds.contains(it.conversationId) }
 }
