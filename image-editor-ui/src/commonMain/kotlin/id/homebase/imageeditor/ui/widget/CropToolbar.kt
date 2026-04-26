@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -13,6 +14,8 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -104,12 +107,17 @@ fun CropBottomBar(
                 contentDescription = stringResource(Res.string.crop_action_rotate),
             )
         }
-        IconButton(onClick = onReset) {
-            Icon(
-                imageVector = Icons.Default.Refresh,
-                contentDescription = stringResource(Res.string.crop_action_reset),
-            )
-        }
+        AssistChip(
+            onClick = onReset,
+            label = { Text(text = stringResource(Res.string.crop_action_reset)) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(AssistChipDefaults.IconSize),
+                )
+            },
+        )
 
         AspectChip(
             label = stringResource(Res.string.crop_aspect_free),

@@ -356,13 +356,26 @@ data class MatrixSnapshot(
 
         fun capture(model: EditorModel): MatrixSnapshot {
             val main = model.hierarchy.mainImage()
+            // Live crop matrix includes cropEditorElement.editorMatrix so the
+            // user sees the frame move/shrink in real time while dragging a
+            // thumb. Note: model.getCropRect() / getCropFinalMatrix() use
+            // local-only matrices and are kept that way because postEdit's
+            // updateViewToCrop must reflow against the COMMITTED crop, not the
+            // in-flight one.
+            val liveMatrix = Matrix2D(model.hierarchy.flipRotate.localMatrix)
+            liveMatrix.preConcat(model.hierarchy.imageCrop.localMatrix)
+            liveMatrix.preConcat(model.hierarchy.cropEditorElement.localMatrix)
+            liveMatrix.preConcat(model.hierarchy.cropEditorElement.editorMatrix)
+            val liveCropRect = RectF()
+            liveMatrix.mapRect(liveCropRect, id.homebase.imageeditor.core.Bounds.fullBounds())
+
             return MatrixSnapshot(
                 viewLocal = Matrix2D(model.hierarchy.view.localMatrix),
                 flipRotate = Matrix2D(model.hierarchy.flipRotate.localMatrix),
                 mainImageLocal = main?.let { Matrix2D(it.localMatrix) } ?: Matrix2D(),
                 mainImageEditor = main?.let { Matrix2D(it.editorMatrix) } ?: Matrix2D(),
-                cropFrameMatrix = model.getCropFinalMatrix(),
-                cropRect = model.getCropRect(),
+                cropFrameMatrix = liveMatrix,
+                cropRect = liveCropRect,
                 viewportSize = model.naturalSize,
             )
         }
