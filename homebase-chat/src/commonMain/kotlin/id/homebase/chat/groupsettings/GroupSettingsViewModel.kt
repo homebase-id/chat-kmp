@@ -328,7 +328,8 @@ class GroupSettingsViewModel(
 
         Logger.d {
             "loadTransferHistory: ${conversation.id} mainAuthored=${mainTransfer != null} mainEntries=${mainTransfer?.size} " +
-                    "adminAuthored=${adminTransfer != null} adminEntries=${adminTransfer?.size}"
+                    "adminAuthored=${adminTransfer != null} adminEntries=${adminTransfer?.size} " +
+                    "main=${renderTransferMap(mainTransfer)} admin=${renderTransferMap(adminTransfer)}"
         }
 
         _uiState.update {
@@ -339,26 +340,27 @@ class GroupSettingsViewModel(
         }
     }
 
+    private fun renderTransferMap(map: Map<OdinId, RecipientFileStatus>?): String {
+        if (map == null) return "<column hidden — caller is not author>"
+        if (map.isEmpty()) return "<no recipients in transfer history>"
+        return map.entries.joinToString(prefix = "{", postfix = "}") { (recipient, status) ->
+            val s = when (status) {
+                RecipientFileStatus.Ok -> "OK"
+                is RecipientFileStatus.Problem -> "PROBLEM(${status.rawStatus})"
+            }
+            "$recipient=$s"
+        }
+    }
+
     /**
      * Logs the per-recipient status of both group files in a single multi-line entry.
      * Called before and after a heal so the diff is easy to read in homebase.log when
      * diagnosing "I clicked heal but recipient X still doesn't have it".
      */
     private fun logTransferSnapshot(label: String, conversationId: Uuid, state: GroupSettingsUiState) {
-        fun renderMap(map: Map<OdinId, RecipientFileStatus>?): String {
-            if (map == null) return "<column hidden — caller is not author>"
-            if (map.isEmpty()) return "<no recipients in transfer history>"
-            return map.entries.joinToString(prefix = "{", postfix = "}") { (recipient, status) ->
-                val s = when (status) {
-                    RecipientFileStatus.Ok -> "OK"
-                    is RecipientFileStatus.Problem -> "PROBLEM(${status.rawStatus})"
-                }
-                "$recipient=$s"
-            }
-        }
         Logger.i {
             "GroupSettings: $label snapshot conversationId=$conversationId " +
-                    "main=${renderMap(state.mainFileTransfer)} admin=${renderMap(state.adminFileTransfer)}"
+                    "main=${renderTransferMap(state.mainFileTransfer)} admin=${renderTransferMap(state.adminFileTransfer)}"
         }
     }
 
