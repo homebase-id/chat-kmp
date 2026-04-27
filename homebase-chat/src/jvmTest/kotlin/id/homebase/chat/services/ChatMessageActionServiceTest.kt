@@ -1,10 +1,14 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.CryptoHelper
+import id.homebase.api.client.drives.files.DeleteFilesBatchRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
+import io.ktor.http.HttpMethod
+import io.ktor.http.content.TextContent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -264,6 +268,90 @@ class ChatMessageActionServiceTest {
             assertNull(payload.recipients, "recipients must be null for 'Delete for me'")
             assertEquals(listOf(fileId), payload.fileIds)
             assertEquals(false, payload.hardDelete)
+        }
+    }
+
+    // ----- deleteMessage WIRE-LEVEL contract -----
+    //
+    // The outbox-row tests above pin what we WRITE INTO the outbox. These tests
+    // pin what the DriveOutboxUploader actually puts ON THE WIRE when the row
+    // drains. The live propagation bug ("I delete-for-everyone, peer still sees
+    // it") could in principle live in any of: (a) outbox row JSON wrong, (b)
+    // dispatcher routes to the wrong uploader method, (c) wire DTO drops/renames
+    // recipients between DeleteLocalFilesByFileIdRequest and DeleteFilesBatchRequest,
+    // (d) endpoint URL changes. (a) is covered above; these tests cover (b)–(d)
+    // by capturing the actual HTTP request and decrypting its body.
+    //
+    // If both layers stay green and the live bug persists, the failure is
+    // server-side fan-out, not anything the client controls.
+
+    @Test
+    fun deleteMessage_deleteForEveryone_drainsOutboxToHttpRequestWithRecipientsOnTheWire() = runTest {
+        ChatMessageActionServiceTestFixture(captureHttp = true).use { fixture ->
+            val service = fixture.build(scope = this, outboxScope = backgroundScope)
+            val peer = "frodo.test"
+            val convoId = fixture.seedOneOnOneConversation(other = peer)
+            val fileId = Uuid.random()
+            val messageId = fixture.seedDeletableMessage(
+                conversationId = convoId,
+                senderDomain = fixture.testDomain,
+                fileId = fileId,
+            )
+
+            service.deleteMessage(messageId, deleteForEveryone = true)
+            fixture.drainOutboxAndAwaitHttp(this)
+
+            val request = fixture.capturedRequests.single()
+            assertEquals(HttpMethod.Post, request.method)
+            assertTrue(
+                request.url.encodedPath.endsWith("/files/delete-batch/by-file-id"),
+                "delete must POST to /files/delete-batch/by-file-id but went to ${request.url.encodedPath}",
+            )
+
+            // The body is encrypted with the shared secret — decrypt and assert
+            // the plaintext wire shape. A regression that drops `recipients`
+            // between the outbox DTO and the wire DTO produces null here.
+            val ciphertextJson = (request.body as TextContent).text
+            val payload: DeleteFilesBatchRequest =
+                CryptoHelper.decryptContent(ciphertextJson, fixture.sharedSecretBytes)
+
+            val req = payload.requests.single()
+            assertEquals(fileId, req.fileId)
+            val recipients = assertNotNull(
+                req.recipients,
+                "recipients must survive serialization onto the wire — null is the live-bug shape",
+            )
+            assertEquals(listOf(OdinId(peer)), recipients)
+        }
+    }
+
+    @Test
+    fun deleteMessage_deleteForMe_drainsOutboxToHttpRequestWithoutRecipientsOnTheWire() = runTest {
+        ChatMessageActionServiceTestFixture(captureHttp = true).use { fixture ->
+            val service = fixture.build(scope = this, outboxScope = backgroundScope)
+            val peer = "frodo.test"
+            val convoId = fixture.seedOneOnOneConversation(other = peer)
+            val fileId = Uuid.random()
+            val messageId = fixture.seedDeletableMessage(
+                conversationId = convoId,
+                senderDomain = fixture.testDomain,
+                fileId = fileId,
+            )
+
+            service.deleteMessage(messageId, deleteForEveryone = false)
+            fixture.drainOutboxAndAwaitHttp(this)
+
+            val request = fixture.capturedRequests.single()
+            val ciphertextJson = (request.body as TextContent).text
+            val payload: DeleteFilesBatchRequest =
+                CryptoHelper.decryptContent(ciphertextJson, fixture.sharedSecretBytes)
+
+            val req = payload.requests.single()
+            assertEquals(fileId, req.fileId)
+            // "Delete for me" must NOT carry recipients on the wire either —
+            // a future change that flips this would unilaterally fan a
+            // local-only delete out to the peer's drive.
+            assertNull(req.recipients, "recipients must be null on the wire for 'Delete for me'")
         }
     }
 
