@@ -20,3 +20,19 @@ interface StatusMessageSender {
 interface ConversationLoader {
     suspend fun loadConversation(conversationId: Uuid)
 }
+
+/**
+ * Narrow read-only view of conversation participant state, exposed so that
+ * services that need to look up "who is in this conversation" don't have to
+ * depend on the full [ConversationStream] (which carries a heavy graph of
+ * dependencies and can't be subclassed in tests).
+ *
+ * Implemented by [ConversationStream]; faked in test fixtures.
+ */
+interface ConversationParticipantLookup {
+    fun getConversationById(conversationId: Uuid): id.homebase.chat.data.ConversationUiModel?
+    suspend fun getRecipients(
+        conversationId: Uuid,
+        additionalRecipients: List<OdinId> = emptyList()
+    ): List<OdinId>
+}

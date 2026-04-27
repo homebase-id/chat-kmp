@@ -1,27 +1,39 @@
 package id.homebase.chat.groupsettings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.DoNotDisturbOn
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Healing
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyOff
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
@@ -36,16 +48,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.common.OdinId
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
+import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
@@ -56,7 +76,14 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_group_add_members
 import id.homebase.resources.chat_group_admin
+import id.homebase.resources.chat_group_admin_file_delivered
+import id.homebase.resources.chat_group_admin_file_problem
 import id.homebase.resources.chat_group_choose_new_admin
+import id.homebase.resources.chat_group_heal
+import id.homebase.resources.chat_group_heal_completed
+import id.homebase.resources.chat_group_heal_completed_nothing
+import id.homebase.resources.chat_group_main_file_delivered
+import id.homebase.resources.chat_group_main_file_problem
 import id.homebase.resources.chat_group_choose_new_admin_disclaimer
 import id.homebase.resources.chat_group_leave
 import id.homebase.resources.chat_group_leave_disclaimer
@@ -93,6 +120,8 @@ fun GroupSettingsScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val uriHandler = LocalUriHandler.current
+    val healCompletedMessage = stringResource(MR.string.chat_group_heal_completed)
+    val healCompletedNothingMessage = stringResource(MR.string.chat_group_heal_completed_nothing)
 
     when (val event = uiState.uiEvent) {
         is GroupSettingsUiEvent.Back -> {
@@ -123,6 +152,16 @@ fun GroupSettingsScreen(
         is GroupSettingsUiEvent.OpenUrl -> {
             viewModel.eventConsumed()
             uriHandler.openUri(event.url)
+        }
+
+        is GroupSettingsUiEvent.HealCompleted -> {
+            viewModel.eventConsumed()
+            val message = if (event.mainHealed || event.adminHealed) {
+                healCompletedMessage
+            } else {
+                healCompletedNothingMessage
+            }
+            scope.launch { snackbarHostState.showSnackbar(message = message) }
         }
 
         null -> {}
@@ -269,7 +308,7 @@ fun GroupSettingsUi(
                         }
 
                     items(connectedContacts, key = { it.odinId.domainName }) { contact ->
-                        ContactItem(
+                        GroupParticipantRow(
                             name = contact.name,
                             subTitle = contact.odinId.domainName,
                             annotation = if (conversation.isCurrentUserAdmin(contact.odinId)) stringResource(
@@ -277,11 +316,15 @@ fun GroupSettingsUi(
                             ) else null,
                             avatarInitials = contact.avatarInitials,
                             odinId = contact.odinId,
-                            onContactClick = {
+                            onClick = {
                                 onUiAction(
                                     GroupSettingsUiAction.ShowMemberSheet(contact)
                                 )
                             },
+                            mainStatus = uiState.mainFileTransfer?.get(contact.odinId),
+                            adminStatus = uiState.adminFileTransfer?.get(contact.odinId),
+                            showMainColumn = uiState.mainFileTransfer != null,
+                            showAdminColumn = uiState.adminFileTransfer != null,
                         )
                     }
 
@@ -294,18 +337,31 @@ fun GroupSettingsUi(
                             )
                         }
                         items(notConnectedContacts, key = { it.odinId.domainName }) { contact ->
-                            ContactItem(
+                            GroupParticipantRow(
                                 name = contact.name,
                                 subTitle = contact.odinId.domainName,
                                 annotation = stringResource(MR.string.connect),
                                 annotationColor = MaterialTheme.colorScheme.primary,
                                 avatarInitials = contact.avatarInitials,
                                 odinId = contact.odinId,
-                                onContactClick = {
+                                onClick = {
                                     onUiAction(
                                         GroupSettingsUiAction.ConnectToIdentity(contact.odinId)
                                     )
                                 },
+                                mainStatus = uiState.mainFileTransfer?.get(contact.odinId),
+                                adminStatus = uiState.adminFileTransfer?.get(contact.odinId),
+                                showMainColumn = uiState.mainFileTransfer != null,
+                                showAdminColumn = uiState.adminFileTransfer != null,
+                            )
+                        }
+                    }
+                    if (uiState.canHeal) {
+                        item {
+                            HorizontalDivider()
+                            HealGroupButton(
+                                isHealing = uiState.isHealing,
+                                onClick = { onUiAction(GroupSettingsUiAction.HealGroupClicked) }
                             )
                         }
                     }
@@ -535,5 +591,149 @@ fun GroupSettingsSheets(
                 }
             }
         }
+    }
+}
+
+/**
+ * GroupSettings-only participant row. Mirrors the shared [ContactItem] layout but inlines
+ * the per-file delivery indicators next to the name (the indicators are a diagnostic aid
+ * specific to this screen and don't belong on the shared widget).
+ */
+@Composable
+private fun GroupParticipantRow(
+    name: String,
+    subTitle: String?,
+    annotation: String?,
+    annotationColor: Color? = null,
+    avatarInitials: String,
+    odinId: OdinId,
+    onClick: () -> Unit,
+    mainStatus: RecipientFileStatus?,
+    adminStatus: RecipientFileStatus?,
+    showMainColumn: Boolean,
+    showAdminColumn: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ContactAvatar(
+            odinId = odinId,
+            profileImageData = null,
+            initials = avatarInitials,
+            options = AvatarOptions(
+                size = 28.dp,
+                fontSize = 12.sp,
+            ),
+            sharedTransitionScope = null,
+            animatedVisibilityScope = null
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ContactName(
+                    odinId = odinId,
+                    knownName = name,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (showMainColumn || showAdminColumn) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    if (showMainColumn) {
+                        TransferStatusIcon(
+                            mainStatus,
+                            stringResource(MR.string.chat_group_main_file_delivered),
+                            stringResource(MR.string.chat_group_main_file_problem),
+                        )
+                    }
+                    if (showMainColumn && showAdminColumn) {
+                        Spacer(modifier = Modifier.width(2.dp))
+                    }
+                    if (showAdminColumn) {
+                        TransferStatusIcon(
+                            adminStatus,
+                            stringResource(MR.string.chat_group_admin_file_delivered),
+                            stringResource(MR.string.chat_group_admin_file_problem),
+                        )
+                    }
+                }
+            }
+            subTitle?.let {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = subTitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        annotation?.let {
+            Text(
+                text = annotation,
+                style = MaterialTheme.typography.labelSmall,
+                color = annotationColor ?: LocalContentColor.current,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TransferStatusIcon(
+    status: RecipientFileStatus?,
+    okDescription: String,
+    problemDescription: String,
+) {
+    val size = 12.dp
+    when (status) {
+        RecipientFileStatus.Ok -> Icon(
+            imageVector = Icons.Default.Check,
+            contentDescription = okDescription,
+            tint = LocalContentColor.current.copy(alpha = 0.55f),
+            modifier = Modifier.size(size)
+        )
+        is RecipientFileStatus.Problem -> Icon(
+            imageVector = Icons.Default.ErrorOutline,
+            contentDescription = problemDescription,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(size)
+        )
+        null -> Spacer(modifier = Modifier.size(size))
+    }
+}
+
+@Composable
+private fun HealGroupButton(
+    isHealing: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = !isHealing, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isHealing) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+        } else {
+            Icon(
+                imageVector = Icons.Default.Healing,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = stringResource(MR.string.chat_group_heal),
+            style = MaterialTheme.typography.bodyLarge,
+        )
     }
 }

@@ -195,12 +195,37 @@ class ConversationServiceTestFixture : AutoCloseable {
      * if you plan to run further service operations that might re-enqueue the same
      * uniqueId, and don't rely on [outboxRowCount] afterwards — the rows are still
      * there, just checked out.
+     *
+     * **Caveat for dependency-chained enqueues**: the `checkout` SQL hides any row
+     * whose `dependencyUniqueId` still exists in the table, so this only returns
+     * the chain-head when callers enqueue with deps. Use
+     * [drainOutboxInDependencyOrder] when you need every row of a chain.
      */
     suspend fun drainOutbox(): List<Outbox> {
         val drained = mutableListOf<Outbox>()
         while (true) {
             val row = dbm.outbox.checkout() ?: break
             drained += row
+        }
+        return drained
+    }
+
+    /**
+     * Drain ALL outbox rows by repeatedly checking out the next eligible row and
+     * then deleting it, which unblocks any rows that depended on it. Returns the
+     * rows in dependency order (chain head first). Use this when asserting the
+     * `(uniqueId, dependencyUniqueId)` shape of a chained enqueue (e.g. group
+     * creation, admin update + status messages, member-change flows).
+     *
+     * Like [drainOutbox], this is destructive — the rows are removed from the
+     * table after the call returns.
+     */
+    suspend fun drainOutboxInDependencyOrder(): List<Outbox> {
+        val drained = mutableListOf<Outbox>()
+        while (true) {
+            val row = dbm.outbox.checkout() ?: break
+            drained += row
+            dbm.outbox.deleteByRowId(row.rowId)
         }
         return drained
     }
@@ -408,8 +433,10 @@ class FakeIntroductionSender : IntroductionSender {
 
 class FakeStatusMessageSender : StatusMessageSender {
     data class Call(
+        val messageUniqueId: Uuid,
         val conversationId: Uuid,
         val statusMessage: StatusMessageData,
+        val previousMessageUniqueId: Uuid?,
         val additionalRecipients: List<OdinId>,
     )
     val calls = mutableListOf<Call>()
@@ -421,7 +448,13 @@ class FakeStatusMessageSender : StatusMessageSender {
         payloadBundle: PayloadBundle?,
         additionalRecipients: List<OdinId>,
     ): SendMessageResult {
-        calls += Call(conversationId, statusMessage, additionalRecipients)
+        calls += Call(
+            messageUniqueId = messageUniqueId,
+            conversationId = conversationId,
+            statusMessage = statusMessage,
+            previousMessageUniqueId = previousMessageUniqueId,
+            additionalRecipients = additionalRecipients,
+        )
         return SendMessageResult(messageUniqueId)
     }
 }

@@ -48,7 +48,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
-) : ConversationLoader, UnreadCountEnricher {
+) : ConversationLoader, UnreadCountEnricher, ConversationParticipantLookup {
 
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
@@ -819,7 +819,7 @@ class ConversationStream(
         }
     }
 
-    fun getConversationById(conversationId: Uuid): ConversationUiModel? {
+    override fun getConversationById(conversationId: Uuid): ConversationUiModel? {
         return _conversations.value.items.firstOrNull { it.id == conversationId }
     }
 
@@ -833,9 +833,9 @@ class ConversationStream(
         )
     }
 
-    suspend fun getRecipients(
+    override suspend fun getRecipients(
         conversationId: Uuid,
-        additionalRecipients: List<OdinId> = emptyList()
+        additionalRecipients: List<OdinId>
     ): List<OdinId> {
 
         val domain = credentialsManager.requireActiveDomain()
