@@ -36,7 +36,7 @@ class DesktopViewModel(
             is DesktopUiAction.ToggleTheme -> {
                 val newTheme = when (uiState.value.theme) {
                     ThemeState.System -> ThemeState.Light
-                    ThemeState.Light -> ThemeState.System
+                    ThemeState.Light -> ThemeState.Dark
                     ThemeState.Dark -> ThemeState.System
                 }
                 userPreferences.theme = newTheme
