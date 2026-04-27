@@ -103,4 +103,55 @@ class EditorModelTest {
         assertTrue(m.hierarchy.flipRotate.localMatrix.isIdentity())
         assertTrue(m.hierarchy.cropEditorElement.localMatrix.isIdentity())
     }
+
+    /**
+     * Regression for the "drag-the-grid snaps back" bug. With Signal's
+     * bounds-space invariant, the crop and image initially share the same
+     * extent, so any pan would technically leave the crop uncovered — but
+     * `allowScaleToRepairCrop = true` lets postEdit auto-grow the image (or
+     * auto-shrink the crop) to keep the gesture's effect. Either way,
+     * `mainImage.localMatrix` must end up DIFFERENT from its initial state.
+     */
+    @Test fun panMainImagePersistsAfterCommit() {
+        val m = EditorModel.create()
+        m.onImageReady(Size(800, 600))
+        m.setVisibleViewPort(RectF(0f, 0f, 1000f, 1000f))
+
+        val main = m.hierarchy.mainImage()!!
+        val before = Matrix2D(main.localMatrix)
+
+        main.editorMatrix.postTranslate(50f, 0f)
+        main.commitEditorMatrix()
+        m.postEdit(allowScaleToRepairCrop = true)
+
+        // mainImage.localMatrix must have changed (translation, scale, or
+        // both) — anything but the initial identity state.
+        val unchanged = (0 until 9).all { i ->
+            kotlin.math.abs(before.values[i] - main.localMatrix.values[i]) < 1e-3f
+        }
+        assertFalse(unchanged, "Pan was rolled back to identity (bug); mainImage.local=$main.localMatrix")
+    }
+
+    /**
+     * After a pan that's been auto-repaired by postEdit, the output size
+     * should still be a meaningful sub-rectangle of the natural image (not
+     * tiny, not zero).
+     */
+    @Test fun outputSizeAfterPanIsReasonable() {
+        val m = EditorModel.create()
+        m.onImageReady(Size(800, 600))
+        m.setVisibleViewPort(RectF(0f, 0f, 1000f, 1000f))
+
+        val main = m.hierarchy.mainImage()!!
+        main.editorMatrix.postTranslate(20f, 10f)
+        main.commitEditorMatrix()
+        m.postEdit(allowScaleToRepairCrop = true)
+
+        val out = m.getOutputSize()
+        // Auto-scale may shrink the crop slightly; result should still be a
+        // sane fraction of the natural image (at least 50% on each axis for
+        // a 20-bounds-unit pan).
+        assertTrue(out.width in 400..800, "width=${out.width}")
+        assertTrue(out.height in 300..600, "height=${out.height}")
+    }
 }

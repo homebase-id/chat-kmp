@@ -235,63 +235,75 @@ class CropEditorViewModel(
     }
 
     /**
-     * Pan the main image directly. Called from the gesture handler.
+     * Pan the main image. Called from the gesture handler.
+     *
+     * Per Signal's invariant the editor tree lives in canonical bounds-space
+     * (mainImage.local is identity), so the editor matrix translation is in
+     * bounds-space. Map the canvas-pixel delta through inverse(view.local) to
+     * get a view-space delta, then through inverse(flipRotate.local) to get
+     * the bounds-space delta to apply.
      *
      * @param dxPx pan in canvas pixels
      */
     fun panMainImage(dxPx: Float, dyPx: Float) {
-        // Convert canvas-pixel pan to view-space, then to mainImage-pixel space.
         val main = model.hierarchy.mainImage() ?: return
-        // canvas → view-space: divide by view.localMatrix scale (uniform)
+
         val viewLocal = model.hierarchy.view.localMatrix
         val viewInv = Matrix2D()
         if (!viewLocal.invert(viewInv)) return
-        val out = viewInv.mapPoint(dxPx, dyPx)
-        val zero = viewInv.mapPoint(0f, 0f)
-        val viewDx = out[0] - zero[0]
-        val viewDy = out[1] - zero[1]
+        val outV = viewInv.mapPoint(dxPx, dyPx)
+        val zeroV = viewInv.mapPoint(0f, 0f)
+        val viewDx = outV[0] - zeroV[0]
+        val viewDy = outV[1] - zeroV[1]
 
-        // view-space → mainImage-pixel space requires inverting flipRotate * mainImage.local
-        val parentChain = Matrix2D(model.hierarchy.flipRotate.localMatrix)
-        parentChain.preConcat(main.localMatrix)
-        val parentInv = Matrix2D()
-        if (!parentChain.invert(parentInv)) return
-        val outP = parentInv.mapPoint(viewDx, viewDy)
-        val zeroP = parentInv.mapPoint(0f, 0f)
-        val pxDx = outP[0] - zeroP[0]
-        val pxDy = outP[1] - zeroP[1]
+        val flipInv = Matrix2D()
+        if (!model.hierarchy.flipRotate.localMatrix.invert(flipInv)) return
+        val outB = flipInv.mapPoint(viewDx, viewDy)
+        val zeroB = flipInv.mapPoint(0f, 0f)
+        val boundsDx = outB[0] - zeroB[0]
+        val boundsDy = outB[1] - zeroB[1]
 
-        main.editorMatrix.postTranslate(pxDx, pxDy)
+        main.editorMatrix.postTranslate(boundsDx, boundsDy)
         snapshotMatrices()
     }
 
     /**
      * Pinch-zoom the main image around the centroid (in canvas pixels).
+     *
+     * Like `panMainImage`, the editor matrix lives in bounds-space, so the
+     * centroid must be mapped to bounds-space (canvas → view-space →
+     * bounds-space via inverse(view.local) and inverse(flipRotate.local)).
      */
     fun zoomMainImage(scale: Float, centroidPx: Pair<Float, Float>) {
         val main = model.hierarchy.mainImage() ?: return
-        // Centroid in view-space
+
         val viewInv = Matrix2D()
         if (!model.hierarchy.view.localMatrix.invert(viewInv)) return
         val centroidView = viewInv.mapPoint(centroidPx.first, centroidPx.second)
 
-        // Centroid in mainImage-pixel space
-        val parentChain = Matrix2D(model.hierarchy.flipRotate.localMatrix)
-        parentChain.preConcat(main.localMatrix)
-        val parentInv = Matrix2D()
-        if (!parentChain.invert(parentInv)) return
-        val centroidPx2 = parentInv.mapPoint(centroidView[0], centroidView[1])
+        val flipInv = Matrix2D()
+        if (!model.hierarchy.flipRotate.localMatrix.invert(flipInv)) return
+        val centroidBounds = flipInv.mapPoint(centroidView[0], centroidView[1])
 
-        main.editorMatrix.postScale(scale, scale, centroidPx2[0], centroidPx2[1])
+        main.editorMatrix.postScale(scale, scale, centroidBounds[0], centroidBounds[1])
         snapshotMatrices()
     }
 
-    /** Called when the user releases the pan/pinch gesture on the main image. */
+    /**
+     * Called when the user releases the pan/pinch gesture on the main image.
+     *
+     * `allowScaleToRepairCrop = true`: if the pan moved the image such that
+     * the crop now extends past the image, postEdit will auto-shrink the
+     * crop or auto-grow the image to keep the crop fully covered. Without
+     * this, every pan on a freshly-opened cropper (where crop = image
+     * extent) snaps back to identity, which the user perceives as "the
+     * picture doesn't change at all".
+     */
     fun commitMainImageGesture() {
         val main = model.hierarchy.mainImage() ?: return
         if (main.editorMatrix.isIdentity()) return
         main.commitEditorMatrix()
-        model.postEdit(allowScaleToRepairCrop = false)
+        model.postEdit(allowScaleToRepairCrop = true)
         model.pushUndoPoint()
         snapshotMatrices()
         refreshUndoRedo()
@@ -359,6 +371,12 @@ data class MatrixSnapshot(
     val flipRotate: Matrix2D,
     val mainImageLocal: Matrix2D,
     val mainImageEditor: Matrix2D,
+    /**
+     * Maps natural-pixel coordinates to canonical bounds (Signal's
+     * `UriGlideRenderer.imageProjectionMatrix`). The image canvas concats
+     * this onto the canvas matrix at draw time. Stable post-onImageReady.
+     */
+    val imageProjection: Matrix2D,
     val cropFrameMatrix: Matrix2D,
     val cropRect: RectF,
     val viewportSize: Size,
@@ -369,6 +387,7 @@ data class MatrixSnapshot(
             flipRotate = Matrix2D(),
             mainImageLocal = Matrix2D(),
             mainImageEditor = Matrix2D(),
+            imageProjection = Matrix2D(),
             cropFrameMatrix = Matrix2D(),
             cropRect = RectF(),
             viewportSize = Size(0, 0),
@@ -394,6 +413,7 @@ data class MatrixSnapshot(
                 flipRotate = Matrix2D(model.hierarchy.flipRotate.localMatrix),
                 mainImageLocal = main?.let { Matrix2D(it.localMatrix) } ?: Matrix2D(),
                 mainImageEditor = main?.let { Matrix2D(it.editorMatrix) } ?: Matrix2D(),
+                imageProjection = model.imageProjectionMatrix(),
                 cropFrameMatrix = liveMatrix,
                 cropRect = liveCropRect,
                 viewportSize = model.naturalSize,

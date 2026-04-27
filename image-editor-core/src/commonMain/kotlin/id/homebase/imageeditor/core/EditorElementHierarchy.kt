@@ -124,19 +124,29 @@ class EditorElementHierarchy private constructor(val root: EditorElement) {
     }
 
     /**
-     * Output size in natural-pixel space, derived from the current crop /
-     * rotate / scale state.
+     * Output size in natural-pixel space, derived from [inputSize] (the
+     * source image's natural dimensions) and the current crop / rotate /
+     * scale state.
      *
-     * The view-space crop rect's view-space dimensions are converted to
-     * natural-pixel dimensions by dividing by the natural→view scale that
-     * lives in `mainImage.localMatrix * mainImage.editorMatrix`.
+     * Translated from `EditorElementHierarchy.java:490-509`. Operates on
+     * bounds-space matrices and inverts `mainImage.editor` scale to project
+     * the result back into natural-pixel dimensions.
      */
-    fun getOutputSize(): SizeF {
-        val cropRect = getCropRect()
-        val main = mainImage() ?: return SizeF(cropRect.width(), cropRect.height())
-        val xs = xScale(main.localMatrix) * xScale(main.editorMatrix)
-        val viewToNatural = if (xs == 0f) 1f else 1f / xs
-        return SizeF(abs(cropRect.width() * viewToNatural), abs(cropRect.height() * viewToNatural))
+    fun getOutputSize(inputSize: Size): SizeF {
+        val matrix = Matrix2D()
+        matrix.preConcat(flipRotate.localMatrix)
+        matrix.preConcat(cropEditorElement.localMatrix)
+        matrix.preConcat(cropEditorElement.editorMatrix)
+        val main = mainImage()
+        if (main != null) {
+            val xs = xScale(main.localMatrix) * xScale(main.editorMatrix)
+            val invXs = if (xs == 0f) 1f else 1f / xs
+            matrix.preScale(invXs, invXs)
+        }
+        val src = floatArrayOf(0f, 0f, inputSize.width.toFloat(), inputSize.height.toFloat())
+        val dst = FloatArray(4)
+        matrix.mapPoints(dst, src, count = 2)
+        return SizeF(abs(dst[0] - dst[2]), abs(dst[1] - dst[3]))
     }
 
     companion object {

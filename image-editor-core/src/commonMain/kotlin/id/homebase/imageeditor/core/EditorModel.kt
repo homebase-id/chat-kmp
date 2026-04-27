@@ -48,27 +48,29 @@ class EditorModel internal constructor(
         val mainImage = hierarchy.mainImage()
             ?: EditorElement().also { hierarchy.imageRoot.addElement(it) }
 
-        // imageAspectRect = the rectangle within Bounds.FULL_BOUNDS that has
-        // the same aspect ratio as the source image, centered on the origin.
-        val imageAspectRect = imageAspectRect(naturalSize.width, naturalSize.height)
-
-        // mainImage.local maps natural-pixel coords -> imageAspectRect.
-        // This is what positions the source image inside view-space so that
-        // an identity user crop matches the full image.
-        mainImage.localMatrix.setRectToRect(
-            src = RectF(0f, 0f, naturalSize.width.toFloat(), naturalSize.height.toFloat()),
-            dst = imageAspectRect,
-            scaleToFit = Matrix2D.ScaleToFit.FILL,
-        )
+        // Signal-Android's load-bearing invariant: every matrix in the editor
+        // tree (localMatrix / editorMatrix on every node) operates in
+        // canonical bounds-space [-1000, 1000]^2. The natural-pixel-to-bounds
+        // scaling is performed at draw time by the renderer's
+        // imageProjectionMatrix, NOT by mainImage.localMatrix.
+        // See `EditorModel.java:824-825` and `UriGlideRenderer.java:128, 246, 251-258`.
+        mainImage.localMatrix.reset()
         mainImage.editorMatrix.reset()
 
-        // imageCrop.local maps Bounds.FULL_BOUNDS -> imageAspectRect (so the
-        // crop frame's [-1000, 1000] coord space aligns with the image).
-        hierarchy.imageCrop.localMatrix.setRectToRect(
-            src = Bounds.fullBounds(),
-            dst = imageAspectRect,
-            scaleToFit = Matrix2D.ScaleToFit.FILL,
-        )
+        // imageCrop.localMatrix == Signal's cropMatrix(bitmap):
+        //   preScale(1,        h/w) when w >= h  (landscape)
+        //   preScale(w/h, 1)        when h >  w  (portrait)
+        // Applied to FULL_BOUNDS, the result is the imageAspectRect. This is
+        // an aspect-ratio matrix in bounds-space (does not encode any
+        // natural-pixel info).
+        hierarchy.imageCrop.localMatrix.reset()
+        val w = naturalSize.width.toFloat()
+        val h = naturalSize.height.toFloat()
+        if (w >= h) {
+            hierarchy.imageCrop.localMatrix.postScale(1f, h / w)
+        } else {
+            hierarchy.imageCrop.localMatrix.postScale(w / h, 1f)
+        }
 
         // Initial user-crop covers the full imageCrop area.
         hierarchy.cropEditorElement.localMatrix.reset()
@@ -76,9 +78,7 @@ class EditorModel internal constructor(
         applyFixedRatio()
 
         // Seed inBoundsMemory so postEdit's restore-on-bad-crop path falls
-        // back to a correct initial state instead of the default identity
-        // (which would map natural-pixel space onto canonical bounds and
-        // render the image at a totally wrong scale/position).
+        // back to a correct initial state instead of unset matrices.
         inBoundsMemory.push(mainImage, hierarchy.cropEditorElement)
 
         if (!visibleViewPort.isEmpty()) {
@@ -89,24 +89,16 @@ class EditorModel internal constructor(
         cropUndoRedoStacks.clear()
     }
 
-    /** Image-aspect-ratio rectangle, centered on the origin, within Bounds. */
-    private fun imageAspectRect(naturalW: Int, naturalH: Int): RectF {
-        val w = naturalW.toFloat()
-        val h = naturalH.toFloat()
-        return if (w >= h) {
-            val halfH = Bounds.RIGHT * (h / w)
-            RectF(Bounds.LEFT, -halfH, Bounds.RIGHT, halfH)
-        } else {
-            val halfW = Bounds.RIGHT * (w / h)
-            RectF(-halfW, Bounds.TOP, halfW, Bounds.BOTTOM)
-        }
-    }
-
     /**
      * Matrix that maps natural-pixel coordinates of the source image to
-     * view-space (i.e. the same coordinate system as [getCropRect]).
+     * view-space (canonical bounds, the same coordinate system as
+     * [getCropRect]).
      *
-     *   `flipRotate.local * mainImage.local * mainImage.editor`
+     * The chain that ends up applied to natural pixels at draw time is
+     * `flipRotate.local * mainImage.local * mainImage.editor * imageProjection`.
+     * `mainImage.local` is identity (Signal's invariant), so the load-bearing
+     * step is `imageProjection`, the natural-to-bounds setRectToRect that
+     * lives in the renderer (here we recompute it from [size]).
      */
     fun naturalToViewMatrix(): Matrix2D {
         val m = Matrix2D(hierarchy.flipRotate.localMatrix)
@@ -114,7 +106,21 @@ class EditorModel internal constructor(
             m.preConcat(main.localMatrix)
             m.preConcat(main.editorMatrix)
         }
+        m.preConcat(imageProjectionMatrix(size))
         return m
+    }
+
+    /**
+     * `setRectToRect(naturalRect, FULL_BOUNDS, CENTER)` — what
+     * Signal's `UriGlideRenderer.imageProjectionMatrix` is. Maps natural
+     * pixels to canonical bounds, preserving aspect.
+     */
+    fun imageProjectionMatrix(naturalSize: Size = size): Matrix2D = Matrix2D().apply {
+        setRectToRect(
+            src = RectF(0f, 0f, naturalSize.width.toFloat(), naturalSize.height.toFloat()),
+            dst = Bounds.fullBounds(),
+            scaleToFit = Matrix2D.ScaleToFit.CENTER,
+        )
     }
 
     /** Natural-pixel size used by the model. */
@@ -132,7 +138,7 @@ class EditorModel internal constructor(
 
     /** Output size in natural pixels of the current crop. */
     fun getOutputSize(): Size {
-        val s = hierarchy.getOutputSize()
+        val s = hierarchy.getOutputSize(size)
         val w = max(1, s.width.toInt())
         val h = max(1, s.height.toInt())
         return Size(w, h)
@@ -322,7 +328,7 @@ class EditorModel internal constructor(
     }
 
     private fun currentCropIsAcceptable(): Boolean {
-        val outputSize = hierarchy.getOutputSize()
+        val outputSize = hierarchy.getOutputSize(size)
         val outputPixelCount = outputSize.width.toLong() * outputSize.height.toLong()
         val minimumPixelCount = min(size.pixelCount, MINIMUM_CROP_PIXEL_COUNT.toLong())
         if (outputPixelCount < minimumPixelCount) return false
