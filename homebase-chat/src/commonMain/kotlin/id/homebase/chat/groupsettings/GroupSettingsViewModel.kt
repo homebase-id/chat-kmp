@@ -381,11 +381,18 @@ class GroupSettingsViewModel(
             val results = history?.history?.results ?: emptyList()
             results.associate { entry: RecipientTransferHistoryEntry ->
                 val odinId = OdinId(entry.recipient)
-                val status = if (
-                    entry.latestTransferStatus == TransferStatus.Delivered &&
-                    !entry.isInOutbox &&
-                    !TransferStatus.isFailedStatus(entry.latestTransferStatus)
-                ) {
+                // Match the per-message status mapping in
+                // ChatDeliveryStatus.toChatDeliveryStatus: when the latest known
+                // status is Delivered, that wins over `isInOutbox`. Right after
+                // pressing "Heal group" we re-enqueue the file, so the server
+                // briefly returns `latestTransferStatus = Delivered` (from the
+                // prior successful send) AND `isInOutbox = true` (because we
+                // just kicked it back into the outbox). Treating that combo as
+                // a Problem produced a misleading "PROBLEM(Delivered)" log
+                // entry and a transient red icon for ~180ms after each heal.
+                // The recipient is fine — the file has been delivered before
+                // and is currently being redistributed.
+                val status = if (entry.latestTransferStatus == TransferStatus.Delivered) {
                     RecipientFileStatus.Ok
                 } else {
                     RecipientFileStatus.Problem(
