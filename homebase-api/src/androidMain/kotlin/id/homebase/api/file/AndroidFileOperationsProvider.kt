@@ -36,6 +36,44 @@ class AndroidFileOperationsProvider(
         }
     }
 
+    override fun readFileAsFlow(path: String, chunkSize: Int): kotlinx.coroutines.flow.Flow<ByteArray> =
+        kotlinx.coroutines.flow.flow {
+            val stream = if (path.startsWith("content://") || path.startsWith("content:")) {
+                context.contentResolver.openInputStream(path.toUri())
+                    ?: throw IllegalArgumentException("Unable to open content URI: $path")
+            } else {
+                File(path).inputStream()
+            }
+            stream.use {
+                val buf = ByteArray(chunkSize)
+                while (true) {
+                    val n = it.read(buf, 0, buf.size)
+                    if (n <= 0) break
+                    emit(buf.copyOf(n))
+                }
+            }
+        }
+
+    override suspend fun readFileHeaderBytes(path: String, maxBytes: Int): ByteArray =
+        withContext(Dispatchers.IO) {
+            val stream = if (path.startsWith("content://") || path.startsWith("content:")) {
+                context.contentResolver.openInputStream(path.toUri())
+                    ?: throw IllegalArgumentException("Unable to open content URI: $path")
+            } else {
+                File(path).inputStream()
+            }
+            stream.use {
+                val buf = ByteArray(maxBytes)
+                var off = 0
+                while (off < maxBytes) {
+                    val n = it.read(buf, off, maxBytes - off)
+                    if (n <= 0) break
+                    off += n
+                }
+                if (off == maxBytes) buf else buf.copyOf(off)
+            }
+        }
+
     override fun deleteTempFile(path: String): Boolean {
         return runCatching {
             if (path.startsWith("content://") || path.startsWith("content:")) {

@@ -118,7 +118,12 @@ class AppViewModel(
         Logger.i(tag = "AppViewModel") { "Handling share intent for conversation: $conversationId" }
         val pending = shareContentProcessor.readPendingContent()
         if (pending != null) {
-            _navigationEvents.trySend(NotificationNavigationEvent.OpenConversation(conversationId))
+            _navigationEvents.trySend(
+                NotificationNavigationEvent.OpenConversation(
+                    conversationId = conversationId,
+                    source = NotificationNavigationEvent.OpenConversation.Source.ShareIntent,
+                )
+            )
         } else {
             Logger.w(tag = "AppViewModel") { "No pending shared content found for conversation: $conversationId" }
         }

@@ -67,14 +67,18 @@ object AesCbc {
     private const val BLOCK_SIZE = 16
 
     /**
-     * Stream encrypt data with AES-CBC. Assumes each chunk (apart from last one) is a multiple of
-     * 16 bytes.
+     * Stream encrypt data with AES-CBC + PKCS7 padding. Accepts a [dataStream] of any chunk
+     * shape — the function buffers internally so callers don't need to align their producer
+     * to the AES block size.
      *
-     * The algorithm:
-     * 1. For each chunk, encrypt using the previous block as IV (or initial IV for first chunk)
-     * 2. Remove the padding block from each chunk except the last
-     * 3. Store the last encrypted block to use as IV for next chunk
-     * 4. On final chunk, re-add the padding for proper stream termination
+     * The output ciphertext is byte-identical to [encrypt] applied to the concatenation of
+     * all incoming chunks: same CBC chaining, same single PKCS7 pad block at the end.
+     *
+     * Algorithm: keep a [carry] buffer of unprocessed bytes (always < 2 * BLOCK_SIZE). On
+     * each incoming chunk, peel off the largest block-aligned prefix that still leaves at
+     * least one block in carry, encrypt + emit that prefix (stripping the cipher's PKCS7
+     * pad block since the input is aligned), and roll the chain IV. On flow end, encrypt
+     * whatever's left in carry — the cipher applies the final PKCS7 padding for us.
      *
      * @param dataStream Flow of byte arrays representing the data stream
      * @param key Encryption key
@@ -92,32 +96,32 @@ object AesCbc {
         val aesKey = aes.keyDecoder().decodeFromByteArray(AES.Key.Format.RAW, key)
         val cipher = aesKey.cipher()
 
-        var lastBlock: ByteArray? = null
-        var lastPadding: ByteArray? = null
+        var carry = ByteArray(0)
+        var chainIv = iv
 
-        dataStream.collect { chunk ->
-            // Encrypt with iv or previous block as iv
-            val currentIv = lastBlock ?: iv
-            val encrypted = cipher.encryptWithIv(currentIv, chunk)
-
-            // Get padding (last BLOCK_SIZE bytes)
-            lastPadding = encrypted.copyOfRange(encrypted.size - BLOCK_SIZE, encrypted.size)
-
-            // Remove padding from output
-            val removedPadding = encrypted.copyOfRange(0, encrypted.size - BLOCK_SIZE)
-
-            // Get last block for next iteration's IV
-            lastBlock =
-                    removedPadding.copyOfRange(
-                            removedPadding.size - BLOCK_SIZE,
-                            removedPadding.size
-                    )
-
-            send(removedPadding)
+        dataStream.collect { incoming ->
+            if (incoming.isEmpty()) return@collect
+            val combined = if (carry.isEmpty()) incoming else carry + incoming
+            // Hold back at least BLOCK_SIZE bytes so the eventual final emit is always
+            // ≥ BLOCK_SIZE — required because we strip a PKCS7 pad block from each
+            // mid-stream encryption, which would underflow if the chunk were too small.
+            val processSize = ((combined.size - BLOCK_SIZE) / BLOCK_SIZE) * BLOCK_SIZE
+            if (processSize > 0) {
+                val toEncrypt = combined.copyOfRange(0, processSize)
+                val encrypted = cipher.encryptWithIv(chainIv, toEncrypt)
+                // Strip the PKCS7 pad block (always exactly BLOCK_SIZE since input is aligned).
+                val streamed = encrypted.copyOfRange(0, encrypted.size - BLOCK_SIZE)
+                chainIv = streamed.copyOfRange(streamed.size - BLOCK_SIZE, streamed.size)
+                carry = combined.copyOfRange(processSize, combined.size)
+                send(streamed)
+            } else {
+                carry = combined
+            }
         }
 
-        // Re-add last padding to have a clear end of the stream
-        lastPadding?.let { send(it) }
+        // Final emit: encrypt whatever's left in carry (0..N bytes) — the cipher's own
+        // PKCS7 padding produces the trailing block(s).
+        send(cipher.encryptWithIv(chainIv, carry))
     }
 
     /** Stream encrypt data with AES-CBC using SecureByteArray key. */

@@ -416,6 +416,7 @@
     <string name="chat_message_delete_for_me">Delete for me</string>
     <string name="chat_message_options">Message options</string>
     <string name="chat_message_attachment_options">Attachment options</string>
+    <string name="chat_attach_file_failed">Failed to attach file(s): %s</string>
     <string name="chat_message_camera">Camera</string>
     <string name="chat_message_take_photo">Take photo</string>
     <string name="chat_message_record_video">Record video</string>

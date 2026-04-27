@@ -24,6 +24,18 @@ actual fun clipboardImageReceiverModifier(onImagePasted: (ByteArray) -> Unit): M
                     val uri = item.uri
                     if (uri != null) {
                         try {
+                            // TODO(perf): Stream the URI directly to a temp file instead of
+                            // allocating the full image as a ByteArray here. Today this round-trips:
+                            // URI → byte[] → callback → VM.writeBytesToTempFile(bytes) → PlatformFile,
+                            // costing one ~5–10 MB allocation per paste. Fixing it requires changing
+                            // the (ByteArray) -> Unit callback contract in clipboardImageReceiverModifier
+                            // (expect + 4 actuals), the AttachClipboardImage UiAction, and the
+                            // onPasteImage hook in MessageInputBar / ConversationContent — touched in
+                            // too many spots for the marginal one-off-per-paste win, deferred for now.
+                            // When fixing: have the modifier copy the URI to a temp file via
+                            // FileOperationsProvider and pass the resulting path. The URI is bound to
+                            // the Compose contentReceiver scope and may be invalid by the time the VM
+                            // coroutine runs.
                             val bytes = context.contentResolver
                                 .openInputStream(uri)
                                 ?.use { it.readBytes() }

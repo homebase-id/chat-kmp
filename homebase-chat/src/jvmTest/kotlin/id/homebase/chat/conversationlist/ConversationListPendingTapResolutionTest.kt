@@ -12,11 +12,16 @@ import kotlin.uuid.Uuid
  * Locks down the resolution policy used by the VM's
  * pendingNotificationTap collector:
  *  - no tap → nothing to do
- *  - tap present but conversations not yet ready → wait
- *  - tap present, ready, conversation absent → still wait (next sync
- *    emit will try again)
- *  - tap present, ready, conversation present → hand back the tap so
- *    the caller fires selectConversation and clears
+ *  - tap present, conversation absent → still wait (next sync emit
+ *    will try again, and the VM's fast-path kick will have triggered
+ *    a direct DB load by then if the row exists locally)
+ *  - tap present, conversation present → hand back the tap so the
+ *    caller fires selectConversation and clears
+ *
+ * The previous `dataReady` gate is gone: the fast-path collector
+ * forces a direct DB load for the tap's conversation as soon as the
+ * tap is set, so the conversation showing up in `items` is itself
+ * proof that local data exists — `dataReady` would only add latency.
  */
 @OptIn(ExperimentalTime::class)
 class ConversationListPendingTapResolutionTest {
@@ -33,18 +38,6 @@ class ConversationListPendingTapResolutionTest {
         assertNull(
             resolveNotificationTap(
                 tap = null,
-                dataReady = true,
-                conversationIds = setOf(convoA),
-            )
-        )
-    }
-
-    @Test
-    fun notDataReady_returnsNull() {
-        assertNull(
-            resolveNotificationTap(
-                tap = tap(),
-                dataReady = false,
                 conversationIds = setOf(convoA),
             )
         )
@@ -52,11 +45,10 @@ class ConversationListPendingTapResolutionTest {
 
     @Test
     fun conversationAbsent_returnsNull() {
-        // Conversation hasn't synced yet — keep waiting.
+        // Conversation hasn't been loaded into items yet — keep waiting.
         assertNull(
             resolveNotificationTap(
                 tap = tap(),
-                dataReady = true,
                 conversationIds = setOf(convoB),
             )
         )
@@ -67,8 +59,21 @@ class ConversationListPendingTapResolutionTest {
         val t = tap()
         val result = resolveNotificationTap(
             tap = t,
-            dataReady = true,
             conversationIds = setOf(convoA, convoB),
+        )
+        assertEquals(t, result)
+    }
+
+    @Test
+    fun conversationPresent_resolvesEvenBeforeDataReady() {
+        // The fast-path DB lookup can insert the conversation into
+        // items before ConversationStream.start() has finished its
+        // enrichment passes. The resolver must not block on dataReady
+        // in that window — if items contains the id, navigate.
+        val t = tap()
+        val result = resolveNotificationTap(
+            tap = t,
+            conversationIds = setOf(convoA),
         )
         assertEquals(t, result)
     }
@@ -78,7 +83,6 @@ class ConversationListPendingTapResolutionTest {
         assertNull(
             resolveNotificationTap(
                 tap = tap(),
-                dataReady = true,
                 conversationIds = emptySet(),
             )
         )

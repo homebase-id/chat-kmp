@@ -23,12 +23,14 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.api.video.FFmpegUtils
 import id.homebase.api.video.VideoMetadata
+import id.homebase.api.video.VideoThumbnailExtractor
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DeleteMessage
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
@@ -110,11 +112,15 @@ import io.github.vinceglb.filekit.write
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import id.homebase.core.localization.TranslationUtil
+import id.homebase.resources.chat_attach_file_failed
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -190,6 +196,46 @@ class ConversationListViewModel(
     val messageInputTextState = RichTextState().applyDefaultStyling()
     private var currentConversationJob: Job? = null
     private var pendingMessageId: Uuid? = null
+
+    // Tracks in-flight video thumbnail extraction per pending attachment so the editor can
+    // open instantly (Signal-style) while the FFmpeg/MediaMetadataRetriever poster work
+    // happens in the background. The send path awaits these so the message envelope still
+    // ships a poster frame.
+    private val pendingThumbnails = mutableMapOf<Uuid, Deferred<ByteArray?>>()
+
+    private fun extractThumbnailAsync(attachmentId: Uuid, videoPath: String) {
+        val deferred = viewModelScope.async {
+            runCatching { VideoThumbnailExtractor.extractPosterFrame(videoPath) }.getOrNull()
+        }
+        pendingThumbnails[attachmentId] = deferred
+        viewModelScope.launch {
+            val bytes = try {
+                deferred.await()
+            } catch (_: CancellationException) {
+                null
+            }
+            pendingThumbnails.remove(attachmentId)
+            if (bytes == null) return@launch
+            _messagesUiState.update { state ->
+                val overlay = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+                    ?: return@update state
+                if (overlay.attachments.none { it.attachmentId == attachmentId }) return@update state
+                val updated = overlay.attachments.map { a ->
+                    if (a is AttachmentPendingFile.FileVideo && a.attachmentId == attachmentId) {
+                        a.copy(thumbnailBytes = bytes)
+                    } else a
+                }
+                state.copy(fullScreenOverlay = overlay.copy(attachments = updated))
+            }
+        }
+    }
+
+    private suspend fun ensureThumbnail(file: AttachmentPendingFile.FileVideo): AttachmentPendingFile.FileVideo {
+        if (file.thumbnailBytes != null) return file
+        val pending = pendingThumbnails.remove(file.attachmentId) ?: return file
+        val bytes = runCatching { pending.await() }.getOrNull()
+        return if (bytes != null) file.copy(thumbnailBytes = bytes) else file
+    }
 
     init {
         viewModelScope.launch {
@@ -468,7 +514,6 @@ class ConversationListViewModel(
                 .collect { (tap, convosState) ->
                     val resolved = resolveNotificationTap(
                         tap = tap,
-                        dataReady = convosState.dataReady,
                         conversationIds = convosState.items.map { it.id }.toSet(),
                     ) ?: return@collect
                     Logger.i(tag = "ConversationListViewModel") {
@@ -481,6 +526,33 @@ class ConversationListViewModel(
                     )
                     pendingNotificationTap.clearIfMatches(resolved.conversationId)
                 }
+        }
+
+        // Fast-path: when a notification tap arrives, kick a direct DB
+        // lookup for the target conversation off the Main dispatcher.
+        // ConversationStream.loadConversation runs one
+        // selectHomebaseFileByUnique against DriveMainIndex; if the file
+        // is in the local DB (which it usually is — the background sync
+        // that delivered the push wrote it), insertNewConversation /
+        // updateConversation mutates _conversations.items, which re-emits
+        // the StateFlow and lets the deferred resolver above fire
+        // immediately. Without this kick, the resolver waits for the
+        // full ConversationStream.start() enrichment pipeline (or, on a
+        // warm VM, for the next sync batch) — which is what made
+        // notification taps feel like they were gated on the drive-sync
+        // spinner. Dispatchers.IO so the kick can't be queued behind
+        // enrichWithUnreadCounts on Main.
+        viewModelScope.launch {
+            pendingNotificationTap.state.collect { tap ->
+                if (tap == null) return@collect
+                val convoId = tap.conversationId
+                val alreadyLoaded = conversationStream.conversations.value.items
+                    .any { it.id == convoId }
+                if (alreadyLoaded) return@collect
+                launch(Dispatchers.IO) {
+                    conversationStream.loadConversation(convoId)
+                }
+            }
         }
     }
 
@@ -1135,26 +1207,11 @@ class ConversationListViewModel(
                             val ct = it.mimeType()?.toString()
                                 ?: detectContentTypeFromExtensionOrHint(it.name)
                             when {
-                                ct.startsWith("video/") -> {
-                                    val thumbnailBytes = try {
-                                        val resolvedPath =
-                                            fileOperationsProvider.resolveToFilePath(it.toString())
-                                        val thumbPath = FFmpegUtils.grabThumbnail(resolvedPath)
-                                        if (thumbPath != null) {
-                                            val bytes =
-                                                fileOperationsProvider.readFileBytes(thumbPath)
-                                            fileOperationsProvider.deleteTempFile(thumbPath)
-                                            bytes
-                                        } else null
-                                    } catch (_: Exception) {
-                                        null
-                                    }
-                                    AttachmentPendingFile.FileVideo(
-                                        Uuid.generateV7(),
-                                        it,
-                                        thumbnailBytes
-                                    )
-                                }
+                                ct.startsWith("video/") -> AttachmentPendingFile.FileVideo(
+                                    Uuid.generateV7(),
+                                    it,
+                                    thumbnailBytes = null,
+                                )
 
                                 action.isImage || ct.startsWith("image/") -> AttachmentPendingFile.FileImage(
                                     Uuid.generateV7(),
@@ -1188,11 +1245,22 @@ class ConversationListViewModel(
                                 fullScreenOverlay = newOverlay,
                             )
                         }
+
+                        // Editor is now visible — extract thumbnails in the background and
+                        // patch the pending FileVideo entries when they complete.
+                        newFiles.forEach { f ->
+                            if (f is AttachmentPendingFile.FileVideo) {
+                                extractThumbnailAsync(f.attachmentId, f.file.toString())
+                            }
+                        }
                     } catch (e: Exception) {
                         Logger.e("Failed to attach file(s)", e)
                         sendEvent(
                             ShowErrorMessage(
-                                "Failed to attach file(s): ${e.message}"
+                                TranslationUtil.getString(
+                                    MR.string.chat_attach_file_failed,
+                                    e.message ?: ""
+                                )
                             )
                         )
                     }
@@ -1204,22 +1272,10 @@ class ConversationListViewModel(
                     try {
                         val newFiles = action.files.map {
                             if (it.mimeType.startsWith("video/")) {
-                                val thumbnailBytes = try {
-                                    val resolvedPath =
-                                        fileOperationsProvider.resolveToFilePath(it.file.toString())
-                                    val thumbPath = FFmpegUtils.grabThumbnail(resolvedPath)
-                                    if (thumbPath != null) {
-                                        val bytes = fileOperationsProvider.readFileBytes(thumbPath)
-                                        fileOperationsProvider.deleteTempFile(thumbPath)
-                                        bytes
-                                    } else null
-                                } catch (_: Exception) {
-                                    null
-                                }
                                 AttachmentPendingFile.FileVideo(
                                     Uuid.generateV7(),
                                     it.file,
-                                    thumbnailBytes
+                                    thumbnailBytes = null,
                                 )
                             } else {
                                 AttachmentPendingFile.Gallery(Uuid.generateV7(), it)
@@ -1249,11 +1305,22 @@ class ConversationListViewModel(
                                 fullScreenOverlay = newOverlay,
                             )
                         }
+
+                        // Editor visible — kick off thumbnail extraction in parallel, using
+                        // the gallery URI directly (no resolveToFilePath copy).
+                        newFiles.zip(action.files).forEach { (pending, gallery) ->
+                            if (pending is AttachmentPendingFile.FileVideo) {
+                                extractThumbnailAsync(pending.attachmentId, gallery.file.toString())
+                            }
+                        }
                     } catch (e: Exception) {
                         Logger.e("Failed to attach file(s)", e)
                         sendEvent(
                             ShowErrorMessage(
-                                "Failed to attach file(s): ${e.message}"
+                                TranslationUtil.getString(
+                                    MR.string.chat_attach_file_failed,
+                                    e.message ?: ""
+                                )
                             )
                         )
                     }
@@ -2639,8 +2706,14 @@ class ConversationListViewModel(
     ) {
         val sentAt = UnixTimeUtc.now()
         viewModelScope.launch {
+            // If any FileVideo entries still have a thumbnail extraction in flight (the
+            // user hit Send before the background poster task finished), wait on it once
+            // so the message envelope ships with a poster frame.
+            val resolvedFiles = files.map { f ->
+                if (f is AttachmentPendingFile.FileVideo) ensureThumbnail(f) else f
+            }
             val attachments = mutableListOf<AttachmentInput>()
-            files.forEach { attachment ->
+            resolvedFiles.forEach { attachment ->
                 when (attachment) {
                     is AttachmentPendingFile.File -> {
                         attachments.add(
@@ -2749,7 +2822,7 @@ class ConversationListViewModel(
             // aspect for free; for images we compute aspect asynchronously below and
             // re-put once we have it — avoids blocking the placeholder on image I/O.
             val imagePathsToRefine = mutableListOf<Pair<String, String>>()
-            files.forEachIndexed { index, file ->
+            resolvedFiles.forEachIndexed { index, file ->
                 val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
                 val ctx: LocalAttachmentContext? = when (file) {
                     is AttachmentPendingFile.FileVideo -> {
@@ -2786,13 +2859,16 @@ class ConversationListViewModel(
                 }
             }
 
-            // Refine image aspect ratios off the main path.
+            // Refine image aspect ratios off the main path. Try a header-only parser
+            // first so we don't allocate the full image bytes just to read width/height;
+            // fall back to the full-bytes decoder for formats we can't sniff (e.g. HEIC).
             if (imagePathsToRefine.isNotEmpty()) {
                 viewModelScope.launch {
                     imagePathsToRefine.forEach { (payloadKey, path) ->
                         val aspect = runCatching {
-                            val bytes = fileOperationsProvider.readFileBytes(path)
-                            val size = ImageUtils.getNaturalSize(bytes)
+                            val header = fileOperationsProvider.readFileHeaderBytes(path)
+                            val size = ImageHeaderParser.parse(header)
+                                ?: ImageUtils.getNaturalSize(fileOperationsProvider.readFileBytes(path))
                             if (size.pixelWidth > 0 && size.pixelHeight > 0)
                                 size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
                             else null
@@ -2969,18 +3045,25 @@ internal fun synthesizeOwnerSession(
 /**
  * Decides whether a pending notification tap is ready to be resolved
  * against the current conversation list snapshot. Returns the tap
- * when the conversation list is ready AND contains the tap's
- * conversation id — caller then routes to the conversation + message.
- * Returns null when there's nothing to do yet (sync still pending).
+ * when the snapshot already contains the tap's conversation id —
+ * caller then routes to the conversation + message.
+ *
+ * No `dataReady` gate: a fast-path collector in the VM force-loads
+ * the tap's conversation directly from the local DB the moment a tap
+ * is set, so by the time the conversation appears in `items` we know
+ * it's locally available and safe to navigate to — even if
+ * `ConversationStream.start()` hasn't finished its full enrichment
+ * pipeline. The deferred fallback (sync delivers the conversation
+ * later) keeps working because `processConversationBatchIncrementally`
+ * also mutates `items`, which re-emits the StateFlow.
  *
  * Pure function so unit tests can exercise the resolution policy
  * without spinning up a VM.
  */
 internal fun resolveNotificationTap(
     tap: PendingNotificationTap.Tap?,
-    dataReady: Boolean,
     conversationIds: Set<Uuid>,
 ): PendingNotificationTap.Tap? {
-    if (tap == null || !dataReady) return null
+    if (tap == null) return null
     return tap.takeIf { conversationIds.contains(it.conversationId) }
 }
