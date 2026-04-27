@@ -42,7 +42,7 @@ import kotlin.uuid.Uuid
 class ChatMessageSenderService(
     private val outboxSync: OutboxSync,
     private val conversationStream: ConversationParticipantLookup,
-    private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
+    private val payloadBundleEncryptionService: PayloadBundleEncryptor,
     private val scope: CoroutineScope,
     private val chatMessageStream: MessageLookup,
     private val optimisticWriter: OptimisticWriter,

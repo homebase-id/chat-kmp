@@ -52,7 +52,7 @@ import kotlin.uuid.Uuid
  *     a non-null instance.
  *   - Real [DriveFileProvider] backed by a [MockEngine] that returns 500 for
  *     every request. Construction requires it; the send path doesn't call it.
- *   - [NoopFileOperationsProvider] — only invoked for over-budget messages,
+ *   - [SenderNoopFileOperationsProvider] — only invoked for over-budget messages,
  *     and the tests stay under the budget so it's never reached.
  *
  * Use via `ChatMessageSenderServiceTestFixture().use { fixture -> ... }` so
@@ -84,7 +84,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
 
         outboxSync = OutboxSync(
             databaseManager = dbm,
-            uploader = ThrowingOutboxUploader,
+            uploader = SenderThrowingOutboxUploader,
             eventBus = eventBus,
             scope = scope,
         ).also { it.setOnline(false) }
@@ -106,7 +106,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         val driveCache = DriveFileProviderCached(
             httpClient,
             credentialsManager,
-            NoopFileOperationsProvider(),
+            SenderNoopFileOperationsProvider(),
         )
         val driveFileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache)
 
@@ -117,7 +117,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
             scope = scope,
             chatMessageStream = FakeMessageLookup(),
             optimisticWriter = optimisticWriter,
-            fileOperationsProvider = NoopFileOperationsProvider(),
+            fileOperationsProvider = SenderNoopFileOperationsProvider(),
             driveFileProvider = driveFileProvider,
             shareSuggestionDonor = ShareSuggestionDonor(),
         )
@@ -253,9 +253,9 @@ class SeedableConversationLookup(private val testDomain: String) : ConversationP
     }
 }
 
-private class NoopFileOperationsProvider : FileOperationsProvider {
+private class SenderNoopFileOperationsProvider : FileOperationsProvider {
     private fun nope(): Nothing =
-        error("NoopFileOperationsProvider: no file IO expected in chain-shape tests")
+        error("SenderNoopFileOperationsProvider: no file IO expected in chain-shape tests")
 
     override fun openFileInput(path: String) = nope()
     override suspend fun readFileBytes(path: String) = nope()
@@ -266,7 +266,7 @@ private class NoopFileOperationsProvider : FileOperationsProvider {
     override suspend fun writeStream(path: String, data: Flow<ByteArray>) = nope()
 }
 
-private object ThrowingOutboxUploader : OutboxUploader {
+private object SenderThrowingOutboxUploader : OutboxUploader {
     override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
         error("OutboxUploader.upload should never be called in tests (setOnline(false))")
     }
