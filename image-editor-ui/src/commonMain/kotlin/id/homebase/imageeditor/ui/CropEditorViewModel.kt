@@ -183,9 +183,11 @@ class CropEditorViewModel(
                 _uiState.update { it.copy(freeRotationDegrees = action.degrees) }
             }
             CropEditorUiAction.FreeRotationReleased -> {
-                // Commit the editor matrix into local so undo captures it.
-                model.hierarchy.mainImage()?.commitEditorMatrix()
+                // Capture pre-edit state for undo BEFORE folding the editor
+                // matrix into local — undo restores what existed before this
+                // rotation was committed.
                 model.pushUndoPoint()
+                model.hierarchy.mainImage()?.commitEditorMatrix()
                 snapshotMatrices()
                 refreshUndoRedo()
             }
@@ -302,9 +304,11 @@ class CropEditorViewModel(
     fun commitMainImageGesture() {
         val main = model.hierarchy.mainImage() ?: return
         if (main.editorMatrix.isIdentity()) return
+        // Capture pre-edit state for undo BEFORE folding the editor matrix
+        // into local; undo restores what existed before this pan/zoom.
+        model.pushUndoPoint()
         main.commitEditorMatrix()
         model.postEdit(allowScaleToRepairCrop = true)
-        model.pushUndoPoint()
         snapshotMatrices()
         refreshUndoRedo()
     }
@@ -349,9 +353,11 @@ class CropEditorViewModel(
     fun commitThumbGesture() {
         val cropEl = model.hierarchy.cropEditorElement
         if (cropEl.editorMatrix.isIdentity()) return
+        // Capture pre-edit state for undo BEFORE folding the editor matrix
+        // into local; undo restores what existed before this thumb drag.
+        model.pushUndoPoint()
         cropEl.commitEditorMatrix()
         model.postEdit(allowScaleToRepairCrop = true)
-        model.pushUndoPoint()
         snapshotMatrices()
         refreshUndoRedo()
     }

@@ -154,4 +154,36 @@ class EditorModelTest {
         assertTrue(out.width in 400..800, "width=${out.width}")
         assertTrue(out.height in 300..600, "height=${out.height}")
     }
+
+    /**
+     * Regression for the "drag the LL corner snaps back" bug. On a 3:2
+     * landscape source, dragging a single corner inward shrinks one axis more
+     * than the other, producing an output ratio slightly more elongated than
+     * 3:2. The aspect-ratio guardrail must allow this — Signal caps at
+     * MINIMUM_RATIO (15:1), or the source ratio if the source itself is more
+     * elongated than 15:1. A 3:2 source falls under 15:1 and so must allow
+     * any reasonable free-corner crop.
+     */
+    @Test fun freeCornerShrinkOnLandscapeSourceCommits() {
+        val m = EditorModel.create()
+        m.onImageReady(Size(3000, 2000))
+        m.setVisibleViewPort(RectF(0f, 0f, 1000f, 1000f))
+
+        val cropEl = m.hierarchy.cropEditorElement
+        val before = Matrix2D(cropEl.localMatrix)
+
+        // Mimic an LL-corner drag: shrink the crop slightly differently in x
+        // and y, anchored at the TR corner. This is what produces an output
+        // ratio of ~1.57 from a 1.5 source.
+        cropEl.editorMatrix.postScale(0.9f, 0.85f, 1000f, -666f)
+        cropEl.commitEditorMatrix()
+        m.postEdit(allowScaleToRepairCrop = true)
+
+        // The cropEditorElement.localMatrix must have changed (not snapped
+        // back to its identity-ish initial state).
+        val unchanged = (0 until 9).all { i ->
+            kotlin.math.abs(before.values[i] - cropEl.localMatrix.values[i]) < 1e-3f
+        }
+        assertFalse(unchanged, "Free-corner shrink was rolled back; cropEl.local=${cropEl.localMatrix}")
+    }
 }

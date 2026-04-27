@@ -26,10 +26,12 @@ import kotlin.math.hypot
  * whether the gesture targets a corner thumb or pans/zooms the main image —
  * the two modes never overlap.
  *
- * The [snapshotState] holder is read fresh at each gesture start so the
- * pointerInput key stays stable across recompositions; otherwise the gesture
- * loop would restart every time `snapshotMatrices()` fires (i.e., on every
- * gesture frame after the live-cropRect change), losing its mode mid-drag.
+ * [snapshotState] should hold the *visible* (animated) snapshot so the
+ * hit-test corners line up with what the user sees. The pointerInput key is
+ * `Unit` so the gesture loop survives the per-frame snapshot churn; the
+ * snapshot is only read once at gesture start by `hitTestThumb`. Once a
+ * gesture is running the handlers read live model matrices via callbacks, so
+ * any post-hit animation convergence does not affect drag math.
  */
 fun Modifier.cropGestures(
     snapshotState: State<MatrixSnapshot>,

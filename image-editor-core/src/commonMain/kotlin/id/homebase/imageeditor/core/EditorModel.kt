@@ -335,10 +335,15 @@ class EditorModel internal constructor(
 
         val w = max(outputSize.width, outputSize.height)
         val h = min(outputSize.width, outputSize.height)
+        // Signal's `currentCropIsAcceptable` allows the output to be at most as
+        // elongated as MINIMUM_RATIO (15:1), OR the source itself if the source
+        // is even more elongated (panorama). Use MAX, not MIN — clamping to
+        // source ratio prevented free-corner crops on any non-square image.
+        // See Signal `EditorModel.java:641-655` and `compareRatios`.
         val sourceMaxRatio = MINIMUM_RATIO_LONG.toFloat() / MINIMUM_RATIO_SHORT.toFloat()
         val sourceShort = min(size.width, size.height).toFloat()
         val sourceLong = max(size.width, size.height).toFloat()
-        val effectiveMax = min(sourceMaxRatio, sourceLong / sourceShort)
+        val effectiveMax = max(sourceMaxRatio, sourceLong / sourceShort)
         if (h > 0f && w / h > effectiveMax) return false
 
         return cropIsWithinMainImageBounds()
@@ -393,7 +398,15 @@ class EditorModel internal constructor(
             it.localMatrix.reset()
             it.editorMatrix.reset()
         }
-        applyFixedRatio()
+        // Clear any prior fixed-ratio constraint (Square / 4:3 / 16:9) so the
+        // user lands back on the full-image free crop.
+        fixedRatio = null
+        hierarchy.cropEditorElement.flags.aspectLocked = false
+        // Re-seed inBoundsMemory so a subsequent thumb drag's snap-back falls
+        // back to this clean state, not the stale post-edit memory.
+        hierarchy.mainImage()?.let {
+            inBoundsMemory.push(it, hierarchy.cropEditorElement)
+        }
         undoRedoStacks.clear()
         cropUndoRedoStacks.clear()
         if (!visibleViewPort.isEmpty()) {

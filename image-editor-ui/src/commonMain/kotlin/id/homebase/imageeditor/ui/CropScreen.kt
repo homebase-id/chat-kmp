@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.imageeditor.core.PointF
 import id.homebase.imageeditor.core.session.EditSession
 import id.homebase.imageeditor.ui.widget.CropBottomBar
@@ -60,6 +61,10 @@ fun CropScreen(
         }
     }
 
+    // Photo-editor convention: always render the cropper in dark mode so the
+    // black canvas, white frame stroke, and toolbar icons read correctly,
+    // regardless of the surrounding app's theme (which may be light).
+    HomebaseTheme(darkTheme = true) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -93,6 +98,14 @@ fun CropScreen(
             }
         },
         containerColor = Color.Black,
+        // contentColorFor(Color.Black) returns Unspecified (Color.Black isn't
+        // a known scheme role), which falls through to the *outer* theme's
+        // LocalContentColor — i.e. the surrounding app's light-theme text
+        // color, on a black background. Pin it to the dark theme's onSurface
+        // explicitly so IconButton (which reads LocalContentColor) renders
+        // its icons visibly. AssistChip already reads MaterialTheme.onSurface
+        // directly so it was unaffected.
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) { padding ->
         Box(
             modifier = Modifier
@@ -119,16 +132,18 @@ fun CropScreen(
                     onCommitImage = { viewModel.commitMainImageGesture() },
                 )
                 // Animate viewLocal smoothly so the post-release reflow after a
-                // thumb drag commit doesn't read as a "snap-zoom". The raw
-                // snapshot is still used for the gesture handler — its inverse
-                // matrix needs the *target* viewLocal, not the in-flight
-                // animated one (otherwise pointer mapping lags by 250ms).
+                // thumb drag commit doesn't read as a "snap-zoom". Hit-test must
+                // use the *animated* (= visible) snapshot, otherwise during the
+                // 250 ms reflow the visible corner sits at the interpolated
+                // viewLocal while the hit zone is at the target — a touch on the
+                // visible corner can miss the 36 dp radius and the drag is
+                // mis-classified as an image transform. The drag handler itself
+                // reads the live `model.hierarchy.*.localMatrix` (not the
+                // snapshot), so using the animated copy here only affects which
+                // corners are hittable, not the math that follows.
                 val rawSnapshot = viewModel.matrixSnapshot
                 val animatedSnapshot = rememberAnimatedSnapshot(rawSnapshot)
-                // The pointerInput key inside cropGestures is Unit so the
-                // gesture loop survives a frame-rate snapshot churn; the
-                // gesture handler reads the latest snapshot via this State.
-                val snapshotState = rememberUpdatedState(rawSnapshot)
+                val snapshotState = rememberUpdatedState(animatedSnapshot)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -156,5 +171,6 @@ fun CropScreen(
                 }
             }
         }
+    }
     }
 }
