@@ -1,0 +1,49 @@
+Homebase Chat (Kotlin Multiplatform)
+
+This product includes code derived from Signal-Android, by Signal Messenger,
+LLC. Signal-Android is licensed under the GNU Affero General Public License
+v3.0 (AGPL-3.0). The full license text is available at:
+
+    https://www.gnu.org/licenses/agpl-3.0.html
+
+Upstream source repository:
+
+    https://github.com/signalapp/Signal-Android
+
+Specific upstream commit at the time of port:
+
+    9b98b03971  "Bump version to 8.9.0"   (tag: v8.9.0)
+
+The following modules contain code translated from Signal-Android's
+in-house image editor (lib/image-editor and feature/media-send/edit):
+
+    image-editor-core/src/commonMain/kotlin/id/homebase/imageeditor/core/
+
+        Bounds.kt                — from lib/image-editor/.../core/Bounds.java
+        MatrixUtils.kt           — from lib/image-editor/.../core/MatrixUtils.java
+        ControlPoint.kt          — from lib/image-editor/.../core/model/ThumbRenderer.java
+        EditorFlags.kt           — from lib/image-editor/.../core/model/EditorFlags.java
+        EditorElement.kt         — from lib/image-editor/.../core/model/EditorElement.java
+        EditorElementHierarchy.kt — from lib/image-editor/.../core/model/EditorElementHierarchy.java
+        EditorModel.kt           — from lib/image-editor/.../core/model/EditorModel.java (crop math only)
+        Bisect.kt                — from lib/image-editor/.../core/model/Bisect.java
+        InBoundsMemory.kt        — from lib/image-editor/.../core/model/InBoundsMemory.java
+        UndoRedoStack.kt         — from lib/image-editor/.../core/model/{ElementStack,UndoRedoStacks}.java
+
+    image-editor-core/src/commonMain/kotlin/id/homebase/imageeditor/core/session/
+
+        EditSession.kt           — from lib/image-editor/.../core/EditSession.java + ElementEditSession.java
+        ElementDragEditSession.kt — from lib/image-editor/.../core/ElementDragEditSession.java
+        ElementScaleEditSession.kt — from lib/image-editor/.../core/ElementScaleEditSession.java
+        ThumbDragEditSession.kt  — from lib/image-editor/.../core/ThumbDragEditSession.java
+
+    image-editor-ui/src/commonMain/kotlin/id/homebase/imageeditor/ui/widget/
+
+        RotationDial.kt          — algorithm/UX from feature/media-send/.../edit/RotationDial.kt
+
+The text/sticker/drawing/face-blur subsystems of Signal's editor were
+intentionally NOT ported. The remaining UI layer (CropScreen,
+CropOverlay, CropPointerInput, etc.) is a clean Compose Multiplatform
+implementation written for this project; it consults the ported math
+primitives but is not a translation of Signal's Android-specific View
+or feature/media-send/edit/ImageEditor.kt code.

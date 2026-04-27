@@ -85,6 +85,7 @@ import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
+import id.homebase.imageeditor.ui.CropScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -399,6 +400,9 @@ fun AppNavHost(
                                         )
                                     )
                                 },
+                                onNavigateToCropper = { requestId ->
+                                    navController.navigate(Route.Crop(requestId.toString()))
+                                },
                                 onDetailPaneVisibilityChanged = {
                                     // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
                                     @Suppress("AssignedValueIsNeverRead")
@@ -483,6 +487,19 @@ fun AppNavHost(
                             MessageInfoScreen(
                                 viewModel = koinViewModel(),
                                 onNavigateBack = { navController.popBackStack() },
+                            )
+                        }
+                    }
+
+                    composable<Route.Crop> {
+                        if (isAuthenticated) {
+                            CropScreen(
+                                viewModel = koinViewModel(),
+                                onEvent = { _ ->
+                                    // The result bus delivers cropped bytes to the
+                                    // caller; the screen just pops on any event.
+                                    navController.popBackStack()
+                                },
                             )
                         }
                     }

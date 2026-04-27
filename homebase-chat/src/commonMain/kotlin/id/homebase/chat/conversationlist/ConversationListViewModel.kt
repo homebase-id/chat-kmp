@@ -170,6 +170,7 @@ class ConversationListViewModel(
     private val shareContentProcessor: ShareContentProcessor,
     private val localVideoContextStore: LocalAttachmentContextStore,
     private val pendingNotificationTap: PendingNotificationTap,
+    private val cropResultBus: id.homebase.imageeditor.ui.CropResultBus,
 ) : ViewModel() {
 
     companion object {
@@ -1850,6 +1851,74 @@ class ConversationListViewModel(
                     } catch (e: Exception) {
                         Logger.e("Failed to attach clipboard image", e)
                         sendEvent(ShowErrorMessage("Failed to paste image: ${e.message}"))
+                    }
+                }
+            }
+
+            /* Crop attachment */
+            is ConversationListUiAction.RequestCropAttachment -> {
+                viewModelScope.launch {
+                    try {
+                        val overlay = _messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+                        val attachment = overlay?.attachments?.firstOrNull {
+                            it.attachmentId == action.attachmentId
+                        }
+                        val sourcePath = when (attachment) {
+                            is AttachmentPendingFile.FileImage -> attachment.file.toString()
+                            is AttachmentPendingFile.Gallery -> attachment.image.file.toString()
+                            else -> null
+                        }
+                        if (sourcePath == null) {
+                            sendEvent(ShowErrorMessage("Cannot crop this attachment"))
+                            return@launch
+                        }
+                        val bytes = fileOperationsProvider.readFileBytes(sourcePath)
+                        val requestId = Uuid.random()
+                        cropResultBus.postSource(requestId, bytes)
+
+                        viewModelScope.launch {
+                            cropResultBus.resultsFor(requestId).collect { result ->
+                                onAction(
+                                    ConversationListUiAction.ApplyCropResult(
+                                        action.conversationId,
+                                        action.attachmentId,
+                                        result.bytes,
+                                    )
+                                )
+                            }
+                        }
+
+                        sendEvent(ConversationListUiEvent.NavigateToCropper(requestId))
+                    } catch (e: Exception) {
+                        Logger.e("RequestCropAttachment failed", e)
+                        sendEvent(ShowErrorMessage("Failed to open cropper: ${e.message}"))
+                    }
+                }
+            }
+
+            is ConversationListUiAction.ApplyCropResult -> {
+                viewModelScope.launch {
+                    try {
+                        val tempPath = fileOperationsProvider.writeBytesToTempFile(
+                            action.croppedBytes,
+                            "cropped_image",
+                            ".jpg",
+                        )
+                        val newFile = AttachmentPendingFile.FileImage(
+                            id = action.attachmentId,
+                            file = id.homebase.core.clipboard.platformFileFromPath(tempPath),
+                        )
+                        val overlay = _messagesUiState.value.fullScreenOverlay
+                        if (overlay !is FullScreenOverlay.AttachmentData) return@launch
+                        val newAttachments = overlay.attachments.map { existing ->
+                            if (existing.attachmentId == action.attachmentId) newFile else existing
+                        }
+                        _messagesUiState.update {
+                            it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("ApplyCropResult failed", e)
+                        sendEvent(ShowErrorMessage("Failed to apply crop: ${e.message}"))
                     }
                 }
             }
