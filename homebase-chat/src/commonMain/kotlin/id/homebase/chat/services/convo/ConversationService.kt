@@ -1013,7 +1013,7 @@ class ConversationService(
         )
     }
 
-    private suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
+    suspend fun getConversationHomebaseFile(conversationId: Uuid): HomebaseFile? {
         val c = credentialsManager.requireActiveCredentials()
         return dbm.driveMainIndex.selectHomebaseFileByUnique(c.getIdentityId(), chatDrive, conversationId)
     }
@@ -1022,6 +1022,92 @@ class ConversationService(
         val c = credentialsManager.requireActiveCredentials()
         val adminUniqueId = ChatProtocol.getAdminFileUniqueId(conversationId)
         return dbm.driveMainIndex.selectHomebaseFileByUnique(c.getIdentityId(), chatDrive, adminUniqueId)
+    }
+
+    /**
+     * Manually re-distribute the group files (main conversation file + admin file) to all
+     * current participants, for any of those files the caller authored. This is a recovery
+     * aid for groups where one or more recipients did not receive (or lost) the original
+     * group file. Per-file authorship is checked individually — the caller may have
+     * authored only one of the two and the other will be left untouched.
+     *
+     * Each step is debug-logged so a failure can be diagnosed in homebase.log.
+     */
+    suspend fun healGroupDistribution(conversationId: Uuid): HealGroupResult {
+        val conversation = requireConversation(conversationId)
+        if (!conversation.isGroupConversation) {
+            throw IllegalStateException("healGroupDistribution: not a group conversation $conversationId")
+        }
+
+        val domain = credentialsManager.requireActiveDomain()
+        val recipients = conversation.participants.filterNot { it == domain }.distinct()
+
+        Logger.i { "healGroupDistribution: START conversationId=$conversationId domain=$domain participants=${conversation.participants} recipients=$recipients admins=${conversation.admins}" }
+
+        var mainHealed = false
+        var adminHealed = false
+
+        // Main conversation file
+        val mainFile = getConversationHomebaseFile(conversationId)
+        if (mainFile == null) {
+            Logger.w { "healGroupDistribution: no local main conversation file for $conversationId — skipping main" }
+        } else {
+            val mainAuthor = mainFile.fileMetadata.originalAuthor ?: mainFile.fileMetadata.senderOdinId
+            val mainPending = mainFile.fileMetadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag) == true
+            Logger.d { "healGroupDistribution: main file fileId=${mainFile.fileId} sender=${mainFile.fileMetadata.senderOdinId} originalAuthor=${mainFile.fileMetadata.originalAuthor} resolvedAuthor=$mainAuthor versionTag=${mainFile.fileMetadata.versionTag} isPending=$mainPending localTags=${mainFile.fileMetadata.localAppData?.tags}" }
+            if (mainAuthor == domain) {
+                try {
+                    Logger.i { "healGroupDistribution: redistributing main conversation file $conversationId to recipients=$recipients" }
+                    updateConversationInternal(
+                        conversationId = conversationId,
+                        title = conversation.name,
+                        participants = conversation.participants,
+                        distribute = true
+                    )
+                    mainHealed = true
+                    Logger.i { "healGroupDistribution: main conversation file enqueued for redistribute $conversationId" }
+                } catch (t: Throwable) {
+                    Logger.e("healGroupDistribution: main conversation file redistribute FAILED for $conversationId", t)
+                    throw t
+                }
+            } else {
+                Logger.d { "healGroupDistribution: skipping main — caller is not the original author (author=$mainAuthor, caller=$domain)" }
+            }
+        }
+
+        // Admin file
+        val adminFile = getConversationAdminHomebaseFile(conversationId)
+        if (adminFile == null) {
+            Logger.w { "healGroupDistribution: no local admin file for $conversationId — skipping admin" }
+        } else {
+            val adminAuthor = adminFile.fileMetadata.originalAuthor ?: adminFile.fileMetadata.senderOdinId
+            val adminPending = adminFile.fileMetadata.localAppData?.tags?.contains(ChatProtocol.isPendingSendTag) == true
+            Logger.d { "healGroupDistribution: admin file fileId=${adminFile.fileId} sender=${adminFile.fileMetadata.senderOdinId} originalAuthor=${adminFile.fileMetadata.originalAuthor} resolvedAuthor=$adminAuthor versionTag=${adminFile.fileMetadata.versionTag} isPending=$adminPending localTags=${adminFile.fileMetadata.localAppData?.tags}" }
+            if (adminAuthor == domain) {
+                try {
+                    Logger.i { "healGroupDistribution: redistributing admin file $conversationId admins=${conversation.admins} recipients=$recipients" }
+                    updateAdminFile(
+                        conversationId = conversationId,
+                        admins = conversation.admins.toList(),
+                        recipients = recipients
+                    )
+                    adminHealed = true
+                    Logger.i { "healGroupDistribution: admin file enqueued for redistribute $conversationId" }
+                } catch (t: Throwable) {
+                    Logger.e("healGroupDistribution: admin file redistribute FAILED for $conversationId", t)
+                    throw t
+                }
+            } else {
+                Logger.d { "healGroupDistribution: skipping admin — caller is not the original author (author=$adminAuthor, caller=$domain)" }
+            }
+        }
+
+        Logger.i { "healGroupDistribution: DONE conversationId=$conversationId mainHealed=$mainHealed adminHealed=$adminHealed" }
+        return HealGroupResult(mainHealed = mainHealed, adminHealed = adminHealed)
+    }
+
+    data class HealGroupResult(val mainHealed: Boolean, val adminHealed: Boolean) {
+        val didAnything: Boolean get() = mainHealed || adminHealed
     }
 
     /** Reads the admin list from the dedicated admin file, falling back to originalAuthor. */
@@ -1075,7 +1161,12 @@ class ConversationService(
             fileSystemType = FileSystemType.Standard,
         )
 
-        outboxSync.tryEnqueue(request)
+        val enqueued = outboxSync.tryEnqueue(request)
+        if (!enqueued) {
+            Logger.w { "uploadAdminFile: outbox enqueue returned false for $conversationId — likely UNIQUE conflict on adminUniqueId=$adminUniqueId; the file was NOT scheduled for upload" }
+        } else {
+            Logger.d { "uploadAdminFile: enqueued upload for adminUniqueId=$adminUniqueId" }
+        }
     }
 
     /** Updates an existing admin file (or creates one if it doesn't exist yet). */
@@ -1153,7 +1244,12 @@ class ConversationService(
             unecryptedMetadata = metadata
         )
 
-        outboxSync.tryEnqueue(request)
+        val enqueued = outboxSync.tryEnqueue(request)
+        if (!enqueued) {
+            Logger.w { "updateAdminFile: outbox enqueue returned false for $conversationId — likely UNIQUE conflict on adminUniqueId=$adminUniqueId (something already pending); the update was NOT scheduled" }
+        } else {
+            Logger.d { "updateAdminFile: enqueued update for adminUniqueId=$adminUniqueId versionTag=${existingFile.fileMetadata.versionTag}" }
+        }
     }
 
     override suspend fun updateLocalLastReadTime(conversationId: Uuid, newLastReadTime: UnixTimeUtc) {

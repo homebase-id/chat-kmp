@@ -366,6 +366,13 @@
     <string name="chat_group_rejoin_pending_description">You were re-added to this group</string>
     <string name="chat_group_rejoin_accept">Rejoin</string>
     <string name="chat_group_rejoin_decline">Decline</string>
+    <string name="chat_group_main_file_delivered">Group file delivered</string>
+    <string name="chat_group_main_file_problem">Group file delivery problem</string>
+    <string name="chat_group_admin_file_delivered">Admin file delivered</string>
+    <string name="chat_group_admin_file_problem">Admin file delivery problem</string>
+    <string name="chat_group_heal">Heal group</string>
+    <string name="chat_group_heal_completed">Re-distributing group files…</string>
+    <string name="chat_group_heal_completed_nothing">Nothing to redistribute (you didn\'t author the group files).</string>
 
     <!-- 1:1 connection state banner (shown in place of the message composer) -->
     <string name="chat_not_connected_description">You're not connected.</string>
