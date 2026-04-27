@@ -174,14 +174,15 @@ fun AppNavHost(
                     val id = Uuid.parseOrNull(event.conversationId) ?: return@collect
                     val topRoute = navController.currentBackStackEntry?.destination?.route
                     Logger.i(tag = "AppNavHost") {
-                        "OpenConversation received: id=$id, currentDest=$topRoute"
+                        "OpenConversation received: id=$id, source=${event.source}, currentDest=$topRoute"
                     }
                     // Gate on ChatList being *anywhere* in the back stack, not
                     // just on top. Top-of-stack gating hangs forever when the
-                    // user is warm on Detail/Settings/etc. Conversation
-                    // resolution lives in ConversationListViewModel via the
-                    // PendingNotificationTap singleton — here we only manage
-                    // the back stack so the user ends up at ChatList.
+                    // user is warm on Detail/Settings/etc. For notification
+                    // taps, conversation resolution lives in
+                    // ConversationListViewModel via the PendingNotificationTap
+                    // singleton (TTL-retried until drive sync lands the
+                    // conversation) — here we only manage the back stack.
                     val stack = navController.currentBackStack
                         .first { stack -> stack.any { it.destination.hasRoute(Route.ChatList::class) } }
                     Logger.i(tag = "AppNavHost") {
@@ -189,6 +190,16 @@ fun AppNavHost(
                     }
                     val popped = navController.popBackStack(Route.ChatList, inclusive = false)
                     Logger.i(tag = "AppNavHost") { "popBackStack(ChatList)=$popped" }
+                    // Share intents carry no messageId, so PendingNotificationTap
+                    // cannot resolve them. Drop the conversation id directly into
+                    // ChatList's savedStateHandle — the LaunchedEffect on the
+                    // ChatList composable picks it up and calls
+                    // ConversationListViewModel.selectConversation, which in turn
+                    // runs processPendingSharedContent so the shared file lands
+                    // in the correct conversation.
+                    if (event.source == NotificationNavigationEvent.OpenConversation.Source.ShareIntent) {
+                        navController.selectConversationOnChatList(id)
+                    }
                 }
                 is NotificationNavigationEvent.OpenUrl ->
                     uriHandler.openUrl(event.url)
