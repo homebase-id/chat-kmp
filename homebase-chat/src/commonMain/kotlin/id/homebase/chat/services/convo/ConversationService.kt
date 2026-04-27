@@ -156,10 +156,17 @@ class ConversationService(
         if (isGroup) {
             trySendIntroductions(normalizedRecipients, "$domain has added you to a group chat")
 
+            // Serialize: conversation file → admin file → status message. Chaining the
+            // status message off the admin file (rather than off the conversation file
+            // directly) avoids a fan-out parallel where both the admin file and the
+            // status message would release the moment the conversation file is
+            // acknowledged at our own server, then race through Transit in any order.
+            // With this chain, recipients see the conversation file, then the admin
+            // file, then the "group started" status message — strict order on our side.
             chatMessageSenderService.sendStatusMessage(
                 messageUniqueId = Uuid.random(),
                 conversationId = newConversationId,
-                previousMessageUniqueId = newConversationId,
+                previousMessageUniqueId = ChatProtocol.getAdminFileUniqueId(newConversationId),
                 statusMessage = StatusMessageData(
                     statusMessage = StatusMessage.GroupConversationStarted,
                     subject = null
@@ -349,7 +356,11 @@ class ConversationService(
             recipients = recipients.filterNot { it == domain }
         )
 
-        var previousMessageId: Uuid? = null
+        // Serialize the status messages behind the admin-file update so the admin file
+        // lands on each recipient first, then the "X is now admin" / "X is no longer
+        // admin" status messages in their original order. Without this initial dep,
+        // the first status message would race the admin-file update through Transit.
+        var previousMessageId: Uuid? = ChatProtocol.getAdminFileUniqueId(conversationId)
         add.forEach { user ->
             val messageId = Uuid.random()
             chatMessageSenderService.sendStatusMessage(
@@ -429,11 +440,16 @@ class ConversationService(
 
         val normalized = (current + domain).distinct()
 
+        // Chain the conversation-file update behind the last "X was removed" status
+        // message so peers see the removed-status before the participant change lands.
+        // If there were no removals, previousMessageId is null and the update has no
+        // upstream dep — same as before.
         updateConversationInternal(
             conversationId = conversationId,
             title = conversation.name,
             participants = normalized,
-            additionalDistributionRecipients = removed.toList()
+            additionalDistributionRecipients = removed.toList(),
+            dependencyUniqueId = previousMessageId,
         )
 
         // tell the group who was added after we update the conversation so
