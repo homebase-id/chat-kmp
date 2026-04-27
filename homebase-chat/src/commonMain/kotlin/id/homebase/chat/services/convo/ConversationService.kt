@@ -1161,11 +1161,21 @@ class ConversationService(
             fileSystemType = FileSystemType.Standard,
         )
 
-        val enqueued = outboxSync.tryEnqueue(request)
+        // Chain the admin file behind the main conversation file so it is not released
+        // from the local outbox until the conversation file's upload to our own server
+        // has been acknowledged. Without this, the conversation file and the admin file
+        // race in parallel through Transit, and recipients can see the admin file land
+        // before the conversation file — which used to push them into the orphan-recovery
+        // path and create stale placeholders. (See Shelly's Apr 19 log on conversation
+        // 0e684619 for the original failure mode.) The dependency does NOT enforce
+        // ordering across the recipient's network — Transit distribution is still
+        // parallel — but it removes the local-outbox half of the race, which is the
+        // half we control.
+        val enqueued = outboxSync.tryEnqueue(request, dependencyUniqueId = conversationId)
         if (!enqueued) {
             Logger.w { "uploadAdminFile: outbox enqueue returned false for $conversationId — likely UNIQUE conflict on adminUniqueId=$adminUniqueId; the file was NOT scheduled for upload" }
         } else {
-            Logger.d { "uploadAdminFile: enqueued upload for adminUniqueId=$adminUniqueId" }
+            Logger.d { "uploadAdminFile: enqueued upload for adminUniqueId=$adminUniqueId dependencyUniqueId=$conversationId" }
         }
     }
 
@@ -1244,11 +1254,16 @@ class ConversationService(
             unecryptedMetadata = metadata
         )
 
-        val enqueued = outboxSync.tryEnqueue(request)
+        // Same chaining as uploadAdminFile — the admin file's update should not race
+        // ahead of the conversation file in the local outbox. Even when the admin file
+        // is updated standalone (admin add/remove), chaining behind the conversation
+        // file is benign: the conversation file's outbox row, if any, drains first,
+        // otherwise the dependency resolves immediately.
+        val enqueued = outboxSync.tryEnqueue(request, dependencyUniqueId = conversationId)
         if (!enqueued) {
             Logger.w { "updateAdminFile: outbox enqueue returned false for $conversationId — likely UNIQUE conflict on adminUniqueId=$adminUniqueId (something already pending); the update was NOT scheduled" }
         } else {
-            Logger.d { "updateAdminFile: enqueued update for adminUniqueId=$adminUniqueId versionTag=${existingFile.fileMetadata.versionTag}" }
+            Logger.d { "updateAdminFile: enqueued update for adminUniqueId=$adminUniqueId versionTag=${existingFile.fileMetadata.versionTag} dependencyUniqueId=$conversationId" }
         }
     }
 
