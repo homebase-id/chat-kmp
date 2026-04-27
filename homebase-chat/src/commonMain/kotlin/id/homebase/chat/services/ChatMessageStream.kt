@@ -156,7 +156,7 @@ class ChatMessageStream(
         return mapToMessageData(messageFile, credentialsManager, ::resolveDisplayName)
     }
 
-    suspend fun getMessageFile(messageId: Uuid): HomebaseFile? {
+    override suspend fun getMessageFile(messageId: Uuid): HomebaseFile? {
         val c = credentialsManager.requireActiveCredentials()
         return dbm.driveMainIndex.selectHomebaseFileByUnique(
             c.getIdentityId(),
@@ -284,7 +284,7 @@ class ChatMessageStream(
         )
     }
 
-    suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String? {
+    override suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String? {
 
         val header = getMessage(messageId) ?: return null
 

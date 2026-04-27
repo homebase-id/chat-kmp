@@ -28,10 +28,12 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.services.chat.ChatMessageSizer
-import id.homebase.chat.services.convo.ConversationStream
+import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -39,10 +41,10 @@ import kotlin.uuid.Uuid
 
 class ChatMessageSenderService(
     private val outboxSync: OutboxSync,
-    private val conversationStream: ConversationStream,
+    private val conversationStream: ConversationParticipantLookup,
     private val payloadBundleEncryptionService: PayloadBundleEncryptionService,
     private val scope: CoroutineScope,
-    private val chatMessageStream: ChatMessageStream,
+    private val chatMessageStream: MessageLookup,
     private val optimisticWriter: OptimisticWriter,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
@@ -53,6 +55,22 @@ class ChatMessageSenderService(
     }
 
     private val chatDrive = chatTargetDrive.alias
+
+    /**
+     * In-memory tracker of the last outbox-enqueued message uniqueId per conversation.
+     * Used to chain each new message behind the previous one when the caller doesn't
+     * supply a [previousMessageUniqueId], so offline pile-ups release in send order
+     * rather than fanning out in parallel the moment the conversation file drains.
+     *
+     * Lifetime: per service instance. After app restart, the map is empty — pending
+     * outbox rows already carry their persisted deps, so the chain among already-
+     * queued messages survives restart; only the link between pre-restart and
+     * post-restart messages resets, which is acceptable (post-restart messages
+     * fall back to chaining on the conversation file id, which the queued ones
+     * also depended on transitively).
+     */
+    private val lastEnqueuedPerConversation = mutableMapOf<Uuid, Uuid>()
+    private val lastEnqueuedMutex = Mutex()
 
     suspend fun sendNewMessage(
         messageUniqueId: Uuid,
@@ -214,16 +232,40 @@ class ChatMessageSenderService(
         )
         // Outbox enqueue is the success gate — once accepted, the message
         // will be delivered regardless of what happens after.
+        //
+        // Determine the outbox dependency:
+        //   1. If the caller supplied an explicit previousMessageUniqueId, use it.
+        //   2. Otherwise, chain on the last message we enqueued in THIS conversation
+        //      (in-memory tracker) so messages typed while offline release in send
+        //      order rather than fanning out in parallel the moment the conversation
+        //      file drains.
+        //   3. If this is the first message we enqueue in the conversation since the
+        //      service started, fall back to the conversation file's uniqueId. For a
+        //      brand-new conversation the conversation file is still in the outbox,
+        //      so the message waits — closes the orphan-recovery race on the
+        //      recipient side. For an active conversation the conversation file row
+        //      is gone, so the dep resolves immediately via the `NOT EXISTS` guard
+        //      in the outbox checkout SQL — no overhead.
+        val effectiveDep = previousMessageUniqueId
+            ?: lastEnqueuedMutex.withLock { lastEnqueuedPerConversation[conversationId] }
+            ?: conversationId
         val enqueued = outboxSync.tryEnqueue(
             request,
             priority = 1,
-            dependencyUniqueId = previousMessageUniqueId,
+            dependencyUniqueId = effectiveDep,
         )
 
         if (!enqueued) {
             error("Failed to send chat message")
         }
-        Logger.d(tag = TAG) { "sendMessageInternal: outbox enqueued message=$messageUniqueId" }
+        // Record this message as the new chain tail for the conversation. Done after
+        // a successful enqueue so a failure doesn't leave a dangling pointer that
+        // future messages would chain to a never-enqueued id (which `NOT EXISTS`
+        // would resolve immediately, undoing the chain).
+        lastEnqueuedMutex.withLock {
+            lastEnqueuedPerConversation[conversationId] = messageUniqueId
+        }
+        Logger.d(tag = TAG) { "sendMessageInternal: outbox enqueued message=$messageUniqueId dep=$effectiveDep" }
 
         // Best-effort optimistic write — makes the message appear in the chat
         // stream immediately. If it fails, the outbox delivery + sync will

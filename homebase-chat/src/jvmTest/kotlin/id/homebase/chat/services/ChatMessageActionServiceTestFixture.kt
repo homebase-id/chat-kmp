@@ -537,6 +537,12 @@ class FakeMessageLookup : MessageLookup {
             cursor = QueryBatchCursor(),
         )
     }
+
+    override suspend fun getMessageFile(messageId: Uuid): id.homebase.api.client.drives.HomebaseFile? =
+        error("FakeMessageLookup.getMessageFile not exercised by tests using this fixture")
+
+    override suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String? =
+        error("FakeMessageLookup.loadFullMessage not exercised by tests using this fixture")
 }
 
 class FakeLocalLastReadUpdater : LocalLastReadUpdater {

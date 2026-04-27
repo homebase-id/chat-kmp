@@ -206,6 +206,7 @@ val appModule = module {
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
     single<UnreadCountEnricher> { get<ConversationStream>() }
+    single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
     singleOf(::ConversationService)
     single<LocalLastReadUpdater> { get<ConversationService>() }
     singleOf(::ChatMessageStream)
