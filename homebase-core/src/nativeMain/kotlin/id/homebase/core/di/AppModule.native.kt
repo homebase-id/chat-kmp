@@ -39,7 +39,8 @@ actual fun platformModule(): Module = module {
     single { GalleryCache(get<PlatformGalleryManager>()) }
     // Held as its own singleton so PHPhotoLibrary's weak observer reference is
     // backed by something with Application-scoped lifetime.
-    single(createdAtStart = true) { IOSGalleryLibraryObserver(get<GalleryCache>()) }
+    // Explicit <Any> avoids Koin calling KClass on an NSObject subclass (unsupported in K/N).
+    single<Any>(createdAtStart = true) { IOSGalleryLibraryObserver(get<GalleryCache>()) }
     single<PlatformInfo> { IOSPlatformInfo() }
     single<AudioRecorder> { IOSAudioRecorder() }
     single<AudioPlayer> { IOSAudioPlayer() }
