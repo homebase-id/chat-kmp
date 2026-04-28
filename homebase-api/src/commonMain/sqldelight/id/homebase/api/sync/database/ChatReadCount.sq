@@ -72,8 +72,15 @@ WHERE d.identityId = ?
 --   AND d.groupId IS NOT NULL
 -- GROUP BY d.groupId;
 
+-- Returns one row per conversation that has at least one unread message, plus
+-- the conversation's stored ChatReadCount.lastReadTime (NULL when no row exists
+-- yet — e.g. never marked-read on this device). The Defragmenter-style
+-- enrichment pipeline uses this single round-trip to both:
+--   - patch unread counts onto the in-memory list, and
+--   - decide whether to mirror file-of-record lastReadTime into ChatReadCount.
+-- groupId is UNIQUE in ChatReadCount, so MAX() over it returns the (only) value.
 selectAllUnreadCount:
-SELECT d.groupId, COUNT(*) AS unreadCount
+SELECT d.groupId, COUNT(*) AS unreadCount, MAX(c.lastReadTime) AS lastReadTime
 FROM DriveMainIndex AS d
 LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
 WHERE d.identityId = ?

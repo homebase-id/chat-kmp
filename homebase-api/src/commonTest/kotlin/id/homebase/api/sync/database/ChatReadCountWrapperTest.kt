@@ -436,6 +436,89 @@ class ChatReadCountWrapperTest {
     }
 
     @Test
+    fun testSelectAllUnreadCountIncludesLastReadTime() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val testData = populateMockData(dbm)
+            val wrapper = dbm.chatReadCount
+
+            val rows = wrapper.selectAllUnreadCount(testData.identityId, selfDomain)
+
+            // conv2 + conv3 have stored ChatReadCount rows and unread > 0,
+            // so both should appear with their stored lastReadTime exposed.
+            // conv1 has no messages → no row.
+            val conv2Id = testData.convWithOneMessage.first.fileMetadata.appData.uniqueId
+            val conv3Id = testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId
+            val byId = rows.associateBy { it.conversationId }
+
+            val conv2Row = byId[conv2Id]
+            val conv3Row = byId[conv3Id]
+            assertNotNull(conv2Row, "conv2 should appear in unread result")
+            assertNotNull(conv3Row, "conv3 should appear in unread result")
+            assertNotNull(conv2Row.lastReadTime, "conv2 has a ChatReadCount row")
+            assertNotNull(conv3Row.lastReadTime, "conv3 has a ChatReadCount row")
+            assertTrue(conv2Row.lastReadTime > 0L, "lastReadTime should be the stored ms value")
+            assertTrue(conv3Row.lastReadTime > 0L, "lastReadTime should be the stored ms value")
+        }
+    }
+
+    @Test
+    fun testSelectAllUnreadCountReturnsNullLastReadTimeWhenNoRow() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val convoId = Uuid.random()
+            val now = UnixTimeUtc.now()
+
+            val convo = createMockHomebaseFile(convoId, driveId, 8888, null, now)
+            val msg = createMockHomebaseFile(Uuid.random(), driveId, 7878, convoId, now.addMilliseconds(1000))
+            insertHomebaseFile(dbm, identityId, driveId, convo)
+            insertHomebaseFile(dbm, identityId, driveId, msg)
+            // Note: no ChatReadCount row written.
+
+            val rows = dbm.chatReadCount.selectAllUnreadCount(identityId, selfDomain)
+
+            val row = rows.firstOrNull { it.conversationId == convoId }
+            assertNotNull(row, "Conversation with unread message but no ChatReadCount row should still appear")
+            assertEquals(1L, row.unreadCount)
+            assertEquals(null, row.lastReadTime, "Missing ChatReadCount row → lastReadTime is null")
+        }
+    }
+
+    @Test
+    fun testBulkUpsertLastReadTimesAdvancesAllInOneTransaction() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val wrapper = dbm.chatReadCount
+            val a = Uuid.random()
+            val b = Uuid.random()
+            val c = Uuid.random()
+            wrapper.upsertLastReadTime(a, UnixTimeUtc(100L))
+            wrapper.upsertLastReadTime(b, UnixTimeUtc(2000L)) // already ahead
+
+            wrapper.bulkUpsertLastReadTimes(
+                listOf(
+                    a to UnixTimeUtc(500L),
+                    b to UnixTimeUtc(1000L),  // behind stored — MAX clause keeps stored
+                    c to UnixTimeUtc(750L),   // fresh row
+                )
+            )
+
+            assertEquals(500L, wrapper.selectLastReadTimeMs(a))
+            assertEquals(2000L, wrapper.selectLastReadTimeMs(b), "MAX clause must keep the larger stored value")
+            assertEquals(750L, wrapper.selectLastReadTimeMs(c))
+        }
+    }
+
+    @Test
+    fun testBulkUpsertLastReadTimesEmptyListIsNoOp() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val wrapper = dbm.chatReadCount
+            // Should not throw, should not write anything.
+            wrapper.bulkUpsertLastReadTimes(emptyList())
+            assertEquals(null, wrapper.selectLastReadTimeMs(Uuid.random()))
+        }
+    }
+
+    @Test
     fun testUpsertLastReadTimeNew() = runTest {
         DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val testData = populateMockData(dbm)
