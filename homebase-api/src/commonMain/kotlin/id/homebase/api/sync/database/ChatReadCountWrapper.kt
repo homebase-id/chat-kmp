@@ -16,7 +16,9 @@ data class ConversationWithLastMessage(
 
 data class ConversationUnreadCount(
     val conversationId: Uuid,
-    val unreadCount: Long
+    val unreadCount: Long,
+    /** Stored ChatReadCount.lastReadTime (epoch ms), or null when no row exists yet. */
+    val lastReadTime: Long?,
 )
 
 /**
@@ -136,7 +138,8 @@ class ChatReadCountWrapper(
         return list.map {
             ConversationUnreadCount(
                 conversationId = it.groupId,
-                unreadCount = it.unreadCount
+                unreadCount = it.unreadCount,
+                lastReadTime = it.lastReadTime,
             )
         }
     }
@@ -152,6 +155,24 @@ class ChatReadCountWrapper(
     suspend fun upsertLastReadTime(groupId: Uuid, lastReadTime: UnixTimeUtc): Boolean {
         return databaseManager.withWriteValue { db ->
             db.chatReadCountQueries.upsertLastReadTime(groupId, lastReadTime.milliseconds).value > 0
+        }
+    }
+
+    /**
+     * Bulk variant of [upsertLastReadTime] — runs the upsert for every entry in
+     * a single SQLite transaction. Used by the cold-load reconcile pass that
+     * mirrors each conversation file's `localAppData.lastReadTime` into
+     * `ChatReadCount` when this device's row lags behind the file-of-record.
+     *
+     * The per-row `MAX(excluded.lastReadTime, lastReadTime)` clause on the
+     * upsert keeps any concurrent advance from being clobbered.
+     */
+    suspend fun bulkUpsertLastReadTimes(rows: List<Pair<Uuid, UnixTimeUtc>>) {
+        if (rows.isEmpty()) return
+        databaseManager.withWriteTransaction { db ->
+            for ((groupId, lastReadTime) in rows) {
+                db.chatReadCountQueries.upsertLastReadTime(groupId, lastReadTime.milliseconds)
+            }
         }
     }
 
