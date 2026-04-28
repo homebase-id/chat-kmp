@@ -1,5 +1,7 @@
 package id.homebase.app
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +36,7 @@ import id.homebase.core.util.PlatformInfo
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.homebase_icon_round
+import id.homebase.resources.update_available
 import io.github.vinceglb.filekit.FileKit
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
@@ -104,7 +107,7 @@ fun main() {
         val uiState by viewModel.uiState.collectAsState()
         val icon = painterResource(MR.drawable.homebase_icon_round)
         var isWindowVisible by remember { mutableStateOf(true) }
-//        var notificationsEnabled by remember { mutableStateOf(true) }
+        val updateAvailable = stringResource(MR.string.update_available)
         val state = rememberWindowState(
             placement = config.windowPlacement,
             position = config.windowPosition,
@@ -157,6 +160,14 @@ fun main() {
 
             Item(label = "Homebase Chat", isEnabled = false)
             Item(label = "Version ${uiState.version}", isEnabled = false)
+            if (uiState.updateAvailable) {
+                Item(
+                    label = updateAvailable,
+                    icon = Icons.Default.Update,
+                ) {
+                    viewModel.onUiAction(DesktopUiAction.TriggerUpdate)
+                }
+            }
 
             Divider()
 
