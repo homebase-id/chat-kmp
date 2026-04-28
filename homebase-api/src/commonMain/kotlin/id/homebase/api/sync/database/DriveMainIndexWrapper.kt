@@ -131,10 +131,20 @@ class DriveMainIndexWrapper(
         delegate.countByIdentityAndDrive(identityId, driveId).executeAsOne()
 
     /**
-     * Row shape for the Defragmenter's streaming scan — carries enough to call
-     * [HomebaseFile.isSoftDeleted] and to page forward by rowId.
+     * Row shape for the Defragmenter's streaming scan — carries enough to
+     *  - call [HomebaseFile.isSoftDeleted] from the deserialised jsonHeader,
+     *  - page forward by rowId,
+     *  - compare what's stored on the SQL side ([userDate], [archivalStatus])
+     *    against what the deserialised header says, so the classifier can
+     *    detect SQL/header drift without a second read.
      */
-    data class PagedScanRow(val rowId: Long, val fileId: Uuid, val jsonHeader: String)
+    data class PagedScanRow(
+        val rowId: Long,
+        val fileId: Uuid,
+        val userDate: Long,
+        val archivalStatus: Long,
+        val jsonHeader: String,
+    )
 
     /**
      * Keyset-paged scan of a drive's rows. Caller passes `sinceRowId = 0` on
@@ -151,9 +161,41 @@ class DriveMainIndexWrapper(
         driveId,
         sinceRowId,
         limit,
-    ) { rowId, fileId, jsonHeader ->
-        PagedScanRow(rowId = rowId, fileId = fileId, jsonHeader = jsonHeader)
+    ) { rowId, fileId, userDate, archivalStatus, jsonHeader ->
+        PagedScanRow(
+            rowId = rowId,
+            fileId = fileId,
+            userDate = userDate,
+            archivalStatus = archivalStatus,
+            jsonHeader = jsonHeader,
+        )
     }.executeAsList()
+
+    /**
+     * Defragmenter: re-project archivalStatus on a single row. Used by the
+     * repair pass to correct rows where the SQL projection has drifted from
+     * the header's soft-delete state.
+     */
+    suspend fun repairArchivalStatusByRowId(rowId: Long, archivalStatus: Long): Boolean {
+        return databaseManager.withWriteValue { db ->
+            db.driveMainIndexQueries
+                .repairArchivalStatusByRowId(archivalStatus, rowId)
+                .value > 0
+        }
+    }
+
+    /**
+     * Defragmenter: re-project userDate on a single row from the header's
+     * metadata.created fallback. Used by the repair pass to correct
+     * LegacyUserDateZero rows.
+     */
+    suspend fun repairUserDateByRowId(rowId: Long, userDate: Long): Boolean {
+        return databaseManager.withWriteValue { db ->
+            db.driveMainIndexQueries
+                .repairUserDateByRowId(userDate, rowId)
+                .value > 0
+        }
+    }
 
     suspend fun upsertDriveMainIndex(
         identityId: Uuid,

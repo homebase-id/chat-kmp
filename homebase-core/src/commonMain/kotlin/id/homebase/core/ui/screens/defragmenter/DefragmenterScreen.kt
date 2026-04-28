@@ -59,6 +59,7 @@ import id.homebase.resources.defragmenter_status_complete
 import id.homebase.resources.defragmenter_status_idle
 import id.homebase.resources.defragmenter_status_paused
 import id.homebase.resources.defragmenter_status_ready
+import id.homebase.resources.defragmenter_status_repairing
 import id.homebase.resources.defragmenter_status_running
 import id.homebase.resources.defragmenter_status_vacuuming
 import id.homebase.resources.defragmenter_title_format
@@ -179,6 +180,7 @@ private fun DefragmenterContent(
                 analyzedUpto = if (state.phase is DefragmenterPhase.Analyzing)
                     state.analyzedUpto else Int.MAX_VALUE,
                 scanHeadIndex = state.scanHeadIndex,
+                cellStates = state.cellStates,
                 modifier = Modifier
                     .fillMaxSize()
                     .semantics {
@@ -244,6 +246,7 @@ private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier
         DefragmenterPhase.Ready -> stringResource(MR.string.defragmenter_status_ready)
         DefragmenterPhase.Defragmenting -> stringResource(MR.string.defragmenter_status_running)
         DefragmenterPhase.Paused -> stringResource(MR.string.defragmenter_status_paused)
+        DefragmenterPhase.Repairing -> stringResource(MR.string.defragmenter_status_repairing)
         DefragmenterPhase.Vacuuming -> stringResource(MR.string.defragmenter_status_vacuuming)
         DefragmenterPhase.Complete -> stringResource(MR.string.defragmenter_status_complete)
         DefragmenterPhase.Cancelled -> stringResource(MR.string.defragmenter_status_cancelled)
@@ -263,6 +266,33 @@ private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier
             Win98Label(
                 stringResource(MR.string.defragmenter_stat_eta, formatDuration(state.estRemainingMs))
             )
+            // Per-issue tallies + colour swatches so the user can map block
+            // colour → meaning at a glance. Hidden when the count is zero so
+            // the panel doesn't grow until issues actually exist.
+            if (state.issueCountLegacyUserDateZero > 0) {
+                Win98Label(
+                    text = "Legacy userDate=0: ${state.issueCountLegacyUserDateZero}",
+                    color = Win98Palette.IssueLegacyUserDateZeroFill,
+                )
+            }
+            if (state.issueCountArchivalMismatch > 0) {
+                Win98Label(
+                    text = "Soft-delete drift: ${state.issueCountArchivalMismatch}",
+                    color = Win98Palette.IssueArchivalMismatchFill,
+                )
+            }
+            if (state.issueCountCorruptJson > 0) {
+                Win98Label(
+                    text = "Corrupt JSON: ${state.issueCountCorruptJson}",
+                    color = Win98Palette.IssueCorruptJsonFill,
+                )
+            }
+            if (state.issueCountUnmappableConvo > 0) {
+                Win98Label(
+                    text = "Unmappable conversation: ${state.issueCountUnmappableConvo}",
+                    color = Win98Palette.IssueUnmappableConvoFill,
+                )
+            }
         }
     }
 }
@@ -313,7 +343,8 @@ private fun ActionButtons(state: DefragmenterUiState, onAction: (DefragmenterUiA
                 text = stringResource(MR.string.defragmenter_cancel),
                 enabled = phase is DefragmenterPhase.Defragmenting ||
                     phase is DefragmenterPhase.Paused ||
-                    phase is DefragmenterPhase.Analyzing,
+                    phase is DefragmenterPhase.Analyzing ||
+                    phase is DefragmenterPhase.Repairing,
                 onClick = { onAction(DefragmenterUiAction.Cancel) },
             )
         }
