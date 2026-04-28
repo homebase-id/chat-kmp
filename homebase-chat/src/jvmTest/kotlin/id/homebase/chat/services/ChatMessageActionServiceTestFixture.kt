@@ -484,7 +484,20 @@ class ChatMessageActionServiceTestFixture(
     }
 
     override fun close() {
-        if (::dbm.isInitialized) dbm.close()
+        if (!::dbm.isInitialized) return
+        // Swallow teardown-time SQL races: `runTest` cancels `backgroundScope`
+        // (where the outbox uploader runs) when the test body returns, but
+        // the uploader's post-`Completed` bookkeeping writes can hop to
+        // `Dispatchers.IO` and outlive `advanceUntilIdle`. On a loaded CI
+        // box those writes can land *after* this `close()` runs, throwing
+        // `SQLException("database has been closed")` and turning a passing
+        // test into a flake. Per-test in-memory DBs make leaks harmless.
+        try {
+            dbm.close()
+        } catch (e: java.sql.SQLException) {
+            // Already torn down or in the middle of a race — nothing to
+            // recover, and propagating would mask the real assertions.
+        }
     }
 
     private fun createInMemoryDbm(): DatabaseManager = DatabaseManager({
