@@ -485,8 +485,9 @@ fun AppNavHost(
                                     },
                                 )
                             }
+                        }
 
-                            composable<Route.CreateConversation> {
+                        composable<Route.CreateConversation> {
                                 if (isAuthenticated) {
                                     CreateConversationScreen(
                                         viewModel = koinViewModel(),
@@ -785,7 +786,6 @@ fun AppNavHost(
                                     )
                                 }
                             }
-                        }
                     }
                 }
 
