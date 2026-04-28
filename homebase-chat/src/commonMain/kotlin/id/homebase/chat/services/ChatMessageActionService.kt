@@ -21,6 +21,7 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
+import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.UnreadCountEnricher
@@ -30,6 +31,7 @@ import kotlin.uuid.Uuid
 
 class ChatMessageActionService(
     private val conversationService: ConversationService,
+    private val participantLookup: ConversationParticipantLookup,
     private val localLastReadUpdater: LocalLastReadUpdater,
     private val unreadCountEnricher: UnreadCountEnricher,
     private val messageLookup: MessageLookup,
@@ -114,34 +116,40 @@ class ChatMessageActionService(
             return
         }
 
+        // Gate the local-state work on the in-memory lastRead. The conversation
+        // file's appdata.lastReadTime (mirrored as ConversationUiModel.lastRead)
+        // is the source of truth here; ChatReadCount is just its SQL-queryable
+        // index. Re-entering the same conversation typically lands here with
+        // newReadTime == priorLastRead — skipping spares us a SQL upsert, an
+        // appdata round-trip, and a COUNT-based enrich on every visit.
+        val priorLastRead = participantLookup.getConversationById(conversationId)?.lastRead
+        if (priorLastRead != null && newReadTime <= priorLastRead) {
+            Logger.d(tag = TAG) {
+                "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} <= priorLastRead(ms)=${priorLastRead.toEpochMilliseconds()} — skipping upsert + enrich; convo=$conversationId"
+            }
+            return
+        }
+
         // Optimistic local upsert — the read-receipt send is fire-and-forget via the outbox,
         // so we can't gate this on a per-file server status. Local read state reflects what
         // the user read locally; the outbox retries server-side receipt delivery independently.
-        Logger.d(tag = TAG) {
-            "upsert chatReadCount.lastReadTime convo=$conversationId ms=${newReadTime.toEpochMilliseconds()}"
-        }
         dbm.chatReadCount.upsertLastReadTime(conversationId, UnixTimeUtc(newReadTime))
 
-        Logger.d(tag = TAG) {
-            "→ localLastReadUpdater.updateLocalLastReadTime(convo=$conversationId, ms=${newReadTime.toEpochMilliseconds()})"
-        }
         try {
             localLastReadUpdater.updateLocalLastReadTime(
                 conversationId,
                 UnixTimeUtc(newReadTime)
             )
-            Logger.d(tag = TAG) { "← localLastReadUpdater returned ok" }
         } catch (t: Throwable) {
             Logger.e(throwable = t, tag = TAG) {
-                "localLastReadUpdater THREW — likely the WIP TODO()s in ConversationService.updateLocalLastReadTime; " +
-                        "unreadCountEnricher will NOT run, UI unread count may stay stale"
+                "localLastReadUpdater THREW — unreadCountEnricher will NOT run, UI may stay stale"
             }
             throw t
         }
 
-        Logger.d(tag = TAG) { "→ unreadCountEnricher.enrichOneConversationWithUnreadCount(convo=$conversationId)" }
-        unreadCountEnricher.enrichOneConversationWithUnreadCount(conversationId)
-        Logger.d(tag = TAG) { "← unreadCountEnricher returned" }
+        // Synchronously patch in-memory lastRead + unreadCount so the UI
+        // updates without waiting for the BatchReceived round-trip.
+        unreadCountEnricher.applyLocalAdvance(conversationId, newReadTime)
     }
 
     private companion object {

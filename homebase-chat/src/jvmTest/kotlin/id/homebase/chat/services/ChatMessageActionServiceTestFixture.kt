@@ -221,6 +221,7 @@ class ChatMessageActionServiceTestFixture(
 
         return ChatMessageActionService(
             conversationService = conversationService,
+            participantLookup = FakeConversationParticipantLookup(),
             localLastReadUpdater = localLastReadUpdater,
             unreadCountEnricher = unreadCountEnricher,
             messageLookup = messageLookup,
@@ -557,10 +558,30 @@ class FakeLocalLastReadUpdater : LocalLastReadUpdater {
 }
 
 class FakeUnreadCountEnricher : UnreadCountEnricher {
-    val calls = mutableListOf<Uuid>()
-    override suspend fun enrichOneConversationWithUnreadCount(conversationId: Uuid) {
-        calls += conversationId
+    data class Call(val conversationId: Uuid, val newLastRead: kotlin.time.Instant)
+    val calls = mutableListOf<Call>()
+    override suspend fun applyLocalAdvance(
+        conversationId: Uuid,
+        newLastRead: kotlin.time.Instant,
+    ) {
+        calls += Call(conversationId, newLastRead)
     }
+}
+
+/**
+ * Tests don't seed a conversation list, so this fake always returns null —
+ * which makes ChatMessageActionService.markAsReadByFiles skip the in-memory
+ * lastRead gate and exercise the full upsert + enrich path the suite asserts.
+ */
+class FakeConversationParticipantLookup :
+    id.homebase.chat.services.convo.ConversationParticipantLookup {
+    override fun getConversationById(conversationId: Uuid):
+            id.homebase.chat.data.ConversationUiModel? = null
+
+    override suspend fun getRecipients(
+        conversationId: Uuid,
+        additionalRecipients: List<id.homebase.api.common.OdinId>,
+    ): List<id.homebase.api.common.OdinId> = emptyList()
 }
 
 private object ThrowingOutboxUploader : OutboxUploader {

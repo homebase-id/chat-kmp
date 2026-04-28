@@ -174,7 +174,7 @@ class ChatMessageActionServiceTest {
 
             service.markAsReadByFiles(convoId, listOf(id))
 
-            assertEquals(listOf(convoId), fixture.unreadCountEnricher.calls)
+            assertEquals(listOf(convoId), fixture.unreadCountEnricher.calls.map { it.conversationId })
             assertEquals(listOf(convoId), fixture.localLastReadUpdater.calls.map { it.conversationId })
         }
     }
@@ -359,7 +359,7 @@ class ChatMessageActionServiceTest {
 
             // But we did view the message, so local read state must advance.
             assertEquals(100L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
-            assertEquals(listOf(convoId), fixture.unreadCountEnricher.calls)
+            assertEquals(listOf(convoId), fixture.unreadCountEnricher.calls.map { it.conversationId })
             assertEquals(listOf(convoId), fixture.localLastReadUpdater.calls.map { it.conversationId })
         }
     }

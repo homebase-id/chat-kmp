@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 class ConversationStream(
@@ -729,46 +730,27 @@ class ConversationStream(
     }
 
     /**
-     * Single-conversation variant of [enrichAllConversationsWithUnreadCounts] — patches the
-     * unread count for one conversation without re-scanning the whole list.
-     * Called from message-read actions after the local read timestamp is
-     * advanced for a specific conversation.
+     * Patch the in-memory entry for [conversationId] to reflect a successful
+     * mark-as-read advance: set lastRead to [newLastRead] and re-derive
+     * unreadCount from ChatReadCount. Single state emission so the UI sees both
+     * deltas at once. No-op if the conversation isn't in memory yet.
      */
-    override suspend fun enrichOneConversationWithUnreadCount(conversationId: Uuid) {
-        Logger.d(tag = "MarkAsRead") {
-            "ConversationStream.enrichOneConversationWithUnreadCount: enter convo=$conversationId"
-        }
+    override suspend fun applyLocalAdvance(conversationId: Uuid, newLastRead: Instant) {
+        val current = _conversations.value
+        val index = current.items.indexOfFirst { it.id == conversationId }
+        if (index < 0) return
+
         val c = credentialsManager.requireActiveCredentials()
         val newCount = dbm.chatReadCount
             .selectUnreadCountForConversation(c.getIdentityId(), conversationId, c.domain)
             .toInt()
-        Logger.d(tag = "MarkAsRead") {
-            "ConversationStream.enrichOneConversationWithUnreadCount: db newCount=$newCount convo=$conversationId"
-        }
-
-        val current = _conversations.value
-        val index = current.items.indexOfFirst { it.id == conversationId }
-        if (index < 0) {
-            Logger.w(tag = "MarkAsRead") {
-                "ConversationStream.enrichOneConversationWithUnreadCount: convo=$conversationId NOT FOUND in in-memory list (size=${current.items.size}) — UI badge will not update from this call"
-            }
-            return
-        }
 
         val convo = current.items[index]
-        if (convo.unreadCount == newCount) {
-            Logger.d(tag = "MarkAsRead") {
-                "ConversationStream.enrichOneConversationWithUnreadCount: convo=$conversationId no-op (unreadCount already $newCount)"
-            }
-            return
-        }
+        if (convo.lastRead == newLastRead && convo.unreadCount == newCount) return
 
-        Logger.d(tag = "MarkAsRead") {
-            "ConversationStream.enrichOneConversationWithUnreadCount: convo=$conversationId unread ${convo.unreadCount}->$newCount (publishing to StateFlow)"
-        }
-        Logger.d("ConversationStream: unreadSync convo=${conversationId} ${convo.unreadCount}->${newCount}")
+        Logger.d("ConversationStream: unreadSync convo=$conversationId ${convo.unreadCount}->$newCount")
         val updated = current.items.toMutableList().apply {
-            this[index] = convo.copy(unreadCount = newCount)
+            this[index] = convo.copy(lastRead = newLastRead, unreadCount = newCount)
         }
         _conversations.value = current.copy(items = updated)
     }
