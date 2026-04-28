@@ -18,11 +18,12 @@ import kotlin.uuid.Uuid
  *
  * [repair] runs an integrity-fix pass that re-projects local SQL columns
  * for rows the classifier flagged as `LegacyUserDateZero` or
- * `SoftDeleteArchivalMismatch`. Local-only: peers maintain their own
- * projections from their own copies of the file, so no server round-trip
- * is needed. Each successfully repaired row emits a per-cell
- * [DefragRepairEvent.Repaired] so the UI can flip its colour back to
- * Healthy one cell at a time.
+ * `SoftDeleteArchivalMismatch`. **Local-only for now** — see the big TODO
+ * in [LiveDefragSource.repair] re: the server-side download-verify-patch-
+ * upload pass that's needed to make `SoftDeleteArchivalMismatch` repairs
+ * survive a logout/wipe-resync cycle. Each successfully repaired row
+ * emits a per-cell [DefragRepairEvent.Repaired] so the UI can flip its
+ * colour back to Healthy one cell at a time.
  */
 interface DefragSource {
     fun analyze(): Flow<DefragAnalyzeEvent>

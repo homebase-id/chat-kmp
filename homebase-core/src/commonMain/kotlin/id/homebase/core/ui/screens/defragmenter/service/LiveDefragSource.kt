@@ -221,6 +221,44 @@ class LiveDefragSource(
      *
      * Each repair is one tiny SQL UPDATE; the reclassify+UPDATE per page
      * stays well under the page-scan latency.
+     *
+     * ────────────────────────────────────────────────────────────────────
+     * TODO(server-repair): the current implementation is LOCAL-ONLY.
+     *
+     *   Some classifier states are caused by inconsistencies on the
+     *   server-side file itself — notably [CellState.SoftDeleteArchivalMismatch],
+     *   which fires when a file's JSON has `fileState = deleted` but
+     *   `appData.archivalStatus != Removed`. The SQL projection faithfully
+     *   captures the inconsistent value, so a logout + resync from the
+     *   server will reproduce the same flagged state and the local UPDATE
+     *   we just applied is wiped.
+     *
+     *   The honest fix is download-verify-patch-upload:
+     *     1. GET the canonical header from the server by fileId.
+     *     2. Verify the inconsistency is still present (server may have
+     *        self-healed; skip if so).
+     *     3. Patch the JSON in place — for archivalStatus drift, set
+     *        `appData.archivalStatus = Removed` so the file is internally
+     *        consistent. Leave everything else identical.
+     *     4. PUT/UPDATE the file (UpdateFileByUniqueId-style — there is
+     *        existing outbox infrastructure). Server bumps versionTag,
+     *        distributes to peers via sync; their SQL projections heal too.
+     *
+     *   Caveats to design for before flipping the switch:
+     *     - Write authority: peer-authored files (most chat messages) we
+     *       can't update server-side; the server rejects. The pass would
+     *       have to skip those and report them as "needs_owner_repair".
+     *     - VersionTag bumps cascade as sync events to all peers. Pace
+     *       uploads (e.g. one per 100ms) so we don't thundering-herd.
+     *     - Encrypted payloads stay untouched — we only rewrite header
+     *       metadata, no re-encryption needed.
+     *     - Add a "verify on server" preflight that downloads a sample
+     *       and confirms the diagnosis before any write goes out.
+     *
+     *   Until that lands, keep this method local-only. The user explicitly
+     *   chose the conservative path so we don't risk corrupting server
+     *   data while the diagnosis logic is still bedding in.
+     * ────────────────────────────────────────────────────────────────────
      */
     override fun repair(): Flow<DefragRepairEvent> = flow {
         val identityId: Uuid = runCatching {
