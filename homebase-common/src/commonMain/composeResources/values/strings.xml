@@ -221,6 +221,7 @@
     <string name="defragmenter_status_ready">Analysis complete — ready to defragment</string>
     <string name="defragmenter_status_running">Defragmenting</string>
     <string name="defragmenter_status_paused">Paused</string>
+    <string name="defragmenter_status_repairing">Repairing local index…</string>
     <string name="defragmenter_status_vacuuming">Optimizing database…</string>
     <string name="defragmenter_status_complete">Defragmentation complete</string>
     <string name="defragmenter_status_cancelled">Cancelled</string>

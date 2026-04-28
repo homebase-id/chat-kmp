@@ -8,6 +8,8 @@ sealed interface DefragmenterPhase {
     data object Ready : DefragmenterPhase
     data object Defragmenting : DefragmenterPhase
     data object Paused : DefragmenterPhase
+    /** Re-projecting local SQL columns for classifier-flagged rows. */
+    data object Repairing : DefragmenterPhase
     data object Vacuuming : DefragmenterPhase
     data object Complete : DefragmenterPhase
     data object Cancelled : DefragmenterPhase
@@ -39,6 +41,17 @@ data class DefragmenterUiState(
     // after the Sized event.
     val analyzedUpto: Int = 0,
     val analyzeTotal: Int = 0,
+    // Per-cell state codes (length == totalBlocks; default 0 = Healthy). Filled
+    // in by the analyze pipeline as classifier results arrive. The canvas reads
+    // this to pick the per-block fill colour. Mutated in place — gridVersion
+    // bumps trigger redraw. See model/CellStateCode.kt for the encoding.
+    val cellStates: ByteArray = ByteArray(0),
+    // Tally of non-Healthy classifier states for the stats panel. Updated on
+    // every Progress emit so the user sees counts climb during the scan.
+    val issueCountLegacyUserDateZero: Int = 0,
+    val issueCountArchivalMismatch: Int = 0,
+    val issueCountCorruptJson: Int = 0,
+    val issueCountUnmappableConvo: Int = 0,
 ) {
     /** True during Vacuuming and Complete — canvas tints filled blocks green. */
     val celebratory: Boolean
@@ -64,7 +77,12 @@ data class DefragmenterUiState(
             elapsedMs == other.elapsedMs &&
             estRemainingMs == other.estRemainingMs &&
             analyzedUpto == other.analyzedUpto &&
-            analyzeTotal == other.analyzeTotal
+            analyzeTotal == other.analyzeTotal &&
+            cellStates === other.cellStates &&
+            issueCountLegacyUserDateZero == other.issueCountLegacyUserDateZero &&
+            issueCountArchivalMismatch == other.issueCountArchivalMismatch &&
+            issueCountCorruptJson == other.issueCountCorruptJson &&
+            issueCountUnmappableConvo == other.issueCountUnmappableConvo
     }
 
     override fun hashCode(): Int {
@@ -77,6 +95,10 @@ data class DefragmenterUiState(
         result = 31 * result + elapsedMs.hashCode()
         result = 31 * result + analyzedUpto
         result = 31 * result + analyzeTotal
+        result = 31 * result + issueCountLegacyUserDateZero
+        result = 31 * result + issueCountArchivalMismatch
+        result = 31 * result + issueCountCorruptJson
+        result = 31 * result + issueCountUnmappableConvo
         return result
     }
 }

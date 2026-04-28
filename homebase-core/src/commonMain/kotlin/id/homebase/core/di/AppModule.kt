@@ -30,7 +30,9 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.ShareSuggestionDonor
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.chat.services.convo.ConversationLoader
+import id.homebase.chat.services.convo.ConversationMapper
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.LocalLastReadUpdater
@@ -234,7 +236,39 @@ val appModule = module {
     singleOf(::NotificationActionBridge)
     single { VaultRepository(get(), get(), get(), get(), get(), get(), get(), get()) }
 
-    singleOf(::LiveDefragSource) bind DefragSource::class
+    single<DefragSource> {
+        // Probe for the Defragmenter's classifier: detects whether a
+        // conversation file (fileType=8888) is salvageable via
+        // ConversationMapper.mapToBasic. The mapper catches its own throws
+        // and returns a degraded `ConversationState.Invalid` model in that
+        // case, so we treat Invalid as the "unmappable" signal. An actual
+        // exception escaping the call (rare) is also treated as unmappable.
+        // ConversationMapper is a thin class with credentialsManager + dbm
+        // deps; we construct one here rather than wiring it into DI.
+        val mapper = ConversationMapper(
+            credentialsManager = get(),
+            dbm = get(),
+        )
+        val mapToBasicProbe: suspend (HomebaseFile) -> Throwable? = { file ->
+            try {
+                val ui = mapper.mapToBasic(file)
+                if (ui.conversationState == ConversationState.Invalid) {
+                    IllegalStateException("ConversationMapper returned Invalid state")
+                } else {
+                    null
+                }
+            } catch (t: Throwable) {
+                t
+            }
+        }
+        LiveDefragSource(
+            driveSyncManager = get(),
+            credentialsManager = get(),
+            databaseManager = get(),
+            driveFileProvider = get(),
+            mapToBasicProbe = mapToBasicProbe,
+        )
+    }
 
     viewModelOf(::AppViewModel)
     viewModelOf(::AppLoadingViewModel)
