@@ -7,6 +7,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.util.truncateToCodePoints
@@ -392,6 +393,12 @@ class ConversationStream(
     private suspend fun processConversationBatchIncrementally(
         conversationFiles: List<HomebaseFile>
     ) {
+        // Drive-sync of a conversation file (cold-load or peer-device echo) writes
+        // only DriveMainIndex; ChatReadCount lags. selectAllUnreadCount uses
+        // ChatReadCount, so without this catch-up a conversation marked-read on
+        // another device keeps reporting non-zero unread on this one.
+        mirrorLastReadIntoChatReadCount(conversationFiles)
+
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingConversations =
             conversationFiles.map { file ->
@@ -561,6 +568,34 @@ class ConversationStream(
      * fast first-paint path; every added cost here delays tap-to-render
      * latency on cold start.
      */
+    /**
+     * Catch ChatReadCount.lastReadTime up to the value carried in each
+     * conversation file's localAppData. Drive-sync of conversation files
+     * (cold load + peer-device echoes) updates DriveMainIndex but not
+     * ChatReadCount; this hook keeps the SQL-queryable index aligned with
+     * the file-of-record.
+     *
+     * Read prior + compare locally before issuing the upsert — the upsert's
+     * MAX(...) clause would also keep us from going backward, but it would
+     * still take a write lock on every cold-load row even when nothing
+     * actually needs updating. A cheap read avoids that.
+     */
+    private suspend fun mirrorLastReadIntoChatReadCount(files: List<HomebaseFile>) {
+        for (file in files) {
+            val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
+            val raw = file.fileMetadata.localAppData?.content ?: continue
+            val localAppData = try {
+                OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(raw)
+            } catch (t: Throwable) {
+                continue
+            }
+            val incoming = localAppData.lastReadTime ?: continue
+            val prior = dbm.chatReadCount.selectLastReadTimeMs(uniqueId)
+            if (prior != null && prior >= incoming.milliseconds) continue
+            dbm.chatReadCount.upsertLastReadTime(uniqueId, incoming)
+        }
+    }
+
     private suspend fun loadBasicConversations() {
         val startedAt = Clock.System.now().toEpochMilliseconds()
         val c = credentialsManager.requireActiveCredentials()
@@ -574,6 +609,12 @@ class ConversationStream(
 
         val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
+
+        // Catch ChatReadCount up to whatever the conversation files say —
+        // necessary on cold load because mark-as-read advances from prior
+        // sessions on other devices may have synced into the file's localAppData
+        // without ever touching this device's ChatReadCount table.
+        mirrorLastReadIntoChatReadCount(files)
 
         val basic = files.map { file ->
             val ui = mapper.mapToBasic(file)
