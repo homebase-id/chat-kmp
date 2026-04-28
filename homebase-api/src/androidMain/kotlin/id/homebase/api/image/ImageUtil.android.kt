@@ -14,6 +14,13 @@ import id.homebase.api.lib.image.ImageFormatDetector
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import androidx.exifinterface.media.ExifInterface
+import id.homebase.api.image.draw.PathCommand
+import id.homebase.api.image.draw.StrokeCap
+import id.homebase.api.image.draw.StrokeCommand
+import id.homebase.api.image.draw.StrokeKind
+import id.homebase.api.image.draw.stackBlur
+import android.graphics.BitmapShader
+import android.graphics.Shader
 
 /**
  * Android implementation: Convert ByteArray to ImageBitmap using Android's BitmapFactory
@@ -312,5 +319,108 @@ actual object ImageUtils {
             size = ImageSize(outputWidth, outputHeight),
         )
     }
+
+    actual fun drawStrokes(
+        srcBytes: ByteArray,
+        strokes: List<StrokeCommand>,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        val srcBitmap = decodeBitmap(srcBytes)
+        val w = srcBitmap.width
+        val h = srcBitmap.height
+
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(out)
+        canvas.drawBitmap(srcBitmap, 0f, 0f, null)
+
+        var blurredBitmap: Bitmap? = null
+
+        for (cmd in strokes) {
+            val path = android.graphics.Path()
+            for (pc in cmd.pathCommands) when (pc) {
+                is PathCommand.MoveTo -> path.moveTo(pc.x, pc.y)
+                is PathCommand.LineTo -> path.lineTo(pc.x, pc.y)
+                is PathCommand.CubicTo -> path.cubicTo(pc.c1x, pc.c1y, pc.c2x, pc.c2y, pc.x, pc.y)
+            }
+
+            when (cmd.kind) {
+                StrokeKind.PAINT -> {
+                    val paint = android.graphics.Paint().apply {
+                        isAntiAlias = true
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeJoin = android.graphics.Paint.Join.ROUND
+                        strokeWidth = cmd.thicknessPx
+                        strokeCap = when (cmd.cap) {
+                            StrokeCap.Round -> android.graphics.Paint.Cap.ROUND
+                            StrokeCap.Square -> android.graphics.Paint.Cap.SQUARE
+                        }
+                        color = cmd.colorArgb
+                    }
+                    canvas.drawPath(path, paint)
+                }
+                StrokeKind.BLUR -> {
+                    val blurred = blurredBitmap ?: blurAndroidBitmap(srcBitmap, BLUR_RADIUS).also {
+                        blurredBitmap = it
+                    }
+                    val blurPaint = android.graphics.Paint().apply {
+                        isAntiAlias = true
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeJoin = android.graphics.Paint.Join.ROUND
+                        strokeWidth = cmd.thicknessPx
+                        strokeCap = when (cmd.cap) {
+                            StrokeCap.Round -> android.graphics.Paint.Cap.ROUND
+                            StrokeCap.Square -> android.graphics.Paint.Cap.SQUARE
+                        }
+                        shader = BitmapShader(blurred, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+                    }
+                    canvas.drawPath(path, blurPaint)
+                }
+            }
+        }
+
+        val encoded = encodeBitmap(out, outputFormat, quality)
+        srcBitmap.recycle()
+        out.recycle()
+        blurredBitmap?.recycle()
+        return ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(w, h),
+            size = ImageSize(w, h),
+        )
+    }
+
+    actual fun blurBytes(
+        srcBytes: ByteArray,
+        radius: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        val srcBitmap = decodeBitmap(srcBytes)
+        val blurred = blurAndroidBitmap(srcBitmap, radius)
+        val encoded = encodeBitmap(blurred, outputFormat, quality)
+        val w = srcBitmap.width
+        val h = srcBitmap.height
+        srcBitmap.recycle()
+        blurred.recycle()
+        return ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(w, h),
+            size = ImageSize(w, h),
+        )
+    }
+
+    private fun blurAndroidBitmap(src: Bitmap, radius: Int): Bitmap {
+        val w = src.width
+        val h = src.height
+        val pixels = IntArray(w * h)
+        src.getPixels(pixels, 0, w, 0, 0, w, h)
+        stackBlur(pixels, w, h, radius)
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(pixels, 0, w, 0, 0, w, h)
+        return out
+    }
+
+    private const val BLUR_RADIUS: Int = 25
 }
 
