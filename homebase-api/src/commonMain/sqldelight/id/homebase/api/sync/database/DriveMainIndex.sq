@@ -126,12 +126,17 @@ countByIdentityAndDrive:
 SELECT count(*) FROM DriveMainIndex
 WHERE identityId = ? AND driveId = ?;
 
--- Page rows for a drive in rowId-ascending order, returning (rowId, fileId,
--- jsonHeader). The Defragmenter scans these chunks and applies the
--- HomebaseFile.isSoftDeleted() predicate in Kotlin; we can't filter on
--- fileState in SQL because it lives inside jsonHeader, not as a column.
+-- Page rows for a drive in rowId-ascending order, returning enough columns
+-- for the Defragmenter to (a) apply the HomebaseFile.isSoftDeleted() predicate
+-- (which lives inside jsonHeader, can't be filtered in SQL), and (b) detect
+-- known DriveMainIndex integrity issues without re-reading the row:
+--   * userDate=0 paired with non-null appData.userDate → legacy projection
+--   * archivalStatus mismatched against jsonHeader fileState → soft-delete drift
+-- The deserialised jsonHeader covers (a) and reveals appData.userDate; the SQL
+-- columns cover the projected/stored values so we can tell whether a repair
+-- UPDATE is actually needed.
 selectFileIdAndJsonByDriveSince:
-SELECT rowId, fileId, jsonHeader FROM DriveMainIndex
+SELECT rowId, fileId, userDate, archivalStatus, jsonHeader FROM DriveMainIndex
 WHERE identityId = ? AND driveId = ? AND rowId > ?
 ORDER BY rowId
 LIMIT ?;
@@ -139,3 +144,16 @@ LIMIT ?;
 -- Select all records - for TESTING
 selectAll:
 SELECT * FROM DriveMainIndex;
+
+-- Defragmenter: re-project a row's archivalStatus column when the SQL value
+-- has drifted from what the deserialised jsonHeader says (the
+-- SoftDeleteArchivalMismatch case). Local-only — peers maintain their own
+-- projections from their own copies of the file.
+repairArchivalStatusByRowId:
+UPDATE DriveMainIndex SET archivalStatus = ? WHERE rowId = ?;
+
+-- Defragmenter: re-project a row's userDate column from the header's
+-- metadata.created fallback when appData.userDate was null and got stored as 0.
+-- Used by the repair pass to correct LegacyUserDateZero rows. Local-only.
+repairUserDateByRowId:
+UPDATE DriveMainIndex SET userDate = ? WHERE rowId = ?;

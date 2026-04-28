@@ -60,4 +60,35 @@ object Win98Palette {
     // Scan-head highlight — the single bright cell at analyzedUpto - 1.
     val ScanHead: Color = Color(0xFFFFFFE0)
     val ScanHeadEdge: Color = Color(0xFFFFFFFF)
+
+    // Per-issue palette — used to colour cells flagged by the Defragmenter
+    // classifier so the user can see at a glance which rows are damaged or
+    // legacy-shaped. One triple per state: fill (block body), light (top/left
+    // bevel in classic mode), shadow (bottom/right bevel in classic mode).
+    // For modern mode, only the fill is used (drawn as an overlay rect on
+    // top of the healthy bulk path).
+
+    // Amber — chat-message rows projected with userDate=0 that pre-date the
+    // metadata.created fallback. Eligible for repair via the outbox.
+    val IssueLegacyUserDateZeroFill: Color = Color(0xFFB87500)
+    val IssueLegacyUserDateZeroLight: Color = Color(0xFFFFC04A)
+    val IssueLegacyUserDateZeroShadow: Color = Color(0xFF6E4500)
+
+    // Orange — header reports soft-deleted but the SQL archivalStatus column
+    // wasn't kept in lock-step. Eligible for repair (re-projection).
+    val IssueArchivalMismatchFill: Color = Color(0xFFD05500)
+    val IssueArchivalMismatchLight: Color = Color(0xFFFF9050)
+    val IssueArchivalMismatchShadow: Color = Color(0xFF7A3000)
+
+    // Magenta — strict deserialise of jsonHeader failed; row needs the
+    // corrupt-JSON prompt flow to confirm hard-delete or skip.
+    val IssueCorruptJsonFill: Color = Color(0xFFC03070)
+    val IssueCorruptJsonLight: Color = Color(0xFFFF70B0)
+    val IssueCorruptJsonShadow: Color = Color(0xFF701840)
+
+    // Pink — conversation file (8888) where the mapper threw or returned
+    // ConversationState.Invalid. Not auto-repairable.
+    val IssueUnmappableConvoFill: Color = Color(0xFFE070A0)
+    val IssueUnmappableConvoLight: Color = Color(0xFFFFA8C8)
+    val IssueUnmappableConvoShadow: Color = Color(0xFF904060)
 }

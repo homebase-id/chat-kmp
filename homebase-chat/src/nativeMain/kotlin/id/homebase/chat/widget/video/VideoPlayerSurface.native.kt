@@ -41,7 +41,17 @@ import platform.AVFoundation.AVAssetResourceLoaderDelegateProtocol
 import platform.AVFoundation.AVAssetResourceLoadingRequest
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
+import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeErrorKey
+import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeNotification
+import platform.AVFoundation.AVPlayerItemNewAccessLogEntryNotification
+import platform.AVFoundation.AVPlayerItemNewErrorLogEntryNotification
+import platform.AVFoundation.AVPlayerItemPlaybackStalledNotification
+import platform.AVFoundation.AVPlayerItemStatusFailed
+import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
+import platform.AVFoundation.AVPlayerItemStatusUnknown
 import platform.AVFoundation.AVURLAsset
+import platform.AVFoundation.accessLog
+import platform.AVFoundation.errorLog
 import platform.AVFoundation.pause
 import platform.AVFoundation.play
 import platform.AVFoundation.resourceLoader
@@ -49,12 +59,16 @@ import platform.AVKit.AVPlayerViewController
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSNotification
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
 import platform.Foundation.create
 import platform.Foundation.writeToURL
 import platform.darwin.NSObject
+import platform.darwin.NSObjectProtocol
 import platform.darwin.dispatch_queue_create
 import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
@@ -80,10 +94,15 @@ actual fun VideoPlayerSurface(
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<NSURL?>(null) }
+    val notificationObservers = remember(data) { mutableListOf<NSObjectProtocol>() }
 
     DisposableEffect(data) {
         onDispose {
             (state as? VpsState.Playing)?.player?.pause()
+            notificationObservers.forEach {
+                NSNotificationCenter.defaultCenter.removeObserver(it)
+            }
+            notificationObservers.clear()
             tempDir?.let { NSFileManager.defaultManager.removeItemAtURL(it, null) }
         }
     }
@@ -125,7 +144,9 @@ actual fun VideoPlayerSurface(
                         val asset = AVURLAsset(uRL = assetUrl, options = null)
                         val loaderQueue = dispatch_queue_create("id.homebase.video.loader", null)
                         asset.resourceLoader.setDelegate(delegate, queue = loaderQueue)
-                        val player = AVPlayer(playerItem = AVPlayerItem(asset = asset))
+                        val playerItem = AVPlayerItem(asset = asset)
+                        attachHlsDiagnostics(playerItem, notificationObservers)
+                        val player = AVPlayer(playerItem = playerItem)
                         progressJob.cancel()
                         state = VpsState.Playing(player = player, delegate = delegate)
                         onProgress(1f)
@@ -205,12 +226,19 @@ private class HomebaseResourceLoaderDelegate(
             return false
         }
 
-        Logger.d(tag = "VideoHLS") { "resourceLoader request: url=${url}, path=$path" }
+        val cInfo = loadingRequest.contentInformationRequest
+        val dReq = loadingRequest.dataRequest
+        Logger.d(tag = "VideoHLS") {
+            "resourceLoader request: url=$url path=$path " +
+                "contentInfoRequested=${cInfo != null} dataRequested=${dReq != null} " +
+                "reqOffset=${dReq?.requestedOffset} reqLength=${dReq?.requestedLength} " +
+                "currentOffset=${dReq?.currentOffset} toEnd=${dReq?.requestsAllDataToEndOfResource}"
+        }
 
         scope?.launch(Dispatchers.IO) {
             try {
                 if (path.endsWith(".m3u8")) {
-                    Logger.d(tag = "VideoHLS") { "Serving playlist (${strippedPlaylist.length} chars)" }
+                    Logger.d(tag = "VideoHLS") { "Serving playlist (${strippedPlaylist.length} chars):\n$strippedPlaylist" }
                     val bytes = strippedPlaylist.encodeToByteArray()
                     loadingRequest.contentInformationRequest?.let {
                         it.contentType = "public.m3u8-playlist"
@@ -257,8 +285,24 @@ private class HomebaseResourceLoaderDelegate(
                         } else {
                             ByteArray(requested).also { plaintext.copyInto(it, 0) }
                         }
+                        // Byte-alignment diagnostics: AES-CBC blocks are 16 bytes, TS packets are 188.
+                        // FFmpeg produces plaintext that is N * 188 bytes per segment (no slack), then
+                        // adds a 16-byte PKCS7 pad block when encrypting → ciphertext = plaintext + 16.
+                        // After decrypt we zero-pad the plaintext back up to `requested` so the Range
+                        // response length matches what AVPlayer asked for; the 16 trailing zeros must
+                        // not break the TS demux. Log enough to spot misalignment or wrong seam bytes.
+                        val cipherHex = encrypted.take(16).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+                        val plainHeadHex = plaintext.take(16).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+                        val plainTailStart = (plaintext.size - 32).coerceAtLeast(0)
+                        val plainTailHex = plaintext.copyOfRange(plainTailStart, plaintext.size).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+                        val padTailHex = padded.copyOfRange((padded.size - 32).coerceAtLeast(0), padded.size).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+                        val tsRemainder = if (plaintext.isNotEmpty()) plaintext.size % 188 else -1
+                        val tsPacketCount = if (plaintext.isNotEmpty()) plaintext.size / 188 else -1
+                        val firstByteIsSync = plaintext.isNotEmpty() && plaintext[0] == 0x47.toByte()
                         Logger.d(tag = "VideoHLS") {
-                            "Segment decrypt: ${encrypted.size} cipher → ${plaintext.size} plain → ${padded.size} zero-padded at $start"
+                            "Segment decrypt: ${encrypted.size} cipher → ${plaintext.size} plain → ${padded.size} zero-padded at $start | " +
+                                "alignment: startMod16=${start % 16} lenMod16=${length % 16} plainMod188=$tsRemainder tsPackets=$tsPacketCount firstByte=0x47?=$firstByteIsSync | " +
+                                "cipher[0..16]=$cipherHex | plain[0..16]=$plainHeadHex | plain[tail-32..]=$plainTailHex | padded[tail-32..]=$padTailHex"
                         }
                         dataRequest.respondWithData(padded.toNSData())
                     }
@@ -280,4 +324,73 @@ private class HomebaseResourceLoaderDelegate(
 @OptIn(BetaInteropApi::class)
 private fun ByteArray.toNSData(): NSData = usePinned { pinned ->
     NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
+}
+
+private fun attachHlsDiagnostics(
+    playerItem: AVPlayerItem,
+    observers: MutableList<NSObjectProtocol>,
+) {
+    val center = NSNotificationCenter.defaultCenter
+    val mainQueue = NSOperationQueue.mainQueue
+
+    fun statusName(status: Long): String = when (status) {
+        AVPlayerItemStatusUnknown -> "Unknown"
+        AVPlayerItemStatusReadyToPlay -> "ReadyToPlay"
+        AVPlayerItemStatusFailed -> "Failed"
+        else -> "raw=$status"
+    }
+
+    val onFailed: (NSNotification?) -> Unit = { note ->
+        val err = note?.userInfo?.get(AVPlayerItemFailedToPlayToEndTimeErrorKey) as? NSError
+        Logger.e(tag = "VideoHLS") {
+            "AVPlayerItem FailedToPlayToEndTime: status=${statusName(playerItem.status)} " +
+                "itemError=${playerItem.error?.let { "${it.domain}:${it.code} ${it.localizedDescription}" }} " +
+                "userInfoError=${err?.let { "${it.domain}:${it.code} ${it.localizedDescription}" }}"
+        }
+    }
+    val onStalled: (NSNotification?) -> Unit = {
+        Logger.w(tag = "VideoHLS") {
+            "AVPlayerItem PlaybackStalled: status=${statusName(playerItem.status)} " +
+                "itemError=${playerItem.error?.let { "${it.domain}:${it.code} ${it.localizedDescription}" }}"
+        }
+    }
+    val onErrorLog: (NSNotification?) -> Unit = {
+        val log = playerItem.errorLog()
+        val last = log?.events?.lastOrNull()
+        Logger.e(tag = "VideoHLS") {
+            "AVPlayerItem NewErrorLogEntry: status=${statusName(playerItem.status)} last=$last"
+        }
+    }
+    val onAccessLog: (NSNotification?) -> Unit = {
+        val log = playerItem.accessLog()
+        val last = log?.events?.lastOrNull()
+        Logger.d(tag = "VideoHLS") {
+            "AVPlayerItem NewAccessLogEntry: last=$last"
+        }
+    }
+
+    observers += center.addObserverForName(
+        name = AVPlayerItemFailedToPlayToEndTimeNotification,
+        `object` = playerItem,
+        queue = mainQueue,
+        usingBlock = onFailed,
+    )
+    observers += center.addObserverForName(
+        name = AVPlayerItemPlaybackStalledNotification,
+        `object` = playerItem,
+        queue = mainQueue,
+        usingBlock = onStalled,
+    )
+    observers += center.addObserverForName(
+        name = AVPlayerItemNewErrorLogEntryNotification,
+        `object` = playerItem,
+        queue = mainQueue,
+        usingBlock = onErrorLog,
+    )
+    observers += center.addObserverForName(
+        name = AVPlayerItemNewAccessLogEntryNotification,
+        `object` = playerItem,
+        queue = mainQueue,
+        usingBlock = onAccessLog,
+    )
 }
