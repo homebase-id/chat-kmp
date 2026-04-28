@@ -480,8 +480,8 @@ fun AppNavHost(
                                     },
                                     onDetailPaneVisibilityChanged = {
                                         // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
-                                        @Suppress("AssignedValueIsNeverRead") showingOnlyDetailPane =
-                                            it
+                                        @Suppress("AssignedValueIsNeverRead")
+                                        showingOnlyDetailPane = it
                                     },
                                 )
                             }
