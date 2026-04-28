@@ -18,16 +18,28 @@ sealed class PathCommand {
 enum class StrokeCap { Round, Square }
 
 /**
+ * What kind of operation this stroke represents at rasterization time.
+ * - [PAINT]: stroke is filled with [StrokeCommand.colorArgb] (pen / marker).
+ * - [BLUR]: stroke shape is used as a mask; pixels under the stroke get
+ *   replaced with a pre-blurred copy of the source image (manual blur
+ *   brush, no auto face-detection).
+ */
+enum class StrokeKind { PAINT, BLUR }
+
+/**
  * Wire-format stroke for the platform rasterizer
  * ([id.homebase.api.image.ImageUtils.drawStrokes]). Coordinates and
  * [thicknessPx] are in **source-pixel space** of the input image.
  *
  * @property colorArgb final ARGB to draw with — alpha already baked from
- *   the brush's per-brush alpha multiplier.
+ *   the brush's per-brush alpha multiplier. Ignored for [StrokeKind.BLUR].
+ * @property kind paint vs blur. Defaults to [StrokeKind.PAINT] so existing
+ *   call sites keep working.
  */
 data class StrokeCommand(
     val cap: StrokeCap,
     val colorArgb: Int,
     val thicknessPx: Float,
     val pathCommands: List<PathCommand>,
+    val kind: StrokeKind = StrokeKind.PAINT,
 )

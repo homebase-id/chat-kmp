@@ -73,4 +73,13 @@ actual object ImageUtils {
     ): ImageResult {
         TODO("Not yet implemented")
     }
+
+    actual fun blurBytes(
+        srcBytes: ByteArray,
+        radius: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        TODO("Not yet implemented")
+    }
 }

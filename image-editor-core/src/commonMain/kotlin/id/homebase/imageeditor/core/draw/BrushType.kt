@@ -25,6 +25,14 @@ sealed class BrushType(
     /** Square, semi-transparent highlighter (alpha 0x60). */
     object Highlighter : BrushType(cap = StrokeCap.Square, alpha = 0x60, compositesUnderlying = false)
 
+    /**
+     * Manual blur brush — drag over a face/region to redact it. Renders by
+     * compositing a pre-blurred copy of the underlying image through the
+     * stroke shape. Cap and alpha are placeholders (the stroke shape is a
+     * mask, not painted directly).
+     */
+    object Blur : BrushType(cap = StrokeCap.Round, alpha = 0xFF, compositesUnderlying = true)
+
     companion object {
         /** [id.homebase.imageeditor.core.Bounds.RIGHT] - [id.homebase.imageeditor.core.Bounds.LEFT]. */
         const val BOUNDS_WIDTH: Float = 2000f

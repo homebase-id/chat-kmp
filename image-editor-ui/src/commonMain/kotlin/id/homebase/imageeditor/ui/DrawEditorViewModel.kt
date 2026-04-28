@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import id.homebase.api.image.ImageFormat
+import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.toImageBitmap
 import id.homebase.core.ui.navigation.Route
 import id.homebase.imageeditor.core.Bounds
@@ -60,6 +61,15 @@ class DrawEditorViewModel(
         private set
 
     /**
+     * Pre-blurred copy of [previewBitmap], populated asynchronously after
+     * load. Used by [DrawStrokesOverlay] to render blur strokes — a stroke
+     * with [BrushType.Blur] paints the corresponding region of this bitmap
+     * through the stroke shape.
+     */
+    var blurredPreview: ImageBitmap? by mutableStateOf(null)
+        private set
+
+    /**
      * Snapshot of matrices + stroke list, bumped on every gesture frame.
      * Compose-tracked so the canvas recomposes when the user pans or extends
      * the in-flight stroke.
@@ -96,6 +106,16 @@ class DrawEditorViewModel(
             }
             previewBitmap = prep.previewBytes.toImageBitmap()
             natural = prep.naturalSize
+
+            // Kick off a blurred copy of the preview in the background; the
+            // overlay falls back to a gray placeholder while it's loading.
+            launch {
+                val blurredBytes = withContext(Dispatchers.Default) {
+                    runCatching { ImageUtils.blurBytes(prep.previewBytes, radius = 25) }.getOrNull()
+                }
+                blurredPreview = blurredBytes?.bytes?.toImageBitmap()
+                updateSnapshot()
+            }
 
             // Bitmap → bounds: setRectToRect(bitmapPixelRect, fullBounds, CENTER).
             previewBitmap?.let { bm ->
@@ -152,6 +172,7 @@ class DrawEditorViewModel(
             inFlightColorArgb = drawingModel.inFlightStroke?.colorArgb ?: 0,
             inFlightThicknessBoundsUnits = drawingModel.inFlightStroke?.thicknessBoundsUnits ?: 0f,
             viewportSize = Size(visibleViewportPx.width().toInt(), visibleViewportPx.height().toInt()),
+            blurredImage = blurredPreview,
         )
     }
 
@@ -191,6 +212,7 @@ class DrawEditorViewModel(
                 when (it.selectedBrush) {
                     BrushType.Pen -> it.copy(penThicknessFraction = fraction)
                     BrushType.Highlighter -> it.copy(highlighterThicknessFraction = fraction)
+                    BrushType.Blur -> it.copy(blurThicknessFraction = fraction)
                 }
             }
         }
@@ -221,6 +243,7 @@ class DrawEditorViewModel(
         val fraction = when (state.selectedBrush) {
             BrushType.Pen -> state.penThicknessFraction
             BrushType.Highlighter -> state.highlighterThicknessFraction
+            BrushType.Blur -> state.blurThicknessFraction
         }
         drawingModel.beginStroke(
             brush = state.selectedBrush,
@@ -350,6 +373,12 @@ data class DrawSnapshot(
     val inFlightColorArgb: Int,
     val inFlightThicknessBoundsUnits: Float,
     val viewportSize: Size,
+    /**
+     * Pre-blurred copy of the source preview. Populated asynchronously by
+     * the ViewModel; null until ready. The strokes overlay falls back to a
+     * gray placeholder for blur strokes while it's null.
+     */
+    val blurredImage: ImageBitmap?,
 ) {
     companion object {
         val EMPTY: DrawSnapshot = DrawSnapshot(
@@ -362,6 +391,7 @@ data class DrawSnapshot(
             inFlightColorArgb = 0,
             inFlightThicknessBoundsUnits = 0f,
             viewportSize = Size(0, 0),
+            blurredImage = null,
         )
     }
 }

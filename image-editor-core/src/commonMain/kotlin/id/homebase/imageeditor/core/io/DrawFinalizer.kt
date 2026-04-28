@@ -5,6 +5,7 @@ import id.homebase.api.image.ImageResult
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.draw.PathCommand
 import id.homebase.api.image.draw.StrokeCommand
+import id.homebase.api.image.draw.StrokeKind
 import id.homebase.imageeditor.core.Bounds
 import id.homebase.imageeditor.core.Matrix2D
 import id.homebase.imageeditor.core.RectF
@@ -44,8 +45,7 @@ object DrawFinalizer {
         // changes break that assumption.
         val pixelsPerBoundsUnit = pixelsPerBoundsUnit(boundsToNatural)
         for (s in model.strokes) {
-            val cmd = strokeToCommand(s, boundsToNatural, pixelsPerBoundsUnit) ?: continue
-            cmds.add(cmd)
+            cmds.add(strokeToCommand(s, boundsToNatural, pixelsPerBoundsUnit))
         }
         return ImageUtils.drawStrokes(
             srcBytes = originalBytes,
@@ -82,14 +82,14 @@ object DrawFinalizer {
         stroke: Stroke,
         boundsToNatural: Matrix2D,
         pixelsPerBoundsUnit: Float,
-    ): StrokeCommand? {
-        if (stroke.brush.compositesUnderlying) return null
+    ): StrokeCommand {
         val mappedCommands = stroke.pathCommands.map { it.mapped(boundsToNatural) }
         return StrokeCommand(
             cap = stroke.brush.cap,
             colorArgb = applyAlpha(stroke.colorArgb, stroke.brush.alpha),
             thicknessPx = stroke.thicknessBoundsUnits * pixelsPerBoundsUnit,
             pathCommands = mappedCommands,
+            kind = if (stroke.brush.compositesUnderlying) StrokeKind.BLUR else StrokeKind.PAINT,
         )
     }
 

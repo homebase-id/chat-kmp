@@ -92,14 +92,27 @@ expect object ImageUtils {
      * natural pixel resolution, and re-encode. Stroke coordinates are in
      * source-pixel space (origin top-left, +y down).
      *
-     * Used by the draw editor's finalizer. Pen/Highlighter only — the
-     * compose-from-blurred-source brush is not yet supported.
+     * Used by the draw editor's finalizer. PAINT strokes are filled with
+     * their colour; BLUR strokes mask a pre-blurred copy of the source
+     * onto the output (manual blur brush).
      */
     fun drawStrokes(
         srcBytes: ByteArray,
         strokes: List<StrokeCommand>,
         outputFormat: ImageFormat = ImageFormat.JPEG,
         quality: Int = 90,
+    ): ImageResult
+
+    /**
+     * Decode [srcBytes], blur via stack-blur, re-encode. Output is
+     * lossless PNG by default — the result feeds the draw editor's
+     * on-screen preview overlay where JPEG artifacts would be visible.
+     */
+    fun blurBytes(
+        srcBytes: ByteArray,
+        radius: Int = 25,
+        outputFormat: ImageFormat = ImageFormat.PNG,
+        quality: Int = 100,
     ): ImageResult
 }
 

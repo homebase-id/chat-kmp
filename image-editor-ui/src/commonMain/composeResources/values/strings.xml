@@ -27,7 +27,8 @@
     <string name="draw_action_redo">Redo</string>
     <string name="draw_action_reset">Clear</string>
     <string name="draw_brush_pen">Pen</string>
-    <string name="draw_brush_highlighter">Highlighter</string>
+    <string name="draw_brush_highlighter">Marker</string>
+    <string name="draw_brush_blur">Blur</string>
     <string name="draw_thickness_label">Thickness</string>
     <string name="draw_color_label">Color</string>
     <string name="draw_error_load">Could not load image</string>

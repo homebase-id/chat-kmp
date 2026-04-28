@@ -15,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.imageeditor.core.draw.BrushType
@@ -125,9 +124,10 @@ fun DrawScreen(
                             onPercentChange = {
                                 viewModel.onUiAction(DrawEditorUiAction.ThicknessSliderPositionChanged(it))
                             },
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .padding(start = 12.dp),
+                            // No start padding — the slider's own offset puts
+                            // its centerline on the canvas's left edge so
+                            // half is visible at rest, matching Signal.
+                            modifier = Modifier.align(Alignment.CenterStart),
                         )
                     }
                 }
@@ -146,6 +146,7 @@ private fun thicknessSliderPositionForCurrentBrush(uiState: DrawEditorUiState): 
     val fraction = when (uiState.selectedBrush) {
         BrushType.Pen -> uiState.penThicknessFraction
         BrushType.Highlighter -> uiState.highlighterThicknessFraction
+        BrushType.Blur -> uiState.blurThicknessFraction
     }
     val span = BrushType.MAX_THICKNESS_FRACTION - BrushType.MIN_THICKNESS_FRACTION
     return ((fraction - BrushType.MIN_THICKNESS_FRACTION) / span).coerceIn(0f, 1f)

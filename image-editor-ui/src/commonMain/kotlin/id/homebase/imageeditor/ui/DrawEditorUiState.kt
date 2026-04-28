@@ -41,6 +41,11 @@ data class DrawEditorUiState(
      * → ~12 px on Desktop, distinctly thicker than the pen default.
      */
     val highlighterThicknessFraction: Float = 0.013f,
+    /**
+     * Blur stroke thickness as a bounds-width fraction. Default ≈ 0.025
+     * → ~22 px on Desktop, fat enough to redact a face in one swipe.
+     */
+    val blurThicknessFraction: Float = 0.025f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val isSaving: Boolean = false,
