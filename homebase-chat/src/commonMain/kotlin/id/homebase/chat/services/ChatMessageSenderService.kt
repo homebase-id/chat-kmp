@@ -13,6 +13,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.PushNotificationOptions
+import id.homebase.api.client.drives.upload.SendContents
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
@@ -218,6 +219,7 @@ class ChatMessageSenderService(
             metadata = unecryptedMetadata.encryptContent(keyHeader),
             transitOptions = TransitOptions(
                 recipients = recipients,
+                sendContents = SendContents.All,
                 useAppNotification = !isStatusMessage && !isLocalOnly,
                 appNotificationOptions = PushNotificationOptions(
                     appId = ChatProtocol.ChatAppId.toString(),
