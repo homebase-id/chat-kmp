@@ -9,7 +9,7 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
-import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -22,8 +22,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
-import id.homebase.api.toBase64
-import id.homebase.api.client.drives.upload.UpdateLocalMetadataContentOutboxRequest
+import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.common.OdinId
@@ -363,6 +362,10 @@ class OptimisticWriter(
                 appData = existingFile.fileMetadata.appData.copy(
                     content = "",
                     previewThumbnail = null,
+                    // Mirror the soft-delete into the SQL-queryable archivalStatus
+                    // column so unread-count queries can exclude this row without
+                    // having to deserialise the jsonHeader to read fileState.
+                    archivalStatus = ArchivalStatus.Removed,
                 )
             )
         )
@@ -500,19 +503,45 @@ class OptimisticWriter(
         return Pair(resultType, existingFile)
     }
 
+    suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalAppdataContentOutboxRequest? =
+        stampConversationLocalAppData(driveId, conversationId, "stampConversationExitedAt") {
+            it.copy(lastExitedAt = UnixTimeUtc())
+        }
+
+    suspend fun stampConversationLastReadTime(
+        driveId: Uuid,
+        conversationId: Uuid,
+        newLastReadTime: UnixTimeUtc,
+    ): UpdateLocalAppdataContentOutboxRequest? =
+        stampConversationLocalAppData(driveId, conversationId, "stampConversationLastReadTime") {
+            it.copy(lastReadTime = newLastReadTime)
+        }
+
     @OptIn(ExperimentalEncodingApi::class)
-    suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalMetadataContentOutboxRequest? {
+    private suspend fun stampConversationLocalAppData(
+        driveId: Uuid,
+        conversationId: Uuid,
+        opName: String,
+        mutate: (ConversationLocalAppDataJson) -> ConversationLocalAppDataJson,
+    ): UpdateLocalAppdataContentOutboxRequest? {
+        Logger.d(tag = "MarkAsRead") {
+            "OptimisticWriter.$opName: enter convo=$conversationId drive=$driveId"
+        }
         val credentials = credentialsManager.requireActiveCredentials()
 
         val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), driveId, conversationId
-        ) ?: return null
+        ) ?: run {
+            Logger.w(tag = "MarkAsRead") {
+                "OptimisticWriter.$opName: convo=$conversationId NOT FOUND in DriveMainIndex — skipping"
+            }
+            return null
+        }
 
         val existing = existingFile.fileMetadata.localAppData?.content?.let {
             try { OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it) } catch (_: Throwable) { null }
         }
-        val updatedLocalAppData = (existing ?: ConversationLocalAppDataJson())
-            .copy(lastExitedAt = UnixTimeUtc())
+        val updatedLocalAppData = mutate(existing ?: ConversationLocalAppDataJson())
         val content = OdinSystemSerializer.serialize(updatedLocalAppData)
 
         val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
@@ -560,7 +589,10 @@ class OptimisticWriter(
                     source = BackendEvent.SyncSource.DriveSync
                 )
             )
-            UpdateLocalMetadataContentOutboxRequest(
+            Logger.d(tag = "MarkAsRead") {
+                "OptimisticWriter.$opName: optimistic local upsert ok convo=$conversationId fileId=${existingFile.fileId} encrypted=${existingFile.serverFileIsEncrypted} → returning UpdateLocalAppdataContentOutboxRequest"
+            }
+            UpdateLocalAppdataContentOutboxRequest(
                 driveId = driveId,
                 fileId = existingFile.fileId,
                 versionTag = null,
@@ -568,7 +600,8 @@ class OptimisticWriter(
                 iv = ivBase64
             )
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "stampConversationExitedAt failed for conversationId=$conversationId" }
+            Logger.e(throwable = e, tag = TAG) { "$opName failed for conversationId=$conversationId" }
+            Logger.e(throwable = e, tag = "MarkAsRead") { "OptimisticWriter.$opName FAILED convo=$conversationId" }
             null
         }
     }

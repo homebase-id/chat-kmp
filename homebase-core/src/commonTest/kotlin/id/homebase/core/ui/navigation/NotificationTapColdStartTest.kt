@@ -342,4 +342,100 @@ class NotificationTapColdStartTest {
             "Broken top-only gate must leave pendingConversationId unset while user is on Detail — this is the warm-path regression we're guarding against"
         )
     }
+
+    /**
+     * Regression test for the iOS share-extension silent failure captured in
+     * Gabriel's homebase.log (2026-04-27). Pattern in the log:
+     *
+     *   ShareHandlerBridge Incoming share for conversation: e028c85f-…
+     *   AppViewModel Handling share intent for conversation: e028c85f-…
+     *   AppNavHost OpenConversation received: id=e028c85f-…, currentDest=home
+     *   AppNavHost ChatList present in stack (size=3), popping to it
+     *   AppNavHost popBackStack(ChatList)=true
+     *   <silence — no selectConversation, no loadMessagesForConversation>
+     *
+     * Cause: AppNavHost only popped the back stack and trusted PendingNotificationTap
+     * to drive selection. Notification taps work that way because NotificationService
+     * seeds the singleton with (conversationId, messageId). Share intents have **no**
+     * messageId and never seed the singleton, so the user landed on ChatList and the
+     * target conversation was never selected — the shared file was never delivered.
+     *
+     * Fix: tag share-originated OpenConversation with Source.ShareIntent and have
+     * AppNavHost additionally call selectConversationOnChatList(id), which writes
+     * pendingConversationId to ChatList's savedStateHandle. The ChatList composable's
+     * LaunchedEffect picks that up and calls ConversationListViewModel.selectConversation,
+     * which runs processPendingSharedContent so the file lands in the conversation.
+     *
+     * This test reproduces the dispatch logic from AppNavHost.kt and asserts that a
+     * Source.ShareIntent event applies pendingConversationId, while a Source.NotificationTap
+     * event does NOT (resolution stays on the PendingNotificationTap path).
+     */
+    @Test
+    fun share_intent_writes_pending_conversation_id_notification_tap_does_not() = runComposeUiTest {
+        val events = Channel<NotificationNavigationEvent>(Channel.BUFFERED)
+
+        // Warm app starting on ChatList. The Detail-on-top scenario is already
+        // covered by warm_start_notification_tap_from_detail_navigates_via_chatlist;
+        // for share intents the bug is identical regardless of where in the
+        // stack the user is. Assertions are made via on-screen text only — the
+        // existing tests that touch NavController back stack outside
+        // composition trigger flaky lifecycle teardown crashes in headless
+        // test environments (see build.gradle.kts CI exclusions).
+        setContent {
+            val navController = rememberNavController()
+
+            LaunchedEffect(Unit) {
+                events.consumeAsFlow().collect { event ->
+                    if (event is NotificationNavigationEvent.OpenConversation) {
+                        val id = Uuid.parseOrNull(event.conversationId) ?: return@collect
+                        navController.currentBackStack
+                            .first { stack -> stack.any { it.destination.hasRoute(TestChatList::class) } }
+                        navController.popBackStack(TestChatList, inclusive = false)
+                        // Mirrors AppNavHost: only ShareIntent writes savedStateHandle.
+                        // NotificationTap leaves it to PendingNotificationTap (not in this test).
+                        if (event.source == NotificationNavigationEvent.OpenConversation.Source.ShareIntent) {
+                            navController.getBackStackEntry<TestChatList>()
+                                .savedStateHandle["pendingConversationId"] = id.toString()
+                        }
+                    }
+                }
+            }
+
+            NavHost(navController, startDestination = TestChatList) {
+                composable<TestChatList> { backStackEntry ->
+                    val pending by backStackEntry.savedStateHandle
+                        .getStateFlow<String?>("pendingConversationId", null)
+                        .collectAsState()
+                    Text("chatlist pending=${pending ?: "null"}")
+                }
+            }
+        }
+
+        waitForIdle()
+        onNodeWithText("chatlist pending=null").assertExists()
+
+        // 1) Notification tap: must NOT write savedStateHandle (covered by
+        //    PendingNotificationTap in production).
+        events.trySend(
+            NotificationNavigationEvent.OpenConversation(
+                conversationId = "11111111-1111-1111-1111-111111111111",
+                source = NotificationNavigationEvent.OpenConversation.Source.NotificationTap,
+            )
+        )
+        waitForIdle()
+        onNodeWithText("chatlist pending=null").assertExists()
+
+        // 2) Share intent: must write savedStateHandle so ChatList's observer
+        //    routes through ConversationListViewModel.selectConversation, which
+        //    in turn runs processPendingSharedContent.
+        events.trySend(
+            NotificationNavigationEvent.OpenConversation(
+                conversationId = "e028c85f-f04d-4600-8946-3d3a8be543f4",
+                source = NotificationNavigationEvent.OpenConversation.Source.ShareIntent,
+            )
+        )
+        waitForIdle()
+        onNodeWithText("chatlist pending=e028c85f-f04d-4600-8946-3d3a8be543f4")
+            .assertExists()
+    }
 }

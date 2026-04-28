@@ -148,6 +148,38 @@ class DriveFileProviderCached(
         }
     }
 
+    // Drop the live FileKache reference under the lifecycle mutex so the next
+    // accessor reconstructs from the on-disk journal. Use this only for
+    // exceptions that look like internal-state corruption (NPE, ISE) — observed
+    // on real Android devices where a single mayakapps/kache failure leaves
+    // the instance with a null internal sink/source and every subsequent
+    // get()/put() fires the same `getClass() on null` NPE for the rest of the
+    // session (90k+ identical errors in one user log). Not for IOException /
+    // disk-full, which are per-operation and recover on their own.
+    private fun isKacheInstanceCorrupt(e: Throwable): Boolean =
+            e is NullPointerException || e is IllegalStateException
+
+    // Internal so jvmTest can drive the recovery path directly. The on-disk
+    // journal survives — a fresh FileKache built over the same dir picks up
+    // existing entries.
+    internal suspend fun discardThumbKache() = kacheMutex.withLock {
+        if (_thumbDiskKache != null) {
+            Logger.w(tag = "DriveFileProviderCached") {
+                "discarding broken thumb FileKache — next access will reconstruct"
+            }
+            _thumbDiskKache = null
+        }
+    }
+
+    internal suspend fun discardPayloadKache() = kacheMutex.withLock {
+        if (_payloadDiskKache != null) {
+            Logger.w(tag = "DriveFileProviderCached") {
+                "discarding broken payload FileKache — next access will reconstruct"
+            }
+            _payloadDiskKache = null
+        }
+    }
+
     // ================================================================
     // -------------------- CACHED PAYLOAD METHODS --------------------
     // ================================================================
@@ -199,6 +231,7 @@ class DriveFileProviderCached(
                         // A write failure should not prevent the caller from getting the fetched bytes.
                         // Surface it loudly so we can spot corrupted journals or full disks.
                         Logger.e(tag = "PayloadIO", throwable = e) { "payload cache-write FAILED key=$cacheKey" }
+                        if (isKacheInstanceCorrupt(e)) discardPayloadKache()
                     }
                     result
                 } catch (e: NotFoundException) {
@@ -354,6 +387,7 @@ class DriveFileProviderCached(
                         // A write failure should not prevent the caller from getting the fetched bytes.
                         // Surface it loudly so we can spot corrupted journals or full disks.
                         Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-write FAILED key=$cacheKey" }
+                        if (isKacheInstanceCorrupt(e)) discardThumbKache()
                     }
                     result
                 } catch (e: NotFoundException) {
@@ -382,6 +416,7 @@ class DriveFileProviderCached(
             readBytesResponse(filePath)
         } catch (e: Exception) {
             Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-read FAILED key=$cacheKey" }
+            if (isKacheInstanceCorrupt(e)) discardThumbKache()
             null
         }
     }
@@ -397,6 +432,7 @@ class DriveFileProviderCached(
             result
         } catch (e: Exception) {
             Logger.e(tag = "PayloadIO", throwable = e) { "payload cache-read FAILED key=$cacheKey" }
+            if (isKacheInstanceCorrupt(e)) discardPayloadKache()
             null
         }
     }

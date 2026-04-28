@@ -273,5 +273,44 @@ actual object ImageUtils {
         BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
         return ImageSize(options.outWidth, options.outHeight)
     }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    actual fun warpAffine(
+        srcBytes: ByteArray,
+        matrix9: FloatArray,
+        outputWidth: Int,
+        outputHeight: Int,
+        fillColorArgb: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        require(matrix9.size >= 9) { "matrix9 must have at least 9 entries" }
+        require(outputWidth > 0 && outputHeight > 0) { "output dimensions must be positive" }
+
+        val srcBitmap = decodeBitmap(srcBytes)
+        val naturalW = srcBitmap.width
+        val naturalH = srcBitmap.height
+
+        val matrix = Matrix().apply { setValues(matrix9) }
+        val out = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(out)
+        if (fillColorArgb != 0) {
+            canvas.drawColor(fillColorArgb)
+        }
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = true
+            isFilterBitmap = true
+        }
+        canvas.drawBitmap(srcBitmap, matrix, paint)
+
+        val encoded = encodeBitmap(out, outputFormat, quality)
+        srcBitmap.recycle()
+        out.recycle()
+        return ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(naturalW, naturalH),
+            size = ImageSize(outputWidth, outputHeight),
+        )
+    }
 }
 

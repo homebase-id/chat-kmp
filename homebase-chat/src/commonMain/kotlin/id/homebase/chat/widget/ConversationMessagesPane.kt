@@ -246,6 +246,14 @@ fun ConversationMessagesPane(
                                 onUiAction(SendFile(conversationId, message, files))
                             },
                             onDismiss = { onUiAction(CloseFullScreenOverlay) },
+                            onCropImage = { conversationId, attachmentId ->
+                                onUiAction(
+                                    id.homebase.chat.conversationlist.ConversationListUiAction.RequestCropAttachment(
+                                        conversationId,
+                                        attachmentId,
+                                    )
+                                )
+                            },
                         )
                     }
                 }

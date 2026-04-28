@@ -252,5 +252,53 @@ actual object ImageUtils {
         val img = decodeImage(srcBytes)
         return ImageSize(img.width, img.height)
     }
+
+    actual fun warpAffine(
+        srcBytes: ByteArray,
+        matrix9: FloatArray,
+        outputWidth: Int,
+        outputHeight: Int,
+        fillColorArgb: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        require(matrix9.size >= 9) { "matrix9 must have at least 9 entries" }
+        require(outputWidth > 0 && outputHeight > 0) { "output dimensions must be positive" }
+
+        val srcImage = decodeImage(srcBytes)
+        val naturalW = srcImage.width
+        val naturalH = srcImage.height
+
+        val surface = Surface.makeRasterN32Premul(outputWidth, outputHeight)
+        val canvas = surface.canvas
+        if (fillColorArgb != 0) {
+            val fillPaint = org.jetbrains.skia.Paint().apply {
+                color = fillColorArgb
+            }
+            canvas.drawRect(Rect.makeWH(outputWidth.toFloat(), outputHeight.toFloat()), fillPaint)
+        }
+        // Skia matrix from row-major Android-style 9-float array.
+        val skiaMatrix = org.jetbrains.skia.Matrix33(
+            matrix9[0], matrix9[1], matrix9[2],
+            matrix9[3], matrix9[4], matrix9[5],
+            matrix9[6], matrix9[7], matrix9[8],
+        )
+        canvas.save()
+        canvas.concat(skiaMatrix)
+        val drawPaint = org.jetbrains.skia.Paint().apply {
+            isAntiAlias = true
+        }
+        canvas.drawImage(srcImage, 0f, 0f, drawPaint)
+        canvas.restore()
+
+        val warped = surface.makeImageSnapshot()
+        val encoded = warped.encodeToData(encodedFormatFor(outputFormat), quality)
+            ?: throw IllegalStateException("Failed to encode warped image")
+        return ImageResult(
+            bytes = encoded.bytes,
+            naturalSize = ImageSize(naturalW, naturalH),
+            size = ImageSize(outputWidth, outputHeight),
+        )
+    }
 }
 

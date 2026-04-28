@@ -92,6 +92,7 @@ import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
+import id.homebase.imageeditor.ui.CropScreen
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -237,26 +238,32 @@ fun AppNavHost(
                     val id = Uuid.parseOrNull(event.conversationId) ?: return@collect
                     val topRoute = navController.currentBackStackEntry?.destination?.route
                     Logger.i(tag = "AppNavHost") {
-                        "OpenConversation received: id=$id, currentDest=$topRoute"
+                        "OpenConversation received: id=$id, source=${event.source}, currentDest=$topRoute"
                     }
-                    // Gate on ChatList being *anywhere* in the back stack, not just
-                    // on top. Top-of-stack gating (currentBackStackEntryFlow) hangs
-                    // forever when the user is warm on Detail/Settings/etc. —
-                    // regression introduced by PR #322. currentBackStack returns
-                    // immediately here because ChatList sits underneath the current
-                    // top entry; the subsequent popBackStack pops back to it.
-                    val stack = navController.currentBackStack.first { stack ->
-                        stack.any {
-                            it.destination.hasRoute(Route.ChatList::class)
-                        }
-                    }
+                    // Gate on ChatList being *anywhere* in the back stack, not
+                    // just on top. Top-of-stack gating hangs forever when the
+                    // user is warm on Detail/Settings/etc. For notification
+                    // taps, conversation resolution lives in
+                    // ConversationListViewModel via the PendingNotificationTap
+                    // singleton (TTL-retried until drive sync lands the
+                    // conversation) — here we only manage the back stack.
+                    val stack = navController.currentBackStack
+                        .first { stack -> stack.any { it.destination.hasRoute(Route.ChatList::class) } }
                     Logger.i(tag = "AppNavHost") {
-                        "ChatList present in stack (size=${stack.size}), dispatching"
+                        "ChatList present in stack (size=${stack.size}), popping to it"
                     }
-                    val ok = navController.selectConversationOnChatList(id, scrollToBottom = true)
-                    Logger.i(tag = "AppNavHost") { "selectConversationOnChatList result=$ok" }
                     val popped = navController.popBackStack(Route.ChatList, inclusive = false)
                     Logger.i(tag = "AppNavHost") { "popBackStack(ChatList)=$popped" }
+                    // Share intents carry no messageId, so PendingNotificationTap
+                    // cannot resolve them. Drop the conversation id directly into
+                    // ChatList's savedStateHandle — the LaunchedEffect on the
+                    // ChatList composable picks it up and calls
+                    // ConversationListViewModel.selectConversation, which in turn
+                    // runs processPendingSharedContent so the shared file lands
+                    // in the correct conversation.
+                    if (event.source == NotificationNavigationEvent.OpenConversation.Source.ShareIntent) {
+                        navController.selectConversationOnChatList(id)
+                    }
                 }
 
                 is NotificationNavigationEvent.OpenUrl -> uriHandler.openUrl(event.url)
@@ -464,14 +471,17 @@ fun AppNavHost(
                                                 fileId = fileId.toString()
                                             )
                                         )
-                                    },
-                                    onDetailPaneVisibilityChanged = {
-                                        // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
-                                        @Suppress("AssignedValueIsNeverRead") showingOnlyDetailPane =
-                                            it
-                                    },
-                                )
-                            }
+                                    )
+                                },
+                                onNavigateToCropper = { requestId ->
+                                    navController.navigate(Route.Crop(requestId.toString()))
+                                },
+                                onDetailPaneVisibilityChanged = {
+                                    // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
+                                    @Suppress("AssignedValueIsNeverRead")
+                                    showingOnlyDetailPane = it
+                                },
+                            )
                         }
 
                         composable<Route.CreateConversation> {
@@ -561,16 +571,28 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ConversationSettings> {
-                            if (isAuthenticated) {
-                                ConversationSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                    onShowContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
-                                    },
-                                )
-                            }
+                    composable<Route.Crop> {
+                        if (isAuthenticated) {
+                            CropScreen(
+                                viewModel = koinViewModel(),
+                                onEvent = { _ ->
+                                    // The result bus delivers cropped bytes to the
+                                    // caller; the screen just pops on any event.
+                                    navController.popBackStack()
+                                },
+                            )
+                        }
+                    }
+
+                    composable<Route.ConversationSettings> {
+                        if (isAuthenticated) {
+                            ConversationSettingsScreen(
+                                viewModel = koinViewModel(),
+                                onNavigateBack = { navController.popBackStack() },
+                                onShowContactInfo = {
+                                    navController.navigate(Route.ContactInfo(it))
+                                },
+                            )
                         }
 
                         composable<Route.GroupSettings> {

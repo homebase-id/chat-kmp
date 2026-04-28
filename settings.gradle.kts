@@ -39,6 +39,8 @@ include(":homebase-core")
 include(":homebase-auth")
 include(":homebase-chat")
 include(":homebase-api")
+include(":image-editor-core")
+include(":image-editor-ui")
 
 // Apps
 include(":desktopApp")

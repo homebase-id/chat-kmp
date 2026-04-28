@@ -57,6 +57,8 @@
     <string name="auto_connect_duplicate_introductory_request">A request to %1$s is already in progress.</string>
     <string name="auto_connect_recipient_unreachable">Couldn't reach %1$s. Try again later.</string>
     <string name="auto_connect_recipient_rejected">%1$s isn't accepting connections right now.</string>
+    <string name="auto_connect_recipient_not_configured">%1$s hasn\'t finished setting up their identity yet.</string>
+    <string name="auto_connect_recipient_requires_upgrade">%1$s\'s server needs to be updated before you can connect.</string>
     <string name="auto_connect_invalid_request">Invalid request.</string>
     <string name="auto_connect_invalid_request_with_detail">Invalid request: %1$s.</string>
     <string name="auto_connect_failed_generic">Something went wrong. Try again.</string>
@@ -215,7 +217,7 @@
     <string name="defragmenter_stat_elapsed">Elapsed: %1$s</string>
     <string name="defragmenter_stat_eta">Estimated: %1$s</string>
     <string name="defragmenter_status_idle">Ready to analyze</string>
-    <string name="defragmenter_status_analyzing">Analyzing drive…</string>
+    <string name="defragmenter_status_analyzing">Analyzing drive… %1$d of %2$d</string>
     <string name="defragmenter_status_ready">Analysis complete — ready to defragment</string>
     <string name="defragmenter_status_running">Defragmenting</string>
     <string name="defragmenter_status_paused">Paused</string>
@@ -364,6 +366,13 @@
     <string name="chat_group_rejoin_pending_description">You were re-added to this group</string>
     <string name="chat_group_rejoin_accept">Rejoin</string>
     <string name="chat_group_rejoin_decline">Decline</string>
+    <string name="chat_group_main_file_delivered">Group file delivered</string>
+    <string name="chat_group_main_file_problem">Group file delivery problem</string>
+    <string name="chat_group_admin_file_delivered">Admin file delivered</string>
+    <string name="chat_group_admin_file_problem">Admin file delivery problem</string>
+    <string name="chat_group_heal">Heal group</string>
+    <string name="chat_group_heal_completed">Re-distributing group files…</string>
+    <string name="chat_group_heal_completed_nothing">Nothing to redistribute (you didn\'t author the group files).</string>
 
     <!-- 1:1 connection state banner (shown in place of the message composer) -->
     <string name="chat_not_connected_description">You're not connected.</string>
@@ -414,6 +423,7 @@
     <string name="chat_message_delete_for_me">Delete for me</string>
     <string name="chat_message_options">Message options</string>
     <string name="chat_message_attachment_options">Attachment options</string>
+    <string name="chat_attach_file_failed">Failed to attach file(s): %s</string>
     <string name="chat_message_camera">Camera</string>
     <string name="chat_message_take_photo">Take photo</string>
     <string name="chat_message_record_video">Record video</string>
@@ -468,6 +478,7 @@
     <string name="upload_compressing">Compressing\u2026</string>
     <string name="upload_segmenting">Segmenting\u2026</string>
     <string name="upload_encrypting">Encrypting\u2026</string>
+    <string name="upload_sending">Sending\u2026</string>
     <string name="upload_uploading">Uploading\u2026</string>
     <string name="upload_finalizing">Finalizing\u2026</string>
     <string name="upload_done">Done</string>
@@ -571,5 +582,6 @@
     <string name="feed_error_retry">Retry</string>
     <string name="pending_attachment_one">1 attachment</string>
     <string name="pending_attachment_many">%1$d attachments</string>
+    <string name="crop">Crop</string>
 
 </resources>

@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 class ConversationStream(
@@ -48,7 +49,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
-) : ConversationLoader {
+) : ConversationLoader, UnreadCountEnricher, ConversationParticipantLookup {
 
     private val chatDrive = chatTargetDrive.alias
     private val _conversations = MutableStateFlow(ConversationsData(dataReady = false))
@@ -112,7 +113,7 @@ class ConversationStream(
             eventBus.events.collect { event ->
 
                 if (event is BackendEvent.ConnectionOnline) {
-                    enrichWithUnreadCounts()
+                    enrichAllConversationsWithUnreadCounts()
                     return@collect
                 }
 
@@ -412,6 +413,21 @@ class ConversationStream(
         // Sort by descending timestamp (adjust based on your UI needs)
         val sortedList = _conversations.value.items.sortedByDescending { it.latestMessageTimestamp }
         _conversations.value = _conversations.value.copy(items = sortedList)
+
+        // Drive-sync of a conversation file (peer-device echo) writes only
+        // DriveMainIndex; ChatReadCount lags. The merged enrich pass mirrors
+        // file-of-record lastReadTime into ChatReadCount and patches unread
+        // counts in one round-trip — fire-and-forget so the in-memory list
+        // update above stays on the hot path.
+        scope.launch {
+            try {
+                enrichAllConversationsWithUnreadCounts()
+            } catch (e: Exception) {
+                Logger.e(e) {
+                    "ConversationStream: background enrich after conversation batch failed: ${e.message}"
+                }
+            }
+        }
     }
 
     private fun insertNewConversation(conversation: ConversationUiModel) {
@@ -690,19 +706,51 @@ class ConversationStream(
     }
 
     /**
-     * ENRICHMENT — applies unread counts from the `ChatReadCount` table.
+     * ENRICHMENT — patches unread counts from `ChatReadCount` onto the
+     * in-memory list, AND mirrors any peer-device read advances carried in
+     * the conversation file's `localAppData.lastReadTime` (already exposed
+     * via [ConversationUiModel.lastRead]) into `ChatReadCount`.
+     *
+     * Cold-load steady state: one SELECT, no writes. When a peer device
+     * advanced read state, this pass does SELECT → batch UPSERT → re-SELECT
+     * so the unread counts reflect the just-mirrored values before they're
+     * patched onto the model.
      *
      * Also invoked from message-read actions (see [ChatMessageActionService])
-     * and on `BackendEvent.ConnectionOnline` to resync counts after a
-     * reconnect. Flips `enrichment.hasUnreadCounts` (first call only;
-     * subsequent calls just patch counts).
+     * and on `BackendEvent.ConnectionOnline`. Flips
+     * `enrichment.hasUnreadCounts` (first call only; subsequent calls just
+     * patch counts).
      *
      * Safe to defer, safe to skip, safe to retry.
      */
-    suspend fun enrichWithUnreadCounts() {
+    suspend fun enrichAllConversationsWithUnreadCounts() {
         val startedAt = Clock.System.now().toEpochMilliseconds()
         val c = credentialsManager.requireActiveCredentials()
-        val unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
+        var unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
+
+        // Mirror: only consider conversations that appear in the unread
+        // result set. A conversation missing from this result has zero
+        // unread under the current stored value, which means the badge is
+        // already correct on this device — no mirror needed even if the
+        // file's lastReadTime is ahead. Self-corrects on next markAsRead.
+        val modelByConvo = _conversations.value.items.associate {
+            it.id to it.lastRead.toEpochMilliseconds()
+        }
+        val toUpsert = mutableListOf<Pair<Uuid, UnixTimeUtc>>()
+        for (row in unread) {
+            val modelMs = modelByConvo[row.conversationId] ?: continue
+            val storedMs = row.lastReadTime ?: 0L
+            if (modelMs > storedMs) {
+                toUpsert.add(row.conversationId to UnixTimeUtc(modelMs))
+            }
+        }
+        val mirroredCount = toUpsert.size
+        if (toUpsert.isNotEmpty()) {
+            dbm.chatReadCount.bulkUpsertLastReadTimes(toUpsert)
+            // Re-query so the unread counts we apply reflect the mirror.
+            unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
+        }
+
         val unreadMap = unread.associate { it.conversationId to it.unreadCount.toInt() }
 
         var changed = 0
@@ -724,8 +772,41 @@ class ConversationStream(
         )
 
         Logger.i(tag = "ConvListPerf") {
-            "enrichWithUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms changedRows=$changed totalRows=${current.items.size}"
+            "enrichAllConversationsWithUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
+                    "mirrored=$mirroredCount changedRows=$changed totalRows=${current.items.size}"
         }
+    }
+
+    /**
+     * Patch the in-memory entry for [conversationId] to reflect a successful
+     * mark-as-read advance: set lastRead to [newLastRead] and re-derive
+     * unreadCount from ChatReadCount. Single state emission so the UI sees both
+     * deltas at once. No-op if the conversation isn't in memory yet.
+     */
+    override suspend fun applyLocalAdvance(conversationId: Uuid, newLastRead: Instant) {
+        val current = _conversations.value
+        val index = current.items.indexOfFirst { it.id == conversationId }
+        if (index < 0) {
+            Logger.w(tag = "MarkAsRead") {
+                "ConversationStream.applyLocalAdvance: convo=$conversationId NOT FOUND " +
+                        "in in-memory list (size=${current.items.size}) — UI badge will not update"
+            }
+            return
+        }
+
+        val c = credentialsManager.requireActiveCredentials()
+        val newCount = dbm.chatReadCount
+            .selectUnreadCountForConversation(c.getIdentityId(), conversationId, c.domain)
+            .toInt()
+
+        val convo = current.items[index]
+        if (convo.lastRead == newLastRead && convo.unreadCount == newCount) return
+
+        Logger.d("ConversationStream: unreadSync convo=$conversationId ${convo.unreadCount}->$newCount")
+        val updated = current.items.toMutableList().apply {
+            this[index] = convo.copy(lastRead = newLastRead, unreadCount = newCount)
+        }
+        _conversations.value = current.copy(items = updated)
     }
 
     // endregion
@@ -751,7 +832,7 @@ class ConversationStream(
             // then admins (group-settings only), then unread counts.
             enrichWithLastMessages()
             enrichWithAdmins()
-            enrichWithUnreadCounts()
+            enrichAllConversationsWithUnreadCounts()
         }
 
         // Reactively update share cache when conversations or contacts change,
@@ -774,7 +855,7 @@ class ConversationStream(
         }
     }
 
-    fun getConversationById(conversationId: Uuid): ConversationUiModel? {
+    override fun getConversationById(conversationId: Uuid): ConversationUiModel? {
         return _conversations.value.items.firstOrNull { it.id == conversationId }
     }
 
@@ -788,9 +869,9 @@ class ConversationStream(
         )
     }
 
-    suspend fun getRecipients(
+    override suspend fun getRecipients(
         conversationId: Uuid,
-        additionalRecipients: List<OdinId> = emptyList()
+        additionalRecipients: List<OdinId>
     ): List<OdinId> {
 
         val domain = credentialsManager.requireActiveDomain()
@@ -885,7 +966,8 @@ data class EnrichmentState(
     /** `true` once [ConversationStream.enrichWithAdmins] has resolved
      *  admin sets for group conversations. */
     val hasAdmins: Boolean = false,
-    /** `true` once [ConversationStream.enrichWithUnreadCounts] has applied
+    /** `true` once [ConversationStream.enrichAllConversationsWithUnreadCounts] has applied
      *  the unread counts from ChatReadCount. */
     val hasUnreadCounts: Boolean = false,
 )
+

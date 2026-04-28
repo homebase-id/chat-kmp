@@ -137,6 +137,19 @@ sealed interface ConversationListUiAction {
         val imageBytes: ByteArray,
     ) : ConversationListUiAction
 
+    /** User tapped the crop button on an image attachment. */
+    data class RequestCropAttachment(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
+    ) : ConversationListUiAction
+
+    /** Cropper finished — replace the attachment with the cropped bytes. */
+    data class ApplyCropResult(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
+        val croppedBytes: ByteArray,
+    ) : ConversationListUiAction
+
     data class BlockUser(val authorOdinId: OdinId) : ConversationListUiAction
     data object ReportContent : ConversationListUiAction
 }

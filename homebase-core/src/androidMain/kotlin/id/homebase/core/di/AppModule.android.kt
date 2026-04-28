@@ -16,6 +16,7 @@ import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.gallery.AndroidGalleryManager
+import id.homebase.core.gallery.GalleryCache
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
@@ -35,6 +36,26 @@ actual fun platformModule(): Module = module {
     single { ShareCacheStorage(androidContext()) }
     single { createSettings(androidContext()) }
     single<PlatformGalleryManager> { AndroidGalleryManager(androidContext()) }
+    single(createdAtStart = true) {
+        val cache = GalleryCache(get<PlatformGalleryManager>())
+        // Refresh whenever the system reports new gallery items. The observer lives
+        // for the Application lifetime, mirroring the Koin singleton scope.
+        val resolver = androidContext().contentResolver
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val observer = object : android.database.ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) {
+                cache.refresh()
+            }
+        }
+        resolver.registerContentObserver(
+            android.provider.MediaStore.Files.getContentUri(
+                android.provider.MediaStore.VOLUME_EXTERNAL
+            ),
+            true,
+            observer,
+        )
+        cache
+    }
     single<PlatformInfo> { AndroidPlatformInfo(androidContext()) }
     single<AudioRecorder> { AndroidAudioRecorder(androidContext()) }
     single<AudioPlayer> { AndroidAudioPlayer() }

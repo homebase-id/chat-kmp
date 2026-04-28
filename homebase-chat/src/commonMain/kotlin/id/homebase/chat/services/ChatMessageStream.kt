@@ -3,11 +3,9 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
@@ -71,7 +69,7 @@ class ChatMessageStream(
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
     private val driveFileProvider: DriveFileProvider
-) {
+) : MessageLookup {
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
 
@@ -153,12 +151,12 @@ class ChatMessageStream(
         }
     }
 
-    suspend fun getMessage(messageId: Uuid): MessageUiModel? {
+    override suspend fun getMessage(messageId: Uuid): MessageUiModel? {
         val messageFile = getMessageFile(messageId) ?: return null
         return mapToMessageData(messageFile, credentialsManager, ::resolveDisplayName)
     }
 
-    suspend fun getMessageFile(messageId: Uuid): HomebaseFile? {
+    override suspend fun getMessageFile(messageId: Uuid): HomebaseFile? {
         val c = credentialsManager.requireActiveCredentials()
         return dbm.driveMainIndex.selectHomebaseFileByUnique(
             c.getIdentityId(),
@@ -252,7 +250,7 @@ class ChatMessageStream(
         )
     }
 
-    suspend fun getMessages(
+    override suspend fun getMessages(
         messageIds: List<Uuid>
     ): BatchResult<MessageUiModel> {
 
@@ -286,7 +284,7 @@ class ChatMessageStream(
         )
     }
 
-    suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String? {
+    override suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String? {
 
         val header = getMessage(messageId) ?: return null
 
@@ -404,8 +402,7 @@ class ChatMessageStream(
 
                 val versionTag = header.fileMetadata.versionTag ?: Uuid.NIL
                 val content = appData.content
-                val isDeleted = header.fileState == FileState.Deleted ||
-                        header.fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
+                val isDeleted = header.isSoftDeleted()
 
                 if (isDeleted) {
                     val deletedUserDate = if (appData.userDate == null)

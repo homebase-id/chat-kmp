@@ -50,4 +50,14 @@ object Win98Palette {
     val ClassicGreenLight: Color = Color(0xFF50E850)
     val ClassicGreenShadow: Color = Color(0xFF004800)
     val GreenGlowEdge: Color = Color(0xFF00FF88)
+
+    // "Unanalyzed" palette — used during Analyzing for positions the scan
+    // head hasn't reached yet. Flat and unobtrusive so the scan head stands
+    // out as it sweeps across.
+    val UnanalyzedFill: Color = Color(0xFF2E2E2E)
+    val UnanalyzedEdge: Color = Color(0xFF1A1A1A)
+
+    // Scan-head highlight — the single bright cell at analyzedUpto - 1.
+    val ScanHead: Color = Color(0xFFFFFFE0)
+    val ScanHeadEdge: Color = Color(0xFFFFFFFF)
 }

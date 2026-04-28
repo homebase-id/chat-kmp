@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayCircle
@@ -54,10 +55,10 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.widget.video.LocalVideoPlayerSurface
-import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_message_remove_gallery_image
+import id.homebase.resources.crop
 import id.homebase.resources.menu_back
 import id.homebase.resources.save
 import io.github.vinceglb.filekit.name
@@ -80,6 +81,7 @@ fun FullScreenAttachmentEditor(
     onRemoveFile: (conversationId: Uuid, attachmentId: Uuid) -> Unit,
     onSendMessage: (conversationId: Uuid, message: String, files: List<AttachmentPendingFile>) -> Unit,
     onDismiss: () -> Unit,
+    onCropImage: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
 ) {
     val isFileMode = data.attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -129,7 +131,7 @@ fun FullScreenAttachmentEditor(
                     is AttachmentPendingFile.FileImage -> {
                         AsyncImage(
                             imageLoader = imageLoader,
-                            model = HomebaseImageData.pending(attachment.file.toString()),
+                            model = attachment.file.toString(),
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -140,6 +142,10 @@ fun FullScreenAttachmentEditor(
                     is AttachmentPendingFile.FileVideo -> {
                         var isPlaying by remember(attachment.attachmentId) { mutableStateOf(false) }
                         var firstFrameRendered by remember(attachment.attachmentId) { mutableStateOf(false) }
+                        // Show a Coil-decoded poster whenever we don't yet have the
+                        // pre-extracted bytes — Coil's VideoFrameDecoder pulls a frame
+                        // straight from the URI without our FFmpeg + temp-file dance.
+                        val posterModel: Any = attachment.thumbnailBytes ?: attachment.file.toString()
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -155,27 +161,13 @@ fun FullScreenAttachmentEditor(
                                 )
                             }
                             if (!firstFrameRendered) {
-                                if (attachment.thumbnailBytes != null) {
-                                    AsyncImage(
-                                        imageLoader = imageLoader,
-                                        model = attachment.thumbnailBytes,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        contentScale = ContentScale.Fit
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Default.PlayCircle,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(96.dp),
-                                            tint = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
+                                AsyncImage(
+                                    imageLoader = imageLoader,
+                                    model = posterModel,
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentScale = ContentScale.Fit
+                                )
                                 Icon(
                                     Icons.Default.PlayCircle,
                                     contentDescription = null,
@@ -190,7 +182,7 @@ fun FullScreenAttachmentEditor(
                     is AttachmentPendingFile.Gallery -> {
                         AsyncImage(
                             imageLoader = imageLoader,
-                            model = HomebaseImageData.pending(attachment.image.thumbnailUri ?: attachment.image.file.toString()),
+                            model = attachment.image.thumbnailUri ?: attachment.image.file.toString(),
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -235,29 +227,21 @@ fun FullScreenAttachmentEditor(
 
         }
 
+        // Attachment-strip row: thumbnails for every queued attachment with a
+        // trailing "+" to add another. This row is just about managing the
+        // collection of attachments — actions on the current one live below.
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(
-                onClick = { onSaveFile(data.attachments[pagerState.currentPage]) },
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = stringResource(MR.string.save)
-                )
-            }
-            LazyRow(
-                modifier = Modifier.weight(1f),
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                items(data.attachments) { attachment ->
-                    val isSelected = data.attachments[pagerState.currentPage] == attachment
+                data.attachments.forEach { attachment ->
+                    val isSelected = data.attachments[pagerState.currentPage].attachmentId == attachment.attachmentId
                     Box(
                         modifier = Modifier
                             .size(60.dp)
@@ -269,7 +253,10 @@ fun FullScreenAttachmentEditor(
                             )
                             .clickable {
                                 scope.launch {
-                                    pagerState.animateScrollToPage(data.attachments.indexOf(attachment))
+                                    val idx = data.attachments.indexOfFirst {
+                                        it.attachmentId == attachment.attachmentId
+                                    }
+                                    if (idx >= 0) pagerState.animateScrollToPage(idx)
                                 }
                             }
                     ) {
@@ -285,7 +272,7 @@ fun FullScreenAttachmentEditor(
                             is AttachmentPendingFile.FileImage -> {
                                 AsyncImage(
                                     imageLoader = imageLoader,
-                                    model = HomebaseImageData.pending(attachment.file.toString()),
+                                    model = attachment.file.toString(),
                                     contentDescription = null,
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
@@ -296,15 +283,13 @@ fun FullScreenAttachmentEditor(
                                     modifier = Modifier.fillMaxSize(),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    if (attachment.thumbnailBytes != null) {
-                                        AsyncImage(
-                                            imageLoader = imageLoader,
-                                            model = attachment.thumbnailBytes,
-                                            contentDescription = null,
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    }
+                                    AsyncImage(
+                                        imageLoader = imageLoader,
+                                        model = attachment.thumbnailBytes ?: attachment.file.toString(),
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
                                     Icon(
                                         Icons.Default.PlayCircle,
                                         contentDescription = null,
@@ -315,7 +300,7 @@ fun FullScreenAttachmentEditor(
                             is AttachmentPendingFile.Gallery -> {
                                 AsyncImage(
                                     imageLoader = imageLoader,
-                                    model = HomebaseImageData.pending(attachment.image.thumbnailUri ?: attachment.image.file.toString()),
+                                    model = attachment.image.thumbnailUri ?: attachment.image.file.toString(),
                                     contentDescription = null,
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
@@ -355,6 +340,47 @@ fun FullScreenAttachmentEditor(
                     imageVector = Icons.Default.Add,
                     contentDescription = stringResource(MR.string.chat_message_add_gallery_image)
                 )
+            }
+        }
+
+        // Edit-tools row (Signal convention): actions on the current
+        // attachment — crop (image only), download. Future tools (filters,
+        // markup) would join this row.
+        val currentAttachment = data.attachments.getOrNull(pagerState.currentPage)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (currentAttachment is AttachmentPendingFile.FileImage ||
+                currentAttachment is AttachmentPendingFile.Gallery
+            ) {
+                IconButton(
+                    onClick = { onCropImage(data.conversationId, currentAttachment.attachmentId) },
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Crop,
+                        contentDescription = stringResource(MR.string.crop),
+                    )
+                }
+            }
+            if (currentAttachment != null) {
+                IconButton(
+                    onClick = { onSaveFile(currentAttachment) },
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = stringResource(MR.string.save),
+                    )
+                }
             }
         }
 

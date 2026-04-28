@@ -13,6 +13,7 @@ kotlin {
         namespace = "id.homebase.chat"
         compileSdk = libs.versions.android.targetSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
+        withHostTest {}
     }
 
     jvm()
@@ -41,6 +42,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":homebase-api"))
             implementation(project(":homebase-common"))
+            implementation(project(":image-editor-ui"))
 
             implementation(libs.kermit)
             implementation(libs.jetbrains.compose.runtime)
@@ -94,6 +96,7 @@ kotlin {
             }
             implementation(libs.sqlite.jdbc.crypt)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
     }
 
@@ -175,4 +178,13 @@ tasks.named("assemble") {
 // Also wire them up to the jvmJar task for good measure
 tasks.named("jvmJar") {
     finalizedBy(platformJarTasks)
+}
+
+// `withHostTest {}` is enabled above so AGP 9.2 stops warning about commonTest
+// with no Android host-test runner. Compose UI tests in commonTest use a
+// Skiko-backed implementation that doesn't compose against the mocked Android
+// host-test classpath, so disable the task until those tests are migrated
+// to jvmTest/.
+tasks.matching { it.name == "testAndroidHostTest" }.configureEach {
+    enabled = false
 }

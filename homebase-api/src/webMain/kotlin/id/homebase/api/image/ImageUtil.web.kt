@@ -51,4 +51,16 @@ actual object ImageUtils {
     actual fun getNaturalSize(srcBytes: ByteArray): ImageSize {
         TODO("Not yet implemented")
     }
+
+    actual fun warpAffine(
+        srcBytes: ByteArray,
+        matrix9: FloatArray,
+        outputWidth: Int,
+        outputHeight: Int,
+        fillColorArgb: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        TODO("Not yet implemented")
+    }
 }

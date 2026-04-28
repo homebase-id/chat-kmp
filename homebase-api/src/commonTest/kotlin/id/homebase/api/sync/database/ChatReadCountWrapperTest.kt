@@ -13,6 +13,10 @@ import kotlin.uuid.Uuid
 
 class ChatReadCountWrapperTest {
 
+    // Mock data is seeded with originalAuthor="test.sender", so any other domain
+    // here behaves as "self != peer-author" — i.e., the messages count as unread.
+    private val selfDomain = OdinId("test.self")
+
     /**
      * Populates the database with mock test data:
      * - One conversation with no messages
@@ -280,15 +284,18 @@ class ChatReadCountWrapperTest {
             // FAILS HERE :
             val conv1Unread = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithNoMessages.fileMetadata.appData.uniqueId!!
+                testData.convWithNoMessages.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             val conv2Unread = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             val conv3Unread = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
 
             assertEquals(
@@ -317,7 +324,8 @@ class ChatReadCountWrapperTest {
 
             val conv3Unread = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
 
             // Should only count messages after the read time (only the 3rd message)
@@ -331,7 +339,7 @@ class ChatReadCountWrapperTest {
             val wrapper = dbm.chatReadCount
             val nonExistentGroupId = Uuid.random()
 
-            val unreadCount = wrapper.selectUnreadCountForConversation(Uuid.random(), nonExistentGroupId)
+            val unreadCount = wrapper.selectUnreadCountForConversation(Uuid.random(), nonExistentGroupId, selfDomain)
 
             assertEquals(
                 0L, unreadCount, "Non-existent conversation should have 0 unread"
@@ -428,6 +436,89 @@ class ChatReadCountWrapperTest {
     }
 
     @Test
+    fun testSelectAllUnreadCountIncludesLastReadTime() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val testData = populateMockData(dbm)
+            val wrapper = dbm.chatReadCount
+
+            val rows = wrapper.selectAllUnreadCount(testData.identityId, selfDomain)
+
+            // conv2 + conv3 have stored ChatReadCount rows and unread > 0,
+            // so both should appear with their stored lastReadTime exposed.
+            // conv1 has no messages → no row.
+            val conv2Id = testData.convWithOneMessage.first.fileMetadata.appData.uniqueId
+            val conv3Id = testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId
+            val byId = rows.associateBy { it.conversationId }
+
+            val conv2Row = byId[conv2Id]
+            val conv3Row = byId[conv3Id]
+            assertNotNull(conv2Row, "conv2 should appear in unread result")
+            assertNotNull(conv3Row, "conv3 should appear in unread result")
+            assertNotNull(conv2Row.lastReadTime, "conv2 has a ChatReadCount row")
+            assertNotNull(conv3Row.lastReadTime, "conv3 has a ChatReadCount row")
+            assertTrue(conv2Row.lastReadTime > 0L, "lastReadTime should be the stored ms value")
+            assertTrue(conv3Row.lastReadTime > 0L, "lastReadTime should be the stored ms value")
+        }
+    }
+
+    @Test
+    fun testSelectAllUnreadCountReturnsNullLastReadTimeWhenNoRow() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val convoId = Uuid.random()
+            val now = UnixTimeUtc.now()
+
+            val convo = createMockHomebaseFile(convoId, driveId, 8888, null, now)
+            val msg = createMockHomebaseFile(Uuid.random(), driveId, 7878, convoId, now.addMilliseconds(1000))
+            insertHomebaseFile(dbm, identityId, driveId, convo)
+            insertHomebaseFile(dbm, identityId, driveId, msg)
+            // Note: no ChatReadCount row written.
+
+            val rows = dbm.chatReadCount.selectAllUnreadCount(identityId, selfDomain)
+
+            val row = rows.firstOrNull { it.conversationId == convoId }
+            assertNotNull(row, "Conversation with unread message but no ChatReadCount row should still appear")
+            assertEquals(1L, row.unreadCount)
+            assertEquals(null, row.lastReadTime, "Missing ChatReadCount row → lastReadTime is null")
+        }
+    }
+
+    @Test
+    fun testBulkUpsertLastReadTimesAdvancesAllInOneTransaction() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val wrapper = dbm.chatReadCount
+            val a = Uuid.random()
+            val b = Uuid.random()
+            val c = Uuid.random()
+            wrapper.upsertLastReadTime(a, UnixTimeUtc(100L))
+            wrapper.upsertLastReadTime(b, UnixTimeUtc(2000L)) // already ahead
+
+            wrapper.bulkUpsertLastReadTimes(
+                listOf(
+                    a to UnixTimeUtc(500L),
+                    b to UnixTimeUtc(1000L),  // behind stored — MAX clause keeps stored
+                    c to UnixTimeUtc(750L),   // fresh row
+                )
+            )
+
+            assertEquals(500L, wrapper.selectLastReadTimeMs(a))
+            assertEquals(2000L, wrapper.selectLastReadTimeMs(b), "MAX clause must keep the larger stored value")
+            assertEquals(750L, wrapper.selectLastReadTimeMs(c))
+        }
+    }
+
+    @Test
+    fun testBulkUpsertLastReadTimesEmptyListIsNoOp() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val wrapper = dbm.chatReadCount
+            // Should not throw, should not write anything.
+            wrapper.bulkUpsertLastReadTimes(emptyList())
+            assertEquals(null, wrapper.selectLastReadTimeMs(Uuid.random()))
+        }
+    }
+
+    @Test
     fun testUpsertLastReadTimeNew() = runTest {
         DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val testData = populateMockData(dbm)
@@ -443,7 +534,8 @@ class ChatReadCountWrapperTest {
             // Verify unread count changed
             val unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(
                 0L, unreadCount, "Should have 0 unread messages after setting read time"
@@ -475,7 +567,8 @@ class ChatReadCountWrapperTest {
             // messages)
             val unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(
                 0L, unreadCount, "Should have 0 unread messages after updating read time"
@@ -513,7 +606,8 @@ class ChatReadCountWrapperTest {
             // Verify it exists by checking unread count
             var unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(0L, unreadCount, "Should have 0 unread with read time set")
 
@@ -524,7 +618,8 @@ class ChatReadCountWrapperTest {
             // Verify it's gone - unread count should be back to original
             unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(
                 1L, unreadCount, "Should have 1 unread after deleting read time"
@@ -566,7 +661,8 @@ class ChatReadCountWrapperTest {
             // Verify unread count is back to original
             var unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(3L, unreadCount, "Should have 3 unread after deletion")
 
@@ -580,7 +676,8 @@ class ChatReadCountWrapperTest {
             // Verify new read time is effective
             unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(
                 0L, unreadCount, "Should have 0 unread after reinserting with new read time"

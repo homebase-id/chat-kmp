@@ -330,6 +330,41 @@ class DriveFileProviderCachedTest {
     }
 
     /**
+     * Regression for an Android log where a single internal mayakapps/kache
+     * NPE poisoned the live FileKache instance and every subsequent
+     * `get()`/`put()` fired the same `getClass() on null` NPE for the rest of
+     * the session — 90k+ identical errors in one user log. The self-healing
+     * path nulls the bad reference under the lifecycle mutex so the next
+     * accessor reconstructs over the existing on-disk journal, recovering
+     * already-cached entries instead of needing a full re-download.
+     */
+    @Test
+    fun `discardThumbKache rebuilds cache and previously-cached bytes survive`() = runTest {
+        // Populate the cache so there's a live instance + on-disk journal.
+        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
+        val countAfterPopulate = requestCount
+
+        // Same key reads from cache — no network — proving the live instance works.
+        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
+        assertEquals(
+            countAfterPopulate, requestCount,
+            "warm read should hit the live cache (no extra network call)"
+        )
+
+        // Simulate the recovery path the new catch blocks invoke.
+        provider.discardThumbKache()
+
+        // Next call must succeed — a fresh FileKache reconstructs over the
+        // same directory and finds the existing entry. Network count must NOT
+        // change: the on-disk journal survives, so this is a cache hit.
+        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
+        assertEquals(
+            countAfterPopulate, requestCount,
+            "after discard + reconstruct, the previously-cached entry must still serve from disk"
+        )
+    }
+
+    /**
      * Positive assertion: after clearCaches, the next fetch must actually
      * reach the network. Protects against a future regression where we e.g.
      * null the kache reference but forget to delete the on-disk directory.

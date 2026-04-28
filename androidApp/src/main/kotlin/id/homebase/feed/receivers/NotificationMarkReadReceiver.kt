@@ -44,7 +44,8 @@ class NotificationMarkReadReceiver : BroadcastReceiver(), KoinComponent {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val convoUuid = Uuid.parse(conversationId)
-                chatMessageActionService.markAsReadLatestFileCreated(convoUuid, emptyList())
+                //TODO: need to send the files via markAsReadByFiles
+                // chatMessageActionService.markAsReadLatestFileCreated(convoUuid, emptyList())
             } catch (e: Exception) {
                 Logger.e(tag = "NotificationMarkRead") {
                     "Failed to mark as read: ${e.message}"

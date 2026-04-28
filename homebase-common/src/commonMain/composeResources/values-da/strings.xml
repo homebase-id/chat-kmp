@@ -398,6 +398,7 @@
     <string name="upload_compressing">Komprimerer\u2026</string>
     <string name="upload_segmenting">Segmenterer\u2026</string>
     <string name="upload_encrypting">Krypterer\u2026</string>
+    <string name="upload_sending">Sender\u2026</string>
     <string name="upload_uploading">Uploader\u2026</string>
     <string name="upload_finalizing">Afslutter\u2026</string>
     <string name="upload_done">Færdig</string>
@@ -405,5 +406,7 @@
     <!-- Emoji -->
     <string name="emoji_search_placeholder">Søg efter emoji</string>
     <string name="emoji_none_found">Ingen emojis fundet</string>
+
+    <string name="crop">Beskær</string>
 
 </resources>

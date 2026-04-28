@@ -30,6 +30,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
@@ -68,13 +70,16 @@ class OdinWebSocketClient(
     val connectionState: StateFlow<WebSocketState> = _connectionState.asStateFlow()
 
     private var connectionJob: Job? = null
+    private var reconnectDelayJob: Job? = null
     private var session: DefaultClientWebSocketSession? = null
 
     @Volatile
     var isInForeground: Boolean = true
         set(value) {
+            val previous = field
             field = value
             pingSupervisor.isInForeground = value
+            if (!previous && value) wakeForReconnect()
         }
 
     @Volatile
@@ -84,6 +89,8 @@ class OdinWebSocketClient(
 
     private val notificationBuffer =
         mutableListOf<ClientNotificationPayload>()
+
+    private val notificationBufferMutex = Mutex()
 
     private var notificationFlushJob: Job? = null
 
@@ -138,7 +145,18 @@ class OdinWebSocketClient(
 
                 Logger.w { "WebSocket disconnected, retrying in ${reconnectDelayMs}ms" }
 
-                delay(withJitter(reconnectDelayMs))
+                // The sleep is launched as a child of the connection job so
+                // wakeForReconnect() can cancel just this delay (e.g. when the
+                // app comes to the foreground) and we iterate immediately
+                // instead of waiting out the backoff cap. Cancelling the
+                // parent connectionJob still cascades to this child as usual.
+                val sleepJob = launch { delay(withJitter(reconnectDelayMs)) }
+                reconnectDelayJob = sleepJob
+                try {
+                    sleepJob.join()
+                } finally {
+                    reconnectDelayJob = null
+                }
                 Logger.i { "Delay completed, reconnecting..." }
 
                 val maxDelay = if (isInForeground) MAX_RECONNECT_DELAY_MS else MAX_RECONNECT_DELAY_BACKGROUND_MS
@@ -146,6 +164,19 @@ class OdinWebSocketClient(
             }
 
         }
+    }
+
+    /**
+     * Reset the reconnect backoff to the initial delay and cancel any
+     * pending reconnect-sleep so the loop iterates immediately. Safe to
+     * call from any thread; no-op when the client is closed or already
+     * connected. Intended for foreground transitions and other "we want
+     * a fresh attempt now" signals.
+     */
+    fun wakeForReconnect() {
+        if (closed) return
+        reconnectDelayMs = 1_000L
+        reconnectDelayJob?.cancel()
     }
 
     private fun withJitter(delayMs: Long): Long {
@@ -240,7 +271,9 @@ class OdinWebSocketClient(
     }
 
     private suspend fun handleNotification(notification: ClientNotificationPayload) {
-        notificationBuffer += notification
+        notificationBufferMutex.withLock {
+            notificationBuffer += notification
+        }
 
         // cancel pending flush
         notificationFlushJob?.cancel()
@@ -248,8 +281,11 @@ class OdinWebSocketClient(
         notificationFlushJob = scope.launch {
             delay(NOTIFICATION_BURST_MS)
 
-            val batch = notificationBuffer.toList()
-            notificationBuffer.clear()
+            val batch = notificationBufferMutex.withLock {
+                val snapshot = notificationBuffer.toList()
+                notificationBuffer.clear()
+                snapshot
+            }
 
             for (n in batch) {
                 try {

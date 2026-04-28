@@ -238,6 +238,28 @@ class ConnectRequestViewModel(
                         }
                     }
 
+                    AutoConnectOutcome.RecipientIdentityNotConfigured -> {
+                        _state.update {
+                            it.copy(
+                                isSending = false,
+                                uiEvent = ConnectRequestEvent.SendError(
+                                    "$recipient hasn't finished setting up their identity yet.",
+                                ),
+                            )
+                        }
+                    }
+
+                    AutoConnectOutcome.RecipientRequiresUpgrade -> {
+                        _state.update {
+                            it.copy(
+                                isSending = false,
+                                uiEvent = ConnectRequestEvent.SendError(
+                                    "$recipient's server needs to be updated before you can connect.",
+                                ),
+                            )
+                        }
+                    }
+
                     AutoConnectOutcome.Blocked,
                     AutoConnectOutcome.RecipientUnreachable,
                     AutoConnectOutcome.RecipientRejected,

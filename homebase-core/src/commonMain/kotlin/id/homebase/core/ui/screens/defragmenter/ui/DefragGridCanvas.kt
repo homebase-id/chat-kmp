@@ -96,6 +96,14 @@ fun DefragGridCanvas(
     targetHighlights: IntArray,
     frameTimeNanos: Long,
     celebratoryProgress: Float = 0f,
+    // analyzedUpto = the exclusive upper bound of positions scanned so far.
+    // When equal to grid.totalBlocks (default), the whole grid is analyzed and
+    // no dim overlay is drawn. During Analyzing, positions >= analyzedUpto
+    // render as "unanalyzed" (flat dim) instead of as gaps.
+    analyzedUpto: Int = Int.MAX_VALUE,
+    // scanHeadIndex = index of the cell where the scan head currently is, or
+    // null outside of Analyzing. Draws a bright highlight overlay.
+    scanHeadIndex: Int? = null,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -126,6 +134,9 @@ fun DefragGridCanvas(
                     targetHighlights = targetHighlights,
                     frameTimeNanos = frameTimeNanos,
                     celebratoryProgress = celebratoryProgress,
+                    totalBlocks = grid.totalBlocks,
+                    analyzedUpto = analyzedUpto,
+                    scanHeadIndex = scanHeadIndex,
                 )
             } else {
                 drawModern(
@@ -135,9 +146,73 @@ fun DefragGridCanvas(
                     targetHighlights = targetHighlights,
                     frameTimeNanos = frameTimeNanos,
                     celebratoryProgress = celebratoryProgress,
+                    totalBlocks = grid.totalBlocks,
+                    analyzedUpto = analyzedUpto,
+                    scanHeadIndex = scanHeadIndex,
                 )
             }
         }
+    }
+}
+
+/**
+ * Draws a flat dim rectangle over positions `[analyzedUpto, totalBlocks)`.
+ * O(rows) — one drawRect per grid row, not per cell.
+ */
+private fun DrawScope.drawUnanalyzedRegion(
+    layout: GridLayout,
+    totalBlocks: Int,
+    analyzedUpto: Int,
+    fill: Color,
+) {
+    if (analyzedUpto >= totalBlocks || totalBlocks <= 0) return
+    val cols = layout.cols
+    if (cols <= 0) return
+    val b = layout.blockSize
+    if (b <= 0f) return
+    val step = b + layout.gap
+    val startCol = analyzedUpto % cols
+    val startRow = analyzedUpto / cols
+    val lastIndex = totalBlocks - 1
+    val lastRow = lastIndex / cols
+    val lastColInLastRow = lastIndex % cols
+
+    // Partial row at startRow (may also be the last row).
+    val lastColInStartRow = if (startRow == lastRow) lastColInLastRow else cols - 1
+    if (startCol <= lastColInStartRow) {
+        val x = layout.offsetX + startCol * step
+        val y = layout.offsetY + startRow * step
+        val rowW = (lastColInStartRow - startCol + 1) * step - layout.gap
+        drawRect(color = fill, topLeft = Offset(x, y), size = Size(rowW, b))
+    }
+    // Full rows below startRow.
+    for (r in startRow + 1..lastRow) {
+        val lastColInRow = if (r == lastRow) lastColInLastRow else cols - 1
+        val x = layout.offsetX
+        val y = layout.offsetY + r * step
+        val rowW = (lastColInRow + 1) * step - layout.gap
+        drawRect(color = fill, topLeft = Offset(x, y), size = Size(rowW, b))
+    }
+}
+
+/** Bright single-cell overlay marking where the scan head is. */
+private fun DrawScope.drawScanHead(
+    layout: GridLayout,
+    totalBlocks: Int,
+    scanHeadIndex: Int?,
+) {
+    if (scanHeadIndex == null || scanHeadIndex < 0 || scanHeadIndex >= totalBlocks) return
+    val b = layout.blockSize
+    if (b <= 0f) return
+    val origin = layout.indexOffset(scanHeadIndex)
+    drawRect(color = Win98Palette.ScanHead, topLeft = origin, size = Size(b, b))
+    if (b >= 3f) {
+        drawRect(
+            color = Win98Palette.ScanHeadEdge,
+            topLeft = origin,
+            size = Size(b, b),
+            style = Stroke(width = max(1f, b * 0.1f)),
+        )
     }
 }
 
@@ -150,12 +225,21 @@ private fun DrawScope.drawModern(
     targetHighlights: IntArray,
     frameTimeNanos: Long,
     celebratoryProgress: Float,
+    totalBlocks: Int,
+    analyzedUpto: Int,
+    scanHeadIndex: Int?,
 ) {
     drawRect(
         brush = Brush.verticalGradient(
             listOf(Win98Palette.CanvasBackgroundTop, Win98Palette.CanvasBackground)
         ),
         size = size,
+    )
+    drawUnanalyzedRegion(
+        layout = layout,
+        totalBlocks = totalBlocks,
+        analyzedUpto = analyzedUpto,
+        fill = Win98Palette.UnanalyzedFill,
     )
     // Always draw the original-blue filled path. During the celebration,
     // paint a green copy over the left portion via clipRect — a vertical scan
@@ -170,6 +254,7 @@ private fun DrawScope.drawModern(
     }
     drawTargetHalos(targetHighlights, layout, frameTimeNanos)
     drawInFlightModern(inFlight, layout, frameTimeNanos)
+    drawScanHead(layout, totalBlocks, scanHeadIndex)
 }
 
 private fun buildFilledPath(grid: BlockGrid, layout: GridLayout): Path {
@@ -286,9 +371,18 @@ private fun DrawScope.drawClassic(
     targetHighlights: IntArray,
     frameTimeNanos: Long,
     celebratoryProgress: Float,
+    totalBlocks: Int,
+    analyzedUpto: Int,
+    scanHeadIndex: Int?,
 ) {
     // Solid black background — no gradient.
     drawRect(color = Win98Palette.ClassicBg, size = size)
+    drawUnanalyzedRegion(
+        layout = layout,
+        totalBlocks = totalBlocks,
+        analyzedUpto = analyzedUpto,
+        fill = Win98Palette.UnanalyzedFill,
+    )
 
     val b = layout.blockSize
     val sweepX = if (celebratoryProgress > 0f) celebratoryProgress * size.width else Float.NEGATIVE_INFINITY
@@ -345,6 +439,8 @@ private fun DrawScope.drawClassic(
             shadow = Win98Palette.ClassicMovingShadow,
         )
     }
+
+    drawScanHead(layout, totalBlocks, scanHeadIndex)
 }
 
 private fun DrawScope.drawClassicBlock(

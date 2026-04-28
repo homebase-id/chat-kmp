@@ -359,6 +359,7 @@ fun ConversationListPane(
                                 }
                             }
                         }
+
                         is ConversationListContentState.Empty -> {
                             item {
                                 Row(
@@ -398,8 +399,10 @@ fun ConversationListPane(
                                     when (listItem) {
                                         is ConversationListContentModel.Conversation ->
                                             listItem.conversation.conversation.id
+
                                         is ConversationListContentModel.Message ->
                                             listItem.message.id
+
                                         is ConversationListContentModel.Header ->
                                             listItem.resource.key
                                     }
@@ -509,7 +512,12 @@ fun ConversationLisContentItem(
                 ConversationItem(
                     enrichedData = listItem.conversation,
                     onClick = {
-                        onUiAction(ConversationListUiAction.ConversationClicked(listItem.conversation.conversation.id, null))
+                        onUiAction(
+                            ConversationListUiAction.ConversationClicked(
+                                listItem.conversation.conversation.id,
+                                null
+                            )
+                        )
                         onConversationSelected(listItem.conversation.conversation.id)
                     },
                     onContactClick = {
@@ -527,8 +535,14 @@ fun ConversationLisContentItem(
                         onUiAction(ConversationListUiAction.TogglePinConversation(listItem.conversation.conversation.id))
                     },
                     onMarkAsReadClick = {
-                        onUiAction(ConversationListUiAction.MarkAsRead(listItem.conversation.conversation.id))
+                        onUiAction(
+                            ConversationListUiAction.MarkAsRead(
+                                listItem.conversation.conversation.id,
+                                messageIds = null,
+                            )
+                        )
                     },
+
                     isSelected = listItem.conversation.conversation.id == selectedConversationId,
                 )
             }

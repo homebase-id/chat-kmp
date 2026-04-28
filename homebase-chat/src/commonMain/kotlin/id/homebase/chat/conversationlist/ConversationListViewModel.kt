@@ -23,12 +23,14 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.api.video.FFmpegUtils
 import id.homebase.api.video.VideoMetadata
+import id.homebase.api.video.VideoThumbnailExtractor
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DeleteMessage
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
@@ -71,6 +73,7 @@ import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.navigation.ActiveConversation
+import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
@@ -88,7 +91,9 @@ import id.homebase.resources.auto_connect_invalid_request
 import id.homebase.resources.auto_connect_invalid_request_with_detail
 import id.homebase.resources.auto_connect_outgoing_request_exists
 import id.homebase.resources.auto_connect_pending_manual_approval
+import id.homebase.resources.auto_connect_recipient_not_configured
 import id.homebase.resources.auto_connect_recipient_rejected
+import id.homebase.resources.auto_connect_recipient_requires_upgrade
 import id.homebase.resources.auto_connect_recipient_unreachable
 import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_message_audio_recording_help
@@ -107,11 +112,15 @@ import io.github.vinceglb.filekit.write
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import id.homebase.core.localization.TranslationUtil
+import id.homebase.resources.chat_attach_file_failed
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -160,6 +169,8 @@ class ConversationListViewModel(
     private val driveFileProvider: DriveFileProvider,
     private val shareContentProcessor: ShareContentProcessor,
     private val localVideoContextStore: LocalAttachmentContextStore,
+    private val pendingNotificationTap: PendingNotificationTap,
+    private val cropResultBus: id.homebase.imageeditor.ui.CropResultBus,
 ) : ViewModel() {
 
     companion object {
@@ -185,6 +196,46 @@ class ConversationListViewModel(
     val messageInputTextState = RichTextState().applyDefaultStyling()
     private var currentConversationJob: Job? = null
     private var pendingMessageId: Uuid? = null
+
+    // Tracks in-flight video thumbnail extraction per pending attachment so the editor can
+    // open instantly (Signal-style) while the FFmpeg/MediaMetadataRetriever poster work
+    // happens in the background. The send path awaits these so the message envelope still
+    // ships a poster frame.
+    private val pendingThumbnails = mutableMapOf<Uuid, Deferred<ByteArray?>>()
+
+    private fun extractThumbnailAsync(attachmentId: Uuid, videoPath: String) {
+        val deferred = viewModelScope.async {
+            runCatching { VideoThumbnailExtractor.extractPosterFrame(videoPath) }.getOrNull()
+        }
+        pendingThumbnails[attachmentId] = deferred
+        viewModelScope.launch {
+            val bytes = try {
+                deferred.await()
+            } catch (_: CancellationException) {
+                null
+            }
+            pendingThumbnails.remove(attachmentId)
+            if (bytes == null) return@launch
+            _messagesUiState.update { state ->
+                val overlay = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+                    ?: return@update state
+                if (overlay.attachments.none { it.attachmentId == attachmentId }) return@update state
+                val updated = overlay.attachments.map { a ->
+                    if (a is AttachmentPendingFile.FileVideo && a.attachmentId == attachmentId) {
+                        a.copy(thumbnailBytes = bytes)
+                    } else a
+                }
+                state.copy(fullScreenOverlay = overlay.copy(attachments = updated))
+            }
+        }
+    }
+
+    private suspend fun ensureThumbnail(file: AttachmentPendingFile.FileVideo): AttachmentPendingFile.FileVideo {
+        if (file.thumbnailBytes != null) return file
+        val pending = pendingThumbnails.remove(file.attachmentId) ?: return file
+        val bytes = runCatching { pending.await() }.getOrNull()
+        return if (bytes != null) file.copy(thumbnailBytes = bytes) else file
+    }
 
     init {
         viewModelScope.launch {
@@ -348,6 +399,27 @@ class ConversationListViewModel(
                 }
         }
 
+        // Once the message is durably queued in the outbox, leave the
+        // "Preparing…" state — local prep is done, the network handoff is
+        // the only thing left. Show the generic "Sending…" spinner until
+        // the upload reports progress or completes. Don't move backwards
+        // from Processing/Uploading/Completed if those somehow arrive
+        // first.
+        viewModelScope.launch {
+            eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemEnqueued }
+                .collect { event ->
+                    event as BackendEvent.OutboxEvent.ItemEnqueued
+                    _messagesUiState.update { state ->
+                        val current = state.uploadProgress[event.uniqueId]
+                        if (current is UploadStatus.Preparing) {
+                            state.copy(
+                                uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Sending)).toPersistentMap()
+                            )
+                        } else state
+                    }
+                }
+        }
+
         viewModelScope.launch {
             eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemCompleted }
                 .collect { event ->
@@ -418,6 +490,80 @@ class ConversationListViewModel(
                     }
                 }
         }
+
+        // Deferred notification-tap resolution. NotificationService sets a
+        // PendingNotificationTap(conversationId, messageId) when the push
+        // payload carries both ids. If the conversation hasn't synced yet,
+        // conversationStream.conversations will re-emit as soon as drive
+        // sync lands it — this collector picks that up and fires
+        // selectConversation once. A user-initiated tap on a different
+        // conversation (onAction.ConversationClicked) clears the pending
+        // tap so a stale notification can't yank them away.
+        //
+        // Note on combine first-emit semantics: combine fires immediately on
+        // collect with the current values of both upstream flows. If a tap is
+        // already pending AND the conversation is already in the list when
+        // CLVM is created (returning user, instant cold-load), selectConversation
+        // fires during VM init. That's intentional — it's the right behavior —
+        // but worth knowing when reading a stack trace.
+        viewModelScope.launch {
+            combine(
+                pendingNotificationTap.state,
+                conversationStream.conversations,
+            ) { tap, convos -> tap to convos }
+                .collect { (tap, convosState) ->
+                    val resolved = resolveNotificationTap(
+                        tap = tap,
+                        conversationIds = convosState.items.map { it.id }.toSet(),
+                    ) ?: return@collect
+                    Logger.i(tag = "ConversationListViewModel") {
+                        "pendingNotificationTap resolved convo=${resolved.conversationId} msg=${resolved.messageId}"
+                    }
+                    selectConversation(
+                        conversationId = resolved.conversationId,
+                        messageId = resolved.messageId,
+                        scrollToBottom = true,
+                    )
+                    pendingNotificationTap.clearIfMatches(resolved.conversationId)
+                }
+        }
+
+        // Fast-path: when a notification tap arrives, kick a direct DB
+        // lookup for the target conversation off the Main dispatcher.
+        // ConversationStream.loadConversation runs one
+        // selectHomebaseFileByUnique against DriveMainIndex; if the file
+        // is in the local DB (which it usually is — the background sync
+        // that delivered the push wrote it), insertNewConversation /
+        // updateConversation mutates _conversations.items, which re-emits
+        // the StateFlow and lets the deferred resolver above fire
+        // immediately. Without this kick, the resolver waits for the
+        // full ConversationStream.start() enrichment pipeline (or, on a
+        // warm VM, for the next sync batch) — which is what made
+        // notification taps feel like they were gated on the drive-sync
+        // spinner. Dispatchers.IO so the kick can't be queued behind
+        // enrichAllConversationsWithUnreadCounts on Main.
+        viewModelScope.launch {
+            pendingNotificationTap.state.collect { tap ->
+                if (tap == null) return@collect
+                val convoId = tap.conversationId
+                val alreadyLoaded = conversationStream.conversations.value.items
+                    .any { it.id == convoId }
+                if (alreadyLoaded) return@collect
+                launch(Dispatchers.IO) {
+                    conversationStream.loadConversation(convoId)
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        // PendingNotificationTap is a Koin singleton — clearing it from this per-VM
+        // hook is intentional: when CLVM is destroyed (config change, navigation
+        // away, process-recovery), an unresolved tap from THIS session must not
+        // auto-resolve in the next CLVM instance and yank the user somewhere
+        // unexpected.
+        pendingNotificationTap.clear()
+        super.onCleared()
     }
 
     fun selectConversation(
@@ -448,6 +594,10 @@ class ConversationListViewModel(
     fun onAction(action: ConversationListUiAction) {
         when (action) {
             is ConversationListUiAction.ConversationClicked -> {
+                // User explicitly picked a conversation — drop any pending
+                // notification tap so a late-arriving sync can't yank them
+                // to a different one.
+                pendingNotificationTap.clear()
                 ActiveConversation.selectConversation(action.conversationId)
                 loadMessagesForConversation(action.conversationId, action.messageId)
             }
@@ -970,9 +1120,9 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         if (action.messageIds == null) {
-                            // TODO - mark all as read
+                            chatMessageActionService.markAllAsRead(action.conversationId)
                         } else {
-                            chatMessageActionService.markAsReadLatestFileCreated(
+                            chatMessageActionService.markAsReadByFiles(
                                 action.conversationId,
                                 action.messageIds
                             )
@@ -1057,26 +1207,11 @@ class ConversationListViewModel(
                             val ct = it.mimeType()?.toString()
                                 ?: detectContentTypeFromExtensionOrHint(it.name)
                             when {
-                                ct.startsWith("video/") -> {
-                                    val thumbnailBytes = try {
-                                        val resolvedPath =
-                                            fileOperationsProvider.resolveToFilePath(it.toString())
-                                        val thumbPath = FFmpegUtils.grabThumbnail(resolvedPath)
-                                        if (thumbPath != null) {
-                                            val bytes =
-                                                fileOperationsProvider.readFileBytes(thumbPath)
-                                            fileOperationsProvider.deleteTempFile(thumbPath)
-                                            bytes
-                                        } else null
-                                    } catch (_: Exception) {
-                                        null
-                                    }
-                                    AttachmentPendingFile.FileVideo(
-                                        Uuid.generateV7(),
-                                        it,
-                                        thumbnailBytes
-                                    )
-                                }
+                                ct.startsWith("video/") -> AttachmentPendingFile.FileVideo(
+                                    Uuid.generateV7(),
+                                    it,
+                                    thumbnailBytes = null,
+                                )
 
                                 action.isImage || ct.startsWith("image/") -> AttachmentPendingFile.FileImage(
                                     Uuid.generateV7(),
@@ -1110,11 +1245,22 @@ class ConversationListViewModel(
                                 fullScreenOverlay = newOverlay,
                             )
                         }
+
+                        // Editor is now visible — extract thumbnails in the background and
+                        // patch the pending FileVideo entries when they complete.
+                        newFiles.forEach { f ->
+                            if (f is AttachmentPendingFile.FileVideo) {
+                                extractThumbnailAsync(f.attachmentId, f.file.toString())
+                            }
+                        }
                     } catch (e: Exception) {
                         Logger.e("Failed to attach file(s)", e)
                         sendEvent(
                             ShowErrorMessage(
-                                "Failed to attach file(s): ${e.message}"
+                                TranslationUtil.getString(
+                                    MR.string.chat_attach_file_failed,
+                                    e.message ?: ""
+                                )
                             )
                         )
                     }
@@ -1126,22 +1272,10 @@ class ConversationListViewModel(
                     try {
                         val newFiles = action.files.map {
                             if (it.mimeType.startsWith("video/")) {
-                                val thumbnailBytes = try {
-                                    val resolvedPath =
-                                        fileOperationsProvider.resolveToFilePath(it.file.toString())
-                                    val thumbPath = FFmpegUtils.grabThumbnail(resolvedPath)
-                                    if (thumbPath != null) {
-                                        val bytes = fileOperationsProvider.readFileBytes(thumbPath)
-                                        fileOperationsProvider.deleteTempFile(thumbPath)
-                                        bytes
-                                    } else null
-                                } catch (_: Exception) {
-                                    null
-                                }
                                 AttachmentPendingFile.FileVideo(
                                     Uuid.generateV7(),
                                     it.file,
-                                    thumbnailBytes
+                                    thumbnailBytes = null,
                                 )
                             } else {
                                 AttachmentPendingFile.Gallery(Uuid.generateV7(), it)
@@ -1171,11 +1305,22 @@ class ConversationListViewModel(
                                 fullScreenOverlay = newOverlay,
                             )
                         }
+
+                        // Editor visible — kick off thumbnail extraction in parallel, using
+                        // the gallery URI directly (no resolveToFilePath copy).
+                        newFiles.zip(action.files).forEach { (pending, gallery) ->
+                            if (pending is AttachmentPendingFile.FileVideo) {
+                                extractThumbnailAsync(pending.attachmentId, gallery.file.toString())
+                            }
+                        }
                     } catch (e: Exception) {
                         Logger.e("Failed to attach file(s)", e)
                         sendEvent(
                             ShowErrorMessage(
-                                "Failed to attach file(s): ${e.message}"
+                                TranslationUtil.getString(
+                                    MR.string.chat_attach_file_failed,
+                                    e.message ?: ""
+                                )
                             )
                         )
                     }
@@ -1710,6 +1855,74 @@ class ConversationListViewModel(
                 }
             }
 
+            /* Crop attachment */
+            is ConversationListUiAction.RequestCropAttachment -> {
+                viewModelScope.launch {
+                    try {
+                        val overlay = _messagesUiState.value.fullScreenOverlay as? FullScreenOverlay.AttachmentData
+                        val attachment = overlay?.attachments?.firstOrNull {
+                            it.attachmentId == action.attachmentId
+                        }
+                        val sourcePath = when (attachment) {
+                            is AttachmentPendingFile.FileImage -> attachment.file.toString()
+                            is AttachmentPendingFile.Gallery -> attachment.image.file.toString()
+                            else -> null
+                        }
+                        if (sourcePath == null) {
+                            sendEvent(ShowErrorMessage("Cannot crop this attachment"))
+                            return@launch
+                        }
+                        val bytes = fileOperationsProvider.readFileBytes(sourcePath)
+                        val requestId = Uuid.random()
+                        cropResultBus.postSource(requestId, bytes)
+
+                        viewModelScope.launch {
+                            cropResultBus.resultsFor(requestId).collect { result ->
+                                onAction(
+                                    ConversationListUiAction.ApplyCropResult(
+                                        action.conversationId,
+                                        action.attachmentId,
+                                        result.bytes,
+                                    )
+                                )
+                            }
+                        }
+
+                        sendEvent(ConversationListUiEvent.NavigateToCropper(requestId))
+                    } catch (e: Exception) {
+                        Logger.e("RequestCropAttachment failed", e)
+                        sendEvent(ShowErrorMessage("Failed to open cropper: ${e.message}"))
+                    }
+                }
+            }
+
+            is ConversationListUiAction.ApplyCropResult -> {
+                viewModelScope.launch {
+                    try {
+                        val tempPath = fileOperationsProvider.writeBytesToTempFile(
+                            action.croppedBytes,
+                            "cropped_image",
+                            ".jpg",
+                        )
+                        val newFile = AttachmentPendingFile.FileImage(
+                            id = action.attachmentId,
+                            file = id.homebase.core.clipboard.platformFileFromPath(tempPath),
+                        )
+                        val overlay = _messagesUiState.value.fullScreenOverlay
+                        if (overlay !is FullScreenOverlay.AttachmentData) return@launch
+                        val newAttachments = overlay.attachments.map { existing ->
+                            if (existing.attachmentId == action.attachmentId) newFile else existing
+                        }
+                        _messagesUiState.update {
+                            it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("ApplyCropResult failed", e)
+                        sendEvent(ShowErrorMessage("Failed to apply crop: ${e.message}"))
+                    }
+                }
+            }
+
             /* Audio recording */
             is ConversationListUiAction.ShowRecordingHelp -> {
                 sendEvent(ShowInfoMessage(MR.string.chat_message_audio_recording_help))
@@ -2034,12 +2247,21 @@ class ConversationListViewModel(
                             // which only scrolls when the user was already at the bottom. Forcing
                             // a scroll-to-new-message here would yank the user out of history.
                             pendingMessageId = null
+                            // If the target message hasn't synced yet, keep
+                            // messageIdForScrollNullable set so the next
+                            // ChatMessagesData.Messages emission retries the
+                            // lookup (messages stream re-emits on each sync
+                            // batch). Clear only once the message is found.
                             val indexOfMessageForScroll = if (messageIdForScrollNullable != null) {
                                 val messageIndex = messagesModels.indexOfLast {
                                     it is MessageListContentModel.Message && it.message.id == messageIdForScrollNullable
                                 }
-                                messageIdForScrollNullable = null
-                                messageIndex
+                                if (messageIndex >= 0) {
+                                    messageIdForScrollNullable = null
+                                    messageIndex
+                                } else {
+                                    null
+                                }
                             } else {
                                 null
                             }
@@ -2235,6 +2457,10 @@ class ConversationListViewModel(
                 AutoConnectRowState.Failed(MR.string.auto_connect_recipient_unreachable, listOf(who))
             AutoConnectOutcome.RecipientRejected ->
                 AutoConnectRowState.Failed(MR.string.auto_connect_recipient_rejected, listOf(who))
+            AutoConnectOutcome.RecipientIdentityNotConfigured ->
+                AutoConnectRowState.Failed(MR.string.auto_connect_recipient_not_configured, listOf(who))
+            AutoConnectOutcome.RecipientRequiresUpgrade ->
+                AutoConnectRowState.Failed(MR.string.auto_connect_recipient_requires_upgrade, listOf(who))
             AutoConnectOutcome.InvalidRequest ->
                 result.detail?.let {
                     AutoConnectRowState.Failed(
@@ -2480,8 +2706,14 @@ class ConversationListViewModel(
     ) {
         val sentAt = UnixTimeUtc.now()
         viewModelScope.launch {
+            // If any FileVideo entries still have a thumbnail extraction in flight (the
+            // user hit Send before the background poster task finished), wait on it once
+            // so the message envelope ships with a poster frame.
+            val resolvedFiles = files.map { f ->
+                if (f is AttachmentPendingFile.FileVideo) ensureThumbnail(f) else f
+            }
             val attachments = mutableListOf<AttachmentInput>()
-            files.forEach { attachment ->
+            resolvedFiles.forEach { attachment ->
                 when (attachment) {
                     is AttachmentPendingFile.File -> {
                         attachments.add(
@@ -2590,7 +2822,7 @@ class ConversationListViewModel(
             // aspect for free; for images we compute aspect asynchronously below and
             // re-put once we have it — avoids blocking the placeholder on image I/O.
             val imagePathsToRefine = mutableListOf<Pair<String, String>>()
-            files.forEachIndexed { index, file ->
+            resolvedFiles.forEachIndexed { index, file ->
                 val payloadKey = "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
                 val ctx: LocalAttachmentContext? = when (file) {
                     is AttachmentPendingFile.FileVideo -> {
@@ -2627,13 +2859,16 @@ class ConversationListViewModel(
                 }
             }
 
-            // Refine image aspect ratios off the main path.
+            // Refine image aspect ratios off the main path. Try a header-only parser
+            // first so we don't allocate the full image bytes just to read width/height;
+            // fall back to the full-bytes decoder for formats we can't sniff (e.g. HEIC).
             if (imagePathsToRefine.isNotEmpty()) {
                 viewModelScope.launch {
                     imagePathsToRefine.forEach { (payloadKey, path) ->
                         val aspect = runCatching {
-                            val bytes = fileOperationsProvider.readFileBytes(path)
-                            val size = ImageUtils.getNaturalSize(bytes)
+                            val header = fileOperationsProvider.readFileHeaderBytes(path)
+                            val size = ImageHeaderParser.parse(header)
+                                ?: ImageUtils.getNaturalSize(fileOperationsProvider.readFileBytes(path))
                             if (size.pixelWidth > 0 && size.pixelHeight > 0)
                                 size.pixelWidth.toFloat() / size.pixelHeight.toFloat()
                             else null
@@ -2805,4 +3040,30 @@ internal fun synthesizeOwnerSession(
         profileImageLastModified = null,
         status = null,
     )
+}
+
+/**
+ * Decides whether a pending notification tap is ready to be resolved
+ * against the current conversation list snapshot. Returns the tap
+ * when the snapshot already contains the tap's conversation id —
+ * caller then routes to the conversation + message.
+ *
+ * No `dataReady` gate: a fast-path collector in the VM force-loads
+ * the tap's conversation directly from the local DB the moment a tap
+ * is set, so by the time the conversation appears in `items` we know
+ * it's locally available and safe to navigate to — even if
+ * `ConversationStream.start()` hasn't finished its full enrichment
+ * pipeline. The deferred fallback (sync delivers the conversation
+ * later) keeps working because `processConversationBatchIncrementally`
+ * also mutates `items`, which re-emits the StateFlow.
+ *
+ * Pure function so unit tests can exercise the resolution policy
+ * without spinning up a VM.
+ */
+internal fun resolveNotificationTap(
+    tap: PendingNotificationTap.Tap?,
+    conversationIds: Set<Uuid>,
+): PendingNotificationTap.Tap? {
+    if (tap == null) return null
+    return tap.takeIf { conversationIds.contains(it.conversationId) }
 }
