@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -59,6 +60,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
 import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.crop
+import id.homebase.resources.draw
 import id.homebase.resources.menu_back
 import id.homebase.resources.save
 import io.github.vinceglb.filekit.name
@@ -82,6 +84,7 @@ fun FullScreenAttachmentEditor(
     onSendMessage: (conversationId: Uuid, message: String, files: List<AttachmentPendingFile>) -> Unit,
     onDismiss: () -> Unit,
     onCropImage: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
+    onDrawImage: (conversationId: Uuid, attachmentId: Uuid) -> Unit = { _, _ -> },
 ) {
     val isFileMode = data.attachments.all { it is AttachmentPendingFile.File }
     val imageLoader: ImageLoader = koinInject()
@@ -366,6 +369,17 @@ fun FullScreenAttachmentEditor(
                     Icon(
                         imageVector = Icons.Default.Crop,
                         contentDescription = stringResource(MR.string.crop),
+                    )
+                }
+                IconButton(
+                    onClick = { onDrawImage(data.conversationId, currentAttachment.attachmentId) },
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Draw,
+                        contentDescription = stringResource(MR.string.draw),
                     )
                 }
             }

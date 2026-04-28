@@ -1,6 +1,7 @@
 package id.homebase.api.image
 
 import androidx.compose.ui.graphics.ImageBitmap
+import id.homebase.api.image.draw.StrokeCommand
 import kotlin.math.roundToInt
 
 /**
@@ -82,6 +83,21 @@ expect object ImageUtils {
         outputWidth: Int,
         outputHeight: Int,
         fillColorArgb: Int = 0x00000000,
+        outputFormat: ImageFormat = ImageFormat.JPEG,
+        quality: Int = 90,
+    ): ImageResult
+
+    /**
+     * Decode [srcBytes], paint each [StrokeCommand] over the image at its
+     * natural pixel resolution, and re-encode. Stroke coordinates are in
+     * source-pixel space (origin top-left, +y down).
+     *
+     * Used by the draw editor's finalizer. Pen/Highlighter only — the
+     * compose-from-blurred-source brush is not yet supported.
+     */
+    fun drawStrokes(
+        srcBytes: ByteArray,
+        strokes: List<StrokeCommand>,
         outputFormat: ImageFormat = ImageFormat.JPEG,
         quality: Int = 90,
     ): ImageResult

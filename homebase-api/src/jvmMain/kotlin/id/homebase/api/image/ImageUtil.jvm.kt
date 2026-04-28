@@ -3,10 +3,17 @@ package id.homebase.api.image
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import co.touchlab.kermit.Logger
+import id.homebase.api.image.draw.PathCommand
+import id.homebase.api.image.draw.StrokeCap
+import id.homebase.api.image.draw.StrokeCommand
 import id.homebase.api.lib.image.ImageFormatDetector
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.IRect
 import org.jetbrains.skia.Image
+import org.jetbrains.skia.Paint
+import org.jetbrains.skia.PaintMode
+import org.jetbrains.skia.PaintStrokeCap
+import org.jetbrains.skia.Path
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.Surface
 
@@ -298,6 +305,52 @@ actual object ImageUtils {
             bytes = encoded.bytes,
             naturalSize = ImageSize(naturalW, naturalH),
             size = ImageSize(outputWidth, outputHeight),
+        )
+    }
+
+    actual fun drawStrokes(
+        srcBytes: ByteArray,
+        strokes: List<StrokeCommand>,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        val srcImage = decodeImage(srcBytes)
+        val w = srcImage.width
+        val h = srcImage.height
+
+        val surface = Surface.makeRasterN32Premul(w, h)
+        val canvas = surface.canvas
+        canvas.drawImage(srcImage, 0f, 0f)
+
+        for (cmd in strokes) {
+            val paint = Paint().apply {
+                isAntiAlias = true
+                mode = PaintMode.STROKE
+                strokeWidth = cmd.thicknessPx
+                strokeCap = when (cmd.cap) {
+                    StrokeCap.Round -> PaintStrokeCap.ROUND
+                    StrokeCap.Square -> PaintStrokeCap.SQUARE
+                }
+                color = cmd.colorArgb
+            }
+            val path = Path()
+            for (pc in cmd.pathCommands) when (pc) {
+                is PathCommand.MoveTo -> path.moveTo(pc.x, pc.y)
+                is PathCommand.LineTo -> path.lineTo(pc.x, pc.y)
+                is PathCommand.CubicTo -> path.cubicTo(pc.c1x, pc.c1y, pc.c2x, pc.c2y, pc.x, pc.y)
+            }
+            canvas.drawPath(path, paint)
+            paint.close()
+            path.close()
+        }
+
+        val out = surface.makeImageSnapshot()
+        val encoded = out.encodeToData(encodedFormatFor(outputFormat), quality)
+            ?: throw IllegalStateException("Failed to encode painted image")
+        return ImageResult(
+            bytes = encoded.bytes,
+            naturalSize = ImageSize(w, h),
+            size = ImageSize(w, h),
         )
     }
 }

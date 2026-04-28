@@ -14,6 +14,9 @@ import id.homebase.api.lib.image.ImageFormatDetector
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import androidx.exifinterface.media.ExifInterface
+import id.homebase.api.image.draw.PathCommand
+import id.homebase.api.image.draw.StrokeCap
+import id.homebase.api.image.draw.StrokeCommand
 
 /**
  * Android implementation: Convert ByteArray to ImageBitmap using Android's BitmapFactory
@@ -310,6 +313,51 @@ actual object ImageUtils {
             bytes = encoded,
             naturalSize = ImageSize(naturalW, naturalH),
             size = ImageSize(outputWidth, outputHeight),
+        )
+    }
+
+    actual fun drawStrokes(
+        srcBytes: ByteArray,
+        strokes: List<StrokeCommand>,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        val srcBitmap = decodeBitmap(srcBytes)
+        val w = srcBitmap.width
+        val h = srcBitmap.height
+
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(out)
+        canvas.drawBitmap(srcBitmap, 0f, 0f, null)
+
+        for (cmd in strokes) {
+            val paint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                style = android.graphics.Paint.Style.STROKE
+                strokeJoin = android.graphics.Paint.Join.ROUND
+                strokeWidth = cmd.thicknessPx
+                strokeCap = when (cmd.cap) {
+                    StrokeCap.Round -> android.graphics.Paint.Cap.ROUND
+                    StrokeCap.Square -> android.graphics.Paint.Cap.SQUARE
+                }
+                color = cmd.colorArgb
+            }
+            val path = android.graphics.Path()
+            for (pc in cmd.pathCommands) when (pc) {
+                is PathCommand.MoveTo -> path.moveTo(pc.x, pc.y)
+                is PathCommand.LineTo -> path.lineTo(pc.x, pc.y)
+                is PathCommand.CubicTo -> path.cubicTo(pc.c1x, pc.c1y, pc.c2x, pc.c2y, pc.x, pc.y)
+            }
+            canvas.drawPath(path, paint)
+        }
+
+        val encoded = encodeBitmap(out, outputFormat, quality)
+        srcBitmap.recycle()
+        out.recycle()
+        return ImageResult(
+            bytes = encoded,
+            naturalSize = ImageSize(w, h),
+            size = ImageSize(w, h),
         )
     }
 }
