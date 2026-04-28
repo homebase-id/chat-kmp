@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import id.homebase.api.image.draw.PathCommand
 import id.homebase.imageeditor.core.Matrix2D
@@ -53,26 +54,43 @@ fun DrawStrokesOverlay(
         val pxPerBoundsUnit = computePxPerBoundsUnit(boundsToCanvas)
         val bitmapPxPerBoundsUnit = computePxPerBoundsUnit(boundsToBitmap)
 
-        for (stroke in snapshot.strokes) {
-            drawStroke(
-                stroke = stroke,
-                boundsToCanvas = boundsToCanvas,
-                boundsToBitmap = boundsToBitmap,
-                bitmapToCanvas = bitmapToCanvas,
-                pxPerBoundsUnit = pxPerBoundsUnit,
-                bitmapPxPerBoundsUnit = bitmapPxPerBoundsUnit,
-                blurredImage = snapshot.blurredImage,
-            )
-        }
-        if (snapshot.inFlightBrush != null && snapshot.inFlightCommands.isNotEmpty()) {
-            drawInFlight(
-                snapshot = snapshot,
-                boundsToCanvas = boundsToCanvas,
-                boundsToBitmap = boundsToBitmap,
-                bitmapToCanvas = bitmapToCanvas,
-                pxPerBoundsUnit = pxPerBoundsUnit,
-                bitmapPxPerBoundsUnit = bitmapPxPerBoundsUnit,
-            )
+        // Clip strokes to the image's rect on the canvas: anything outside
+        // is culled by the platform rasterizer at save anyway, so showing
+        // it on screen is misleading. Map the bitmap rect (0,0,w,h)
+        // through pixelToCanvas to get the clip rect in canvas pixels.
+        val bw = snapshot.bitmapPixelSize.width.toFloat()
+        val bh = snapshot.bitmapPixelSize.height.toFloat()
+        if (bw <= 0f || bh <= 0f) return@Canvas
+        val corners = floatArrayOf(0f, 0f, bw, 0f, bw, bh, 0f, bh)
+        val mapped = FloatArray(8)
+        bitmapToCanvas.mapPoints(mapped, corners, count = 4)
+        val clipLeft = minOf(mapped[0], mapped[2], mapped[4], mapped[6])
+        val clipTop = minOf(mapped[1], mapped[3], mapped[5], mapped[7])
+        val clipRight = maxOf(mapped[0], mapped[2], mapped[4], mapped[6])
+        val clipBottom = maxOf(mapped[1], mapped[3], mapped[5], mapped[7])
+
+        clipRect(left = clipLeft, top = clipTop, right = clipRight, bottom = clipBottom) {
+            for (stroke in snapshot.strokes) {
+                drawStroke(
+                    stroke = stroke,
+                    boundsToCanvas = boundsToCanvas,
+                    boundsToBitmap = boundsToBitmap,
+                    bitmapToCanvas = bitmapToCanvas,
+                    pxPerBoundsUnit = pxPerBoundsUnit,
+                    bitmapPxPerBoundsUnit = bitmapPxPerBoundsUnit,
+                    blurredImage = snapshot.blurredImage,
+                )
+            }
+            if (snapshot.inFlightBrush != null && snapshot.inFlightCommands.isNotEmpty()) {
+                drawInFlight(
+                    snapshot = snapshot,
+                    boundsToCanvas = boundsToCanvas,
+                    boundsToBitmap = boundsToBitmap,
+                    bitmapToCanvas = bitmapToCanvas,
+                    pxPerBoundsUnit = pxPerBoundsUnit,
+                    bitmapPxPerBoundsUnit = bitmapPxPerBoundsUnit,
+                )
+            }
         }
     }
 }

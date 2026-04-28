@@ -172,6 +172,7 @@ class DrawEditorViewModel(
             inFlightColorArgb = drawingModel.inFlightStroke?.colorArgb ?: 0,
             inFlightThicknessBoundsUnits = drawingModel.inFlightStroke?.thicknessBoundsUnits ?: 0f,
             viewportSize = Size(visibleViewportPx.width().toInt(), visibleViewportPx.height().toInt()),
+            bitmapPixelSize = previewBitmap?.let { Size(it.width, it.height) } ?: Size(0, 0),
             blurredImage = blurredPreview,
         )
     }
@@ -374,6 +375,12 @@ data class DrawSnapshot(
     val inFlightThicknessBoundsUnits: Float,
     val viewportSize: Size,
     /**
+     * Width × height of [DrawEditorViewModel.previewBitmap] in pixels.
+     * Used by the strokes overlay to clip drawing to the image rect (so
+     * strokes don't paint into the black letterbox).
+     */
+    val bitmapPixelSize: Size,
+    /**
      * Pre-blurred copy of the source preview. Populated asynchronously by
      * the ViewModel; null until ready. The strokes overlay falls back to a
      * gray placeholder for blur strokes while it's null.
@@ -391,6 +398,7 @@ data class DrawSnapshot(
             inFlightColorArgb = 0,
             inFlightThicknessBoundsUnits = 0f,
             viewportSize = Size(0, 0),
+            bitmapPixelSize = Size(0, 0),
             blurredImage = null,
         )
     }
