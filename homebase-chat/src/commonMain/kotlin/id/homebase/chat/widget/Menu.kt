@@ -101,6 +101,7 @@ fun ConversationMenu(
     onArchive: () -> Unit,
     onClear: () -> Unit,
     onIntroduceEveryone: () -> Unit,
+    onMarkAsRead: (() -> Unit)? = null,
     onBlock: (() -> Unit)? = null,
 ) {
     DropdownMenu(
@@ -130,6 +131,16 @@ fun ConversationMenu(
             onClick = onSearch,
             text = { Text(text = stringResource(MR.string.search)) },
             leadingIcon = { Icon(imageVector = Icons.Filled.Search, contentDescription = null) })
+
+        if (onMarkAsRead != null) {
+            DropdownMenuItem(
+                onClick = onMarkAsRead,
+                text = { Text(text = stringResource(MR.string.chat_mark_all_as_read)) },
+                leadingIcon = {
+                    Icon(imageVector = Icons.Default.MarkChatRead, contentDescription = null)
+                },
+            )
+        }
 
         HorizontalDivider()
 

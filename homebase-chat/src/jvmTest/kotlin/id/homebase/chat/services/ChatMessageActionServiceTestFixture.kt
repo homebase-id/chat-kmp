@@ -582,13 +582,22 @@ class FakeConversationParticipantLookup :
     id.homebase.chat.services.convo.ConversationParticipantLookup {
     private val conversations = mutableMapOf<Uuid, id.homebase.chat.data.ConversationUiModel>()
 
-    /** Stash a stub conversation whose `lastRead` is what the gate will compare against. */
-    fun setLastRead(conversationId: Uuid, lastRead: kotlin.time.Instant) {
+    /**
+     * Stash a stub conversation whose `lastRead` and `latestMessageTimestamp`
+     * are what `markAsReadByFiles`'s gate / `markAllAsRead` will read.
+     * `latestMessageTimestamp` defaults to the same value as `lastRead`
+     * (the "fully read" case); pass it explicitly to simulate a backlog.
+     */
+    fun setLastRead(
+        conversationId: Uuid,
+        lastRead: kotlin.time.Instant,
+        latestMessageTimestamp: kotlin.time.Instant = lastRead,
+    ) {
         conversations[conversationId] = id.homebase.chat.data.ConversationUiModel(
             id = conversationId,
             name = "",
             lastMessage = "",
-            latestMessageTimestamp = lastRead,
+            latestMessageTimestamp = latestMessageTimestamp,
             avatarInitials = "",
             avatarTiny = null,
             lastRead = lastRead,

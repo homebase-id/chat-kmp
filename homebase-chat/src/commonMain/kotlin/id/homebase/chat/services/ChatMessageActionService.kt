@@ -152,6 +152,51 @@ class ChatMessageActionService(
         unreadCountEnricher.applyLocalAdvance(conversationId, newReadTime)
     }
 
+    /**
+     * Bulk "mark all as read" for an entire conversation. Advances local
+     * lastReadTime to the conversation's latest message timestamp.
+     *
+     * Deliberately does NOT enqueue read receipts — receipts are an
+     * "I actually read this" signal, and a bulk-dismiss action shouldn't
+     * impersonate that. The advance still propagates to other devices via
+     * `localLastReadUpdater.updateLocalLastReadTime` (which writes the
+     * conversation file's localAppData and the outbox syncs that).
+     *
+     * No-op if the conversation isn't in the in-memory list, or if its
+     * lastRead is already at or past the latest message.
+     */
+    suspend fun markAllAsRead(conversationId: Uuid) {
+        val convo = participantLookup.getConversationById(conversationId) ?: return
+        val newReadTime = convo.latestMessageTimestamp
+        if (newReadTime <= convo.lastRead) return
+
+        Logger.d(tag = TAG) {
+            "markAllAsRead convo=$conversationId advancing to ms=${newReadTime.toEpochMilliseconds()}"
+        }
+        dbm.chatReadCount.upsertLastReadTime(conversationId, UnixTimeUtc(newReadTime))
+        localLastReadUpdater.updateLocalLastReadTime(
+            conversationId,
+            UnixTimeUtc(newReadTime),
+        )
+        unreadCountEnricher.applyLocalAdvance(conversationId, newReadTime)
+
+        // Sanity check: after advancing lastRead to the conversation's latest
+        // message timestamp, the unread count should be 0. If not, there's a
+        // SQL/in-memory clock divergence — e.g. a message whose appData.userDate
+        // is greater than what enrichWithLastMessages reported as latestMessage-
+        // Timestamp (the in-memory mapper falls back to authorSpecificDate when
+        // appData.userDate is null, which can drift from the SQL d.userDate
+        // column). Logging it loudly so we can investigate.
+        val after = participantLookup.getConversationById(conversationId)
+        if (after != null && after.unreadCount > 0) {
+            Logger.w(tag = TAG) {
+                "markAllAsRead convo=$conversationId left unreadCount=${after.unreadCount} " +
+                        "after advancing lastRead to latestMessageTimestamp(ms)=" +
+                        "${newReadTime.toEpochMilliseconds()} — likely SQL/in-memory userDate divergence"
+            }
+        }
+    }
+
     private companion object {
         const val TAG = "MarkAsRead"
     }

@@ -1120,7 +1120,7 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         if (action.messageIds == null) {
-                            // TODO - mark all as read
+                            chatMessageActionService.markAllAsRead(action.conversationId)
                         } else {
                             chatMessageActionService.markAsReadByFiles(
                                 action.conversationId,

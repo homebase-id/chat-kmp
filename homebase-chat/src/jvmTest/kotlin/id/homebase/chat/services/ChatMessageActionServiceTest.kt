@@ -408,4 +408,71 @@ class ChatMessageActionServiceTest {
             assertEquals(listOf(convoId), fixture.localLastReadUpdater.calls.map { it.conversationId })
         }
     }
+
+    // ----- markAllAsRead (bulk dismiss from menu) -----
+
+    @Test
+    fun markAllAsRead_advancesLastReadTimeToLatestMessageTimestamp() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            val latest = kotlin.time.Instant.fromEpochMilliseconds(5_000L)
+            fixture.participantLookup.setLastRead(
+                conversationId = convoId,
+                lastRead = kotlin.time.Instant.fromEpochMilliseconds(1_000L),
+                latestMessageTimestamp = latest,
+            )
+
+            service.markAllAsRead(convoId)
+
+            // Local read pointer advanced to the conversation's latest message.
+            assertEquals(5_000L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+            assertEquals(
+                listOf(convoId to latest),
+                fixture.unreadCountEnricher.calls.map { it.conversationId to it.newLastRead },
+            )
+            assertEquals(
+                listOf(convoId),
+                fixture.localLastReadUpdater.calls.map { it.conversationId },
+            )
+            // Bulk dismiss must NOT impersonate per-message read receipts.
+            assertTrue(fixture.drainOutbox().isEmpty())
+        }
+    }
+
+    @Test
+    fun markAllAsRead_isNoOp_whenAlreadyAtLatest() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            // lastRead == latestMessageTimestamp via the setLastRead default.
+            fixture.participantLookup.setLastRead(
+                conversationId = convoId,
+                lastRead = kotlin.time.Instant.fromEpochMilliseconds(5_000L),
+            )
+
+            service.markAllAsRead(convoId)
+
+            assertNull(fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+            assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
+            assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
+            assertTrue(fixture.drainOutbox().isEmpty())
+        }
+    }
+
+    @Test
+    fun markAllAsRead_isNoOp_whenConversationNotInMemory() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            // No setLastRead call → fake returns null from getConversationById.
+
+            service.markAllAsRead(convoId)
+
+            assertNull(fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+            assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
+            assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
+            assertTrue(fixture.drainOutbox().isEmpty())
+        }
+    }
 }
