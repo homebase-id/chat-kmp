@@ -109,9 +109,17 @@ class DrawEditorViewModel(
 
             // Kick off a blurred copy of the preview in the background; the
             // overlay falls back to a gray placeholder while it's loading.
+            // Radius scales with image size so visual strength stays
+            // comparable across phone- and tablet-sized previews — Signal
+            // achieves the same effect by downscaling-then-blurring at a
+            // constant radius.
+            val blurRadius = previewBitmap?.let { bm ->
+                val longest = maxOf(bm.width, bm.height)
+                (longest / 30f).toInt().coerceIn(20, 80)
+            } ?: 25
             launch {
                 val blurredBytes = withContext(Dispatchers.Default) {
-                    runCatching { ImageUtils.blurBytes(prep.previewBytes, radius = 25) }.getOrNull()
+                    runCatching { ImageUtils.blurBytes(prep.previewBytes, radius = blurRadius) }.getOrNull()
                 }
                 blurredPreview = blurredBytes?.bytes?.toImageBitmap()
                 updateSnapshot()

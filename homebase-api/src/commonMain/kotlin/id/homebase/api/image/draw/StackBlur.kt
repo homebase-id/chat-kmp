@@ -61,10 +61,10 @@ internal fun stackBlur(pixels: IntArray, width: Int, height: Int, radius: Int) {
         }
         var stackpointer = radius
         for (x in 0 until w) {
-            r[yi] = dv[rsum * divsum]
-            g[yi] = dv[gsum * divsum]
-            b[yi] = dv[bsum * divsum]
-            a[yi] = dv[asum * divsum]
+            r[yi] = dv[rsum]
+            g[yi] = dv[gsum]
+            b[yi] = dv[bsum]
+            a[yi] = dv[asum]
 
             rsum -= routSum; gsum -= goutSum; bsum -= boutSum; asum -= aoutSum
             var stackstart = stackpointer - radius + div
@@ -114,10 +114,10 @@ internal fun stackBlur(pixels: IntArray, width: Int, height: Int, radius: Int) {
         var stackpointer = radius
         for (y in 0 until h) {
             pixels[yiOut] =
-                (dv[asum * divsum] shl 24) or
-                    (dv[rsum * divsum] shl 16) or
-                    (dv[gsum * divsum] shl 8) or
-                    dv[bsum * divsum]
+                (dv[asum] shl 24) or
+                    (dv[rsum] shl 16) or
+                    (dv[gsum] shl 8) or
+                    dv[bsum]
             rsum -= routSum; gsum -= goutSum; bsum -= boutSum; asum -= aoutSum
             var stackstart = stackpointer - radius + div
             val sir = stack[stackstart % div]

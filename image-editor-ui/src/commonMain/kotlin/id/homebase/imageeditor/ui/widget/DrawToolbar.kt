@@ -22,10 +22,9 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -102,11 +101,9 @@ fun DrawBottomBar(
             onPositionChange = onColorPositionChange,
         )
 
-        // History + brush row. The brush chips show which tool is active —
-        // selected chip is filled with the primary container colour, with a
-        // checkmark leading icon, so the user can see at a glance which
-        // brush they're holding. Color swatch sits next to the brush
-        // selector for quick "what colour will I draw with?" feedback.
+        // History + brush row. Each brush is a circular IconButton; the
+        // active one's container is filled with the primary colour so it
+        // pops against the dark editor toolbar.
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -124,19 +121,19 @@ fun DrawBottomBar(
                     contentDescription = stringResource(Res.string.draw_action_redo),
                 )
             }
-            BrushChip(
+            BrushIconButton(
                 selected = selectedBrush == BrushType.Pen,
                 icon = Icons.Default.Edit,
                 contentDescription = stringResource(Res.string.draw_brush_pen),
                 onClick = { onBrushSelected(BrushType.Pen) },
             )
-            BrushChip(
+            BrushIconButton(
                 selected = selectedBrush == BrushType.Highlighter,
                 icon = Icons.Default.BorderColor,
                 contentDescription = stringResource(Res.string.draw_brush_highlighter),
                 onClick = { onBrushSelected(BrushType.Highlighter) },
             )
-            BrushChip(
+            BrushIconButton(
                 selected = selectedBrush == BrushType.Blur,
                 icon = Icons.Default.BlurOn,
                 contentDescription = stringResource(Res.string.draw_brush_blur),
@@ -158,33 +155,24 @@ fun DrawBottomBar(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BrushChip(
+private fun BrushIconButton(
     selected: Boolean,
     icon: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
 ) {
-    FilterChip(
-        selected = selected,
+    IconButton(
         onClick = onClick,
-        label = { Text(text = contentDescription) },
-        leadingIcon = {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(FilterChipDefaults.IconSize),
-            )
-        },
-        colors = FilterChipDefaults.filterChipColors(
-            // Stronger selected-state colour so the active brush stands
-            // out against the dark photo-editor toolbar.
-            selectedContainerColor = MaterialTheme.colorScheme.primary,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+        colors = IconButtonDefaults.iconButtonColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurface,
         ),
-    )
+    ) {
+        Icon(imageVector = icon, contentDescription = contentDescription)
+    }
 }
 
 @Composable
