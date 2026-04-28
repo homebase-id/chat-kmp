@@ -210,20 +210,185 @@ class LiveDefragSource(
         )
     }.flowOn(Dispatchers.Default)
 
+    /**
+     * Re-scans every drive in the same order/cadence as [analyze], applies the
+     * local-only repair for any [CellState.LegacyUserDateZero] /
+     * [CellState.SoftDeleteArchivalMismatch] row encountered, and emits one
+     * [DefragRepairEvent.Repaired] per successful UPDATE so the UI can flip
+     * cells back to Healthy as we go. CorruptJsonHeader and
+     * UnmappableConversation rows are not auto-repairable here — they need
+     * the prompt-driven hard-delete or upstream content fix.
+     *
+     * Each repair is one tiny SQL UPDATE; the reclassify+UPDATE per page
+     * stays well under the page-scan latency.
+     */
     override fun repair(): Flow<DefragRepairEvent> = flow {
-        // TODO(landing-3): re-scan, build UpdateFileByUniqueIdRequest for each
-        // LegacyUserDateZero / SoftDeleteArchivalMismatch row, enqueue via the
-        // outbox with no peer redistribution, and stream Progress/Done events.
-        // For now this is a no-op so the screen can render a Repair button
-        // that doesn't crash; landing-3 fills it in.
-        Logger.w(tag = tag) { "repair() not yet implemented (landing-3) — emitting empty Done" }
+        val identityId: Uuid = runCatching {
+            credentialsManager.requireActiveCredentials().getIdentityId()
+        }.getOrElse {
+            Logger.w(tag = tag, throwable = it) { "repair: no active credentials — skipping" }
+            emit(
+                DefragRepairEvent.Done(
+                    analyzed = 0,
+                    repaired = 0,
+                    repairedLegacyUserDateZero = 0,
+                    repairedSoftDeleteArchivalMismatch = 0,
+                    skipped = 0,
+                )
+            )
+            return@flow
+        }
+
+        val drives = driveSyncManager.driveStatuses.value.values
+            .map { it.driveId }
+            .sortedBy { it.toString() }
+        if (drives.isEmpty()) {
+            emit(
+                DefragRepairEvent.Done(
+                    analyzed = 0,
+                    repaired = 0,
+                    repairedLegacyUserDateZero = 0,
+                    repairedSoftDeleteArchivalMismatch = 0,
+                    skipped = 0,
+                )
+            )
+            return@flow
+        }
+
+        val mainIndex = databaseManager.driveMainIndex
+
+        // Pass 1: re-count + slot offsets, mirroring analyze() so positions
+        // emitted on Repaired line up with the UI's grid cell map.
+        val driveSlots = ArrayList<DriveSlot>(drives.size)
+        var totalBlocks = 0
+        for (driveId in drives) {
+            val count = runCatching { mainIndex.countByIdentityAndDrive(identityId, driveId) }
+                .getOrElse { 0L }
+                .coerceIn(0L, Int.MAX_VALUE.toLong() - totalBlocks)
+                .toInt()
+            if (count == 0) continue
+            driveSlots.add(DriveSlot(driveId = driveId, offset = totalBlocks, count = count))
+            totalBlocks += count
+        }
+
+        emit(DefragRepairEvent.Started(eligibleEstimate = -1))
+
+        var analyzed = 0
+        var repaired = 0
+        var repairedLegacy = 0
+        var repairedArchival = 0
+        var skipped = 0
+
+        for (slot in driveSlots) {
+            var sinceRowId = 0L
+            var indexInDrive = 0
+            while (indexInDrive < slot.count) {
+                val page = runCatching {
+                    mainIndex.selectFileIdAndJsonByDriveSince(
+                        identityId = identityId,
+                        driveId = slot.driveId,
+                        sinceRowId = sinceRowId,
+                        limit = PAGE_SIZE,
+                    )
+                }.getOrElse {
+                    Logger.w(tag = tag, throwable = it) {
+                        "repair page scan failed for drive=${slot.driveId} since=$sinceRowId"
+                    }
+                    emptyList()
+                }
+                if (page.isEmpty()) break
+
+                for (row in page) {
+                    val pos = slot.offset + indexInDrive
+                    val state = classifyRow(
+                        driveId = slot.driveId,
+                        row = row,
+                        mapToBasicProbe = mapToBasicProbe,
+                    )
+                    analyzed += 1
+                    when (state) {
+                        is CellState.SoftDeleteArchivalMismatch -> {
+                            val ok = runCatching {
+                                mainIndex.repairArchivalStatusByRowId(
+                                    rowId = row.rowId,
+                                    archivalStatus = ARCHIVAL_STATUS_REMOVED,
+                                )
+                            }.getOrElse {
+                                Logger.w(tag = tag, throwable = it) {
+                                    "repair archivalStatus failed rowId=${row.rowId}"
+                                }
+                                false
+                            }
+                            if (ok) {
+                                repaired += 1
+                                repairedArchival += 1
+                                emit(
+                                    DefragRepairEvent.Repaired(
+                                        position = pos,
+                                        driveId = slot.driveId,
+                                        fileId = row.fileId,
+                                        rowId = row.rowId,
+                                        kind = DefragRepairEvent.RepairKind.SoftDeleteArchivalMismatch,
+                                    )
+                                )
+                            } else {
+                                skipped += 1
+                            }
+                        }
+                        is CellState.LegacyUserDateZero -> {
+                            val ok = runCatching {
+                                mainIndex.repairUserDateByRowId(
+                                    rowId = row.rowId,
+                                    userDate = state.createdMs,
+                                )
+                            }.getOrElse {
+                                Logger.w(tag = tag, throwable = it) {
+                                    "repair userDate failed rowId=${row.rowId}"
+                                }
+                                false
+                            }
+                            if (ok) {
+                                repaired += 1
+                                repairedLegacy += 1
+                                emit(
+                                    DefragRepairEvent.Repaired(
+                                        position = pos,
+                                        driveId = slot.driveId,
+                                        fileId = row.fileId,
+                                        rowId = row.rowId,
+                                        kind = DefragRepairEvent.RepairKind.LegacyUserDateZero,
+                                    )
+                                )
+                            } else {
+                                skipped += 1
+                            }
+                        }
+                        is CellState.CorruptJsonHeader,
+                        is CellState.UnmappableConversation -> {
+                            // Not auto-repairable here.
+                            skipped += 1
+                        }
+                        is CellState.SoftDeleted, is CellState.Healthy -> Unit
+                    }
+                    indexInDrive += 1
+                    sinceRowId = row.rowId
+                    if (indexInDrive >= slot.count) break
+                }
+                yield()
+            }
+        }
+
+        Logger.i(tag = tag) {
+            "repair complete: analyzed=$analyzed repaired=$repaired " +
+                    "legacy=$repairedLegacy archival=$repairedArchival skipped=$skipped"
+        }
         emit(
             DefragRepairEvent.Done(
-                analyzed = 0,
-                enqueued = 0,
-                enqueuedLegacyUserDateZero = 0,
-                enqueuedSoftDeleteArchivalMismatch = 0,
-                skipped = 0,
+                analyzed = analyzed,
+                repaired = repaired,
+                repairedLegacyUserDateZero = repairedLegacy,
+                repairedSoftDeleteArchivalMismatch = repairedArchival,
+                skipped = skipped,
             )
         )
     }.flowOn(Dispatchers.Default)

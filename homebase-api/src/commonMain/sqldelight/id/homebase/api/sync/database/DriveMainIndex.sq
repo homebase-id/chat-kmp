@@ -144,3 +144,16 @@ LIMIT ?;
 -- Select all records - for TESTING
 selectAll:
 SELECT * FROM DriveMainIndex;
+
+-- Defragmenter: re-project a row's archivalStatus column when the SQL value
+-- has drifted from what the deserialised jsonHeader says (the
+-- SoftDeleteArchivalMismatch case). Local-only — peers maintain their own
+-- projections from their own copies of the file.
+repairArchivalStatusByRowId:
+UPDATE DriveMainIndex SET archivalStatus = ? WHERE rowId = ?;
+
+-- Defragmenter: re-project a row's userDate column from the header's
+-- metadata.created fallback when appData.userDate was null and got stored as 0.
+-- Used by the repair pass to correct LegacyUserDateZero rows. Local-only.
+repairUserDateByRowId:
+UPDATE DriveMainIndex SET userDate = ? WHERE rowId = ?;

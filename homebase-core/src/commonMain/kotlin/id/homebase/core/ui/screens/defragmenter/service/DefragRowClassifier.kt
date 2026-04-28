@@ -20,7 +20,7 @@ private const val MESSAGE_FILE_TYPE = 7878
 private const val CONVERSATION_FILE_TYPE = 8888
 
 /** `ArchivalStatus.Removed.value` — soft-delete marker on the SQL column. */
-private const val ARCHIVAL_STATUS_REMOVED = 2L
+internal const val ARCHIVAL_STATUS_REMOVED = 2L
 
 /**
  * Pure classifier for a [PagedScanRow]. Has no DB / network side effects;

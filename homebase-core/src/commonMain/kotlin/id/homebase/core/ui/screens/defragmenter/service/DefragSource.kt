@@ -16,10 +16,13 @@ import kotlin.uuid.Uuid
  * When a defrag animation commits a block into a [CellState.SoftDeleted] cell,
  * the ViewModel calls [hardDelete] with the `fileId` that position represents.
  *
- * [repair] runs an integrity-fix pass that re-uploads chat-message files
- * (fileType=7878) carrying the legacy `userDate=0` shape or the
- * pre-fix soft-delete `archivalStatus` mismatch. Server-side via the outbox,
- * no peer redistribution. See the Defragmenter plan for the full predicate.
+ * [repair] runs an integrity-fix pass that re-projects local SQL columns
+ * for rows the classifier flagged as `LegacyUserDateZero` or
+ * `SoftDeleteArchivalMismatch`. Local-only: peers maintain their own
+ * projections from their own copies of the file, so no server round-trip
+ * is needed. Each successfully repaired row emits a per-cell
+ * [DefragRepairEvent.Repaired] so the UI can flip its colour back to
+ * Healthy one cell at a time.
  */
 interface DefragSource {
     fun analyze(): Flow<DefragAnalyzeEvent>
@@ -143,21 +146,31 @@ sealed interface DefragRepairEvent {
     /** Emitted once before the repair scan starts. */
     data class Started(val eligibleEstimate: Int) : DefragRepairEvent
 
-    /** Emitted per repair-chunk with running counters. */
-    data class Progress(
-        val analyzed: Int,
-        val enqueued: Int,
-        val skipped: Int,
+    /**
+     * Emitted per row successfully repaired. The UI uses this to flip the
+     * matching grid cell from its issue colour back to the healthy palette
+     * one at a time, mirroring the per-position emission cadence.
+     */
+    data class Repaired(
+        /** Position in the global grid, matching the analyze pass's cell map. */
+        val position: Int,
+        val driveId: Uuid,
+        val fileId: Uuid,
+        val rowId: Long,
+        val kind: RepairKind,
     ) : DefragRepairEvent
 
     /** Terminal event. */
     data class Done(
         val analyzed: Int,
-        val enqueued: Int,
-        val enqueuedLegacyUserDateZero: Int,
-        val enqueuedSoftDeleteArchivalMismatch: Int,
+        val repaired: Int,
+        val repairedLegacyUserDateZero: Int,
+        val repairedSoftDeleteArchivalMismatch: Int,
         val skipped: Int,
     ) : DefragRepairEvent
+
+    /** Which kind of repair was applied to a given row. */
+    enum class RepairKind { LegacyUserDateZero, SoftDeleteArchivalMismatch }
 }
 
 data class DeletedFileRef(val driveId: Uuid, val fileId: Uuid)

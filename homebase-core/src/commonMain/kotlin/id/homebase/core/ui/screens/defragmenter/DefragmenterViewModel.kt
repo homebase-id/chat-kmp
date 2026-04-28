@@ -8,8 +8,10 @@ import id.homebase.core.ui.screens.defragmenter.model.CELL_CORRUPT_JSON_HEADER
 import id.homebase.core.ui.screens.defragmenter.model.CELL_LEGACY_USERDATE_ZERO
 import id.homebase.core.ui.screens.defragmenter.model.CELL_SOFT_DELETE_ARCHIVAL_MISMATCH
 import id.homebase.core.ui.screens.defragmenter.model.CELL_UNMAPPABLE_CONVERSATION
+import id.homebase.core.ui.screens.defragmenter.model.CELL_HEALTHY
 import id.homebase.core.ui.screens.defragmenter.service.CellState
 import id.homebase.core.ui.screens.defragmenter.service.DefragAnalyzeEvent
+import id.homebase.core.ui.screens.defragmenter.service.DefragRepairEvent
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
 import id.homebase.core.ui.screens.defragmenter.service.DeletedFileRef
 import kotlinx.coroutines.Job
@@ -49,6 +51,7 @@ class DefragmenterViewModel(
     private var smoothedMovesPerSecond: Float = BASE_MOVES_PER_SECOND
 
     private var analyzeJob: Job? = null
+    private var repairJob: Job? = null
 
     // Maps grid position → file-to-hard-delete. Populated on Analyze; the
     // tick loop looks up the toIndex of each committed move here and fires
@@ -211,8 +214,15 @@ class DefragmenterViewModel(
         val s = _uiState.value
         if (s.phase !is DefragmenterPhase.Ready) return
         if (s.gapsRemaining == 0) {
-            // Nothing to animate — jump straight to vacuum+green finale.
-            enterVacuumAndComplete()
+            // No soft-deletes to compact. If the classifier flagged repair-eligible
+            // rows, run the repair pass (animates per-cell colour flips) before the
+            // vacuum/green finale. Otherwise jump straight to vacuum.
+            if (hasRepairTargets(s)) {
+                _uiState.update { it.copy(phase = DefragmenterPhase.Repairing) }
+                kickOffRepair()
+            } else {
+                enterVacuumAndComplete()
+            }
             return
         }
         runStartMark = TimeSource.Monotonic.markNow()
@@ -222,6 +232,9 @@ class DefragmenterViewModel(
         smoothedMovesPerSecond = BASE_MOVES_PER_SECOND
         _uiState.update { it.copy(phase = DefragmenterPhase.Defragmenting) }
     }
+
+    private fun hasRepairTargets(s: DefragmenterUiState): Boolean =
+        s.issueCountLegacyUserDateZero > 0 || s.issueCountArchivalMismatch > 0
 
     private fun pause() {
         val s = _uiState.value
@@ -263,6 +276,21 @@ class DefragmenterViewModel(
                     issueCountArchivalMismatch = 0,
                     issueCountCorruptJson = 0,
                     issueCountUnmappableConvo = 0,
+                )
+            }
+            return
+        }
+        if (s.phase is DefragmenterPhase.Repairing) {
+            // Stop the repair flow before flipping phase — the finally block
+            // in kickOffRepair checks phase before chaining to Vacuuming, so
+            // the order matters.
+            repairJob?.cancel()
+            repairJob = null
+            _uiState.update {
+                it.copy(
+                    phase = DefragmenterPhase.Cancelled,
+                    inFlight = emptyList(),
+                    targetHighlights = IntArray(0),
                 )
             }
             return
@@ -385,7 +413,11 @@ class DefragmenterViewModel(
             // Hard-delete any soft-deleted files that never got animated
             // (gaps whose grid bit is still 0 at defrag end).
             cleanupUnreachableGaps(grid)
-            DefragmenterPhase.Vacuuming
+            // If the classifier turned up repair-eligible rows, run the
+            // repair pass next so the user sees those cells flip colour
+            // before the vacuum/green sweep covers everything.
+            if (hasRepairTargets(state)) DefragmenterPhase.Repairing
+            else DefragmenterPhase.Vacuuming
         } else state.phase
 
         _uiState.update {
@@ -403,7 +435,75 @@ class DefragmenterViewModel(
             )
         }
 
-        if (reachedEnd) kickOffVacuum()
+        if (reachedEnd) {
+            if (phase is DefragmenterPhase.Repairing) kickOffRepair()
+            else kickOffVacuum()
+        }
+    }
+
+    /**
+     * Drive [DefragSource.repair] in the background. Each per-cell
+     * [DefragRepairEvent.Repaired] flips the matching cell's state byte to
+     * Healthy, decrements the issue tally, and bumps gridVersion so the
+     * canvas redraws. A small inter-event delay paces the animation so the
+     * user can see the colour transitions even when the underlying SQL
+     * UPDATEs are sub-millisecond. When the flow terminates we hand off to
+     * [kickOffVacuum] for the green finale.
+     */
+    private fun kickOffRepair() {
+        repairJob?.cancel()
+        repairJob = viewModelScope.launch {
+            try {
+                source.repair().collect { ev ->
+                    when (ev) {
+                        is DefragRepairEvent.Started -> Unit
+                        is DefragRepairEvent.Repaired -> applyRepaired(ev)
+                        is DefragRepairEvent.Done -> {
+                            Logger.d(tag = tag) {
+                                "Repair complete: analyzed=${ev.analyzed} " +
+                                        "repaired=${ev.repaired} " +
+                                        "(legacy=${ev.repairedLegacyUserDateZero} " +
+                                        "archival=${ev.repairedSoftDeleteArchivalMismatch}) " +
+                                        "skipped=${ev.skipped}"
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Logger.w(tag = tag, throwable = e) { "repair flow failed" }
+            } finally {
+                // Whether the flow completed normally or the user cancelled,
+                // only proceed to vacuum if we're still in Repairing — Cancel
+                // takes over to Cancelled and should NOT trigger vacuum.
+                if (_uiState.value.phase is DefragmenterPhase.Repairing) {
+                    kickOffVacuum()
+                }
+            }
+        }
+    }
+
+    private suspend fun applyRepaired(ev: DefragRepairEvent.Repaired) {
+        val state = _uiState.value
+        val states = state.cellStates
+        if (ev.position !in 0 until states.size) return
+        states[ev.position] = CELL_HEALTHY
+        _uiState.update {
+            when (ev.kind) {
+                DefragRepairEvent.RepairKind.LegacyUserDateZero -> it.copy(
+                    gridVersion = it.gridVersion + 1,
+                    issueCountLegacyUserDateZero =
+                        (it.issueCountLegacyUserDateZero - 1).coerceAtLeast(0),
+                )
+                DefragRepairEvent.RepairKind.SoftDeleteArchivalMismatch -> it.copy(
+                    gridVersion = it.gridVersion + 1,
+                    issueCountArchivalMismatch =
+                        (it.issueCountArchivalMismatch - 1).coerceAtLeast(0),
+                )
+            }
+        }
+        // Pace the visual flip so it's visible even when SQL UPDATEs return
+        // in microseconds. Skipped entirely on cancel — repairJob is cancelled.
+        delay(REPAIR_PER_CELL_PACING_MS)
     }
 
     /**
@@ -494,5 +594,10 @@ class DefragmenterViewModel(
         // Minimum time the "green + Vacuuming" finale is displayed, even if
         // VACUUM returns in under a second on tiny DBs.
         const val MIN_VACUUM_GREEN_MS: Long = 2_000L
+        // Per-cell delay during the repair animation so the issue→healthy
+        // colour flip is actually visible. The underlying SQL UPDATE is
+        // sub-millisecond on small Ns; without pacing the user would see
+        // every cell flip on the same frame.
+        const val REPAIR_PER_CELL_PACING_MS: Long = 200L
     }
 }

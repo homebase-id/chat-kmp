@@ -171,6 +171,32 @@ class DriveMainIndexWrapper(
         )
     }.executeAsList()
 
+    /**
+     * Defragmenter: re-project archivalStatus on a single row. Used by the
+     * repair pass to correct rows where the SQL projection has drifted from
+     * the header's soft-delete state.
+     */
+    suspend fun repairArchivalStatusByRowId(rowId: Long, archivalStatus: Long): Boolean {
+        return databaseManager.withWriteValue { db ->
+            db.driveMainIndexQueries
+                .repairArchivalStatusByRowId(archivalStatus, rowId)
+                .value > 0
+        }
+    }
+
+    /**
+     * Defragmenter: re-project userDate on a single row from the header's
+     * metadata.created fallback. Used by the repair pass to correct
+     * LegacyUserDateZero rows.
+     */
+    suspend fun repairUserDateByRowId(rowId: Long, userDate: Long): Boolean {
+        return databaseManager.withWriteValue { db ->
+            db.driveMainIndexQueries
+                .repairUserDateByRowId(userDate, rowId)
+                .value > 0
+        }
+    }
+
     suspend fun upsertDriveMainIndex(
         identityId: Uuid,
         driveId: Uuid,

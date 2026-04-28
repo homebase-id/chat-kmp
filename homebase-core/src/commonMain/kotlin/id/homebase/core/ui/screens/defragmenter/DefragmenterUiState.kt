@@ -8,6 +8,8 @@ sealed interface DefragmenterPhase {
     data object Ready : DefragmenterPhase
     data object Defragmenting : DefragmenterPhase
     data object Paused : DefragmenterPhase
+    /** Re-projecting local SQL columns for classifier-flagged rows. */
+    data object Repairing : DefragmenterPhase
     data object Vacuuming : DefragmenterPhase
     data object Complete : DefragmenterPhase
     data object Cancelled : DefragmenterPhase
