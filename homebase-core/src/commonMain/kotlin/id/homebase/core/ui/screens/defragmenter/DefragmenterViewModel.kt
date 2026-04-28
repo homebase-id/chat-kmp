@@ -4,6 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.core.ui.screens.defragmenter.model.BlockGrid
+import id.homebase.core.ui.screens.defragmenter.model.CELL_CORRUPT_JSON_HEADER
+import id.homebase.core.ui.screens.defragmenter.model.CELL_LEGACY_USERDATE_ZERO
+import id.homebase.core.ui.screens.defragmenter.model.CELL_SOFT_DELETE_ARCHIVAL_MISMATCH
+import id.homebase.core.ui.screens.defragmenter.model.CELL_UNMAPPABLE_CONVERSATION
+import id.homebase.core.ui.screens.defragmenter.service.CellState
 import id.homebase.core.ui.screens.defragmenter.service.DefragAnalyzeEvent
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
 import id.homebase.core.ui.screens.defragmenter.service.DeletedFileRef
@@ -85,17 +90,29 @@ class DefragmenterViewModel(
                     targetHighlights = IntArray(0),
                     analyzedUpto = 0,
                     analyzeTotal = 0,
+                    cellStates = ByteArray(0),
+                    issueCountLegacyUserDateZero = 0,
+                    issueCountArchivalMismatch = 0,
+                    issueCountCorruptJson = 0,
+                    issueCountUnmappableConvo = 0,
                 )
             }
             val accGaps = HashMap<Int, DeletedFileRef>()
             var liveGrid: BlockGrid = BlockGrid.EMPTY
+            var liveCellStates: ByteArray = ByteArray(0)
+            var legacyCount = 0
+            var archivalCount = 0
+            var corruptCount = 0
+            var unmappableCount = 0
             source.analyze().collect { ev ->
                 when (ev) {
                     is DefragAnalyzeEvent.Sized -> {
                         liveGrid = BlockGrid.createEmpty(ev.totalBlocks)
+                        liveCellStates = ByteArray(ev.totalBlocks) // default 0 = Healthy
                         _uiState.update {
                             it.copy(
                                 grid = liveGrid,
+                                cellStates = liveCellStates,
                                 gridVersion = it.gridVersion + 1,
                                 totalBlocks = ev.totalBlocks,
                                 analyzeTotal = ev.totalBlocks,
@@ -117,10 +134,42 @@ class DefragmenterViewModel(
                             }
                         }
                         if (ev.newGaps.isNotEmpty()) accGaps.putAll(ev.newGaps)
+                        // Stamp per-cell state codes for the canvas. SoftDeleted
+                        // is left at 0 — the gap representation already covers
+                        // it. Healthy is also 0 (the array default).
+                        val states = liveCellStates
+                        if (states.size == grid.totalBlocks) {
+                            for ((pos, state) in ev.newCells) {
+                                if (pos !in 0 until states.size) continue
+                                when (state) {
+                                    is CellState.LegacyUserDateZero -> {
+                                        states[pos] = CELL_LEGACY_USERDATE_ZERO
+                                        legacyCount++
+                                    }
+                                    is CellState.SoftDeleteArchivalMismatch -> {
+                                        states[pos] = CELL_SOFT_DELETE_ARCHIVAL_MISMATCH
+                                        archivalCount++
+                                    }
+                                    is CellState.CorruptJsonHeader -> {
+                                        states[pos] = CELL_CORRUPT_JSON_HEADER
+                                        corruptCount++
+                                    }
+                                    is CellState.UnmappableConversation -> {
+                                        states[pos] = CELL_UNMAPPABLE_CONVERSATION
+                                        unmappableCount++
+                                    }
+                                    is CellState.Healthy, is CellState.SoftDeleted -> Unit
+                                }
+                            }
+                        }
                         _uiState.update {
                             it.copy(
                                 analyzedUpto = ev.analyzedUpto,
                                 gridVersion = it.gridVersion + 1,
+                                issueCountLegacyUserDateZero = legacyCount,
+                                issueCountArchivalMismatch = archivalCount,
+                                issueCountCorruptJson = corruptCount,
+                                issueCountUnmappableConvo = unmappableCount,
                             )
                         }
                     }
@@ -131,18 +180,25 @@ class DefragmenterViewModel(
                         val grid = liveGrid
                         val total = ev.totalBlocks
                         Logger.d(tag = tag) {
-                            "Analyze complete: total=$total, gaps=${accGaps.size}"
+                            "Analyze complete: total=$total, gaps=${accGaps.size}, " +
+                                    "legacy=$legacyCount archival=$archivalCount " +
+                                    "corrupt=$corruptCount unmappable=$unmappableCount"
                         }
                         _uiState.update {
                             it.copy(
                                 phase = DefragmenterPhase.Ready,
                                 grid = grid,
+                                cellStates = liveCellStates,
                                 gridVersion = it.gridVersion + 1,
                                 totalBlocks = total,
                                 initialGaps = accGaps.size,
                                 gapsRemaining = accGaps.size,
                                 analyzedUpto = total,
                                 analyzeTotal = total,
+                                issueCountLegacyUserDateZero = legacyCount,
+                                issueCountArchivalMismatch = archivalCount,
+                                issueCountCorruptJson = corruptCount,
+                                issueCountUnmappableConvo = unmappableCount,
                             )
                         }
                     }
@@ -202,6 +258,11 @@ class DefragmenterViewModel(
                     analyzeTotal = 0,
                     inFlight = emptyList(),
                     targetHighlights = IntArray(0),
+                    cellStates = ByteArray(0),
+                    issueCountLegacyUserDateZero = 0,
+                    issueCountArchivalMismatch = 0,
+                    issueCountCorruptJson = 0,
+                    issueCountUnmappableConvo = 0,
                 )
             }
             return

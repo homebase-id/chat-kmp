@@ -179,6 +179,7 @@ private fun DefragmenterContent(
                 analyzedUpto = if (state.phase is DefragmenterPhase.Analyzing)
                     state.analyzedUpto else Int.MAX_VALUE,
                 scanHeadIndex = state.scanHeadIndex,
+                cellStates = state.cellStates,
                 modifier = Modifier
                     .fillMaxSize()
                     .semantics {
@@ -263,6 +264,33 @@ private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier
             Win98Label(
                 stringResource(MR.string.defragmenter_stat_eta, formatDuration(state.estRemainingMs))
             )
+            // Per-issue tallies + colour swatches so the user can map block
+            // colour → meaning at a glance. Hidden when the count is zero so
+            // the panel doesn't grow until issues actually exist.
+            if (state.issueCountLegacyUserDateZero > 0) {
+                Win98Label(
+                    text = "Legacy userDate=0: ${state.issueCountLegacyUserDateZero}",
+                    color = Win98Palette.IssueLegacyUserDateZeroFill,
+                )
+            }
+            if (state.issueCountArchivalMismatch > 0) {
+                Win98Label(
+                    text = "Soft-delete drift: ${state.issueCountArchivalMismatch}",
+                    color = Win98Palette.IssueArchivalMismatchFill,
+                )
+            }
+            if (state.issueCountCorruptJson > 0) {
+                Win98Label(
+                    text = "Corrupt JSON: ${state.issueCountCorruptJson}",
+                    color = Win98Palette.IssueCorruptJsonFill,
+                )
+            }
+            if (state.issueCountUnmappableConvo > 0) {
+                Win98Label(
+                    text = "Unmappable conversation: ${state.issueCountUnmappableConvo}",
+                    color = Win98Palette.IssueUnmappableConvoFill,
+                )
+            }
         }
     }
 }

@@ -19,6 +19,11 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalDensity
 import id.homebase.core.ui.screens.defragmenter.InFlightMove
 import id.homebase.core.ui.screens.defragmenter.model.BlockGrid
+import id.homebase.core.ui.screens.defragmenter.model.CELL_CORRUPT_JSON_HEADER
+import id.homebase.core.ui.screens.defragmenter.model.CELL_HEALTHY
+import id.homebase.core.ui.screens.defragmenter.model.CELL_LEGACY_USERDATE_ZERO
+import id.homebase.core.ui.screens.defragmenter.model.CELL_SOFT_DELETE_ARCHIVAL_MISMATCH
+import id.homebase.core.ui.screens.defragmenter.model.CELL_UNMAPPABLE_CONVERSATION
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -104,6 +109,10 @@ fun DefragGridCanvas(
     // scanHeadIndex = index of the cell where the scan head currently is, or
     // null outside of Analyzing. Draws a bright highlight overlay.
     scanHeadIndex: Int? = null,
+    // Per-cell classifier-state codes (length == grid.totalBlocks; default 0
+    // = Healthy). Empty array = no per-cell colouring; everything renders in
+    // the healthy palette. See model/CellStateCode.kt for the encoding.
+    cellStates: ByteArray = ByteArray(0),
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -137,6 +146,7 @@ fun DefragGridCanvas(
                     totalBlocks = grid.totalBlocks,
                     analyzedUpto = analyzedUpto,
                     scanHeadIndex = scanHeadIndex,
+                    cellStates = cellStates,
                 )
             } else {
                 drawModern(
@@ -149,6 +159,7 @@ fun DefragGridCanvas(
                     totalBlocks = grid.totalBlocks,
                     analyzedUpto = analyzedUpto,
                     scanHeadIndex = scanHeadIndex,
+                    cellStates = cellStates,
                 )
             }
         }
@@ -228,6 +239,7 @@ private fun DrawScope.drawModern(
     totalBlocks: Int,
     analyzedUpto: Int,
     scanHeadIndex: Int?,
+    cellStates: ByteArray,
 ) {
     drawRect(
         brush = Brush.verticalGradient(
@@ -252,9 +264,43 @@ private fun DrawScope.drawModern(
         }
         return
     }
+    // Per-cell issue overlay — paint non-Healthy classifier states on top of
+    // the bulk healthy path. Issues are typically rare so per-cell drawRect
+    // overhead is negligible vs. the cached bulk path.
+    drawIssueOverlay(layout, cellStates, totalBlocks, analyzedUpto)
     drawTargetHalos(targetHighlights, layout, frameTimeNanos)
     drawInFlightModern(inFlight, layout, frameTimeNanos)
     drawScanHead(layout, totalBlocks, scanHeadIndex)
+}
+
+/**
+ * Walks [cellStates] and paints a solid issue-coloured rect over each
+ * non-Healthy cell. Used by both the modern overlay and as a fallback when
+ * cellStates is empty (no-op).
+ */
+private fun DrawScope.drawIssueOverlay(
+    layout: GridLayout,
+    cellStates: ByteArray,
+    totalBlocks: Int,
+    analyzedUpto: Int,
+) {
+    val b = layout.blockSize
+    if (b <= 0f) return
+    val limit = minOf(cellStates.size, totalBlocks, analyzedUpto)
+    if (limit <= 0) return
+    for (i in 0 until limit) {
+        val code = cellStates[i]
+        if (code == CELL_HEALTHY) continue
+        val color = when (code) {
+            CELL_LEGACY_USERDATE_ZERO -> Win98Palette.IssueLegacyUserDateZeroFill
+            CELL_SOFT_DELETE_ARCHIVAL_MISMATCH -> Win98Palette.IssueArchivalMismatchFill
+            CELL_CORRUPT_JSON_HEADER -> Win98Palette.IssueCorruptJsonFill
+            CELL_UNMAPPABLE_CONVERSATION -> Win98Palette.IssueUnmappableConvoFill
+            else -> continue
+        }
+        val origin = layout.indexOffset(i)
+        drawRect(color = color, topLeft = origin, size = Size(b, b))
+    }
 }
 
 private fun buildFilledPath(grid: BlockGrid, layout: GridLayout): Path {
@@ -374,6 +420,7 @@ private fun DrawScope.drawClassic(
     totalBlocks: Int,
     analyzedUpto: Int,
     scanHeadIndex: Int?,
+    cellStates: ByteArray,
 ) {
     // Solid black background — no gradient.
     drawRect(color = Win98Palette.ClassicBg, size = size)
@@ -389,9 +436,13 @@ private fun DrawScope.drawClassic(
     for (idx in filledIndices) {
         val origin = layout.indexOffset(idx)
         val green = origin.x + b * 0.5f < sweepX
-        val fill = if (green) Win98Palette.ClassicGreenFill else Win98Palette.ClassicBlockFill
-        val light = if (green) Win98Palette.ClassicGreenLight else Win98Palette.ClassicBlockLight
-        val shadow = if (green) Win98Palette.ClassicGreenShadow else Win98Palette.ClassicBlockShadow
+        // Pick the per-cell base palette from the classifier state code,
+        // then override with the celebratory green sweep when applicable.
+        val code: Byte = if (idx < cellStates.size) cellStates[idx] else CELL_HEALTHY
+        val basePalette = classicPaletteFor(code)
+        val fill = if (green) Win98Palette.ClassicGreenFill else basePalette.fill
+        val light = if (green) Win98Palette.ClassicGreenLight else basePalette.light
+        val shadow = if (green) Win98Palette.ClassicGreenShadow else basePalette.shadow
         drawClassicBlock(
             topLeft = origin,
             blockSize = b,
@@ -484,6 +535,43 @@ private fun DrawScope.drawClassicBlock(
         end = Offset(x + b - 0.5f, y + b),
         strokeWidth = 1f,
     )
+}
+
+/** Fill / bevel-light / bevel-shadow triple for one classifier state. */
+private class ClassicPalette(val fill: Color, val light: Color, val shadow: Color)
+
+private val HealthyClassicPalette = ClassicPalette(
+    fill = Win98Palette.ClassicBlockFill,
+    light = Win98Palette.ClassicBlockLight,
+    shadow = Win98Palette.ClassicBlockShadow,
+)
+private val LegacyClassicPalette = ClassicPalette(
+    fill = Win98Palette.IssueLegacyUserDateZeroFill,
+    light = Win98Palette.IssueLegacyUserDateZeroLight,
+    shadow = Win98Palette.IssueLegacyUserDateZeroShadow,
+)
+private val ArchivalMismatchClassicPalette = ClassicPalette(
+    fill = Win98Palette.IssueArchivalMismatchFill,
+    light = Win98Palette.IssueArchivalMismatchLight,
+    shadow = Win98Palette.IssueArchivalMismatchShadow,
+)
+private val CorruptJsonClassicPalette = ClassicPalette(
+    fill = Win98Palette.IssueCorruptJsonFill,
+    light = Win98Palette.IssueCorruptJsonLight,
+    shadow = Win98Palette.IssueCorruptJsonShadow,
+)
+private val UnmappableConvoClassicPalette = ClassicPalette(
+    fill = Win98Palette.IssueUnmappableConvoFill,
+    light = Win98Palette.IssueUnmappableConvoLight,
+    shadow = Win98Palette.IssueUnmappableConvoShadow,
+)
+
+private fun classicPaletteFor(code: Byte): ClassicPalette = when (code) {
+    CELL_LEGACY_USERDATE_ZERO -> LegacyClassicPalette
+    CELL_SOFT_DELETE_ARCHIVAL_MISMATCH -> ArchivalMismatchClassicPalette
+    CELL_CORRUPT_JSON_HEADER -> CorruptJsonClassicPalette
+    CELL_UNMAPPABLE_CONVERSATION -> UnmappableConvoClassicPalette
+    else -> HealthyClassicPalette
 }
 
 private fun buildFilledIndices(grid: BlockGrid): IntArray {
