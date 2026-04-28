@@ -30,6 +30,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
@@ -87,6 +89,8 @@ class OdinWebSocketClient(
 
     private val notificationBuffer =
         mutableListOf<ClientNotificationPayload>()
+
+    private val notificationBufferMutex = Mutex()
 
     private var notificationFlushJob: Job? = null
 
@@ -267,7 +271,9 @@ class OdinWebSocketClient(
     }
 
     private suspend fun handleNotification(notification: ClientNotificationPayload) {
-        notificationBuffer += notification
+        notificationBufferMutex.withLock {
+            notificationBuffer += notification
+        }
 
         // cancel pending flush
         notificationFlushJob?.cancel()
@@ -275,8 +281,11 @@ class OdinWebSocketClient(
         notificationFlushJob = scope.launch {
             delay(NOTIFICATION_BURST_MS)
 
-            val batch = notificationBuffer.toList()
-            notificationBuffer.clear()
+            val batch = notificationBufferMutex.withLock {
+                val snapshot = notificationBuffer.toList()
+                notificationBuffer.clear()
+                snapshot
+            }
 
             for (n in batch) {
                 try {
