@@ -68,72 +68,80 @@ class ChatMessageActionService(
                     "(excluded reasons: self-authored | already-read | deleted | pending-send)"
         }
 
-        if (unreadRecords.isEmpty()) {
+        // Local lastReadTime should advance to cover any non-deleted, non-pending message
+        // the user just viewed — even self-authored or already-receipted ones (e.g. Note-to-Self
+        // has no peer-eligible messages, but the user has clearly "read up to here").
+        val viewedRecords = batch.records.filter { !it.isDeleted && !it.isPendingSend }
+        if (viewedRecords.isEmpty()) {
             Logger.d(tag = TAG) {
-                "no eligible records — early return; convo=$conversationId no outbox row, no enrich"
+                "no viewed records — early return; convo=$conversationId no outbox row, no local advance"
             }
             return
         }
 
-        val newReadTime = unreadRecords.maxOf { it.userDate }
+        val newReadTime = viewedRecords.maxOf { it.userDate }
         Logger.d(tag = TAG) {
             "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} " +
-                    "(max userDate over ${unreadRecords.size} eligible records)"
+                    "(max userDate over ${viewedRecords.size} viewed records, " +
+                    "${unreadRecords.size} receipt-eligible)"
         }
 
-        val fileIds = unreadRecords.map { it.fileId }
-        val enqueued = outboxSync.tryEnqueue(
-            request = SendReadReceiptByFileIdsOutboxRequest(
-                driveId = chatDrive,
-                fileIds = fileIds,
-            )
-        )
-        Logger.d(tag = TAG) {
-            "enqueue receipt: enqueued=$enqueued drive=$chatDrive fileIdsCount=${fileIds.size}"
-        }
-
-        if (enqueued) {
-            // Optimistic local upsert — the read-receipt send is now fire-and-forget
-            // via the outbox, so we can't gate this on a per-file server status.
-            // Local read state reflects what the user read locally; the outbox
-            // retries the server-side receipt delivery independently.
-            unreadRecords
-                .distinctBy { it.conversationId }
-                .forEach {
-                    Logger.d(tag = TAG) {
-                        "upsert chatReadCount.lastReadTime convo=${it.conversationId} ms=${newReadTime.toEpochMilliseconds()}"
-                    }
-                    dbm.chatReadCount.upsertLastReadTime(
-                        it.conversationId,
-                        UnixTimeUtc(newReadTime)
-                    )
-                }
-
-            Logger.d(tag = TAG) {
-                "→ localLastReadUpdater.updateLocalLastReadTime(convo=$conversationId, ms=${newReadTime.toEpochMilliseconds()})"
-            }
-            try {
-                localLastReadUpdater.updateLocalLastReadTime(
-                    conversationId,
-                    UnixTimeUtc(newReadTime)
+        // Send a read receipt only if there are receipt-eligible records. For
+        // Note-to-Self / all-self-authored views, we skip the outbox but still advance local state.
+        val enqueued = if (unreadRecords.isNotEmpty()) {
+            val fileIds = unreadRecords.map { it.fileId }
+            val ok = outboxSync.tryEnqueue(
+                request = SendReadReceiptByFileIdsOutboxRequest(
+                    driveId = chatDrive,
+                    fileIds = fileIds,
                 )
-                Logger.d(tag = TAG) { "← localLastReadUpdater returned ok" }
-            } catch (t: Throwable) {
-                Logger.e(throwable = t, tag = TAG) {
-                    "localLastReadUpdater THREW — likely the WIP TODO()s in ConversationService.updateLocalLastReadTime; " +
-                            "unreadCountEnricher will NOT run, UI unread count may stay stale"
-                }
-                throw t
+            )
+            Logger.d(tag = TAG) {
+                "enqueue receipt: enqueued=$ok drive=$chatDrive fileIdsCount=${fileIds.size}"
             }
-
-            Logger.d(tag = TAG) { "→ unreadCountEnricher.enrichConversationWithUnreadCounts(convo=$conversationId)" }
-            unreadCountEnricher.enrichConversationWithUnreadCounts(conversationId)
-            Logger.d(tag = TAG) { "← unreadCountEnricher returned" }
+            ok
         } else {
+            Logger.d(tag = TAG) {
+                "no receipt-eligible records — skipping outbox; advancing local read state only"
+            }
+            true
+        }
+
+        if (!enqueued) {
             Logger.w(tag = TAG) {
                 "outbox.tryEnqueue returned false — skipped DB upsert + enrich; convo=$conversationId"
             }
+            return
         }
+
+        // Optimistic local upsert — the read-receipt send is fire-and-forget via the outbox,
+        // so we can't gate this on a per-file server status. Local read state reflects what
+        // the user read locally; the outbox retries server-side receipt delivery independently.
+        Logger.d(tag = TAG) {
+            "upsert chatReadCount.lastReadTime convo=$conversationId ms=${newReadTime.toEpochMilliseconds()}"
+        }
+        dbm.chatReadCount.upsertLastReadTime(conversationId, UnixTimeUtc(newReadTime))
+
+        Logger.d(tag = TAG) {
+            "→ localLastReadUpdater.updateLocalLastReadTime(convo=$conversationId, ms=${newReadTime.toEpochMilliseconds()})"
+        }
+        try {
+            localLastReadUpdater.updateLocalLastReadTime(
+                conversationId,
+                UnixTimeUtc(newReadTime)
+            )
+            Logger.d(tag = TAG) { "← localLastReadUpdater returned ok" }
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = TAG) {
+                "localLastReadUpdater THREW — likely the WIP TODO()s in ConversationService.updateLocalLastReadTime; " +
+                        "unreadCountEnricher will NOT run, UI unread count may stay stale"
+            }
+            throw t
+        }
+
+        Logger.d(tag = TAG) { "→ unreadCountEnricher.enrichOneConversationWithUnreadCount(convo=$conversationId)" }
+        unreadCountEnricher.enrichOneConversationWithUnreadCount(conversationId)
+        Logger.d(tag = TAG) { "← unreadCountEnricher returned" }
     }
 
     private companion object {

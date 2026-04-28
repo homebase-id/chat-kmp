@@ -541,7 +541,7 @@ class ConversationListViewModel(
         // warm VM, for the next sync batch) — which is what made
         // notification taps feel like they were gated on the drive-sync
         // spinner. Dispatchers.IO so the kick can't be queued behind
-        // enrichWithUnreadCounts on Main.
+        // enrichAllConversationsWithUnreadCounts on Main.
         viewModelScope.launch {
             pendingNotificationTap.state.collect { tap ->
                 if (tap == null) return@collect

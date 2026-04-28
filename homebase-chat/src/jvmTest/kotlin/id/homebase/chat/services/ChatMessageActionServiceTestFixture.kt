@@ -558,7 +558,7 @@ class FakeLocalLastReadUpdater : LocalLastReadUpdater {
 
 class FakeUnreadCountEnricher : UnreadCountEnricher {
     val calls = mutableListOf<Uuid>()
-    override suspend fun enrichConversationWithUnreadCounts(conversationId: Uuid) {
+    override suspend fun enrichOneConversationWithUnreadCount(conversationId: Uuid) {
         calls += conversationId
     }
 }

@@ -10,5 +10,5 @@ import kotlin.uuid.Uuid
  * light. ConversationStream is the production implementation.
  */
 interface UnreadCountEnricher {
-    suspend fun enrichConversationWithUnreadCounts(conversationId: Uuid)
+    suspend fun enrichOneConversationWithUnreadCount(conversationId: Uuid)
 }
