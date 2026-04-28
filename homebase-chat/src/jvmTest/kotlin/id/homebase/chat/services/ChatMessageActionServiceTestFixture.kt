@@ -113,6 +113,8 @@ class ChatMessageActionServiceTestFixture(
         private set
     lateinit var unreadCountEnricher: FakeUnreadCountEnricher
         private set
+    lateinit var participantLookup: FakeConversationParticipantLookup
+        private set
 
     suspend fun build(
         scope: CoroutineScope = TestScope(),
@@ -197,6 +199,7 @@ class ChatMessageActionServiceTestFixture(
         messageLookup = FakeMessageLookup()
         localLastReadUpdater = FakeLocalLastReadUpdater()
         unreadCountEnricher = FakeUnreadCountEnricher()
+        participantLookup = FakeConversationParticipantLookup()
 
         val optimisticWriter = OptimisticWriter(
             credentialsManager = credentialsManager,
@@ -221,7 +224,7 @@ class ChatMessageActionServiceTestFixture(
 
         return ChatMessageActionService(
             conversationService = conversationService,
-            participantLookup = FakeConversationParticipantLookup(),
+            participantLookup = participantLookup,
             localLastReadUpdater = localLastReadUpdater,
             unreadCountEnricher = unreadCountEnricher,
             messageLookup = messageLookup,
@@ -569,14 +572,35 @@ class FakeUnreadCountEnricher : UnreadCountEnricher {
 }
 
 /**
- * Tests don't seed a conversation list, so this fake always returns null —
- * which makes ChatMessageActionService.markAsReadByFiles skip the in-memory
- * lastRead gate and exercise the full upsert + enrich path the suite asserts.
+ * Default behaviour: returns null from `getConversationById`, so
+ * `ChatMessageActionService.markAsReadByFiles` skips the in-memory `lastRead`
+ * gate and exercises the full upsert + enrich path the rest of the suite
+ * asserts. Tests that want to exercise the gate can stash a stub model via
+ * [setLastRead] keyed by id.
  */
 class FakeConversationParticipantLookup :
     id.homebase.chat.services.convo.ConversationParticipantLookup {
+    private val conversations = mutableMapOf<Uuid, id.homebase.chat.data.ConversationUiModel>()
+
+    /** Stash a stub conversation whose `lastRead` is what the gate will compare against. */
+    fun setLastRead(conversationId: Uuid, lastRead: kotlin.time.Instant) {
+        conversations[conversationId] = id.homebase.chat.data.ConversationUiModel(
+            id = conversationId,
+            name = "",
+            lastMessage = "",
+            latestMessageTimestamp = lastRead,
+            avatarInitials = "",
+            avatarTiny = null,
+            lastRead = lastRead,
+            avatarModel = id.homebase.core.avatars.ConversationAvatarModel(
+                type = id.homebase.core.avatars.ConversationAvatarModel.Type.GroupFallback
+            ),
+            admins = emptySet(),
+        )
+    }
+
     override fun getConversationById(conversationId: Uuid):
-            id.homebase.chat.data.ConversationUiModel? = null
+            id.homebase.chat.data.ConversationUiModel? = conversations[conversationId]
 
     override suspend fun getRecipients(
         conversationId: Uuid,

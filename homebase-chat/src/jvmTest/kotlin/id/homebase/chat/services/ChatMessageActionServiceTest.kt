@@ -179,6 +179,51 @@ class ChatMessageActionServiceTest {
         }
     }
 
+    @Test
+    fun markAsReadByFiles_gateSkipsLocalAdvanceWhenInMemoryLastReadIsAlreadyAheadButReceiptsStillFire() = runTest {
+        // Reproduces the click-around-no-op scenario the in-memory gate is for:
+        // ConversationUiModel.lastRead is already ≥ max viewed userDate, so the
+        // upsert + appdata round-trip + enrich are redundant. Receipts for any
+        // peer-authored unread records must still go to the outbox — they're
+        // gated independently of the local read pointer.
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            val peer = "alice.test"
+
+            // Two peer messages, max userDate 200. Both have localReadTimestamp=null
+            // so they're receipt-eligible.
+            val m1 = fixture.seedMessage(conversationId = convoId, senderDomain = peer, userDateMs = 100L)
+            val m2 = fixture.seedMessage(conversationId = convoId, senderDomain = peer, userDateMs = 200L)
+
+            // In-memory model is already past 200ms — gate should fire.
+            fixture.participantLookup.setLastRead(
+                convoId,
+                kotlin.time.Instant.fromEpochMilliseconds(200L),
+            )
+
+            service.markAsReadByFiles(convoId, listOf(m1, m2))
+
+            // Receipts still go: outbox carries both eligible fileIds.
+            val row = fixture.drainOutbox()
+                .single { it.uploadType == DriveOutboxUploader.SendReadReceiptByFileIds }
+            val payload = OdinSystemSerializer.deserialize<SendReadReceiptByFileIdsOutboxRequest>(
+                row.json.decodeToString()
+            )
+            val eligibleFileIds = fixture.messageLookup.records
+                .filter { it.id == m1 || it.id == m2 }
+                .map { it.fileId }
+                .toSet()
+            assertEquals(eligibleFileIds, payload.fileIds.toSet())
+
+            // Local-state work is skipped: ChatReadCount untouched, no local
+            // updater call, no enrich emission.
+            assertNull(fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+            assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
+            assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
+        }
+    }
+
     // ----- deleteMessage propagation contract -----
     //
     // Pins what `deleteMessage` puts on the outbox so that "Delete for everyone"

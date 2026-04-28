@@ -568,34 +568,6 @@ class ConversationStream(
      * fast first-paint path; every added cost here delays tap-to-render
      * latency on cold start.
      */
-    /**
-     * Catch ChatReadCount.lastReadTime up to the value carried in each
-     * conversation file's localAppData. Drive-sync of conversation files
-     * (cold load + peer-device echoes) updates DriveMainIndex but not
-     * ChatReadCount; this hook keeps the SQL-queryable index aligned with
-     * the file-of-record.
-     *
-     * Read prior + compare locally before issuing the upsert — the upsert's
-     * MAX(...) clause would also keep us from going backward, but it would
-     * still take a write lock on every cold-load row even when nothing
-     * actually needs updating. A cheap read avoids that.
-     */
-    private suspend fun mirrorLastReadIntoChatReadCount(files: List<HomebaseFile>) {
-        for (file in files) {
-            val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
-            val raw = file.fileMetadata.localAppData?.content ?: continue
-            val localAppData = try {
-                OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(raw)
-            } catch (t: Throwable) {
-                continue
-            }
-            val incoming = localAppData.lastReadTime ?: continue
-            val prior = dbm.chatReadCount.selectLastReadTimeMs(uniqueId)
-            if (prior != null && prior >= incoming.milliseconds) continue
-            dbm.chatReadCount.upsertLastReadTime(uniqueId, incoming)
-        }
-    }
-
     private suspend fun loadBasicConversations() {
         val startedAt = Clock.System.now().toEpochMilliseconds()
         val c = credentialsManager.requireActiveCredentials()
@@ -634,6 +606,10 @@ class ConversationStream(
                     "(query=${afterQuery - startedAt}ms map=${Clock.System.now().toEpochMilliseconds() - afterQuery}ms) " +
                     "items=${basic.size}"
         }
+    }
+
+    private suspend fun mirrorLastReadIntoChatReadCount(files: List<HomebaseFile>) {
+        mirrorLastReadIntoChatReadCount(dbm, files)
     }
 
     /**
@@ -957,3 +933,38 @@ data class EnrichmentState(
      *  the unread counts from ChatReadCount. */
     val hasUnreadCounts: Boolean = false,
 )
+
+/**
+ * Catch `ChatReadCount.lastReadTime` up to the value carried in each
+ * conversation file's localAppData. Drive-sync of conversation files
+ * (cold load + peer-device echoes) updates `DriveMainIndex` but not
+ * `ChatReadCount`; this keeps the SQL-queryable index aligned with the
+ * file-of-record so `selectAllUnreadCount` reflects cross-device read
+ * advances on the next query.
+ *
+ * Read prior + compare locally before issuing the upsert — the upsert's
+ * `MAX(...)` clause would also keep us from going backward, but it would
+ * still take a write lock on every cold-load row even when nothing
+ * actually needs updating. A cheap read avoids that.
+ *
+ * Top-level for unit-testability without spinning up a full
+ * [ConversationStream] graph.
+ */
+internal suspend fun mirrorLastReadIntoChatReadCount(
+    dbm: DatabaseManager,
+    files: List<HomebaseFile>,
+) {
+    for (file in files) {
+        val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
+        val raw = file.fileMetadata.localAppData?.content ?: continue
+        val localAppData = try {
+            OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(raw)
+        } catch (t: Throwable) {
+            continue
+        }
+        val incoming = localAppData.lastReadTime ?: continue
+        val prior = dbm.chatReadCount.selectLastReadTimeMs(uniqueId)
+        if (prior != null && prior >= incoming.milliseconds) continue
+        dbm.chatReadCount.upsertLastReadTime(uniqueId, incoming)
+    }
+}
