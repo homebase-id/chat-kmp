@@ -210,8 +210,8 @@ fun AppNavHost(
                     navController.popBackStack()
                 }
 
-                is VaultUiEvent.ShareFileReady,
-                is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
+                is VaultUiEvent.ShareFileReady, is VaultUiEvent.Error -> { /* handled by VaultScreen */
+                }
             }
         }
     }
@@ -247,8 +247,11 @@ fun AppNavHost(
                     // ConversationListViewModel via the PendingNotificationTap
                     // singleton (TTL-retried until drive sync lands the
                     // conversation) — here we only manage the back stack.
-                    val stack = navController.currentBackStack
-                        .first { stack -> stack.any { it.destination.hasRoute(Route.ChatList::class) } }
+                    val stack = navController.currentBackStack.first { stack ->
+                        stack.any {
+                            it.destination.hasRoute(Route.ChatList::class)
+                        }
+                    }
                     Logger.i(tag = "AppNavHost") {
                         "ChatList present in stack (size=${stack.size}), popping to it"
                     }
@@ -471,311 +474,323 @@ fun AppNavHost(
                                                 fileId = fileId.toString()
                                             )
                                         )
-                                    )
-                                },
-                                onNavigateToCropper = { requestId ->
-                                    navController.navigate(Route.Crop(requestId.toString()))
-                                },
-                                onDetailPaneVisibilityChanged = {
-                                    // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
-                                    @Suppress("AssignedValueIsNeverRead")
-                                    showingOnlyDetailPane = it
-                                },
-                            )
-                        }
-
-                        composable<Route.CreateConversation> {
-                            if (isAuthenticated) {
-                                CreateConversationScreen(
-                                    viewModel = koinViewModel(),
-                                    connectRequestViewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                    onShowConversation = { conversationId ->
-                                        navController.selectConversationOnChatList(conversationId)
-                                        navController.popBackStack(
-                                            Route.CreateConversation, inclusive = true
-                                        )
                                     },
-                                    onShowCreateGroup = {
-                                        navController.navigate(Route.CreateConversationSelectMembers)
-                                    })
-                            }
-                        }
-
-                        composable<Route.CreateConversationSelectMembers> {
-                            if (isAuthenticated) {
-                                SelectMembersScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                    onMembersSelected = { ids ->
-                                        navController.navigate(Route.CreateConversationGroup(ids))
-                                    })
-                            }
-                        }
-
-                        composable<Route.CreateConversationGroup> {
-                            if (isAuthenticated) {
-                                CreateConversationGroupScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                    onShowConversation = { conversationId ->
-                                        navController.selectConversationOnChatList(conversationId)
-                                        navController.popBackStack(
-                                            Route.ChatList, inclusive = false
-                                        )
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(Route.Crop(requestId.toString()))
+                                    },
+                                    onDetailPaneVisibilityChanged = {
+                                        // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
+                                        @Suppress("AssignedValueIsNeverRead") showingOnlyDetailPane =
+                                            it
                                     },
                                 )
                             }
-                        }
 
-                        composable<Route.ArchivedConversations> {
-                            if (isAuthenticated) {
-                                ArchivedConversationsScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                    onShowConversation = { conversationId ->
-                                        navController.selectConversationOnChatList(conversationId)
-                                        navController.popBackStack(
-                                            Route.ArchivedConversations, inclusive = true
-                                        )
-                                    },
-                                    onNavigateToConversationSettings = { conversationId ->
-                                        navController.navigate(
-                                            Route.ConversationSettings(
+                            composable<Route.CreateConversation> {
+                                if (isAuthenticated) {
+                                    CreateConversationScreen(
+                                        viewModel = koinViewModel(),
+                                        connectRequestViewModel = koinViewModel(),
+                                        onNavigateBack = { navController.popBackStack() },
+                                        onShowConversation = { conversationId ->
+                                            navController.selectConversationOnChatList(
                                                 conversationId
                                             )
-                                        )
-                                    },
-                                    onNavigateToGroupSettings = { conversationId ->
-                                        navController.navigate(Route.GroupSettings(conversationId))
-                                    },
-                                )
+                                            navController.popBackStack(
+                                                Route.CreateConversation, inclusive = true
+                                            )
+                                        },
+                                        onShowCreateGroup = {
+                                            navController.navigate(Route.CreateConversationSelectMembers)
+                                        })
+                                }
                             }
-                        }
 
-                        composable<Route.ContactInfo> {
-                            if (isAuthenticated) {
-                                ContactInfoScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                )
+                            composable<Route.CreateConversationSelectMembers> {
+                                if (isAuthenticated) {
+                                    SelectMembersScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateBack = { navController.popBackStack() },
+                                        onMembersSelected = { ids ->
+                                            navController.navigate(Route.CreateConversationGroup(ids))
+                                        })
+                                }
                             }
-                        }
 
-                        composable<Route.MessageInfo> {
-                            if (isAuthenticated) {
-                                MessageInfoScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                )
+                            composable<Route.CreateConversationGroup> {
+                                if (isAuthenticated) {
+                                    CreateConversationGroupScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateBack = { navController.popBackStack() },
+                                        onShowConversation = { conversationId ->
+                                            navController.selectConversationOnChatList(
+                                                conversationId
+                                            )
+                                            navController.popBackStack(
+                                                Route.ChatList, inclusive = false
+                                            )
+                                        },
+                                    )
+                                }
                             }
-                        }
 
-                    composable<Route.Crop> {
-                        if (isAuthenticated) {
-                            CropScreen(
-                                viewModel = koinViewModel(),
-                                onEvent = { _ ->
-                                    // The result bus delivers cropped bytes to the
-                                    // caller; the screen just pops on any event.
-                                    navController.popBackStack()
-                                },
-                            )
-                        }
-                    }
-
-                    composable<Route.ConversationSettings> {
-                        if (isAuthenticated) {
-                            ConversationSettingsScreen(
-                                viewModel = koinViewModel(),
-                                onNavigateBack = { navController.popBackStack() },
-                                onShowContactInfo = {
-                                    navController.navigate(Route.ContactInfo(it))
-                                },
-                            )
-                        }
-
-                        composable<Route.GroupSettings> {
-                            if (isAuthenticated) {
-                                GroupSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                    onShowContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
-                                    },
-                                    onAddMembers = {
-                                        navController.navigate(Route.GroupAddMembers(it))
-                                    },
-                                    onEditGroup = {
-                                        navController.navigate(Route.GroupEdit(it))
-                                    },
-                                )
+                            composable<Route.ArchivedConversations> {
+                                if (isAuthenticated) {
+                                    ArchivedConversationsScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateBack = { navController.popBackStack() },
+                                        onShowConversation = { conversationId ->
+                                            navController.selectConversationOnChatList(
+                                                conversationId
+                                            )
+                                            navController.popBackStack(
+                                                Route.ArchivedConversations, inclusive = true
+                                            )
+                                        },
+                                        onNavigateToConversationSettings = { conversationId ->
+                                            navController.navigate(
+                                                Route.ConversationSettings(
+                                                    conversationId
+                                                )
+                                            )
+                                        },
+                                        onNavigateToGroupSettings = { conversationId ->
+                                            navController.navigate(
+                                                Route.GroupSettings(
+                                                    conversationId
+                                                )
+                                            )
+                                        },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.GroupAddMembers> {
-                            if (isAuthenticated) {
-                                AddGroupMembersScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                )
+                            composable<Route.ContactInfo> {
+                                if (isAuthenticated) {
+                                    ContactInfoScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateBack = { navController.popBackStack() },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.GroupEdit> {
-                            if (isAuthenticated) {
-                                EditConversationGroupScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                )
+                            composable<Route.MessageInfo> {
+                                if (isAuthenticated) {
+                                    MessageInfoScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateBack = { navController.popBackStack() },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.Examples> {
-                            if (isAuthenticated) {
-                                RichTextExample()
+                            composable<Route.Crop> {
+                                if (isAuthenticated) {
+                                    CropScreen(
+                                        viewModel = koinViewModel(),
+                                        onEvent = { _ ->
+                                            // The result bus delivers cropped bytes to the
+                                            // caller; the screen just pops on any event.
+                                            navController.popBackStack()
+                                        },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.Settings> {
-                            if (isAuthenticated) {
-                                SettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onNavigateToConnections = {
-                                        navController.navigate(Route.Connections)
-                                    },
-                                    onNavigateToNotifications = {
-                                        navController.navigate(Route.NotificationSettings)
-                                    },
-                                    onNavigateToAppearance = {
-                                        navController.navigate(Route.AppearanceSettings)
-                                    },
-                                    onNavigateToStorage = {
-                                        navController.navigate(Route.StorageSettings)
-                                    },
-                                    onNavigateToHelp = {
-                                        navController.navigate(Route.Help)
-                                    },
-                                    onNavigateToVaultSettings = {
-                                        navController.navigate(Route.VaultSettings)
-                                    },
-                                )
+                            composable<Route.ConversationSettings> {
+                                if (isAuthenticated) {
+                                    ConversationSettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateBack = { navController.popBackStack() },
+                                        onShowContactInfo = {
+                                            navController.navigate(Route.ContactInfo(it))
+                                        },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.Connections> {
-                            if (isAuthenticated) {
-                                ConnectionsScreen(
-                                    viewModel = koinViewModel(),
-                                    connectRequestViewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onShowConversation = { conversationId ->
-                                        navController.selectConversationOnChatList(conversationId)
-                                        navController.popBackStack(
-                                            Route.ChatList, inclusive = false
-                                        )
-                                    },
-                                )
+                            composable<Route.GroupSettings> {
+                                if (isAuthenticated) {
+                                    GroupSettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateBack = { navController.popBackStack() },
+                                        onShowContactInfo = {
+                                            navController.navigate(Route.ContactInfo(it))
+                                        },
+                                        onAddMembers = {
+                                            navController.navigate(Route.GroupAddMembers(it))
+                                        },
+                                        onEditGroup = {
+                                            navController.navigate(Route.GroupEdit(it))
+                                        },
+                                    )
+                                }
                             }
-                        }
-
-                        composable<Route.NotificationSettings> {
-                            if (isAuthenticated) {
-                                NotificationSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() })
+                            composable<Route.GroupAddMembers> {
+                                if (isAuthenticated) {
+                                    AddGroupMembersScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateBack = { navController.popBackStack() },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.AppearanceSettings> {
-                            if (isAuthenticated) {
-                                AppearanceSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() })
+                            composable<Route.GroupEdit> {
+                                if (isAuthenticated) {
+                                    EditConversationGroupScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateBack = { navController.popBackStack() },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.VaultOnboarding> {
-                            if (isAuthenticated) {
-                                VaultOnboardingScreen(
-                                    viewModel = vaultViewModel,
-                                    onNavigateBack = { navController.popBackStack() },
-                                )
+                            composable<Route.Examples> {
+                                if (isAuthenticated) {
+                                    RichTextExample()
+                                }
                             }
-                        }
 
-                        composable<Route.Vault> {
-                            if (isAuthenticated) {
-                                VaultScreen(
-                                    vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
-                                    viewModel = vaultViewModel,
-                                    onNavigateBack = { navController.popBackStack() },
-                                    onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
-                                )
+                            composable<Route.Settings> {
+                                if (isAuthenticated) {
+                                    SettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() },
+                                        onNavigateToConnections = {
+                                            navController.navigate(Route.Connections)
+                                        },
+                                        onNavigateToNotifications = {
+                                            navController.navigate(Route.NotificationSettings)
+                                        },
+                                        onNavigateToAppearance = {
+                                            navController.navigate(Route.AppearanceSettings)
+                                        },
+                                        onNavigateToStorage = {
+                                            navController.navigate(Route.StorageSettings)
+                                        },
+                                        onNavigateToHelp = {
+                                            navController.navigate(Route.Help)
+                                        },
+                                        onNavigateToVaultSettings = {
+                                            navController.navigate(Route.VaultSettings)
+                                        },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.VaultSettings> {
-                            if (isAuthenticated) {
-                                VaultSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onOpenVault = openVault,
-                                )
+                            composable<Route.Connections> {
+                                if (isAuthenticated) {
+                                    ConnectionsScreen(
+                                        viewModel = koinViewModel(),
+                                        connectRequestViewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() },
+                                        onShowConversation = { conversationId ->
+                                            navController.selectConversationOnChatList(
+                                                conversationId
+                                            )
+                                            navController.popBackStack(
+                                                Route.ChatList, inclusive = false
+                                            )
+                                        },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.VaultEntryDetail> { _ ->
-                            if (isAuthenticated) {
-                                LaunchedEffect(Unit) { navController.popBackStack() }
+                            composable<Route.NotificationSettings> {
+                                if (isAuthenticated) {
+                                    NotificationSettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() })
+                                }
                             }
-                        }
 
-                        composable<Route.Help> {
-                            if (isAuthenticated) {
-                                HelpScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onNavigateToDeveloperMenu = {
-                                        navController.navigate(Route.DeveloperMenu)
-                                    },
-                                )
+                            composable<Route.AppearanceSettings> {
+                                if (isAuthenticated) {
+                                    AppearanceSettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() })
+                                }
                             }
-                        }
 
-                        composable<Route.DeveloperMenu> {
-                            if (isAuthenticated) {
-                                DeveloperMenuScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() })
+                            composable<Route.VaultOnboarding> {
+                                if (isAuthenticated) {
+                                    VaultOnboardingScreen(
+                                        viewModel = vaultViewModel,
+                                        onNavigateBack = { navController.popBackStack() },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.StorageSettings> {
-                            if (isAuthenticated) {
-                                StorageSettingsScreen(
-                                    viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onNavigateToDefragmenter = {
-                                        navController.navigate(Route.Defragmenter)
-                                    },
-                                )
+                            composable<Route.Vault> {
+                                if (isAuthenticated) {
+                                    VaultScreen(
+                                        vaultExtendPermissionViewModel = vaultViewModel.vaultExtendPermissionViewModel,
+                                        viewModel = vaultViewModel,
+                                        onNavigateBack = { navController.popBackStack() },
+                                        onNavigateToSettings = { navController.navigate(Route.VaultSettings) },
+                                    )
+                                }
                             }
-                        }
 
-                        composable<Route.Defragmenter> {
-                            if (isAuthenticated) {
-                                DefragmenterScreen(
-                                    viewModel = koinViewModel(),
-                                    onClose = { navController.popBackStack() },
-                                )
+                            composable<Route.VaultSettings> {
+                                if (isAuthenticated) {
+                                    VaultSettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() },
+                                        onOpenVault = openVault,
+                                    )
+                                }
+                            }
+
+                            composable<Route.VaultEntryDetail> { _ ->
+                                if (isAuthenticated) {
+                                    LaunchedEffect(Unit) { navController.popBackStack() }
+                                }
+                            }
+
+                            composable<Route.Help> {
+                                if (isAuthenticated) {
+                                    HelpScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() },
+                                        onNavigateToDeveloperMenu = {
+                                            navController.navigate(Route.DeveloperMenu)
+                                        },
+                                    )
+                                }
+                            }
+
+                            composable<Route.DeveloperMenu> {
+                                if (isAuthenticated) {
+                                    DeveloperMenuScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() })
+                                }
+                            }
+
+                            composable<Route.StorageSettings> {
+                                if (isAuthenticated) {
+                                    StorageSettingsScreen(
+                                        viewModel = koinViewModel(),
+                                        onBackClick = { navController.popBackStack() },
+                                        onNavigateToDefragmenter = {
+                                            navController.navigate(Route.Defragmenter)
+                                        },
+                                    )
+                                }
+                            }
+                            composable<Route.Defragmenter> {
+                                if (isAuthenticated) {
+                                    DefragmenterScreen(
+                                        viewModel = koinViewModel(),
+                                        onClose = { navController.popBackStack() },
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
+
+            }
             // In-app notification banner overlay
             InAppNotificationBanner(
                 event = uiState.inAppNotification,
@@ -788,6 +803,7 @@ fun AppNavHost(
         }
     }
 }
+
 
 private fun NavHostController.selectConversationOnChatList(
     conversationId: Uuid, scrollToBottom: Boolean = false
@@ -805,10 +821,9 @@ private fun NavHostController.selectConversationOnChatList(
 }
 
 private fun NavDestination?.isTopLevelRoute(): Boolean {
-    return this?.hasRoute(Route.ChatList::class) == true ||
-            this?.hasRoute(Route.Home::class) == true ||
-            this?.hasRoute(Route.Vault::class) == true ||
-            this?.hasRoute(Route.Feed::class) == true
+    return this?.hasRoute(Route.ChatList::class) == true || this?.hasRoute(Route.Home::class) == true || this?.hasRoute(
+        Route.Vault::class
+    ) == true || this?.hasRoute(Route.Feed::class) == true
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
