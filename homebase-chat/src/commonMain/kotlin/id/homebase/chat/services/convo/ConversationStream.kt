@@ -755,7 +755,13 @@ class ConversationStream(
     override suspend fun applyLocalAdvance(conversationId: Uuid, newLastRead: Instant) {
         val current = _conversations.value
         val index = current.items.indexOfFirst { it.id == conversationId }
-        if (index < 0) return
+        if (index < 0) {
+            Logger.w(tag = "MarkAsRead") {
+                "ConversationStream.applyLocalAdvance: convo=$conversationId NOT FOUND " +
+                        "in in-memory list (size=${current.items.size}) — UI badge will not update"
+            }
+            return
+        }
 
         val c = credentialsManager.requireActiveCredentials()
         val newCount = dbm.chatReadCount
@@ -960,6 +966,12 @@ internal suspend fun mirrorLastReadIntoChatReadCount(
         val localAppData = try {
             OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(raw)
         } catch (t: Throwable) {
+            // One bad row shouldn't poison cold-load — but make it visible
+            // instead of silent so we can investigate corrupted appdata.
+            Logger.w(throwable = t, tag = "ConversationStream") {
+                "mirrorLastReadIntoChatReadCount: failed to deserialise localAppData " +
+                        "for convo=$uniqueId — skipping row"
+            }
             continue
         }
         val incoming = localAppData.lastReadTime ?: continue

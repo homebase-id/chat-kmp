@@ -174,10 +174,18 @@ class ChatMessageActionService(
             "markAllAsRead convo=$conversationId advancing to ms=${newReadTime.toEpochMilliseconds()}"
         }
         dbm.chatReadCount.upsertLastReadTime(conversationId, UnixTimeUtc(newReadTime))
-        localLastReadUpdater.updateLocalLastReadTime(
-            conversationId,
-            UnixTimeUtc(newReadTime),
-        )
+        try {
+            localLastReadUpdater.updateLocalLastReadTime(
+                conversationId,
+                UnixTimeUtc(newReadTime),
+            )
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = TAG) {
+                "markAllAsRead localLastReadUpdater THREW — applyLocalAdvance will NOT run, " +
+                        "UI may stay stale; convo=$conversationId"
+            }
+            throw t
+        }
         unreadCountEnricher.applyLocalAdvance(conversationId, newReadTime)
 
         // Sanity check: after advancing lastRead to the conversation's latest
