@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.AppFileMetaData
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -361,6 +362,10 @@ class OptimisticWriter(
                 appData = existingFile.fileMetadata.appData.copy(
                     content = "",
                     previewThumbnail = null,
+                    // Mirror the soft-delete into the SQL-queryable archivalStatus
+                    // column so unread-count queries can exclude this row without
+                    // having to deserialise the jsonHeader to read fileState.
+                    archivalStatus = ArchivalStatus.Removed,
                 )
             )
         )

@@ -113,6 +113,8 @@ class ChatMessageActionServiceTestFixture(
         private set
     lateinit var unreadCountEnricher: FakeUnreadCountEnricher
         private set
+    lateinit var participantLookup: FakeConversationParticipantLookup
+        private set
 
     suspend fun build(
         scope: CoroutineScope = TestScope(),
@@ -197,6 +199,7 @@ class ChatMessageActionServiceTestFixture(
         messageLookup = FakeMessageLookup()
         localLastReadUpdater = FakeLocalLastReadUpdater()
         unreadCountEnricher = FakeUnreadCountEnricher()
+        participantLookup = FakeConversationParticipantLookup()
 
         val optimisticWriter = OptimisticWriter(
             credentialsManager = credentialsManager,
@@ -221,6 +224,7 @@ class ChatMessageActionServiceTestFixture(
 
         return ChatMessageActionService(
             conversationService = conversationService,
+            participantLookup = participantLookup,
             localLastReadUpdater = localLastReadUpdater,
             unreadCountEnricher = unreadCountEnricher,
             messageLookup = messageLookup,
@@ -557,10 +561,60 @@ class FakeLocalLastReadUpdater : LocalLastReadUpdater {
 }
 
 class FakeUnreadCountEnricher : UnreadCountEnricher {
-    val calls = mutableListOf<Uuid>()
-    override suspend fun enrichConversationWithUnreadCounts(conversationId: Uuid) {
-        calls += conversationId
+    data class Call(val conversationId: Uuid, val newLastRead: kotlin.time.Instant)
+    val calls = mutableListOf<Call>()
+    override suspend fun applyLocalAdvance(
+        conversationId: Uuid,
+        newLastRead: kotlin.time.Instant,
+    ) {
+        calls += Call(conversationId, newLastRead)
     }
+}
+
+/**
+ * Default behaviour: returns null from `getConversationById`, so
+ * `ChatMessageActionService.markAsReadByFiles` skips the in-memory `lastRead`
+ * gate and exercises the full upsert + enrich path the rest of the suite
+ * asserts. Tests that want to exercise the gate can stash a stub model via
+ * [setLastRead] keyed by id.
+ */
+class FakeConversationParticipantLookup :
+    id.homebase.chat.services.convo.ConversationParticipantLookup {
+    private val conversations = mutableMapOf<Uuid, id.homebase.chat.data.ConversationUiModel>()
+
+    /**
+     * Stash a stub conversation whose `lastRead` and `latestMessageTimestamp`
+     * are what `markAsReadByFiles`'s gate / `markAllAsRead` will read.
+     * `latestMessageTimestamp` defaults to the same value as `lastRead`
+     * (the "fully read" case); pass it explicitly to simulate a backlog.
+     */
+    fun setLastRead(
+        conversationId: Uuid,
+        lastRead: kotlin.time.Instant,
+        latestMessageTimestamp: kotlin.time.Instant = lastRead,
+    ) {
+        conversations[conversationId] = id.homebase.chat.data.ConversationUiModel(
+            id = conversationId,
+            name = "",
+            lastMessage = "",
+            latestMessageTimestamp = latestMessageTimestamp,
+            avatarInitials = "",
+            avatarTiny = null,
+            lastRead = lastRead,
+            avatarModel = id.homebase.core.avatars.ConversationAvatarModel(
+                type = id.homebase.core.avatars.ConversationAvatarModel.Type.GroupFallback
+            ),
+            admins = emptySet(),
+        )
+    }
+
+    override fun getConversationById(conversationId: Uuid):
+            id.homebase.chat.data.ConversationUiModel? = conversations[conversationId]
+
+    override suspend fun getRecipients(
+        conversationId: Uuid,
+        additionalRecipients: List<id.homebase.api.common.OdinId>,
+    ): List<id.homebase.api.common.OdinId> = emptyList()
 }
 
 private object ThrowingOutboxUploader : OutboxUploader {

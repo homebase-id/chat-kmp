@@ -21,6 +21,7 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
+import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.UnreadCountEnricher
@@ -30,6 +31,7 @@ import kotlin.uuid.Uuid
 
 class ChatMessageActionService(
     private val conversationService: ConversationService,
+    private val participantLookup: ConversationParticipantLookup,
     private val localLastReadUpdater: LocalLastReadUpdater,
     private val unreadCountEnricher: UnreadCountEnricher,
     private val messageLookup: MessageLookup,
@@ -68,70 +70,137 @@ class ChatMessageActionService(
                     "(excluded reasons: self-authored | already-read | deleted | pending-send)"
         }
 
-        if (unreadRecords.isEmpty()) {
+        // Local lastReadTime should advance to cover any non-deleted, non-pending message
+        // the user just viewed — even self-authored or already-receipted ones (e.g. Note-to-Self
+        // has no peer-eligible messages, but the user has clearly "read up to here").
+        val viewedRecords = batch.records.filter { !it.isDeleted && !it.isPendingSend }
+        if (viewedRecords.isEmpty()) {
             Logger.d(tag = TAG) {
-                "no eligible records — early return; convo=$conversationId no outbox row, no enrich"
+                "no viewed records — early return; convo=$conversationId no outbox row, no local advance"
             }
             return
         }
 
-        val newReadTime = unreadRecords.maxOf { it.userDate }
+        val newReadTime = viewedRecords.maxOf { it.userDate }
         Logger.d(tag = TAG) {
             "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} " +
-                    "(max userDate over ${unreadRecords.size} eligible records)"
+                    "(max userDate over ${viewedRecords.size} viewed records, " +
+                    "${unreadRecords.size} receipt-eligible)"
         }
 
-        val fileIds = unreadRecords.map { it.fileId }
-        val enqueued = outboxSync.tryEnqueue(
-            request = SendReadReceiptByFileIdsOutboxRequest(
-                driveId = chatDrive,
-                fileIds = fileIds,
-            )
-        )
-        Logger.d(tag = TAG) {
-            "enqueue receipt: enqueued=$enqueued drive=$chatDrive fileIdsCount=${fileIds.size}"
-        }
-
-        if (enqueued) {
-            // Optimistic local upsert — the read-receipt send is now fire-and-forget
-            // via the outbox, so we can't gate this on a per-file server status.
-            // Local read state reflects what the user read locally; the outbox
-            // retries the server-side receipt delivery independently.
-            unreadRecords
-                .distinctBy { it.conversationId }
-                .forEach {
-                    Logger.d(tag = TAG) {
-                        "upsert chatReadCount.lastReadTime convo=${it.conversationId} ms=${newReadTime.toEpochMilliseconds()}"
-                    }
-                    dbm.chatReadCount.upsertLastReadTime(
-                        it.conversationId,
-                        UnixTimeUtc(newReadTime)
-                    )
-                }
-
-            Logger.d(tag = TAG) {
-                "→ localLastReadUpdater.updateLocalLastReadTime(convo=$conversationId, ms=${newReadTime.toEpochMilliseconds()})"
-            }
-            try {
-                localLastReadUpdater.updateLocalLastReadTime(
-                    conversationId,
-                    UnixTimeUtc(newReadTime)
+        // Send a read receipt only if there are receipt-eligible records. For
+        // Note-to-Self / all-self-authored views, we skip the outbox but still advance local state.
+        val enqueued = if (unreadRecords.isNotEmpty()) {
+            val fileIds = unreadRecords.map { it.fileId }
+            val ok = outboxSync.tryEnqueue(
+                request = SendReadReceiptByFileIdsOutboxRequest(
+                    driveId = chatDrive,
+                    fileIds = fileIds,
                 )
-                Logger.d(tag = TAG) { "← localLastReadUpdater returned ok" }
-            } catch (t: Throwable) {
-                Logger.e(throwable = t, tag = TAG) {
-                    "localLastReadUpdater THREW — likely the WIP TODO()s in ConversationService.updateLocalLastReadTime; " +
-                            "unreadCountEnricher will NOT run, UI unread count may stay stale"
-                }
-                throw t
+            )
+            Logger.d(tag = TAG) {
+                "enqueue receipt: enqueued=$ok drive=$chatDrive fileIdsCount=${fileIds.size}"
             }
-
-            Logger.d(tag = TAG) { "→ unreadCountEnricher.enrichConversationWithUnreadCounts(convo=$conversationId)" }
-            unreadCountEnricher.enrichConversationWithUnreadCounts(conversationId)
-            Logger.d(tag = TAG) { "← unreadCountEnricher returned" }
+            ok
         } else {
+            Logger.d(tag = TAG) {
+                "no receipt-eligible records — skipping outbox; advancing local read state only"
+            }
+            true
+        }
+
+        if (!enqueued) {
             Logger.w(tag = TAG) {
                 "outbox.tryEnqueue returned false — skipped DB upsert + enrich; convo=$conversationId"
+            }
+            return
+        }
+
+        // Gate the local-state work on the in-memory lastRead. The conversation
+        // file's appdata.lastReadTime (mirrored as ConversationUiModel.lastRead)
+        // is the source of truth here; ChatReadCount is just its SQL-queryable
+        // index. Re-entering the same conversation typically lands here with
+        // newReadTime == priorLastRead — skipping spares us a SQL upsert, an
+        // appdata round-trip, and a COUNT-based enrich on every visit.
+        val priorLastRead = participantLookup.getConversationById(conversationId)?.lastRead
+        if (priorLastRead != null && newReadTime <= priorLastRead) {
+            Logger.d(tag = TAG) {
+                "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} <= priorLastRead(ms)=${priorLastRead.toEpochMilliseconds()} — skipping upsert + enrich; convo=$conversationId"
+            }
+            return
+        }
+
+        // Optimistic local upsert — the read-receipt send is fire-and-forget via the outbox,
+        // so we can't gate this on a per-file server status. Local read state reflects what
+        // the user read locally; the outbox retries server-side receipt delivery independently.
+        dbm.chatReadCount.upsertLastReadTime(conversationId, UnixTimeUtc(newReadTime))
+
+        try {
+            localLastReadUpdater.updateLocalLastReadTime(
+                conversationId,
+                UnixTimeUtc(newReadTime)
+            )
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = TAG) {
+                "localLastReadUpdater THREW — unreadCountEnricher will NOT run, UI may stay stale"
+            }
+            throw t
+        }
+
+        // Synchronously patch in-memory lastRead + unreadCount so the UI
+        // updates without waiting for the BatchReceived round-trip.
+        unreadCountEnricher.applyLocalAdvance(conversationId, newReadTime)
+    }
+
+    /**
+     * Bulk "mark all as read" for an entire conversation. Advances local
+     * lastReadTime to the conversation's latest message timestamp.
+     *
+     * Deliberately does NOT enqueue read receipts — receipts are an
+     * "I actually read this" signal, and a bulk-dismiss action shouldn't
+     * impersonate that. The advance still propagates to other devices via
+     * `localLastReadUpdater.updateLocalLastReadTime` (which writes the
+     * conversation file's localAppData and the outbox syncs that).
+     *
+     * No-op if the conversation isn't in the in-memory list, or if its
+     * lastRead is already at or past the latest message.
+     */
+    suspend fun markAllAsRead(conversationId: Uuid) {
+        val convo = participantLookup.getConversationById(conversationId) ?: return
+        val newReadTime = convo.latestMessageTimestamp
+        if (newReadTime <= convo.lastRead) return
+
+        Logger.d(tag = TAG) {
+            "markAllAsRead convo=$conversationId advancing to ms=${newReadTime.toEpochMilliseconds()}"
+        }
+        dbm.chatReadCount.upsertLastReadTime(conversationId, UnixTimeUtc(newReadTime))
+        try {
+            localLastReadUpdater.updateLocalLastReadTime(
+                conversationId,
+                UnixTimeUtc(newReadTime),
+            )
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = TAG) {
+                "markAllAsRead localLastReadUpdater THREW — applyLocalAdvance will NOT run, " +
+                        "UI may stay stale; convo=$conversationId"
+            }
+            throw t
+        }
+        unreadCountEnricher.applyLocalAdvance(conversationId, newReadTime)
+
+        // Sanity check: after advancing lastRead to the conversation's latest
+        // message timestamp, the unread count should be 0. If not, there's a
+        // SQL/in-memory clock divergence — e.g. a message whose appData.userDate
+        // is greater than what enrichWithLastMessages reported as latestMessage-
+        // Timestamp (the in-memory mapper falls back to authorSpecificDate when
+        // appData.userDate is null, which can drift from the SQL d.userDate
+        // column). Logging it loudly so we can investigate.
+        val after = participantLookup.getConversationById(conversationId)
+        if (after != null && after.unreadCount > 0) {
+            Logger.w(tag = TAG) {
+                "markAllAsRead convo=$conversationId left unreadCount=${after.unreadCount} " +
+                        "after advancing lastRead to latestMessageTimestamp(ms)=" +
+                        "${newReadTime.toEpochMilliseconds()} — likely SQL/in-memory userDate divergence"
             }
         }
     }

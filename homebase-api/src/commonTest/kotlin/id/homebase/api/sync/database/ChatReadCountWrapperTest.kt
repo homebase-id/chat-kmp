@@ -13,6 +13,10 @@ import kotlin.uuid.Uuid
 
 class ChatReadCountWrapperTest {
 
+    // Mock data is seeded with originalAuthor="test.sender", so any other domain
+    // here behaves as "self != peer-author" — i.e., the messages count as unread.
+    private val selfDomain = OdinId("test.self")
+
     /**
      * Populates the database with mock test data:
      * - One conversation with no messages
@@ -280,15 +284,18 @@ class ChatReadCountWrapperTest {
             // FAILS HERE :
             val conv1Unread = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithNoMessages.fileMetadata.appData.uniqueId!!
+                testData.convWithNoMessages.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             val conv2Unread = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             val conv3Unread = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
 
             assertEquals(
@@ -317,7 +324,8 @@ class ChatReadCountWrapperTest {
 
             val conv3Unread = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
 
             // Should only count messages after the read time (only the 3rd message)
@@ -331,7 +339,7 @@ class ChatReadCountWrapperTest {
             val wrapper = dbm.chatReadCount
             val nonExistentGroupId = Uuid.random()
 
-            val unreadCount = wrapper.selectUnreadCountForConversation(Uuid.random(), nonExistentGroupId)
+            val unreadCount = wrapper.selectUnreadCountForConversation(Uuid.random(), nonExistentGroupId, selfDomain)
 
             assertEquals(
                 0L, unreadCount, "Non-existent conversation should have 0 unread"
@@ -443,7 +451,8 @@ class ChatReadCountWrapperTest {
             // Verify unread count changed
             val unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(
                 0L, unreadCount, "Should have 0 unread messages after setting read time"
@@ -475,7 +484,8 @@ class ChatReadCountWrapperTest {
             // messages)
             val unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(
                 0L, unreadCount, "Should have 0 unread messages after updating read time"
@@ -513,7 +523,8 @@ class ChatReadCountWrapperTest {
             // Verify it exists by checking unread count
             var unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(0L, unreadCount, "Should have 0 unread with read time set")
 
@@ -524,7 +535,8 @@ class ChatReadCountWrapperTest {
             // Verify it's gone - unread count should be back to original
             unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!
+                testData.convWithOneMessage.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(
                 1L, unreadCount, "Should have 1 unread after deleting read time"
@@ -566,7 +578,8 @@ class ChatReadCountWrapperTest {
             // Verify unread count is back to original
             var unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(3L, unreadCount, "Should have 3 unread after deletion")
 
@@ -580,7 +593,8 @@ class ChatReadCountWrapperTest {
             // Verify new read time is effective
             unreadCount = wrapper.selectUnreadCountForConversation(
                 testData.identityId,
-                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!
+                testData.convWithThreeMessages.first.fileMetadata.appData.uniqueId!!,
+                selfDomain,
             )
             assertEquals(
                 0L, unreadCount, "Should have 0 unread after reinserting with new read time"

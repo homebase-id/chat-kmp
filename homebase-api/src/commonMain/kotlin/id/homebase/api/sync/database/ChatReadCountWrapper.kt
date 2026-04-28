@@ -112,8 +112,14 @@ class ChatReadCountWrapper(
      * Get unread message count for a specific conversation
      * Note: This implementation is simplified and would need the generated SQLDelight queries
      */
-    fun selectUnreadCountForConversation(identityId: Uuid, groupId: Uuid): Long {
-        val result = delegate.selectUnreadCountForConversation(identityId, groupId).executeAsOneOrNull()
+    fun selectUnreadCountForConversation(
+        identityId: Uuid,
+        groupId: Uuid,
+        selfDomain: OdinId,
+    ): Long {
+        val result = delegate.selectUnreadCountForConversation(
+            identityId, groupId, selfDomain.domainName
+        ).executeAsOneOrNull()
 
         if (result == null)
             return 0

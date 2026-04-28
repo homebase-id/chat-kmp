@@ -20,10 +20,14 @@ import kotlinx.coroutines.test.runTest
 /**
  * Tests for [ChatMessageActionService.markAsReadByFiles].
  *
- * The load-bearing invariant: `newReadTime = unreadRecords.maxOf { it.userDate }`
- * must run **after** the filter (self-authored / already-read / deleted /
- * pending-send are excluded). A filtered-out record with a later userDate must
- * not leak into newReadTime or the upserted lastReadTime.
+ * Two distinct concerns:
+ *   - **Receipt outbox**: only peer-authored, unread, non-deleted, non-pending records
+ *     get a read receipt enqueued.
+ *   - **Local lastReadTime**: advances to cover anything the user has actually viewed —
+ *     including self-authored and already-read messages — so the unread count reflects
+ *     reality even in Note-to-Self conversations. Only deleted/pending-send records are
+ *     excluded from the date computation (deleted aren't shown; pending-send userDates
+ *     are unreliable).
  */
 class ChatMessageActionServiceTest {
 
@@ -98,21 +102,21 @@ class ChatMessageActionServiceTest {
     }
 
     @Test
-    fun markAsReadByFiles_pickMaxUserDate_ignoresFilteredOutRecordsEvenIfLater() = runTest {
+    fun markAsReadByFiles_pickMaxUserDate_excludesDeletedAndPendingButIncludesViewedSelfAndRead() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val convoId = Uuid.random()
             val peer = "alice.test"
             val self = fixture.testDomain
 
-            // Peer-authored, unread — eligible. Max is 200.
+            // Peer-authored, unread — eligible for receipt.
             val m1 = fixture.seedMessage(conversationId = convoId, senderDomain = peer, userDateMs = 100L)
             val m2 = fixture.seedMessage(conversationId = convoId, senderDomain = peer, userDateMs = 200L)
 
-            // Self-authored, userDate 500 — must NOT win.
+            // Self-authored, userDate 500 — viewed (advances local lastReadTime), not receipted.
             val mSelf = fixture.seedMessage(conversationId = convoId, senderDomain = self, userDateMs = 500L)
 
-            // Peer-authored but already-read, userDate 400 — must NOT win.
+            // Peer-authored but already-read, userDate 400 — viewed, not receipted.
             val mRead = fixture.seedMessage(
                 conversationId = convoId,
                 senderDomain = peer,
@@ -120,7 +124,7 @@ class ChatMessageActionServiceTest {
                 alreadyRead = true,
             )
 
-            // Peer-authored but deleted, userDate 700 — must NOT win.
+            // Peer-authored but deleted, userDate 700 — must NOT advance lastReadTime.
             val mDeleted = fixture.seedMessage(
                 conversationId = convoId,
                 senderDomain = peer,
@@ -128,7 +132,7 @@ class ChatMessageActionServiceTest {
                 isDeleted = true,
             )
 
-            // Peer-authored but pending-send, userDate 800 — must NOT win.
+            // Peer-authored but pending-send, userDate 800 — must NOT advance lastReadTime.
             val mPending = fixture.seedMessage(
                 conversationId = convoId,
                 senderDomain = peer,
@@ -139,12 +143,13 @@ class ChatMessageActionServiceTest {
             service.markAsReadByFiles(convoId, listOf(m1, m2, mSelf, mRead, mDeleted, mPending))
 
             assertEquals(
-                200L,
+                500L,
                 fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
-                "newReadTime must be the max over filtered-in records only, not the whole batch",
+                "newReadTime must be the max over viewed records (excluding deleted/pending-send only) — " +
+                        "self-authored & already-read still mark 'I've read up to here'",
             )
 
-            // The outbox payload must only contain the eligible (m1, m2) fileIds.
+            // The outbox payload must only contain the receipt-eligible (m1, m2) fileIds.
             val row = fixture.drainOutbox()
                 .single { it.uploadType == DriveOutboxUploader.SendReadReceiptByFileIds }
             val payload = OdinSystemSerializer.deserialize<SendReadReceiptByFileIdsOutboxRequest>(
@@ -159,30 +164,6 @@ class ChatMessageActionServiceTest {
     }
 
     @Test
-    fun markAsReadByFiles_sameNewReadTimeAppliedToAllDistinctConversations() = runTest {
-        ChatMessageActionServiceTestFixture().use { fixture ->
-            val service = fixture.build(scope = this)
-            val convoA = Uuid.random()
-            val convoB = Uuid.random()
-
-            val mA = fixture.seedMessage(
-                conversationId = convoA, senderDomain = "alice.test", userDateMs = 300L,
-            )
-            val mB = fixture.seedMessage(
-                conversationId = convoB, senderDomain = "bob.test", userDateMs = 500L,
-            )
-
-            service.markAsReadByFiles(convoA, listOf(mA, mB))
-
-            // Current behavior: newReadTime is the GLOBAL max across the batch (500)
-            // and the same value is applied to every distinct conversation. Pinning
-            // this so that a future per-conversation-max refactor is intentional.
-            assertEquals(500L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoA))
-            assertEquals(500L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoB))
-        }
-    }
-
-    @Test
     fun markAsReadByFiles_enrichesTargetConversation() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
@@ -193,8 +174,53 @@ class ChatMessageActionServiceTest {
 
             service.markAsReadByFiles(convoId, listOf(id))
 
-            assertEquals(listOf(convoId), fixture.unreadCountEnricher.calls)
+            assertEquals(listOf(convoId), fixture.unreadCountEnricher.calls.map { it.conversationId })
             assertEquals(listOf(convoId), fixture.localLastReadUpdater.calls.map { it.conversationId })
+        }
+    }
+
+    @Test
+    fun markAsReadByFiles_gateSkipsLocalAdvanceWhenInMemoryLastReadIsAlreadyAheadButReceiptsStillFire() = runTest {
+        // Reproduces the click-around-no-op scenario the in-memory gate is for:
+        // ConversationUiModel.lastRead is already ≥ max viewed userDate, so the
+        // upsert + appdata round-trip + enrich are redundant. Receipts for any
+        // peer-authored unread records must still go to the outbox — they're
+        // gated independently of the local read pointer.
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            val peer = "alice.test"
+
+            // Two peer messages, max userDate 200. Both have localReadTimestamp=null
+            // so they're receipt-eligible.
+            val m1 = fixture.seedMessage(conversationId = convoId, senderDomain = peer, userDateMs = 100L)
+            val m2 = fixture.seedMessage(conversationId = convoId, senderDomain = peer, userDateMs = 200L)
+
+            // In-memory model is already past 200ms — gate should fire.
+            fixture.participantLookup.setLastRead(
+                convoId,
+                kotlin.time.Instant.fromEpochMilliseconds(200L),
+            )
+
+            service.markAsReadByFiles(convoId, listOf(m1, m2))
+
+            // Receipts still go: outbox carries both eligible fileIds.
+            val row = fixture.drainOutbox()
+                .single { it.uploadType == DriveOutboxUploader.SendReadReceiptByFileIds }
+            val payload = OdinSystemSerializer.deserialize<SendReadReceiptByFileIdsOutboxRequest>(
+                row.json.decodeToString()
+            )
+            val eligibleFileIds = fixture.messageLookup.records
+                .filter { it.id == m1 || it.id == m2 }
+                .map { it.fileId }
+                .toSet()
+            assertEquals(eligibleFileIds, payload.fileIds.toSet())
+
+            // Local-state work is skipped: ChatReadCount untouched, no local
+            // updater call, no enrich emission.
+            assertNull(fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+            assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
+            assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
         }
     }
 
@@ -356,14 +382,15 @@ class ChatMessageActionServiceTest {
     }
 
     @Test
-    fun markAsReadByFiles_noUnreadRecords_returnsEarlyWithNoSideEffects() = runTest {
+    fun markAsReadByFiles_onlySelfAuthored_skipsOutboxButAdvancesLocalReadState() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val convoId = Uuid.random()
 
-            // Only self-authored — all filtered out, unreadRecords ends up empty.
-            // Realistic: the scroll autoscan in ConversationMessagesPane can hand us
-            // a batch of ids where every record is self-authored or already-read.
+            // Only self-authored — nothing to receipt to a peer.
+            // Realistic: Note-to-Self conversations, where every visible message is
+            // self-authored. The local lastReadTime must still advance, otherwise the
+            // unread count sticks at whatever stale value the DB has.
             val id = fixture.seedMessage(
                 conversationId = convoId,
                 senderDomain = fixture.testDomain,
@@ -372,10 +399,80 @@ class ChatMessageActionServiceTest {
 
             service.markAsReadByFiles(convoId, listOf(id))
 
-            // Nothing to receipt — no outbox row, no local upsert, no enrichment.
+            // No peer to receipt to — outbox stays empty.
             assertTrue(fixture.drainOutbox().isEmpty())
+
+            // But we did view the message, so local read state must advance.
+            assertEquals(100L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+            assertEquals(listOf(convoId), fixture.unreadCountEnricher.calls.map { it.conversationId })
+            assertEquals(listOf(convoId), fixture.localLastReadUpdater.calls.map { it.conversationId })
+        }
+    }
+
+    // ----- markAllAsRead (bulk dismiss from menu) -----
+
+    @Test
+    fun markAllAsRead_advancesLastReadTimeToLatestMessageTimestamp() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            val latest = kotlin.time.Instant.fromEpochMilliseconds(5_000L)
+            fixture.participantLookup.setLastRead(
+                conversationId = convoId,
+                lastRead = kotlin.time.Instant.fromEpochMilliseconds(1_000L),
+                latestMessageTimestamp = latest,
+            )
+
+            service.markAllAsRead(convoId)
+
+            // Local read pointer advanced to the conversation's latest message.
+            assertEquals(5_000L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+            assertEquals(
+                listOf(convoId to latest),
+                fixture.unreadCountEnricher.calls.map { it.conversationId to it.newLastRead },
+            )
+            assertEquals(
+                listOf(convoId),
+                fixture.localLastReadUpdater.calls.map { it.conversationId },
+            )
+            // Bulk dismiss must NOT impersonate per-message read receipts.
+            assertTrue(fixture.drainOutbox().isEmpty())
+        }
+    }
+
+    @Test
+    fun markAllAsRead_isNoOp_whenAlreadyAtLatest() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            // lastRead == latestMessageTimestamp via the setLastRead default.
+            fixture.participantLookup.setLastRead(
+                conversationId = convoId,
+                lastRead = kotlin.time.Instant.fromEpochMilliseconds(5_000L),
+            )
+
+            service.markAllAsRead(convoId)
+
+            assertNull(fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
             assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
             assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
+            assertTrue(fixture.drainOutbox().isEmpty())
+        }
+    }
+
+    @Test
+    fun markAllAsRead_isNoOp_whenConversationNotInMemory() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            // No setLastRead call → fake returns null from getConversationById.
+
+            service.markAllAsRead(convoId)
+
+            assertNull(fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId))
+            assertTrue(fixture.unreadCountEnricher.calls.isEmpty())
+            assertTrue(fixture.localLastReadUpdater.calls.isEmpty())
+            assertTrue(fixture.drainOutbox().isEmpty())
         }
     }
 }

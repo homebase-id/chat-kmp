@@ -112,7 +112,17 @@ object MainIndexMetaHelpers {
                 dataType = (header.fileMetadata.appData.dataType ?: 0).toLong(),
                 archivalStatus = (header.fileMetadata.appData.archivalStatus?.value ?: 0).toLong(),
                 historyStatus = 0L,
-                userDate = header.fileMetadata.appData.userDate ?: 0L,
+                // Fall back to `metadata.created` when appData.userDate is null —
+                // older Web/RN clients didn't always capture userDate, and the
+                // in-memory MessageUiModel mapper falls back to a server-stamped
+                // timestamp too (see ChatMessageStream.mapToMessageData). Storing
+                // 0 here would put those rows at the epoch, which makes any SQL
+                // filter on userDate (notably the unread-count queries) disagree
+                // with the in-memory list ordering. `created` is always set on
+                // real rows and is the same fallback the soft-delete branch in
+                // mapToMessageData uses, so we land on the same wall-clock time.
+                userDate = header.fileMetadata.appData.userDate
+                    ?: header.fileMetadata.created.milliseconds,
                 created = header.fileMetadata.created.milliseconds,
                 modified = header.fileMetadata.updated.milliseconds,
                 fileSystemType = 0L, // Default value

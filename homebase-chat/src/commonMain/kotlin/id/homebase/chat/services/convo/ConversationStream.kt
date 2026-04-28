@@ -7,6 +7,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.util.truncateToCodePoints
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 class ConversationStream(
@@ -112,7 +114,7 @@ class ConversationStream(
             eventBus.events.collect { event ->
 
                 if (event is BackendEvent.ConnectionOnline) {
-                    enrichWithUnreadCounts()
+                    enrichAllConversationsWithUnreadCounts()
                     return@collect
                 }
 
@@ -391,6 +393,12 @@ class ConversationStream(
     private suspend fun processConversationBatchIncrementally(
         conversationFiles: List<HomebaseFile>
     ) {
+        // Drive-sync of a conversation file (cold-load or peer-device echo) writes
+        // only DriveMainIndex; ChatReadCount lags. selectAllUnreadCount uses
+        // ChatReadCount, so without this catch-up a conversation marked-read on
+        // another device keeps reporting non-zero unread on this one.
+        mirrorLastReadIntoChatReadCount(conversationFiles)
+
         // For each file in the batch, map to model (fetch last message from DB if needed)
         val incomingConversations =
             conversationFiles.map { file ->
@@ -574,6 +582,12 @@ class ConversationStream(
         val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
+        // Catch ChatReadCount up to whatever the conversation files say —
+        // necessary on cold load because mark-as-read advances from prior
+        // sessions on other devices may have synced into the file's localAppData
+        // without ever touching this device's ChatReadCount table.
+        mirrorLastReadIntoChatReadCount(files)
+
         val basic = files.map { file ->
             val ui = mapper.mapToBasic(file)
             if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
@@ -592,6 +606,10 @@ class ConversationStream(
                     "(query=${afterQuery - startedAt}ms map=${Clock.System.now().toEpochMilliseconds() - afterQuery}ms) " +
                     "items=${basic.size}"
         }
+    }
+
+    private suspend fun mirrorLastReadIntoChatReadCount(files: List<HomebaseFile>) {
+        mirrorLastReadIntoChatReadCount(dbm, files)
     }
 
     /**
@@ -699,7 +717,7 @@ class ConversationStream(
      *
      * Safe to defer, safe to skip, safe to retry.
      */
-    suspend fun enrichWithUnreadCounts() {
+    suspend fun enrichAllConversationsWithUnreadCounts() {
         val startedAt = Clock.System.now().toEpochMilliseconds()
         val c = credentialsManager.requireActiveCredentials()
         val unread = dbm.chatReadCount.selectAllUnreadCount(c.getIdentityId(), c.domain)
@@ -724,51 +742,38 @@ class ConversationStream(
         )
 
         Logger.i(tag = "ConvListPerf") {
-            "enrichWithUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms changedRows=$changed totalRows=${current.items.size}"
+            "enrichAllConversationsWithUnreadCounts=${Clock.System.now().toEpochMilliseconds() - startedAt}ms changedRows=$changed totalRows=${current.items.size}"
         }
     }
 
     /**
-     * Single-conversation variant of [enrichWithUnreadCounts] — patches the
-     * unread count for one conversation without re-scanning the whole list.
-     * Called from message-read actions after the local read timestamp is
-     * advanced for a specific conversation.
+     * Patch the in-memory entry for [conversationId] to reflect a successful
+     * mark-as-read advance: set lastRead to [newLastRead] and re-derive
+     * unreadCount from ChatReadCount. Single state emission so the UI sees both
+     * deltas at once. No-op if the conversation isn't in memory yet.
      */
-    override suspend fun enrichConversationWithUnreadCounts(conversationId: Uuid) {
-        Logger.d(tag = "MarkAsRead") {
-            "ConversationStream.enrichConversationWithUnreadCounts: enter convo=$conversationId"
-        }
-        val c = credentialsManager.requireActiveCredentials()
-        val newCount = dbm.chatReadCount
-            .selectUnreadCountForConversation(c.getIdentityId(), conversationId)
-            .toInt()
-        Logger.d(tag = "MarkAsRead") {
-            "ConversationStream.enrichConversationWithUnreadCounts: db newCount=$newCount convo=$conversationId"
-        }
-
+    override suspend fun applyLocalAdvance(conversationId: Uuid, newLastRead: Instant) {
         val current = _conversations.value
         val index = current.items.indexOfFirst { it.id == conversationId }
         if (index < 0) {
             Logger.w(tag = "MarkAsRead") {
-                "ConversationStream.enrichConversationWithUnreadCounts: convo=$conversationId NOT FOUND in in-memory list (size=${current.items.size}) — UI badge will not update from this call"
+                "ConversationStream.applyLocalAdvance: convo=$conversationId NOT FOUND " +
+                        "in in-memory list (size=${current.items.size}) — UI badge will not update"
             }
             return
         }
+
+        val c = credentialsManager.requireActiveCredentials()
+        val newCount = dbm.chatReadCount
+            .selectUnreadCountForConversation(c.getIdentityId(), conversationId, c.domain)
+            .toInt()
 
         val convo = current.items[index]
-        if (convo.unreadCount == newCount) {
-            Logger.d(tag = "MarkAsRead") {
-                "ConversationStream.enrichConversationWithUnreadCounts: convo=$conversationId no-op (unreadCount already $newCount)"
-            }
-            return
-        }
+        if (convo.lastRead == newLastRead && convo.unreadCount == newCount) return
 
-        Logger.d(tag = "MarkAsRead") {
-            "ConversationStream.enrichConversationWithUnreadCounts: convo=$conversationId unread ${convo.unreadCount}->$newCount (publishing to StateFlow)"
-        }
-        Logger.d("ConversationStream: unreadSync convo=${conversationId} ${convo.unreadCount}->${newCount}")
+        Logger.d("ConversationStream: unreadSync convo=$conversationId ${convo.unreadCount}->$newCount")
         val updated = current.items.toMutableList().apply {
-            this[index] = convo.copy(unreadCount = newCount)
+            this[index] = convo.copy(lastRead = newLastRead, unreadCount = newCount)
         }
         _conversations.value = current.copy(items = updated)
     }
@@ -796,7 +801,7 @@ class ConversationStream(
             // then admins (group-settings only), then unread counts.
             enrichWithLastMessages()
             enrichWithAdmins()
-            enrichWithUnreadCounts()
+            enrichAllConversationsWithUnreadCounts()
         }
 
         // Reactively update share cache when conversations or contacts change,
@@ -930,7 +935,48 @@ data class EnrichmentState(
     /** `true` once [ConversationStream.enrichWithAdmins] has resolved
      *  admin sets for group conversations. */
     val hasAdmins: Boolean = false,
-    /** `true` once [ConversationStream.enrichWithUnreadCounts] has applied
+    /** `true` once [ConversationStream.enrichAllConversationsWithUnreadCounts] has applied
      *  the unread counts from ChatReadCount. */
     val hasUnreadCounts: Boolean = false,
 )
+
+/**
+ * Catch `ChatReadCount.lastReadTime` up to the value carried in each
+ * conversation file's localAppData. Drive-sync of conversation files
+ * (cold load + peer-device echoes) updates `DriveMainIndex` but not
+ * `ChatReadCount`; this keeps the SQL-queryable index aligned with the
+ * file-of-record so `selectAllUnreadCount` reflects cross-device read
+ * advances on the next query.
+ *
+ * Read prior + compare locally before issuing the upsert — the upsert's
+ * `MAX(...)` clause would also keep us from going backward, but it would
+ * still take a write lock on every cold-load row even when nothing
+ * actually needs updating. A cheap read avoids that.
+ *
+ * Top-level for unit-testability without spinning up a full
+ * [ConversationStream] graph.
+ */
+internal suspend fun mirrorLastReadIntoChatReadCount(
+    dbm: DatabaseManager,
+    files: List<HomebaseFile>,
+) {
+    for (file in files) {
+        val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
+        val raw = file.fileMetadata.localAppData?.content ?: continue
+        val localAppData = try {
+            OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(raw)
+        } catch (t: Throwable) {
+            // One bad row shouldn't poison cold-load — but make it visible
+            // instead of silent so we can investigate corrupted appdata.
+            Logger.w(throwable = t, tag = "ConversationStream") {
+                "mirrorLastReadIntoChatReadCount: failed to deserialise localAppData " +
+                        "for convo=$uniqueId — skipping row"
+            }
+            continue
+        }
+        val incoming = localAppData.lastReadTime ?: continue
+        val prior = dbm.chatReadCount.selectLastReadTimeMs(uniqueId)
+        if (prior != null && prior >= incoming.milliseconds) continue
+        dbm.chatReadCount.upsertLastReadTime(uniqueId, incoming)
+    }
+}

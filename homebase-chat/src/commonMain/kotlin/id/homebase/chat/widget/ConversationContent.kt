@@ -571,6 +571,15 @@ fun ConversationContent(
                                     )
                                 )
                             },
+                            onMarkAsRead = {
+                                showConversationMenu = false
+                                onUiAction(
+                                    ConversationListUiAction.MarkAsRead(
+                                        conversation.conversation.id,
+                                        messageIds = null,
+                                    )
+                                )
+                            },
                             onBlock = if (!conversation.conversation.isGroupConversation && !conversation.conversation.isWithSelf) {
                                 {
                                     showConversationMenu = false
