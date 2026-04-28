@@ -19,4 +19,10 @@ sealed interface ConversationListUiEvent {
     data class SaveFileToDevice(val filePath: String, val suggestedName: String) : ConversationListUiEvent
     data class OpenUrl(val url: String) : ConversationListUiEvent
     data class OpenSendConnectionRequestDialog(val odinId: OdinId) : ConversationListUiEvent
+
+    /**
+     * Bytes have been posted to [CropResultBus] under [requestId]; the screen
+     * should navigate to the cropper.
+     */
+    data class NavigateToCropper(val requestId: kotlin.uuid.Uuid) : ConversationListUiEvent
 }

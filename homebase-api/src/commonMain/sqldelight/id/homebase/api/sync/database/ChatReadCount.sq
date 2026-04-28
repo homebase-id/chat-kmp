@@ -54,7 +54,11 @@ LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
 WHERE d.identityId = ?
   AND d.groupId = ?
   AND d.fileType = 7878 AND d.dataType = 0
-  AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime);
+  AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime)
+  AND d.originalAuthor IS NOT NULL
+  AND d.originalAuthor != ?
+  -- 2 = ArchivalStatus.Removed; soft-deleted messages don't count toward unread.
+  AND d.archivalStatus != 2;
 
 -- Return list of {groupId, unreadCount} for all chat conversations (8888)
 -- Will return (groupId, unread-count) for all Chat conversations with 1 or more unread messages.
@@ -68,8 +72,15 @@ WHERE d.identityId = ?
 --   AND d.groupId IS NOT NULL
 -- GROUP BY d.groupId;
 
+-- Returns one row per conversation that has at least one unread message, plus
+-- the conversation's stored ChatReadCount.lastReadTime (NULL when no row exists
+-- yet — e.g. never marked-read on this device). The Defragmenter-style
+-- enrichment pipeline uses this single round-trip to both:
+--   - patch unread counts onto the in-memory list, and
+--   - decide whether to mirror file-of-record lastReadTime into ChatReadCount.
+-- groupId is UNIQUE in ChatReadCount, so MAX() over it returns the (only) value.
 selectAllUnreadCount:
-SELECT d.groupId, COUNT(*) AS unreadCount
+SELECT d.groupId, COUNT(*) AS unreadCount, MAX(c.lastReadTime) AS lastReadTime
 FROM DriveMainIndex AS d
 LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
 WHERE d.identityId = ?
@@ -77,7 +88,14 @@ WHERE d.identityId = ?
   AND d.dataType = 0
   AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime)
   AND d.groupId IS NOT NULL
-  AND (d.originalAuthor IS NULL OR d.originalAuthor != ?)
+  -- NULL originalAuthor is treated as self: drive-sync echoes of your own
+  -- messages (and older self-authored rows) land with originalAuthor=NULL
+  -- because the server doesn't stamp it on self-messages. Counting them as
+  -- unread to yourself would be wrong.
+  AND d.originalAuthor IS NOT NULL
+  AND d.originalAuthor != ?
+  -- 2 = ArchivalStatus.Removed; soft-deleted messages don't count toward unread.
+  AND d.archivalStatus != 2
 GROUP BY d.groupId;
 
 

@@ -42,6 +42,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":homebase-api"))
             implementation(project(":homebase-common"))
+            implementation(project(":image-editor-ui"))
 
             implementation(libs.kermit)
             implementation(libs.jetbrains.compose.runtime)

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="crop_title">Rediger billede</string>
+    <string name="crop_action_save">Gem</string>
+    <string name="crop_action_cancel">Annuller</string>
+    <string name="crop_action_back">Tilbage</string>
+    <string name="crop_action_rotate">Roter</string>
+    <string name="crop_action_flip">Vend vandret</string>
+    <string name="crop_action_lock_aspect">Lås billedformat</string>
+    <string name="crop_action_lock_aspect_off">Lås billedformat op</string>
+    <string name="crop_action_reset">Nulstil</string>
+    <string name="crop_action_undo">Fortryd</string>
+    <string name="crop_action_redo">Gendan</string>
+    <string name="crop_aspect_free">Fri</string>
+    <string name="crop_aspect_square">1:1</string>
+    <string name="crop_aspect_4_3">4:3</string>
+    <string name="crop_aspect_16_9">16:9</string>
+    <string name="crop_rotation_dial_label">Roter</string>
+    <string name="crop_loading">Indlæser…</string>
+    <string name="crop_error_load">Kunne ikke indlæse billede</string>
+    <string name="crop_error_save">Kunne ikke gemme billede</string>
+</resources>

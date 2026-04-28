@@ -62,6 +62,29 @@ expect object ImageUtils {
      * Utility: get natural size
      */
     fun getNaturalSize(srcBytes: ByteArray): ImageSize
+
+    /**
+     * Apply an arbitrary affine transform to [srcBytes] and rasterize the
+     * result into a new image of [outputWidth] x [outputHeight] pixels.
+     *
+     * [matrix9] is a 9-element row-major affine matrix that maps natural-pixel
+     * coordinates of the source image into pixel coordinates of the output:
+     *
+     *     [ MSCALE_X  MSKEW_X   MTRANS_X ]
+     *     [ MSKEW_Y   MSCALE_Y  MTRANS_Y ]
+     *     [    0         0         1     ]
+     *
+     * Pixels outside the warped source region are filled with [fillColorArgb].
+     */
+    fun warpAffine(
+        srcBytes: ByteArray,
+        matrix9: FloatArray,
+        outputWidth: Int,
+        outputHeight: Int,
+        fillColorArgb: Int = 0x00000000,
+        outputFormat: ImageFormat = ImageFormat.JPEG,
+        quality: Int = 90,
+    ): ImageResult
 }
 
 /**

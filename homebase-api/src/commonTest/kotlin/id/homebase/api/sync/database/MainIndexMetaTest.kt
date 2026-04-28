@@ -107,6 +107,91 @@ class MainIndexMetaTest {
         }
     }
 
+    /**
+     * Regression test for the SQL/in-memory userDate clock divergence:
+     * older Web/RN clients sent messages without `appData.userDate`. The
+     * in-memory mapper falls back to a server-stamped timestamp, but
+     * the SQL projection used to store `0L` — leaving any unread-count
+     * filter on `userDate` permanently disagreeing with the message list
+     * order. The projection now falls back to `metadata.created`, which
+     * is always set on a real row.
+     */
+    @Test
+    fun convertFileHeader_fallsBackToCreated_whenAppDataUserDateIsNull() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val fileId = Uuid.random()
+            val createdMs = 1_700_000_000_000L
+
+            val jsonHeader = """{
+                "fileId": "${fileId}",
+                "driveId": "${driveId}",
+                "fileState": "active",
+                "fileSystemType": "standard",
+                "serverFileIsEncrypted":"true",
+                "keyHeader" : {
+                    "iv" : [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ],
+                    "aesKey" : {
+                      "bytes" : [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+                    }
+                  },
+                "fileMetadata": {
+                    "globalTransitId": "52a491ac-9870-4d0c-94a1-1bf667393015",
+                    "created": $createdMs,
+                    "updated": $createdMs,
+                    "transitCreated": 0,
+                    "transitUpdated": 0,
+                    "serverFileIsEncrypted": true,
+                    "senderOdinId": "test.sender",
+                    "originalAuthor": "test.sender",
+                    "appData": {
+                        "uniqueId": "55d2e47e-ec86-f9b8-1e3d-d7bdeeb0527b",
+                        "tags": null,
+                        "fileType": 1,
+                        "dataType": 1,
+                        "groupId": null,
+                        "userDate": null,
+                        "content": "legacy message without userDate",
+                        "previewThumbnail": null,
+                        "archivalStatus": 0
+                    },
+                    "localAppData": null,
+                    "referencedFile": null,
+                    "reactionPreview": null,
+                    "versionTag": "1355aa19-2031-d800-403d-e8696a8be494",
+                    "payloads": [],
+                    "dataSource": null
+                },
+                "serverMetadata": {
+                    "accessControlList": {
+                        "requiredSecurityGroup": "owner",
+                        "circleIdList": null,
+                        "odinIdList": null
+                    },
+                    "doNotIndex": false,
+                    "allowDistribution": false,
+                    "fileSystemType": "standard",
+                    "fileByteCount": 1000,
+                    "originalRecipientCount": 0,
+                    "transferHistory": null
+                },
+                "priority": 300,
+                "fileByteCount": 1000
+            }"""
+
+            val header = OdinSystemSerializer.deserialize<HomebaseFile>(jsonHeader)
+            val processor = MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
+            val record = processor.convertFileHeaderToDriveMainIndexRecord(identityId, driveId, header)
+
+            assertEquals(
+                createdMs,
+                record.userDate,
+                "SQL userDate must fall back to metadata.created when appData.userDate is null",
+            )
+        }
+    }
+
     @Test
     @Ignore // michael will fix
     fun testBaseUpsertEntryZapZapWithTags() = runTest {

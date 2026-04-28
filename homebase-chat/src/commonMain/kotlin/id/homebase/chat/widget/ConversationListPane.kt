@@ -534,10 +534,14 @@ fun ConversationLisContentItem(
                     onTogglePinClick = {
                         onUiAction(ConversationListUiAction.TogglePinConversation(listItem.conversation.conversation.id))
                     },
-//                    onMarkAsReadClick = {
-//                        onUiAction(ConversationListUiAction.MarkAsRead(listItem.conversation.conversation.id, listItem.conversation.conversation.la))
-//                    },
-                    onMarkAsReadClick = null, //no support for this
+                    onMarkAsReadClick = {
+                        onUiAction(
+                            ConversationListUiAction.MarkAsRead(
+                                listItem.conversation.conversation.id,
+                                messageIds = null,
+                            )
+                        )
+                    },
 
                     isSelected = listItem.conversation.conversation.id == selectedConversationId,
                 )

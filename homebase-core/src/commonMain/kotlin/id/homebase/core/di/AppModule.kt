@@ -206,6 +206,7 @@ val appModule = module {
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
     single<UnreadCountEnricher> { get<ConversationStream>() }
+    single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
     singleOf(::ConversationService)
     single<LocalLastReadUpdater> { get<ConversationService>() }
     singleOf(::ChatMessageStream)
@@ -259,4 +260,9 @@ val appModule = module {
 expect fun platformModule(): Module
 
 /** All Koin modules for the application. */
-val allModules = listOf(platformModule(), apiModule, appModule)
+val allModules = listOf(
+    platformModule(),
+    apiModule,
+    appModule,
+    id.homebase.imageeditor.ui.di.imageEditorModule,
+)

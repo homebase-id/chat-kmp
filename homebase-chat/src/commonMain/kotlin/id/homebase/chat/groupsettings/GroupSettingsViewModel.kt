@@ -6,6 +6,11 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.RecipientTransferHistoryEntry
+import id.homebase.api.client.drives.files.TransferStatus
+import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.Back
@@ -17,6 +22,8 @@ import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.toErrorDetailRes
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.buildConnectToIdentityUrl
 import id.homebase.core.util.initials
@@ -34,6 +41,7 @@ class GroupSettingsViewModel(
     private val conversationService: ConversationService,
     private val contactService: ContactService,
     private val credentialsManager: CredentialsManager,
+    private val driveFileProvider: DriveFileProvider,
 ) : ViewModel() {
 
     val route = savedStateHandle.toRoute<Route.GroupSettings>()
@@ -194,6 +202,40 @@ class GroupSettingsViewModel(
                     _uiState.update { it.copy(uiEvent = GroupSettingsUiEvent.OpenUrl(url)) }
                 }
             }
+
+            is GroupSettingsUiAction.HealGroupClicked -> {
+                val conversation = uiState.value.conversation ?: return
+                if (uiState.value.isHealing) return
+                _uiState.update { it.copy(isHealing = true) }
+                viewModelScope.launch {
+                    try {
+                        Logger.i("GroupSettings: heal requested for ${conversation.id}")
+                        logTransferSnapshot("BEFORE heal", conversation.id, uiState.value)
+                        val result = conversationService.healGroupDistribution(conversation.id)
+                        Logger.i("GroupSettings: heal result for ${conversation.id} mainHealed=${result.mainHealed} adminHealed=${result.adminHealed}")
+                        // Re-load transfer history so the user sees outbox/sending state immediately
+                        loadTransferHistory(conversation)
+                        logTransferSnapshot("AFTER heal", conversation.id, uiState.value)
+                        _uiState.update {
+                            it.copy(
+                                isHealing = false,
+                                uiEvent = GroupSettingsUiEvent.HealCompleted(
+                                    mainHealed = result.mainHealed,
+                                    adminHealed = result.adminHealed,
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("GroupSettings: heal failed for ${conversation.id}", e)
+                        _uiState.update {
+                            it.copy(
+                                isHealing = false,
+                                uiEvent = Error("Failed to heal group: ${e.message ?: "unknown error"}")
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -247,10 +289,122 @@ class GroupSettingsViewModel(
                         isLoading = false,
                     )
                 }
+
+                if (conversation.isGroupConversation && !conversation.isLegacyGroup) {
+                    loadTransferHistory(conversation)
+                }
             } catch (e: Exception) {
                 Logger.e("Failed to load conversation", e)
                 _uiState.update { it.copy(isLoading = false) }
             }
+        }
+    }
+
+    /**
+     * For each of the two group files (main conversation + admin), fetches the per-recipient
+     * transfer-history if (and only if) the current user is the original author of that file.
+     * Mirrors the loader in [id.homebase.chat.messageinfo.MessageInfoViewModel] — same call,
+     * same status mapping. Result is exposed in [GroupSettingsUiState.mainFileTransfer] /
+     * [GroupSettingsUiState.adminFileTransfer]; null map = column hidden in the UI.
+     */
+    private suspend fun loadTransferHistory(conversation: ConversationUiModel) {
+        val domain = credentialsManager.requireActiveDomain()
+
+        val mainFile = try {
+            conversationService.getConversationHomebaseFile(conversation.id)
+        } catch (e: Exception) {
+            Logger.w(throwable = e) { "loadTransferHistory: failed to load main file ${conversation.id}" }
+            null
+        }
+        val adminFile = try {
+            conversationService.getConversationAdminHomebaseFile(conversation.id)
+        } catch (e: Exception) {
+            Logger.w(throwable = e) { "loadTransferHistory: failed to load admin file ${conversation.id}" }
+            null
+        }
+
+        val mainTransfer = fetchTransferIfAuthor("main", domain, mainFile)
+        val adminTransfer = fetchTransferIfAuthor("admin", domain, adminFile)
+
+        Logger.d {
+            "loadTransferHistory: ${conversation.id} mainAuthored=${mainTransfer != null} mainEntries=${mainTransfer?.size} " +
+                    "adminAuthored=${adminTransfer != null} adminEntries=${adminTransfer?.size} " +
+                    "main=${renderTransferMap(mainTransfer)} admin=${renderTransferMap(adminTransfer)}"
+        }
+
+        _uiState.update {
+            it.copy(
+                mainFileTransfer = mainTransfer,
+                adminFileTransfer = adminTransfer,
+            )
+        }
+    }
+
+    private fun renderTransferMap(map: Map<OdinId, RecipientFileStatus>?): String {
+        if (map == null) return "<column hidden — caller is not author>"
+        if (map.isEmpty()) return "<no recipients in transfer history>"
+        return map.entries.joinToString(prefix = "{", postfix = "}") { (recipient, status) ->
+            val s = when (status) {
+                RecipientFileStatus.Ok -> "OK"
+                is RecipientFileStatus.Problem -> "PROBLEM(${status.rawStatus})"
+            }
+            "$recipient=$s"
+        }
+    }
+
+    /**
+     * Logs the per-recipient status of both group files in a single multi-line entry.
+     * Called before and after a heal so the diff is easy to read in homebase.log when
+     * diagnosing "I clicked heal but recipient X still doesn't have it".
+     */
+    private fun logTransferSnapshot(label: String, conversationId: Uuid, state: GroupSettingsUiState) {
+        Logger.i {
+            "GroupSettings: $label snapshot conversationId=$conversationId " +
+                    "main=${renderTransferMap(state.mainFileTransfer)} admin=${renderTransferMap(state.adminFileTransfer)}"
+        }
+    }
+
+    private suspend fun fetchTransferIfAuthor(
+        label: String,
+        currentUser: OdinId,
+        file: HomebaseFile?
+    ): Map<OdinId, RecipientFileStatus>? {
+        if (file == null) return null
+        val author = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId
+        if (author != currentUser) {
+            Logger.d { "loadTransferHistory: skipping $label — caller=$currentUser is not author=$author" }
+            return null
+        }
+
+        return try {
+            val history = driveFileProvider.getTransferHistory(chatTargetDrive.alias, file.fileId)
+            val results = history?.history?.results ?: emptyList()
+            results.associate { entry: RecipientTransferHistoryEntry ->
+                val odinId = OdinId(entry.recipient)
+                // Match the per-message status mapping in
+                // ChatDeliveryStatus.toChatDeliveryStatus: when the latest known
+                // status is Delivered, that wins over `isInOutbox`. Right after
+                // pressing "Heal group" we re-enqueue the file, so the server
+                // briefly returns `latestTransferStatus = Delivered` (from the
+                // prior successful send) AND `isInOutbox = true` (because we
+                // just kicked it back into the outbox). Treating that combo as
+                // a Problem produced a misleading "PROBLEM(Delivered)" log
+                // entry and a transient red icon for ~180ms after each heal.
+                // The recipient is fine — the file has been delivered before
+                // and is currently being redistributed.
+                val status = if (entry.latestTransferStatus == TransferStatus.Delivered) {
+                    RecipientFileStatus.Ok
+                } else {
+                    RecipientFileStatus.Problem(
+                        rawStatus = entry.latestTransferStatus,
+                        detailRes = entry.latestTransferStatus.toErrorDetailRes()
+                    )
+                }
+                odinId to status
+            }
+        } catch (e: Exception) {
+            Logger.w(throwable = e) { "loadTransferHistory: getTransferHistory($label) failed for fileId=${file.fileId}" }
+            null
         }
     }
 }

@@ -15,4 +15,5 @@ sealed interface GroupSettingsUiAction {
     data class RemoveAdmin(val contact: ContactUiModel, val skipConfirmation: Boolean = false) : GroupSettingsUiAction
     data class RemoveFromGroup(val contact: ContactUiModel, val skipConfirmation: Boolean = false) : GroupSettingsUiAction
     data class ConnectToIdentity(val odinId: OdinId) : GroupSettingsUiAction
+    data object HealGroupClicked : GroupSettingsUiAction
 }

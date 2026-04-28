@@ -100,4 +100,8 @@ sealed class Route {
     @Serializable
     @SerialName("feed")
     data object Feed : Route()
+
+    @Serializable
+    @SerialName("crop")
+    data class Crop(val requestId: String) : Route()
 }
