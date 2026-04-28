@@ -45,6 +45,10 @@ import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.ui.screens.vault.VaultRepository
+import id.homebase.core.ui.screens.vault.VaultSettingsViewModel
+import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
@@ -80,11 +84,16 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
+import id.homebase.core.config.getPermissionExtensionConfig
+import id.homebase.core.config.getVaultPermissionExtensionConfig
+
+val VaultPermissionQualifier = named("vaultPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+    single { VaultPreferences(get()) }
 
     // DriveRegistry reads/writes a cross-device list of optional drives from the user's
     // Chat drive. See id.homebase.core.sync.DriveRegistry for the storage model.
@@ -223,6 +232,7 @@ val appModule = module {
     singleOf(::NotificationService)
     singleOf(::ConnectionRequestService)
     singleOf(::NotificationActionBridge)
+    single { VaultRepository(get(), get(), get(), get(), get(), get(), get(), get()) }
 
     singleOf(::LiveDefragSource) bind DefragSource::class
 
@@ -242,6 +252,7 @@ val appModule = module {
     viewModelOf(::AddGroupMembersViewModel)
     viewModelOf(::EditConversationGroupViewModel)
     viewModel { ExtendPermissionViewModel(get(), get(), get(), getPermissionExtensionConfig()) }
+    viewModel(VaultPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getVaultPermissionExtensionConfig()) }
     viewModel(FeedPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getFeedPermissionExtensionConfig()) }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
@@ -254,6 +265,8 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
+    viewModel { VaultViewModel(get(), get(VaultPermissionQualifier), get(), get()) }
+    viewModelOf(::VaultSettingsViewModel)
 }
 
 // Common module that each platform will implement

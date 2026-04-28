@@ -7,6 +7,7 @@ import id.homebase.api.youauth.AppPermissionType
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.TargetDriveAccessRequest
+import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -56,6 +57,16 @@ val contactLabeledDrive =
 val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive, label = "Profile")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
 
+// Placeholder Vault drive — real GUIDs will replace these once the server feature ships.
+val vaultLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("f47ac10b-58cc-4372-a567-0e02b2c3d479"),
+        type = Uuid.parse("00000000-0000-0000-0000-000000000001"),
+//        type = Uuid.parse("70e92f0f94d05f5c7dcd36466094f3a5"), //Uncomment when not pushing to PROD
+    ),
+    label = "Vault",
+)
+
 // Backward-compatible aliases — all existing consumers remain unaffected
 val chatTargetDrive = chatLabeledDrive.drive
 val contactTargetDrive = contactLabeledDrive.drive
@@ -97,6 +108,16 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
 
         )
 
+val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = vaultLabeledDrive.drive.alias.toString(),
+        type = vaultLabeledDrive.drive.type.toString(),
+        name = vaultLabeledDrive.label,
+        description = "Drive to store your personal documents",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
+
 // Mandatory drives — always mounted; required for the chat app to function.
 // Chat and Contacts power messaging.
 // See ADDING_ADDON_APPS.md §"Mandatory vs Optional Drives" for the full model.
@@ -109,7 +130,6 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
 // the profile drive synced into the local SQLDelight index.
 val mandatorySyncDrives: List<LabeledDrive> =
     listOf(chatLabeledDrive, contactLabeledDrive /*, profileLabeledDrive */)
-
 // Feed-specific permission config
 val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     TargetDriveAccessRequest(
@@ -176,6 +196,16 @@ fun getPermissionExtensionConfig(): PermissionExtensionConfig {
         circleDrives = circleDriveTargetRequest,
         permissions = appPermissions,
         // needsAllConnected = true,
+        returnUrl = AppConfig.RETURN_URL
+    )
+}
+
+fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = vaultTargetDriveAccessRequest,
+        permissions = emptyList(),
         returnUrl = AppConfig.RETURN_URL
     )
 }
