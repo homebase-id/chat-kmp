@@ -87,7 +87,7 @@ class ConversationStream(
      *  sync, or transfer-to-self). The plumbing is retained so a future
      *  explicit-recovery path (e.g. ensure-file-on-send, or a post-sync
      *  reconciliation pass) can wire in without touching DI. */
-    var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
+    var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId?) -> Unit)? = null
     // endregion
 
     // region Placeholder reconciliation
@@ -391,6 +391,15 @@ class ConversationStream(
         } else {
             updateConversation(existing, incoming)
         }
+    }
+
+    override suspend fun removeConversation(conversationId: Uuid) {
+        val current = _conversations.value
+        if (current.items.none { it.id == conversationId }) return
+        _conversations.value = current.copy(
+            items = current.items.filterNot { it.id == conversationId }
+        )
+        placeholderIds -= conversationId
     }
 
     private suspend fun processAdminFileBatch(adminFiles: List<HomebaseFile>) {

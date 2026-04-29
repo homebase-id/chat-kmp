@@ -64,7 +64,7 @@ class ConversationServiceRecoveryTest {
     }
 
     @Test
-    fun recoverConversation_oneOnOne_existingDeleted_revivesViaUpdate() = runTest {
+    fun recoverConversation_oneOnOne_existingDeleted_revivesAsLocalPlaceholder() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val alice = "alice.test"
@@ -81,15 +81,26 @@ class ConversationServiceRecoveryTest {
                 originalAuthor = OdinId(alice),
             )
 
+            assertEquals(
+                rowsBefore,
+                fixture.outboxRowCount(),
+                "recovery is local-only ⇒ no outbox enqueue",
+            )
+            val file = fixture.getConversationFile(xorId)
+            assertNotNull(file, "deleted 1:1 should be replaced with a local placeholder")
+            assertNull(
+                file.fileMetadata.versionTag,
+                "local-only placeholder marker (versionTag=null) lets a real server file later supersede it",
+            )
             assertTrue(
-                fixture.outboxRowCount() > rowsBefore,
-                "deleted 1:1 should be revived via an UpdateFileByUniqueId enqueue",
+                fixture.conversationLoader.loaded.contains(xorId),
+                "recoverConversation should refresh the in-memory model via loadConversation",
             )
         }
     }
 
     @Test
-    fun recoverConversation_oneOnOne_noFile_createsFresh() = runTest {
+    fun recoverConversation_oneOnOne_noFile_writesLocalPlaceholder() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val alice = "alice.test"
@@ -101,15 +112,20 @@ class ConversationServiceRecoveryTest {
                 originalAuthor = OdinId(alice),
             )
 
-            assertTrue(
-                fixture.outboxRowCount() > rowsBefore,
-                "no local file ⇒ writeConversationFile must enqueue a new-file upload",
+            assertEquals(
+                rowsBefore,
+                fixture.outboxRowCount(),
+                "recovery is local-only ⇒ no outbox enqueue",
             )
+            val file = fixture.getConversationFile(xorId)
+            assertNotNull(file, "no local file ⇒ a placeholder should be written")
+            assertNull(file.fileMetadata.versionTag, "placeholder marker")
+            assertTrue(fixture.conversationLoader.loaded.contains(xorId))
         }
     }
 
     @Test
-    fun recoverConversation_group_noFile_createsWithCallerAndOriginalAuthor() = runTest {
+    fun recoverConversation_group_noFile_writesLocalPlaceholder() = runTest {
         ConversationServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val alice = "alice.test"
@@ -122,10 +138,15 @@ class ConversationServiceRecoveryTest {
                 originalAuthor = OdinId(alice),
             )
 
-            assertTrue(
-                fixture.outboxRowCount() > rowsBefore,
-                "group recovery with no file should enqueue a new group conversation",
+            assertEquals(
+                rowsBefore,
+                fixture.outboxRowCount(),
+                "recovery is local-only ⇒ no outbox enqueue",
             )
+            val file = fixture.getConversationFile(groupId)
+            assertNotNull(file, "no local file ⇒ a placeholder should be written")
+            assertNull(file.fileMetadata.versionTag, "placeholder marker")
+            assertTrue(fixture.conversationLoader.loaded.contains(groupId))
         }
     }
 

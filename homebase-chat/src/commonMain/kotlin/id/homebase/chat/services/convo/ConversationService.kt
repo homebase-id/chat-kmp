@@ -1497,10 +1497,10 @@ class ConversationService(
      * from the file when available, and either revives or creates the file using
      * the ORIGINAL [conversationId] (never recomputes it).
      */
-    suspend fun recoverConversation(conversationId: Uuid, originalAuthor: OdinId) {
+    suspend fun recoverConversation(conversationId: Uuid, originalAuthor: OdinId?) {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("recoverConversation")
-        audit.start("conversationId=$conversationId originalAuthor=${originalAuthor.domainName}")
+        audit.start("conversationId=$conversationId originalAuthor=${originalAuthor?.domainName}")
         // ---- end DEBUG ----
         val domain = credentialsManager.requireActiveDomain()
         val isNoteToSelf = conversationId == ChatProtocol.ConversationWithYourselfId
@@ -1514,13 +1514,30 @@ class ConversationService(
             return
         }
 
-        val isOneToOne = conversationId == XorIdUtil.getNewXorId(
+        // null originalAuthor → can't compute the 1:1 XorId, so treat as group
+        // (matches ConversationStream's placeholder behaviour for self-authored
+        // group messages whose stored originalAuthor is null).
+        val isOneToOne = originalAuthor != null && conversationId == XorIdUtil.getNewXorId(
             domain.domainName, originalAuthor.domainName
         )
 
-        Logger.i("ConversationService: recoverConversation($conversationId) author=${originalAuthor.domainName} isOneToOne=$isOneToOne")
+        Logger.i("ConversationService: recoverConversation($conversationId) author=${originalAuthor?.domainName} isOneToOne=$isOneToOne")
 
+        // Recovery is strictly local-only: write a placeholder header to the
+        // local DB and refresh the in-memory model. No outbox enqueue, no
+        // server upload, no peer transit. Server distribution is the
+        // exclusive responsibility of healGroupDistribution (the explicit
+        // "Heal Group" button); pushing a placeholder pre-emptively to the
+        // server has been observed to make the recipient's local state
+        // overwrite later heals, defeating the heal flow.
         val existingFile = getConversationHomebaseFile(conversationId)
+
+        // Three pieces of state we resolve from the (optional) existing file:
+        //   - participants for the placeholder
+        //   - whether we need to delete-then-write (broken local file present)
+        //   - early return if the file is already healthy
+        val brokenFileIdToDelete: Uuid?
+        val participants: List<OdinId>
 
         if (existingFile != null) {
             val existingState: ConversationState? = try {
@@ -1529,8 +1546,6 @@ class ConversationService(
                 Logger.w(e) { "ConversationService: recoverConversation($conversationId) — existing file failed to map, will overwrite" }
                 null
             }
-
-            Logger.d("ConversationService: recoverConversation($conversationId) existingState=$existingState")
 
             val needsRevive = existingState == null
                 || existingState == ConversationState.Deleted
@@ -1541,50 +1556,77 @@ class ConversationService(
                 return
             }
 
-            // Read existing participants from file if possible (preserves group membership)
+            // Read existing participants from file if possible (preserves group membership).
             val existingContent = existingFile.fileMetadata.appData.content?.let {
                 try {
                     OdinSystemSerializer.deserialize<ConversationAppDataJson>(it)
                 } catch (e: Exception) { null }
             }
-            val participants = existingContent?.recipients
+            participants = existingContent?.recipients
                 ?.filterNotNull()?.distinct()
                 ?.takeIf { it.isNotEmpty() }
-                ?: listOf(originalAuthor, domain).distinct()
-
-            Logger.i("ConversationService: recoverConversation($conversationId) — reviving (state=$existingState) participants=${participants.map { it.domainName }}")
-            audit.step(1, "reviving via updateConversationInternal(archivalStatus=None, distribute=false, isGroup=${!isOneToOne})")
-            runCatching {
-                updateConversationInternal(
-                    conversationId = conversationId,
-                    title = existingContent?.title ?: "",
-                    participants = participants,
-                    archivalStatus = ArchivalStatus.None,
-                    distribute = false,
-                    isGroup = !isOneToOne
-                )
-            }.onSuccess { audit.checkPass("revive") }
-                .onFailure { e -> audit.threw("revive", e); audit.finish("threw"); throw e }
-            audit.finish("revive completed")
-            return
+                ?: listOfNotNull(originalAuthor, domain).distinct()
+            brokenFileIdToDelete = existingFile.fileId
+        } else {
+            participants = listOfNotNull(originalAuthor, domain).distinct()
+            brokenFileIdToDelete = null
         }
 
-        // No local file — create one with the ORIGINAL conversationId
-        val allParticipants = listOf(originalAuthor, domain).distinct()
-        Logger.i("ConversationService: recoverConversation($conversationId) — no local file, creating new (isGroup=${!isOneToOne}) participants=${allParticipants.map { it.domainName }}")
-        audit.step(1, "writeConversationFile (no local file, fresh creation)")
+        // ConversationMapper's 1:1 branch dereferences `participants.first { it != domain }`
+        // and throws if no such participant exists. When the only participant
+        // we could derive is self (e.g. a 1:1 the user started themselves and
+        // whose original counterpart we can't recover from the broken file),
+        // we force the placeholder to be a group so the mapper takes the group
+        // branch — yielding a healthy Active state instead of another
+        // unmappable_conversation flag.
+        val hasNonSelfParticipant = participants.any { it != domain }
+        val forcedGroupForUnmappable1to1 = isOneToOne && !hasNonSelfParticipant
+        val placeholderIsGroup = !isOneToOne || forcedGroupForUnmappable1to1
+        // Give forced-group recoveries a recognisable label so the user can
+        // spot them in the chat list and edit participants / heal-group as
+        // needed. Real groups and clean 1:1 placeholders stay blank — group
+        // titles are user-set, 1:1 titles are derived from the other party.
+        val placeholderTitle = if (forcedGroupForUnmappable1to1) "1:1 repair" else ""
+
+        Logger.i("ConversationService: recoverConversation($conversationId) — LOCAL-ONLY (isGroup=$placeholderIsGroup forcedGroupForUnmappable1to1=$forcedGroupForUnmappable1to1) participants=${participants.map { it.domainName }} replacingBrokenFileId=$brokenFileIdToDelete")
+
+        // Delete any existing broken row first. The placeholder is written with
+        // updated=ZeroTime so a later real-file sync supersedes it cleanly, but
+        // that same property makes baseUpsertEntryZapZap reject the placeholder
+        // when an existing row has a non-zero modified timestamp. Removing the
+        // broken row up-front sidesteps the timestamp guard.
+        if (brokenFileIdToDelete != null) {
+            audit.step(1, "deleteBy(broken row fileId=$brokenFileIdToDelete)")
+            runCatching {
+                dbm.driveMainIndex.deleteBy(
+                    identityId = credentialsManager.requireActiveCredentials().getIdentityId(),
+                    driveId = chatDrive,
+                    fileId = brokenFileIdToDelete,
+                )
+            }.onSuccess { audit.checkPass("deleteBrokenRow") }
+                .onFailure {
+                    audit.threw("deleteBrokenRow", it)
+                    Logger.w(it) {
+                        "ConversationService: recoverConversation($conversationId) — failed to delete broken row fileId=$brokenFileIdToDelete; placeholder write may be a no-op"
+                    }
+                }
+        }
+
+        audit.step(2, "writeLocalOnlyConversationPlaceholder(isGroup=$placeholderIsGroup, title=\"$placeholderTitle\")")
         runCatching {
-            writeConversationFile(
+            optimisticWriter.writeLocalOnlyConversationPlaceholder(
+                driveId = chatDrive,
                 conversationId = conversationId,
-                allParticipants = allParticipants,
-                transitRecipients = listOf(originalAuthor),
-                title = "",
-                isGroup = !isOneToOne,
-                payloadBundle = null
+                participants = participants,
+                isGroup = placeholderIsGroup,
+                title = placeholderTitle,
             )
-        }.onSuccess { result -> audit.check("writeConversationFile", result, "writeConversationFile returned false") }
-            .onFailure { e -> audit.threw("writeConversationFile", e); audit.finish("threw"); throw e }
-        audit.finish("creation completed")
+        }.onSuccess { audit.checkPass("placeholderWritten") }
+            .onFailure { e -> audit.threw("placeholderWritten", e); audit.finish("threw"); throw e }
+
+        audit.step(3, "conversationStream.loadConversation()")
+        conversationStream.loadConversation(conversationId)
+        audit.finish("local-only recovery complete")
     }
     // endregion
 
@@ -1618,7 +1660,47 @@ class ConversationService(
         audit.checkPass("guard")
 
         val deleteFile = preFile
-        Logger.d { "deleteConversation: conversationId=$conversationId isEncrypted=${deleteFile?.fileMetadata?.isEncrypted} aesKey=${deleteFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
+        // A null versionTag is the marker that this is a local-only placeholder
+        // (written by OptimisticWriter.writeLocalOnlyConversationPlaceholder) —
+        // the server has no such conversation file. Routing it through
+        // updateConversationInternal would enqueue an UpdateFile request that
+        // the server rejects with 400 ("Could not find file" / "Missing version
+        // tag"), and the outbox then pointlessly retries for hours. Skip the
+        // server roundtrip and delete the local row directly.
+        val isLocalOnlyPlaceholder = deleteFile != null && deleteFile.fileMetadata.versionTag == null
+        Logger.d { "deleteConversation: conversationId=$conversationId localOnly=$isLocalOnlyPlaceholder isEncrypted=${deleteFile?.fileMetadata?.isEncrypted} aesKey=${deleteFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
+
+        if (isLocalOnlyPlaceholder) {
+            audit.step(1, "local-only placeholder — bypass server, delete local row + remove in-memory entry")
+            // Messages under this groupId may exist server-side (they synced
+            // here from somewhere). Still enqueue the messages-delete so peers'
+            // copies and our own server-side rows clean up. The outbox handles
+            // those independently of the (skipped) conversation-file delete.
+            outboxSync.tryEnqueue(
+                DeleteFilesByGroupIdOutboxRequest(
+                    driveId = chatDrive,
+                    groupIds = listOf(conversationId)
+                )
+            )
+            // Remove the local placeholder row + drop it from the in-memory
+            // chat list so the UI updates immediately.
+            runCatching {
+                dbm.driveMainIndex.deleteBy(
+                    identityId = identityId,
+                    driveId = chatDrive,
+                    fileId = deleteFile.fileId,
+                )
+            }.onSuccess { audit.checkPass("localPlaceholderDelete") }
+                .onFailure {
+                    audit.threw("localPlaceholderDelete", it)
+                    Logger.w(it) {
+                        "deleteConversation($conversationId) — local placeholder row delete failed"
+                    }
+                }
+            conversationStream.removeConversation(conversationId)
+            audit.finish("local-only placeholder removed (no server roundtrip)")
+            return
+        }
 
         // ---- DEBUG instrumentation ----
         audit.step(1, "outboxSync.tryEnqueue(DeleteFilesByGroupIdOutboxRequest)")
