@@ -51,10 +51,16 @@ import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
 import platform.AVFoundation.AVPlayerItemStatusUnknown
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.accessLog
+import platform.AVFoundation.addPeriodicTimeObserverForInterval
+import platform.AVFoundation.currentTime
 import platform.AVFoundation.errorLog
 import platform.AVFoundation.pause
 import platform.AVFoundation.play
+import platform.AVFoundation.rate
+import platform.AVFoundation.removeTimeObserver
 import platform.AVFoundation.resourceLoader
+import platform.CoreMedia.CMTimeGetSeconds
+import platform.CoreMedia.CMTimeMakeWithSeconds
 import platform.AVKit.AVPlayerViewController
 import platform.Foundation.NSData
 import platform.Foundation.NSError
@@ -78,6 +84,7 @@ private sealed interface VpsState {
     data class Playing(
         val player: AVPlayer,
         val delegate: HomebaseResourceLoaderDelegate, // retain delegate alongside player
+        val timeObserver: Any? = null,
     ) : VpsState
 
     data class Error(val message: String) : VpsState
@@ -98,7 +105,10 @@ actual fun VideoPlayerSurface(
 
     DisposableEffect(data) {
         onDispose {
-            (state as? VpsState.Playing)?.player?.pause()
+            (state as? VpsState.Playing)?.let { playing ->
+                playing.timeObserver?.let { playing.player.removeTimeObserver(it) }
+                playing.player.pause()
+            }
             notificationObservers.forEach {
                 NSNotificationCenter.defaultCenter.removeObserver(it)
             }
@@ -147,8 +157,9 @@ actual fun VideoPlayerSurface(
                         val playerItem = AVPlayerItem(asset = asset)
                         attachHlsDiagnostics(playerItem, notificationObservers)
                         val player = AVPlayer(playerItem = playerItem)
+                        val timeObserver = attachPlaybackTicker(player, playerItem, fileId = data.fileId.toString())
                         progressJob.cancel()
-                        state = VpsState.Playing(player = player, delegate = delegate)
+                        state = VpsState.Playing(player = player, delegate = delegate, timeObserver = timeObserver)
                         onProgress(1f)
                     }
                     is VideoContent.Mp4 -> {
@@ -228,17 +239,32 @@ private class HomebaseResourceLoaderDelegate(
 
         val cInfo = loadingRequest.contentInformationRequest
         val dReq = loadingRequest.dataRequest
-        Logger.d(tag = "VideoHLS") {
-            "resourceLoader request: url=$url path=$path " +
-                "contentInfoRequested=${cInfo != null} dataRequested=${dReq != null} " +
-                "reqOffset=${dReq?.requestedOffset} reqLength=${dReq?.requestedLength} " +
-                "currentOffset=${dReq?.currentOffset} toEnd=${dReq?.requestsAllDataToEndOfResource}"
-        }
+        // Each piece on its own line — the iOS file sink truncates long single-line
+        // entries and drops everything past the first `\n`, so verbose diagnostics
+        // have to be split into several short Logger.d calls.
+        Logger.d(tag = "VideoHLS") { "rl req: path=$path file=$fileId key=$payloadKey" }
+        Logger.d(tag = "VideoHLS") { "rl req: cInfo=${cInfo != null} dReq=${dReq != null} toEnd=${dReq?.requestsAllDataToEndOfResource}" }
+        Logger.d(tag = "VideoHLS") { "rl req: reqOffset=${dReq?.requestedOffset} reqLength=${dReq?.requestedLength} currentOffset=${dReq?.currentOffset}" }
 
         scope?.launch(Dispatchers.IO) {
             try {
                 if (path.endsWith(".m3u8")) {
-                    Logger.d(tag = "VideoHLS") { "Serving playlist (${strippedPlaylist.length} chars):\n$strippedPlaylist" }
+                    Logger.d(tag = "VideoHLS") { "Serving playlist (${strippedPlaylist.length} chars) for fileId=$fileId" }
+                    // Log each line of the playlist as its own short entry so the body
+                    // actually lands in homebase.log. Newline-embedded messages get cut.
+                    strippedPlaylist.lineSequence().forEachIndexed { idx, line ->
+                        Logger.d(tag = "VideoHLS") { "playlist[$idx]: $line" }
+                    }
+                    // Also dump a sidecar copy on disk so it can be retrieved off-device.
+                    runCatching {
+                        val tmp = NSURL.fileURLWithPath(NSTemporaryDirectory())
+                            .URLByAppendingPathComponent("hbvid_playlist_${fileId ?: "unknown"}.m3u8")
+                        if (tmp != null) {
+                            strippedPlaylist.encodeToByteArray().toNSData()
+                                .writeToURL(tmp, atomically = true)
+                            Logger.d(tag = "VideoHLS") { "playlist dumped to ${tmp.path}" }
+                        }
+                    }.onFailure { Logger.w(tag = "VideoHLS") { "playlist dump failed: ${it.message}" } }
                     val bytes = strippedPlaylist.encodeToByteArray()
                     loadingRequest.contentInformationRequest?.let {
                         it.contentType = "public.m3u8-playlist"
@@ -286,11 +312,11 @@ private class HomebaseResourceLoaderDelegate(
                             ByteArray(requested).also { plaintext.copyInto(it, 0) }
                         }
                         // Byte-alignment diagnostics: AES-CBC blocks are 16 bytes, TS packets are 188.
-                        // FFmpeg produces plaintext that is N * 188 bytes per segment (no slack), then
-                        // adds a 16-byte PKCS7 pad block when encrypting → ciphertext = plaintext + 16.
-                        // After decrypt we zero-pad the plaintext back up to `requested` so the Range
-                        // response length matches what AVPlayer asked for; the 16 trailing zeros must
-                        // not break the TS demux. Log enough to spot misalignment or wrong seam bytes.
+                        // FFmpeg produces plaintext that is N * 188 bytes per segment, then PKCS7
+                        // rounds up to the next 16-byte boundary (1..16 pad bytes). After decrypt we
+                        // zero-pad the plaintext back up to `requested` so the Range response length
+                        // matches what AVPlayer asked for. Each line below is its own short Logger.d
+                        // call — the iOS file sink truncates long entries.
                         val cipherHex = encrypted.take(16).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
                         val plainHeadHex = plaintext.take(16).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
                         val plainTailStart = (plaintext.size - 32).coerceAtLeast(0)
@@ -299,11 +325,12 @@ private class HomebaseResourceLoaderDelegate(
                         val tsRemainder = if (plaintext.isNotEmpty()) plaintext.size % 188 else -1
                         val tsPacketCount = if (plaintext.isNotEmpty()) plaintext.size / 188 else -1
                         val firstByteIsSync = plaintext.isNotEmpty() && plaintext[0] == 0x47.toByte()
-                        Logger.d(tag = "VideoHLS") {
-                            "Segment decrypt: ${encrypted.size} cipher → ${plaintext.size} plain → ${padded.size} zero-padded at $start | " +
-                                "alignment: startMod16=${start % 16} lenMod16=${length % 16} plainMod188=$tsRemainder tsPackets=$tsPacketCount firstByte=0x47?=$firstByteIsSync | " +
-                                "cipher[0..16]=$cipherHex | plain[0..16]=$plainHeadHex | plain[tail-32..]=$plainTailHex | padded[tail-32..]=$padTailHex"
-                        }
+                        Logger.d(tag = "VideoHLS") { "decrypt sizes: cipher=${encrypted.size} plain=${plaintext.size} padded=${padded.size} at=$start" }
+                        Logger.d(tag = "VideoHLS") { "decrypt align: startMod16=${start % 16} lenMod16=${length % 16} plainMod188=$tsRemainder tsPackets=$tsPacketCount firstByte=0x47?=$firstByteIsSync" }
+                        Logger.d(tag = "VideoHLS") { "decrypt cipher[0..16]=$cipherHex" }
+                        Logger.d(tag = "VideoHLS") { "decrypt plain[0..16]=$plainHeadHex" }
+                        Logger.d(tag = "VideoHLS") { "decrypt plain[tail-32..]=$plainTailHex" }
+                        Logger.d(tag = "VideoHLS") { "decrypt padded[tail-32..]=$padTailHex" }
                         dataRequest.respondWithData(padded.toNSData())
                     }
                     withContext(Dispatchers.Main) { loadingRequest.finishLoading() }
@@ -393,4 +420,56 @@ private fun attachHlsDiagnostics(
         queue = mainQueue,
         usingBlock = onAccessLog,
     )
+    Logger.d(tag = "VideoHLS") { "diagnostics attached: ${observers.size} notification observers" }
+}
+
+/**
+ * Periodic tick (every 0.5 s) that logs player state — the silent-failure mode we're
+ * chasing produces no AVPlayerItem notifications at all, so we need an out-of-band
+ * heartbeat that tells us whether status ever flips to ReadyToPlay, whether rate goes
+ * non-zero, and what currentTime is doing. Returns the opaque observer token; callers
+ * must hand it back to AVPlayer.removeTimeObserver on dispose.
+ */
+private fun attachPlaybackTicker(
+    player: AVPlayer,
+    playerItem: AVPlayerItem,
+    fileId: String,
+): Any? {
+    fun statusName(status: Long): String = when (status) {
+        AVPlayerItemStatusUnknown -> "Unknown"
+        AVPlayerItemStatusReadyToPlay -> "ReadyToPlay"
+        AVPlayerItemStatusFailed -> "Failed"
+        else -> "raw=$status"
+    }
+
+    var tickCount = 0
+    var lastStatus = -1L
+    var lastRateBucket = Float.NaN
+    val interval = CMTimeMakeWithSeconds(0.5, 600)
+    val token = player.addPeriodicTimeObserverForInterval(
+        interval = interval,
+        queue = null, // main queue
+    ) { _ ->
+        tickCount += 1
+        val status = playerItem.status
+        val rate = player.rate
+        val currentSec = CMTimeGetSeconds(player.currentTime())
+        // Always log status transitions; otherwise log every ~2 s (every 4th tick).
+        val statusChanged = status != lastStatus
+        val rateChanged = rate != lastRateBucket
+        if (statusChanged || rateChanged || tickCount % 4 == 0) {
+            Logger.d(tag = "VideoHLS") {
+                "tick#$tickCount fileId=$fileId status=${statusName(status)} rate=$rate t=${currentSec}s"
+            }
+            if (statusChanged) {
+                Logger.d(tag = "VideoHLS") {
+                    "tick#$tickCount status TRANSITION ${statusName(lastStatus)} → ${statusName(status)} itemError=${playerItem.error?.let { "${it.domain}:${it.code} ${it.localizedDescription}" }}"
+                }
+            }
+        }
+        lastStatus = status
+        lastRateBucket = rate
+    }
+    Logger.d(tag = "VideoHLS") { "playback ticker attached for fileId=$fileId" }
+    return token
 }
