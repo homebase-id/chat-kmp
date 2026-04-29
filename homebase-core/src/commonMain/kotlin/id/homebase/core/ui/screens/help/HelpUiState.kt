@@ -5,7 +5,7 @@ import kotlinx.io.files.Path
 data class HelpUiState(
     val appVersion: String,
     val isUpdateAvailable: Boolean = false,
-    val isUpdatedSupported: Boolean = true,
+    val isUpdateSupported: Boolean = true,
     val isCheckingForUpdate: Boolean = true,
     val errorCollectionEnabled: Boolean,
     val showDeveloperMenu: Boolean,

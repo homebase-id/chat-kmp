@@ -127,7 +127,7 @@ class HelpViewModel(
                 _uiState.update {
                     it.copy(
                         isUpdateAvailable = data.updateAvailable,
-                        isUpdatedSupported = data.error == null,
+                        isUpdateSupported = data.error == null && data.canUpdate,
                         isCheckingForUpdate = false,
                     )
                 }

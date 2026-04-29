@@ -1,6 +1,7 @@
 package id.homebase.api.image
 
 import androidx.compose.ui.graphics.ImageBitmap
+import id.homebase.api.image.draw.StrokeCommand
 
 actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? = null
 
@@ -58,6 +59,24 @@ actual object ImageUtils {
         outputWidth: Int,
         outputHeight: Int,
         fillColorArgb: Int,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        TODO("Not yet implemented")
+    }
+
+    actual fun drawStrokes(
+        srcBytes: ByteArray,
+        strokes: List<StrokeCommand>,
+        outputFormat: ImageFormat,
+        quality: Int,
+    ): ImageResult {
+        TODO("Not yet implemented")
+    }
+
+    actual fun blurBytes(
+        srcBytes: ByteArray,
+        radius: Int,
         outputFormat: ImageFormat,
         quality: Int,
     ): ImageResult {

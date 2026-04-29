@@ -87,6 +87,7 @@ fun ConversationListScreen(
     onNavigateToGroupSettings: (conversationId: String) -> Unit,
     onNavigateToMessageInfo: (conversationId: Uuid, messageId: Uuid, fileId: Uuid) -> Unit,
     onNavigateToCropper: (requestId: Uuid) -> Unit = {},
+    onNavigateToDrawer: (requestId: Uuid) -> Unit = {},
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val conversationsUiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -193,6 +194,11 @@ fun ConversationListScreen(
             is ConversationListUiEvent.NavigateToCropper -> {
                 viewModel.eventConsumed()
                 onNavigateToCropper(event.requestId)
+            }
+
+            is ConversationListUiEvent.NavigateToDrawer -> {
+                viewModel.eventConsumed()
+                onNavigateToDrawer(event.requestId)
             }
 
             null -> {}

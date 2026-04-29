@@ -254,6 +254,14 @@ fun ConversationMessagesPane(
                                     )
                                 )
                             },
+                            onDrawImage = { conversationId, attachmentId ->
+                                onUiAction(
+                                    id.homebase.chat.conversationlist.ConversationListUiAction.RequestDrawAttachment(
+                                        conversationId,
+                                        attachmentId,
+                                    )
+                                )
+                            },
                         )
                     }
                 }

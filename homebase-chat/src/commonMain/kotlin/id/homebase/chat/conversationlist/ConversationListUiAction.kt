@@ -150,6 +150,19 @@ sealed interface ConversationListUiAction {
         val croppedBytes: ByteArray,
     ) : ConversationListUiAction
 
+    /** User tapped the draw button on an image attachment. */
+    data class RequestDrawAttachment(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
+    ) : ConversationListUiAction
+
+    /** Draw editor finished — replace the attachment with the painted bytes. */
+    data class ApplyDrawResult(
+        val conversationId: Uuid,
+        val attachmentId: Uuid,
+        val paintedBytes: ByteArray,
+    ) : ConversationListUiAction
+
     data class BlockUser(val authorOdinId: OdinId) : ConversationListUiAction
     data object ReportContent : ConversationListUiAction
 }
