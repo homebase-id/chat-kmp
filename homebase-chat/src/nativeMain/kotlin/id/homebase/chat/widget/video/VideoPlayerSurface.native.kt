@@ -49,16 +49,24 @@ import platform.AVFoundation.AVPlayerItemPlaybackStalledNotification
 import platform.AVFoundation.AVPlayerItemStatusFailed
 import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
 import platform.AVFoundation.AVPlayerItemStatusUnknown
+import platform.AVFoundation.AVAssetTrack
+import platform.AVFoundation.AVPlayerItemTrack
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.accessLog
 import platform.AVFoundation.addPeriodicTimeObserverForInterval
 import platform.AVFoundation.currentTime
+import platform.AVFoundation.duration
 import platform.AVFoundation.errorLog
+import platform.AVFoundation.loadValuesAsynchronouslyForKeys
+import platform.AVFoundation.loadedTimeRanges
 import platform.AVFoundation.pause
 import platform.AVFoundation.play
+import platform.AVFoundation.playable
 import platform.AVFoundation.rate
 import platform.AVFoundation.removeTimeObserver
 import platform.AVFoundation.resourceLoader
+import platform.AVFoundation.statusOfValueForKey
+import platform.AVFoundation.tracks
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMakeWithSeconds
 import platform.AVKit.AVPlayerViewController
@@ -154,6 +162,10 @@ actual fun VideoPlayerSurface(
                         val asset = AVURLAsset(uRL = assetUrl, options = null)
                         val loaderQueue = dispatch_queue_create("id.homebase.video.loader", null)
                         asset.resourceLoader.setDelegate(delegate, queue = loaderQueue)
+                        // Kick async load of asset metadata so we get a callback when AVPlayer is
+                        // done parsing the playlist + first segment headers. This is the only
+                        // point where playable / tracks / duration become reliable.
+                        kickAssetMetadataLoad(asset, fileId = data.fileId.toString())
                         val playerItem = AVPlayerItem(asset = asset)
                         attachHlsDiagnostics(playerItem, notificationObservers)
                         val player = AVPlayer(playerItem = playerItem)
@@ -271,8 +283,13 @@ private class HomebaseResourceLoaderDelegate(
                         it.contentLength = bytes.size.toLong()
                         it.byteRangeAccessSupported = true
                     }
-                    loadingRequest.dataRequest?.respondWithData(bytes.toNSData())
-                    withContext(Dispatchers.Main) { loadingRequest.finishLoading() }
+                    val dRespond = loadingRequest.dataRequest
+                    Logger.d(tag = "VideoHLS") { "playlist respond: bytes=${bytes.size} dataRequest=${dRespond != null}" }
+                    dRespond?.respondWithData(bytes.toNSData())
+                    withContext(Dispatchers.Main) {
+                        loadingRequest.finishLoading()
+                        Logger.d(tag = "VideoHLS") { "playlist finishLoading() called" }
+                    }
                 } else {
                     // .ts segment — iOS asks for the exact byterange of one HLS segment from
                     // the playlist. FFmpeg encrypted each segment independently (AES-CBC with
@@ -331,9 +348,15 @@ private class HomebaseResourceLoaderDelegate(
                         Logger.d(tag = "VideoHLS") { "decrypt plain[0..16]=$plainHeadHex" }
                         Logger.d(tag = "VideoHLS") { "decrypt plain[tail-32..]=$plainTailHex" }
                         Logger.d(tag = "VideoHLS") { "decrypt padded[tail-32..]=$padTailHex" }
+                        Logger.d(tag = "VideoHLS") { "ts respond: handing ${padded.size} bytes to AVPlayer at offset=$start" }
                         dataRequest.respondWithData(padded.toNSData())
+                    } else {
+                        Logger.w(tag = "VideoHLS") { "ts request had no dataRequest — nothing to respond with" }
                     }
-                    withContext(Dispatchers.Main) { loadingRequest.finishLoading() }
+                    withContext(Dispatchers.Main) {
+                        loadingRequest.finishLoading()
+                        Logger.d(tag = "VideoHLS") { "ts finishLoading() called for fileId=$fileId" }
+                    }
                 }
             } catch (e: Exception) {
                 Logger.e(tag = "VideoHLS") { "resourceLoader error: ${e.message}" }
@@ -341,6 +364,7 @@ private class HomebaseResourceLoaderDelegate(
                     loadingRequest.finishLoadingWithError(
                         NSError.errorWithDomain("HomebaseVideo", 500, null)
                     )
+                    Logger.d(tag = "VideoHLS") { "finishLoadingWithError() called" }
                 }
             }
         }
@@ -445,6 +469,8 @@ private fun attachPlaybackTicker(
     var tickCount = 0
     var lastStatus = -1L
     var lastRateBucket = Float.NaN
+    var lastErrorDesc: String? = "<initial>"
+    var lastTrackCount = -1
     val interval = CMTimeMakeWithSeconds(0.5, 600)
     val token = player.addPeriodicTimeObserverForInterval(
         interval = interval,
@@ -454,22 +480,75 @@ private fun attachPlaybackTicker(
         val status = playerItem.status
         val rate = player.rate
         val currentSec = CMTimeGetSeconds(player.currentTime())
-        // Always log status transitions; otherwise log every ~2 s (every 4th tick).
+        val durSec = CMTimeGetSeconds(playerItem.duration)
+        val errDesc = playerItem.error?.let { "${it.domain}:${it.code} ${it.localizedDescription}" }
+        val tracks = playerItem.tracks
+        val trackCount = tracks.size
+        val loadedCount = playerItem.loadedTimeRanges.size
+        val loadedSummary = if (loadedCount == 0) "none" else "$loadedCount ranges"
         val statusChanged = status != lastStatus
         val rateChanged = rate != lastRateBucket
-        if (statusChanged || rateChanged || tickCount % 4 == 0) {
+        val errorChanged = errDesc != lastErrorDesc
+        val trackCountChanged = trackCount != lastTrackCount
+
+        // Always log changes; otherwise heartbeat every ~2 s (every 4th tick).
+        if (statusChanged || rateChanged || errorChanged || trackCountChanged || tickCount % 4 == 0) {
             Logger.d(tag = "VideoHLS") {
-                "tick#$tickCount fileId=$fileId status=${statusName(status)} rate=$rate t=${currentSec}s"
+                "tick#$tickCount fileId=$fileId status=${statusName(status)} rate=$rate t=${currentSec}s dur=${durSec}s tracks=$trackCount"
+            }
+            Logger.d(tag = "VideoHLS") { "tick#$tickCount loaded=$loadedSummary" }
+            if (errDesc != null) {
+                Logger.d(tag = "VideoHLS") { "tick#$tickCount itemError=$errDesc" }
             }
             if (statusChanged) {
                 Logger.d(tag = "VideoHLS") {
-                    "tick#$tickCount status TRANSITION ${statusName(lastStatus)} → ${statusName(status)} itemError=${playerItem.error?.let { "${it.domain}:${it.code} ${it.localizedDescription}" }}"
+                    "tick#$tickCount status TRANSITION ${statusName(lastStatus)} → ${statusName(status)}"
+                }
+                // On any status change, dump per-track info — the silent black-screen mode
+                // typically has tracks=0 even at ReadyToPlay, which is the smoking gun.
+                tracks.forEachIndexed { idx, t ->
+                    // Avoid binding-specific accessors that vary across Kotlin/Native versions —
+                    // `description` round-trips through Objective-C and embeds mediaType + enabled.
+                    val track = t as? AVPlayerItemTrack
+                    Logger.d(tag = "VideoHLS") {
+                        "tick#$tickCount track[$idx]: ${track?.description}"
+                    }
                 }
             }
         }
         lastStatus = status
         lastRateBucket = rate
+        lastErrorDesc = errDesc
+        lastTrackCount = trackCount
     }
     Logger.d(tag = "VideoHLS") { "playback ticker attached for fileId=$fileId" }
     return token
+}
+
+/**
+ * Async-load the asset's `playable`, `tracks`, and `duration` keys, then log the
+ * resolved values. AVPlayer goes through this same machinery internally, but the
+ * silent black-screen failure mode never surfaces the result anywhere we can see.
+ * Logging it here is the most direct way to confirm whether the playlist parses
+ * into a playable asset at all.
+ */
+private fun kickAssetMetadataLoad(asset: AVURLAsset, fileId: String) {
+    val keys = listOf("playable", "tracks", "duration")
+    asset.loadValuesAsynchronouslyForKeys(keys) {
+        keys.forEach { key ->
+            val status = asset.statusOfValueForKey(key, error = null)
+            Logger.d(tag = "VideoHLS") { "asset.$key load status=$status fileId=$fileId" }
+        }
+        Logger.d(tag = "VideoHLS") { "asset playable=${asset.playable} fileId=$fileId" }
+        val tracks = asset.tracks
+        Logger.d(tag = "VideoHLS") { "asset tracks=${tracks.size} fileId=$fileId" }
+        tracks.forEachIndexed { idx, t ->
+            // `description` includes mediaType, enabled flag, etc — avoids binding accessor pitfalls.
+            val track = t as? AVAssetTrack
+            Logger.d(tag = "VideoHLS") { "asset track[$idx]: ${track?.description}" }
+        }
+        val durSec = CMTimeGetSeconds(asset.duration)
+        Logger.d(tag = "VideoHLS") { "asset duration=${durSec}s fileId=$fileId" }
+    }
+    Logger.d(tag = "VideoHLS") { "asset.loadValuesAsynchronouslyForKeys kicked for fileId=$fileId" }
 }
