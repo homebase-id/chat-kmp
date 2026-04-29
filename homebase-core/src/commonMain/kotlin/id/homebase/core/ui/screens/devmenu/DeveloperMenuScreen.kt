@@ -157,6 +157,19 @@ fun DeveloperMenuUi(
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Vault Section
+            HelpSectionHeader(title = "Vault")
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    HelpClickableRow(
+                        label = "Restart Vault Onboarding",
+                        showChevron = false,
+                        onClick = { onAction(DeveloperMenuUiAction.RestartVaultOnboarding) }
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
         }

@@ -9,6 +9,7 @@ import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.notifications.RichNotificationDisplayer
+import id.homebase.core.vault.VaultPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +21,7 @@ class DeveloperMenuViewModel(
     private val driveSyncManager: DriveSyncManager,
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
+    private val vaultPreferences: VaultPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DeveloperMenuUiState())
@@ -41,6 +43,10 @@ class DeveloperMenuViewModel(
 
             is DeveloperMenuUiAction.ClearAllData -> {
                 clearAllData()
+            }
+
+            is DeveloperMenuUiAction.RestartVaultOnboarding -> {
+                restartVaultOnboarding()
             }
 
             is DeveloperMenuUiAction.ForceReconnectWebSocket -> {
@@ -107,6 +113,19 @@ class DeveloperMenuViewModel(
         }
     }
 
+    private fun restartVaultOnboarding() {
+        viewModelScope.launch {
+            try {
+                vaultPreferences.setActivated(false)
+                vaultPreferences.setIconVisible(true)
+                sendEvent(DeveloperMenuUiEvent.Success("Vault onboarding reset. Tap the Vault icon to start onboarding."))
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = "DeveloperMenu") { "Vault onboarding reset failed" }
+                sendEvent(DeveloperMenuUiEvent.Error("Failed to reset vault onboarding: ${e.message}"))
+            }
+        }
+    }
+
     fun eventConsumed() {
         _uiState.update { it.copy(uiEvent = null) }
     }
@@ -133,4 +152,5 @@ sealed interface DeveloperMenuUiAction {
     data object ForceSyncAll : DeveloperMenuUiAction
     data object ClearAllData : DeveloperMenuUiAction
     data object ForceReconnectWebSocket : DeveloperMenuUiAction
+    data object RestartVaultOnboarding : DeveloperMenuUiAction
 }
