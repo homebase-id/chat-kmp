@@ -10,6 +10,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
 
+      // Run Koin, logging, and database init before any UI framework setup.
+      // This keeps the main-thread run-loop free between heavy init and the
+      // first Compose frame, preventing the iOS text-rendering race condition.
+      MainViewControllerKt.initializeApp()
+
       FirebaseApp.configure() //important
 
       //By default showPushNotification value is true.
