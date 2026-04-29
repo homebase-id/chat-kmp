@@ -46,10 +46,22 @@ suspend fun resolveVideoContent(
     val metadata = resolveVideoMetadata(data, driveFileProvider)
 
     val hlsPlaylist = metadata.hlsPlaylist
+    Logger.d(tag = "VideoIO") {
+        "metadata: fileId=${data.fileId} key=${data.payloadKey} mimeType=${metadata.mimeType} isSegmented=${metadata.isSegmented} fileSize=${metadata.fileSize} duration=${metadata.duration} codec=${metadata.codec} hlsPlaylistChars=${hlsPlaylist?.length ?: 0}"
+    }
+    if (metadata.isSegmented && hlsPlaylist == null) {
+        // Smoking-gun case: server says segmented but no playlist available locally.
+        // We'd silently fall through to the MP4 branch and hand encrypted TS bytes to
+        // an MP4 decoder, producing a black screen with no error.
+        Logger.w(tag = "VideoIO") { "metadata: isSegmented=true but hlsPlaylist=null — falling through to MP4 branch will fail silently. fileId=${data.fileId} descriptorComplete=${metadata.isDescriptorContentComplete}" }
+    }
     return if (metadata.isSegmented && hlsPlaylist != null) {
         val strippedPlaylist = hlsPlaylist.lines()
             .filter { !it.startsWith("#EXT-X-KEY") }
             .joinToString("\n")
+        Logger.d(tag = "VideoIO") {
+            "metadata: hls path chosen — original=${hlsPlaylist.length} chars stripped=${strippedPlaylist.length} chars"
+        }
         VideoContent.Hls(metadata, strippedPlaylist)
     } else {
         val (bytes, payloadElapsed) = measureTimedValue {
