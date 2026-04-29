@@ -24,6 +24,7 @@ import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
 
 private var koinInitialized = false
+private var appInitialized = false
 
 /** Start Koin early so it's available before any Compose UI renders (e.g. on background push). */
 fun initKoin() {
@@ -32,9 +33,20 @@ fun initKoin() {
     startKoin { modules(allModules) }
 }
 
+/**
+ * Run all heavy initialization (Koin, logging, crash reporting, database) outside
+ * [MainViewController] so the main-thread run-loop is free to process CoreText / Metal
+ * callbacks before the first Compose frame is rendered.
+ *
+ * Call from `AppDelegate.didFinishLaunchingWithOptions` — idempotent.
+ */
 @OptIn(ExperimentalForeignApi::class)
-fun MainViewController(): UIViewController {
+fun initializeApp() {
+    if (appInitialized) return
+    appInitialized = true
+
     initKoin()
+
     // Initialize file logging first
     try {
         val logDir = getLogDirectory()
@@ -75,6 +87,11 @@ fun MainViewController(): UIViewController {
             DatabaseManager.initialize { DatabaseDriverFactory().createDriver(freshKey) }
         }
     }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+fun MainViewController(): UIViewController {
+    initializeApp()
     val controller = ComposeUIViewController { App() }
     MainViewControllerRef.instance = controller
     return controller
