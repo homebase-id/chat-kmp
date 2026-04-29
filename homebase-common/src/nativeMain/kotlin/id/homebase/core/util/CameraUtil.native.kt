@@ -5,6 +5,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.compose.rememberCameraPickerLauncher
+import platform.AVFoundation.AVAuthorizationStatusAuthorized
+import platform.AVFoundation.AVAuthorizationStatusNotDetermined
+import platform.AVFoundation.AVCaptureDevice
+import platform.AVFoundation.AVMediaTypeAudio
+import platform.AVFoundation.AVMediaTypeVideo
+import platform.AVFoundation.authorizationStatusForMediaType
+import platform.AVFoundation.requestAccessForMediaType
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
 import platform.UIKit.UIImagePickerController
@@ -13,6 +20,8 @@ import platform.UIKit.UIImagePickerControllerMediaURL
 import platform.UIKit.UIImagePickerControllerSourceType
 import platform.UIKit.UINavigationControllerDelegateProtocol
 import platform.darwin.NSObject
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 @Composable
 actual fun rememberCameraManager(onResult: (PlatformFile?) -> Unit): PlatformCameraManager {
@@ -22,7 +31,24 @@ actual fun rememberCameraManager(onResult: (PlatformFile?) -> Unit): PlatformCam
     return remember {
         object : PlatformCameraManager {
             override fun launch() {
-                launcher.launch()
+                val status = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+                when (status) {
+                    AVAuthorizationStatusAuthorized -> launcher.launch()
+                    AVAuthorizationStatusNotDetermined -> {
+                        AVCaptureDevice.requestAccessForMediaType(AVMediaTypeVideo) { granted ->
+                            if (granted) {
+                                dispatch_async(dispatch_get_main_queue()) {
+                                    launcher.launch()
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        NSURL.URLWithString(platform.UIKit.UIApplicationOpenSettingsURLString)?.let {
+                            UIApplication.sharedApplication.openURL(it, emptyMap<Any?, String>()) {}
+                        }
+                    }
+                }
             }
         }
     }
@@ -33,10 +59,55 @@ actual fun rememberVideoRecorderManager(onResult: (PlatformFile?) -> Unit): Plat
     val currentOnResult = rememberUpdatedState(onResult)
     return remember {
         object : PlatformVideoRecorderManager {
-            // Retained to prevent garbage collection while picker is presented
             private var delegate: VideoPickerDelegate? = null
 
             override fun launch() {
+                ensureCameraAndMicPermissions {
+                    presentVideoPicker()
+                }
+            }
+
+            private fun ensureCameraAndMicPermissions(onGranted: () -> Unit) {
+                val camStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+                when (camStatus) {
+                    AVAuthorizationStatusAuthorized -> ensureMicPermission(onGranted)
+                    AVAuthorizationStatusNotDetermined -> {
+                        AVCaptureDevice.requestAccessForMediaType(AVMediaTypeVideo) { granted ->
+                            if (granted) {
+                                ensureMicPermission(onGranted)
+                            }
+                        }
+                    }
+                    else -> {
+                        NSURL.URLWithString(platform.UIKit.UIApplicationOpenSettingsURLString)?.let {
+                            UIApplication.sharedApplication.openURL(it, emptyMap<Any?, String>()) {}
+                        }
+                    }
+                }
+            }
+
+            private fun ensureMicPermission(onGranted: () -> Unit) {
+                val micStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeAudio)
+                when (micStatus) {
+                    AVAuthorizationStatusAuthorized -> {
+                        dispatch_async(dispatch_get_main_queue()) { onGranted() }
+                    }
+                    AVAuthorizationStatusNotDetermined -> {
+                        AVCaptureDevice.requestAccessForMediaType(AVMediaTypeAudio) { granted ->
+                            if (granted) {
+                                dispatch_async(dispatch_get_main_queue()) { onGranted() }
+                            }
+                        }
+                    }
+                    else -> {
+                        NSURL.URLWithString(platform.UIKit.UIApplicationOpenSettingsURLString)?.let {
+                            UIApplication.sharedApplication.openURL(it, emptyMap<Any?, String>()) {}
+                        }
+                    }
+                }
+            }
+
+            private fun presentVideoPicker() {
                 val rootVC = UIApplication.sharedApplication.keyWindow?.rootViewController ?: return
 
                 val picker = UIImagePickerController()
