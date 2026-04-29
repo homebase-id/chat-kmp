@@ -67,6 +67,13 @@ val vaultLabeledDrive = LabeledDrive(
     label = "Vault",
 )
 
+// Default vault sections — stable UUIDs so re-running onboarding is idempotent
+val vaultDefaultSections = listOf(
+    Uuid.parse("6da3968b-0edf-41f0-a136-0492034030e2") to "Passports",
+    Uuid.parse("0179aec4-b967-4fc9-a42c-5e9e140a4d0f") to "Driving Licenses",
+    Uuid.parse("625e53e1-c9b3-425a-bd82-5e9dcfc56852") to "Credit Cards",
+)
+
 // Backward-compatible aliases — all existing consumers remain unaffected
 val chatTargetDrive = chatLabeledDrive.drive
 val contactTargetDrive = contactLabeledDrive.drive

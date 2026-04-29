@@ -4,6 +4,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class VaultPreferences(private val databaseManager: DatabaseManager) {
@@ -18,6 +19,28 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
 
     private val _biometricsEnabled = MutableStateFlow(readBoolean(BIOMETRICS_KEY, default = true))
     val biometricsEnabled: StateFlow<Boolean> = _biometricsEnabled.asStateFlow()
+
+    // In-memory biometric session tracking — not persisted, resets on app restart
+    private var lastAuthTimeMs: Long = 0L
+    private var lastBackgroundTimeMs: Long = 0L
+
+    fun recordAuthSuccess() {
+        lastAuthTimeMs = Clock.System.now().toEpochMilliseconds()
+    }
+
+    fun recordAppBackgrounded() {
+        lastBackgroundTimeMs = Clock.System.now().toEpochMilliseconds()
+    }
+
+    fun isAuthSessionValid(): Boolean {
+        if (lastAuthTimeMs == 0L) return false
+        val now = Clock.System.now().toEpochMilliseconds()
+        if (now - lastAuthTimeMs > AUTH_SESSION_DURATION_MS) return false
+        if (lastBackgroundTimeMs > lastAuthTimeMs &&
+            now - lastBackgroundTimeMs > BACKGROUND_THRESHOLD_MS
+        ) return false
+        return true
+    }
 
     suspend fun setActivated(value: Boolean) {
         if (_activated.value == value) return
@@ -47,9 +70,11 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
     private fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
 
     companion object {
-        // Placeholder UUIDs scoped to the Vault feature. Stable across releases.
         val ACTIVATED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0101")
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0102")
         val BIOMETRICS_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0103")
+
+        private const val AUTH_SESSION_DURATION_MS = 2 * 60 * 1000L  // 2 minutes
+        private const val BACKGROUND_THRESHOLD_MS = 30 * 1000L       // 30 seconds
     }
 }

@@ -8,6 +8,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.core.config.vaultDefaultSections
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.ui.screens.vault.model.VaultSectionUiModel
 import id.homebase.core.ui.screens.vault.model.toSectionUiModel
@@ -57,6 +58,7 @@ class VaultViewModel(
                 .collect {
                     if (!vaultPreferences.activated.value) {
                         vaultPreferences.setActivated(true)
+                        createDefaultSections()
                         _uiState.update { it.copy(isCheckingPermissions = false) }
                         _events.tryEmit(VaultUiEvent.Activated)
                     }
@@ -65,6 +67,13 @@ class VaultViewModel(
 
         observeDriveSync()
         observeOutboxEvents()
+        loadSections()
+    }
+
+    private suspend fun createDefaultSections() {
+        vaultDefaultSections.forEachIndexed { index, (id, title) ->
+            vaultRepository.createSection(id, VaultSectionContent(title, index))
+        }
         loadSections()
     }
 

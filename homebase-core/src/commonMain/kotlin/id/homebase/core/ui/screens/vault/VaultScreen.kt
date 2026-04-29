@@ -91,13 +91,20 @@ fun VaultScreen(
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    var authorized by remember { mutableStateOf(!vaultPreferences.biometricsEnabled.value) }
+    var authorized by remember {
+        mutableStateOf(
+            !vaultPreferences.biometricsEnabled.value || vaultPreferences.isAuthSessionValid()
+        )
+    }
 
-    // Biometric auth gate
-    LaunchedEffect(Unit) {
+    // Biometric auth gate — re-triggers when authorized flips to false (e.g. after backgrounding)
+    LaunchedEffect(authorized) {
         if (authorized) return@LaunchedEffect
         when (authenticateBiometric(biometricTitle, biometricSubtitle)) {
-            BiometricResult.Success, BiometricResult.Unavailable -> authorized = true
+            BiometricResult.Success, BiometricResult.Unavailable -> {
+                vaultPreferences.recordAuthSuccess()
+                authorized = true
+            }
             BiometricResult.Failure -> onNavigateBack()
         }
     }
@@ -118,12 +125,21 @@ fun VaultScreen(
         }
     }
 
-    // ON_RESUME lifecycle observer for permission recheck
+    // Lifecycle observer: track backgrounding and recheck permissions on resume
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                vaultExtendPermissionViewModel.recheckPermissions()
+            when (event) {
+                Lifecycle.Event.ON_STOP -> vaultPreferences.recordAppBackgrounded()
+                Lifecycle.Event.ON_RESUME -> {
+                    vaultExtendPermissionViewModel.recheckPermissions()
+                    if (vaultPreferences.biometricsEnabled.value &&
+                        !vaultPreferences.isAuthSessionValid()
+                    ) {
+                        authorized = false
+                    }
+                }
+                else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -280,6 +296,17 @@ fun VaultScreen(
         )
     }
 
+    // Deferred picker launch — lets the bottom sheet fully dismiss on iOS before presenting the picker
+    var pendingPickerAction by remember { mutableStateOf<VaultPickerAction?>(null) }
+    LaunchedEffect(pendingPickerAction) {
+        when (pendingPickerAction) {
+            VaultPickerAction.Camera -> cameraLauncher.launch()
+            VaultPickerAction.Gallery -> filePicker.launch()
+            null -> {}
+        }
+        pendingPickerAction = null
+    }
+
     // Image add bottom sheet
     if (showImageAddSheet) {
         val sheetState = rememberModalBottomSheetState()
@@ -287,11 +314,11 @@ fun VaultScreen(
             sheetState = sheetState,
             onTakePhoto = {
                 showImageAddSheet = false
-                cameraLauncher.launch()
+                pendingPickerAction = VaultPickerAction.Camera
             },
             onChooseGallery = {
                 showImageAddSheet = false
-                filePicker.launch()
+                pendingPickerAction = VaultPickerAction.Gallery
             },
             onDismiss = {
                 showImageAddSheet = false
@@ -428,3 +455,5 @@ fun VaultScreen(
         }
     }
 }
+
+private enum class VaultPickerAction { Camera, Gallery }
