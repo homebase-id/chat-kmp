@@ -41,7 +41,10 @@ actual fun platformModule(): Module = module {
     single<AudioPlayer> { JvmAudioPlayer() }
     single<AudioWaveFormGenerator> { JvmWaveFormGenerator() }
     single<DatabaseSizeProbe> { JvmDatabaseSizeProbe() }
-    single<UpdateAppManager> { JvmUpdateAppManager() }
+    single<UpdateAppManager> { JvmUpdateAppManager(
+        httpClient = get(),
+        platformInfo = get(),
+    ) }
     single(createdAtStart = true) {
         DesktopChatNotificationBridge(
             eventBus = get(),

@@ -226,7 +226,7 @@ fun HelpUi(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (!uiState.isUpdatedSupported)
+                            text = if (!uiState.isUpdateSupported)
                                 stringResource(MR.string.update_not_supported)
                             else if (uiState.isUpdateAvailable)
                                 stringResource(MR.string.update_available)

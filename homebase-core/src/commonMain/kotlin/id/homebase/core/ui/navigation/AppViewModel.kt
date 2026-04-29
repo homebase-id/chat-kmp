@@ -8,14 +8,15 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.registerShareHandler
 import id.homebase.core.share.unregisterShareHandler
+import id.homebase.core.updater.UpdateAppManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -33,6 +34,7 @@ class AppViewModel(
     private val notificationService: NotificationService,
     private val shareContentProcessor: ShareContentProcessor,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val updateAppManager: UpdateAppManager,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -75,6 +77,7 @@ class AppViewModel(
         notificationService.isAppInForeground = true
         authConnectionCoordinator.setForeground(true)
         refreshData()
+        checkForUpdate()
         BadgeManager.clear()
     }
 
@@ -101,6 +104,19 @@ class AppViewModel(
 
     fun dismissInAppBanner() {
         _uiState.update { it.copy(inAppNotification = null) }
+    }
+
+    fun triggerUpdate() {
+        viewModelScope.launch {
+            updateAppManager.downloadUpdate()
+        }
+    }
+
+    private fun checkForUpdate() {
+        viewModelScope.launch {
+            val result = updateAppManager.checkForUpdate()
+            _uiState.update { it.copy(updateAvailable = result.updateAvailable && result.canUpdate, updateAvailableVersion = result.versionName ?: "") }
+        }
     }
 
     /** Routes an in-app banner tap through NotificationService's click handler. */
@@ -154,4 +170,6 @@ data class AppUiState(
     val currentOdinId: OdinId? = null,
     val incomingRequests: List<IncomingConnectionRequestUiModel> = listOf(),
     val inAppNotification: RichNotificationData? = null,
+    val updateAvailable: Boolean = false,
+    val updateAvailableVersion: String = "",
 )

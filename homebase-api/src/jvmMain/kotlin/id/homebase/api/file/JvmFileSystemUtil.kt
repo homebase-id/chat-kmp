@@ -4,8 +4,8 @@ import java.io.File
 
 object JvmFileSystemUtil {
 
-    val appName = if (isDebugMode()) "HomebaseChatDev" else "HomebaseChat"
-    val appNameLinux = if (isDebugMode()) "homebase-chat-dev" else "homebase-chat"
+    val appName = if (isProductionVersion()) "HomebaseChat" else "HomebaseChatDev"
+    val appNameLinux = if (isProductionVersion()) "homebase-chat" else "homebase-chat-dev"
 
     fun getAppDataDirectory(): File {
         val osName = System.getProperty("os.name").lowercase()
@@ -43,10 +43,8 @@ object JvmFileSystemUtil {
         return cacheDir
     }
 
-    private fun isDebugMode(): Boolean {
-        var debug = false
-        assert({ debug = true; true }())
-        return debug
+    fun isProductionVersion(): Boolean {
+        return System.getProperty("app.rdns.name") == "id.homebase.feed"
     }
 }
 

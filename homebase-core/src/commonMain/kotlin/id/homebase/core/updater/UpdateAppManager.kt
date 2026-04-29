@@ -30,6 +30,8 @@ enum class UpdateAppError {
 sealed interface UpdateResult {
     /** Update process started successfully (UI shown or download started) */
     data object Started : UpdateResult
+    /** Update process completed successfully (e.g. user accepted update or download completed) */
+    data object Completed : UpdateResult
 
     /** No update available */
     data object NoUpdateAvailable : UpdateResult

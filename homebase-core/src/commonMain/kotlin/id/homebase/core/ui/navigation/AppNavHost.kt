@@ -71,7 +71,6 @@ import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.connections.ConnectionsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
-import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.help.HelpScreen
@@ -85,6 +84,7 @@ import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
+import id.homebase.core.widget.UpdateAvailableBanner
 import id.homebase.imageeditor.ui.CropScreen
 import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
@@ -266,6 +266,12 @@ fun AppNavHost(
 
             Column {
                 if (isOnTopLevelScreen) {
+                    if (uiState.updateAvailable) {
+                        UpdateAvailableBanner(
+                            versionName = uiState.updateAvailableVersion,
+                            onUpdateClick = { viewModel.triggerUpdate() }
+                        )
+                    }
                     if (uiState.incomingRequests.isNotEmpty()) {
                         ConnectionRequestHeaderBanner(
                             requestCount = uiState.incomingRequests.size,
