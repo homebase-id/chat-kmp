@@ -69,6 +69,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.backspace
 import id.homebase.resources.emoji_none_found
 import id.homebase.resources.emoji_search_placeholder
+import id.homebase.resources.error
 import id.homebase.resources.search
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -107,7 +108,7 @@ fun EmojiSelection(
 
         error != null -> {
             Box(modifier = modifier) {
-                Text("Error: $error", modifier = Modifier.align(Alignment.Center))
+                Text(stringResource(MR.string.error) + ": $error", modifier = Modifier.align(Alignment.Center))
             }
         }
     }

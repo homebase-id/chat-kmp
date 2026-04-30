@@ -67,7 +67,7 @@
     <string name="connection_requests_banner">%1$s connection request(s)</string>
     <string name="show_more">Show more</string>
     <string name="action_cannot_be_undone">This action can’t be undone.</string>
-    <string name="slide_to_cancel">Slide to cancel</string>
+    <string name="slide_to_cancel">&lt; Slide to cancel</string>
     <string name="someone">Someone</string>
     <string name="leave">Leave</string>
     <string name="export_log">Export log</string>
@@ -93,6 +93,13 @@
     <string name="update_get_update">Get new update</string>
     <string name="update_checking">Searching for update...</string>
     <string name="vlc_required">VLC is required for video playback.\nInstall it from videolan.org and restart the app.</string>
+    <string name="number_of_members">%1$s members</string>
+    <string name="conversations_selected">%1$s conversation(s) selected</string>
+    <string name="share_to">Share to...</string>
+    <string name="sending_to_conversations">Sending to %1$s conversation(s)...</string>
+    <string name="timeout_in_seconds">Timeout in %1$ss</string>
+    <string name="number_of_records">%1$s records</string>
+    <string name="emoji_all">All・</string>
 
     <!-- Avatars -->
     <string name="avatar_owner">Owner avatar</string>

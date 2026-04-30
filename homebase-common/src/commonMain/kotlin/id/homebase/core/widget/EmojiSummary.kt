@@ -30,6 +30,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import id.homebase.core.util.initials
+import id.homebase.resources.MR
+import id.homebase.resources.emoji_all
+import org.jetbrains.compose.resources.stringResource
 
 
 @Composable
@@ -79,7 +82,7 @@ fun EmojiSummary(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = "All・", fontSize = 16.sp)
+                            Text(text = stringResource(MR.string.emoji_all), fontSize = 16.sp)
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 text = totalCount.toString(),

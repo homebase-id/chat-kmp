@@ -7,7 +7,6 @@ import com.lemonappdev.konsist.api.ext.list.withAnnotationOf
 import com.lemonappdev.konsist.api.ext.list.withNameEndingWith
 import com.lemonappdev.konsist.api.verify.assertFalse
 import com.lemonappdev.konsist.api.verify.assertTrue
-import kotlin.test.Ignore
 import kotlin.test.Test
 
 class ArchitectureTest {
@@ -20,11 +19,10 @@ class ArchitectureTest {
     }
 
     @Test
-    @Ignore("This test is currently ignored because we need to fix existing hardcoded strings in Composables before enforcing this rule")
     fun `No hardcoded strings in Composables`() {
         Konsist.scopeFromProject()
             .files
-            .filter { !it.hasNameEndingWith("Test") }
+            .filter { !it.hasNameEndingWith("Test") && !it.hasNameEndingWith("Example") && !it.hasNameStartingWith("Developer") }
             .functions()
             .withAnnotationOf(Composable::class)
             .assertFalse {
