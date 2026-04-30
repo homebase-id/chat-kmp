@@ -54,6 +54,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.KeyHeader
@@ -69,7 +70,7 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalRichTextApi::class)
 @Composable
 fun FullScreenMediaViewer(
     modifier: Modifier = Modifier,

@@ -343,6 +343,7 @@ private fun FourPlusImageLayout(
 
                 // Overlay showing remaining count
                 if (remainingCount > 0) {
+                    val remainingCount = "+$remainingCount"
                     Box(
                         modifier =
                             Modifier.fillMaxSize()
@@ -350,7 +351,7 @@ private fun FourPlusImageLayout(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = "+$remainingCount",
+                            text = remainingCount,
                             style = MaterialTheme.typography.headlineMedium,
                             color = Color.White,
                         )

@@ -15,6 +15,7 @@ import org.jetbrains.skiko.hostOs
 import java.io.File
 import java.util.Properties
 import java.util.concurrent.TimeUnit
+import kotlin.system.exitProcess
 
 class JvmUpdateAppManager(
     private val httpClient: HttpClient,
@@ -108,7 +109,6 @@ class JvmUpdateAppManager(
             val url = "https://github.com/homebase-id/$githubRepo/releases/latest/download/metadata.properties"
 
             val response = httpClient.get(url).bodyAsText()
-            httpClient.close()
 
             // Parse properties
             val properties = Properties()
@@ -136,7 +136,7 @@ class JvmUpdateAppManager(
 
     private fun isDebianPackageInstalled(): Boolean {
         return try {
-            val packageName = getLinuxLauncherCommand()
+            val packageName = getDebianPackageName()
 
             // Method 1: Check dpkg status file
             val dpkgStatusFile = File("/var/lib/dpkg/info/$packageName.list")
@@ -165,195 +165,91 @@ class JvmUpdateAppManager(
 
             isSystemPath
         } catch (e: Exception) {
-            Logger.w(e) { "Error checking package installation: ${e.message}" }
+            Logger.w { "Error checking package installation: ${e.message}" }
             false
         }
     }
 
-    /**
-     * Updates the package using apt from the configured repository.
-     * Assumes the PPA/repository is already added to apt sources.
-     */
     private suspend fun updateFromAptRepository(): UpdateResult = withContext(Dispatchers.IO) {
         try {
-            Logger.i { "Starting apt repository update..." }
+            Logger.i { "Starting apt repository update process" }
+            installLinuxPackage()
 
-            val packageName = getLinuxLauncherCommand()
+            // This won't be reached, but required for return type
+            @Suppress("UNREACHABLE_CODE")
+            UpdateResult.Started
 
-            // Step 1: Refresh package lists
-            val updateSuccess = if (hasProgramInPath("pkexec") && hasProgramInPath("apt")) {
-                Logger.i { "Refreshing apt package lists with pkexec..." }
-                executeCommand(
-                    listOf("pkexec", "apt", "update"),
-                    timeoutMinutes = 2
-                )
-            } else if (hasProgramInPath("sudo") && hasProgramInPath("apt")) {
-                Logger.i { "Refreshing apt package lists with sudo..." }
-                executeCommand(
-                    listOf("sudo", "-A", "apt", "update"),
-                    timeoutMinutes = 2
-                )
-            } else {
-                Logger.w { "No privilege escalation method available" }
-                return@withContext UpdateResult.Unsupported
-            }
-
-            if (!updateSuccess) {
-                Logger.w { "Failed to update package lists" }
-                return@withContext UpdateResult.Error(UpdateAppError.UNKNOWN_ERROR)
-            }
-
-            // Step 2: Upgrade the specific package
-            val upgradeSuccess = if (hasProgramInPath("pkexec") && hasProgramInPath("apt")) {
-                Logger.i { "Upgrading $packageName with pkexec..." }
-                executeCommand(
-                    listOf(
-                        "pkexec",
-                        "apt", "install", "-y",
-                        "--only-upgrade",  // Only upgrade if already installed
-                        packageName
-                    ),
-                    timeoutMinutes = 5
-                )
-            } else if (hasProgramInPath("sudo") && hasProgramInPath("apt")) {
-                Logger.i { "Upgrading $packageName with sudo..." }
-                executeCommand(
-                    listOf(
-                        "sudo", "-A",
-                        "apt", "install", "-y",
-                        "--only-upgrade",
-                        packageName
-                    ),
-                    timeoutMinutes = 5
-                )
-            } else {
-                false
-            }
-
-            if (upgradeSuccess) {
-                Logger.i { "Package upgraded successfully from repository" }
-                // Restart the application
-                restartApplication()
-
-                // If restart is async, return Completed
-                UpdateResult.Completed
-            } else {
-                Logger.w { "Failed to upgrade package" }
-                UpdateResult.Error(UpdateAppError.UNKNOWN_ERROR)
-            }
         } catch (e: Exception) {
             Logger.e(e) { "Error during apt repository update: ${e.message}" }
             UpdateResult.Error(UpdateAppError.UNKNOWN_ERROR)
         }
     }
 
-    private fun executeCommand(
-        command: List<String>,
-        timeoutMinutes: Long = 2
-    ): Boolean {
-        return try {
-            Logger.i { "Executing: ${command.joinToString(" ")}" }
+    private fun installLinuxPackage() {
+        val pid = ProcessHandle.current().pid()
+        val launcher =
+            resolveLinuxLauncher()
+                ?: error("Cannot resolve application launcher from java.home")
 
-            val processBuilder = ProcessBuilder(command)
-                .redirectErrorStream(true)
+        val packageName = getDebianPackageName()
 
-            val process = processBuilder.start()
+        val script = File(System.getProperty("java.io.tmpdir"), "homebase-update.sh")
+        script.writeText(
+            $$"""
+            |#!/usr/bin/env bash
+            |
+            |# Ignore SIGHUP to survive parent process exit
+            |trap '' HUP
+            |            
+            |# Relaunch the application with GUI/session variables preserved
+            |export DISPLAY="${DISPLAY:-:0}"
+            |export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+            |# Keep XDG_RUNTIME_DIR/DBUS if present from parent env            
+            |            
+            |APP_PID=$$pid
+            |APP_LAUNCHER="$${launcher.absolutePath}"
+            |
+            |# Wait for the app process to fully exit
+            |while kill -0 "$APP_PID" 2>/dev/null; do
+            |    sleep 0.5
+            |done
+            |
+            |sleep 1
+            |
+            |# Install the package (shows graphical authentication dialog)
+            |# Do not use set -e: dpkg/rpm may return non-zero on warnings,
+            |# which would prevent the application from relaunching.
+            |pkexec sh -c "apt update && apt install -y --only-upgrade $$packageName"
+            |            
+            |# Relaunch the application
+            |nohup env \
+            |  DISPLAY="$DISPLAY" \
+            |  WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+            |  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+            |  DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+            |  "$APP_LAUNCHER" >/dev/null 2>&1 &
+            |# Clean up this script
+            |rm -f "$0"
+            """.trimMargin(),
+        )
 
-            // Capture output
-            val output = StringBuilder()
-            process.inputStream.bufferedReader().use { reader ->
-                reader.forEachLine { line ->
-                    output.appendLine(line)
-                    Logger.d { "[apt] $line" }
-                }
-            }
-
-            val completed = process.waitFor(timeoutMinutes, TimeUnit.MINUTES)
-
-            if (!completed) {
-                Logger.w { "Process timed out after $timeoutMinutes minutes" }
-                process.destroyForcibly()
-                return false
-            }
-
-            val exitCode = process.exitValue()
-            Logger.i { "Process exited with code: $exitCode" }
-
-            if (exitCode != 0) {
-                Logger.w { "Process failed. Output:\n$output" }
-            }
-
-            exitCode == 0
-        } catch (e: Exception) {
-            Logger.e(e) { "Error executing command: ${e.message}" }
-            false
-        }
+        ProcessBuilder("setsid", "bash", script.absolutePath)
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
+        exitProcess(0)
     }
 
-    private fun hasProgramInPath(program: String): Boolean {
-        return try {
-            val process = ProcessBuilder("which", program)
-                .redirectErrorStream(true)
-                .start()
-
-            process.waitFor(5, TimeUnit.SECONDS)
-            process.exitValue() == 0
-        } catch (_: Exception) {
-            false
-        }
+    private fun resolveLinuxLauncher(): File? {
+        val javaHome = System.getProperty("java.home") ?: return null
+        val appRoot = File(javaHome).parentFile?.parentFile ?: return null
+        val binDir = File(appRoot, "bin")
+        if (!binDir.isDirectory) return null
+        return binDir.listFiles()?.firstOrNull { it.canExecute() }
     }
 
-    private fun restartApplication() {
-        try {
-            Logger.i { "Initiating application restart..." }
-
-            val packageName = getLinuxLauncherCommand()
-
-            // Check if running from installed location
-            val jarLocation = JvmUpdateAppManager::class.java.protectionDomain.codeSource.location.path
-            val isInstalled = jarLocation.startsWith("/usr/share/") || jarLocation.startsWith("/opt/")
-
-            if (isInstalled) {
-                // If installed as .deb, use the system launcher command
-                // The .deb package installs a launcher script (e.g., /usr/bin/homebase-chat)
-                // that uses the bundled JRE
-                Logger.i { "Using system launcher for $packageName" }
-                ProcessBuilder(packageName).start()
-            } else {
-                // Running from development/manual JAR - use current JRE
-                val javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java"
-                val currentJar = File(JvmUpdateAppManager::class.java.protectionDomain.codeSource.location.toURI())
-
-                Logger.i { "Using JAR launcher with current JRE" }
-                val command = listOf(javaBin, "-jar", currentJar.absolutePath)
-                ProcessBuilder(command).start()
-            }
-
-            // Give the new instance a moment to start
-            Thread.sleep(500)
-
-            // Exit current instance
-            Logger.i { "Exiting current instance..." }
-            kotlin.system.exitProcess(0)
-
-        } catch (e: Exception) {
-            Logger.e(e) { "Failed to restart application: ${e.message}" }
-            // If restart fails, just exit and let user manually restart
-            kotlin.system.exitProcess(0)
-        }
-    }
-
-    /**
-     * Gets the Linux launcher command name.
-     * Conveyor uses the display-name converted to lowercase-with-hyphens.
-     */
-    private fun getLinuxLauncherCommand(): String {
-        // Use the same logic as JvmFileSystemUtil
-        return if (isProductionVersion()) {
-            "homebase-chat"
-        } else {
-            "homebase-chat-dev"
-        }
+    private fun getDebianPackageName(): String {
+        return "homebase-homebase-chat"
     }
 
     private fun compareVersions(remote: String, current: String): Int {

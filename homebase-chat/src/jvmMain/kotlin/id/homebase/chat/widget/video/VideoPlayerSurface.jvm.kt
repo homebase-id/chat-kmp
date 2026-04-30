@@ -39,37 +39,40 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
-import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
-import kotlinx.coroutines.delay
 import co.touchlab.kermit.Logger
+import com.sun.net.httpserver.HttpServer
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
-import kotlin.time.measureTimedValue
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.resources.MR
+import id.homebase.resources.vlc_required
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.skia.Bitmap
 import org.koin.compose.koinInject
 import uk.co.caprica.vlcj.factory.MediaPlayerFactory
 import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery
+import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormat
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormatCallback
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.RenderCallback
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.format.RV32BufferFormat
-import com.sun.net.httpserver.HttpServer
 import java.io.File
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.measureTimedValue
 
 private sealed interface VpsState {
     data object Loading : VpsState
@@ -226,7 +229,7 @@ internal fun VlcjPlayer(
 
     if (!vlcFound) {
         Box(modifier, contentAlignment = Alignment.Center) {
-            Text("VLC is required for video playback.\nInstall it from videolan.org and restart the app.")
+            Text(stringResource(MR.string.vlc_required))
         }
         return
     }

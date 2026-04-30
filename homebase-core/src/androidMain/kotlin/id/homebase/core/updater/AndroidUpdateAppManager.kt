@@ -21,20 +21,16 @@ class AndroidUpdateAppManager(
         return try {
             val appUpdateInfo = appUpdateManager.requestAppUpdateInfo()
 
-            val updateAvailable = appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
-            val canUpdate = updateAvailable && (
+            val updateAvailable = appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE && (
                     appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE) ||
                             appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)
                     )
 
-            Logger.i {
-                "Update check: available=$updateAvailable, canUpdate=$canUpdate, " +
-                        "availableVersionCode=${appUpdateInfo.availableVersionCode()}"
-            }
+            Logger.i { "Update check: available=$updateAvailable, availableVersionCode=${appUpdateInfo.availableVersionCode()}" }
 
             UpdateAppModel(
                 updateAvailable = updateAvailable,
-                canUpdate = canUpdate,
+                canUpdate = true,
                 versionName = appUpdateInfo.availableVersionCode().toString(),
                 error = null
             )
