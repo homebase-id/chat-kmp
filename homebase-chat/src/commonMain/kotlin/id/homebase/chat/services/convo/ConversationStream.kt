@@ -57,6 +57,17 @@ class ConversationStream(
     private var loadJob: Job? = null
     private var shareCacheJob: Job? = null
 
+    /**
+     * Conversation ids the user deleted in this app session. The file is still
+     * on disk (soft-deleted via archivalStatus=Removed) until the outbox processes
+     * the server-side delete, so [loadBasicConversations] would otherwise resurrect
+     * a "deleted conversation" placeholder via [ConversationMapper.mapDeletedConversation]
+     * on every reload. Tracking the ids here lets us filter them out for the rest
+     * of the session. Cleared on app restart (when the outbox should have already
+     * hard-deleted them).
+     */
+    private val deletedIds: MutableSet<Uuid> = mutableSetOf()
+
     private val mapper: ConversationMapper = ConversationMapper(
         credentialsManager = credentialsManager,
         dbm = dbm
@@ -590,12 +601,18 @@ class ConversationStream(
         val files = dbm.chatReadCount.selectAllConversations(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
-        val basic = files.map { file ->
-            val ui = mapper.mapToBasic(file)
-            if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
-                ui.copy(conversationState = ConversationState.Left)
-            } else ui
-        }
+        val basic = files
+            // Locally-deleted conversations stay on disk (soft-deleted) until the
+            // outbox processes the server-side delete; without this filter the
+            // mapper would resurrect a "deleted conversation" placeholder for them
+            // on every reload. See [onConversationDeleted].
+            .filterNot { it.fileMetadata.appData.uniqueId in deletedIds }
+            .map { file ->
+                val ui = mapper.mapToBasic(file)
+                if (ui.id in leftIds && ui.conversationState != ConversationState.Left) {
+                    ui.copy(conversationState = ConversationState.Left)
+                } else ui
+            }
 
         _conversations.value = ConversationsData(
             dataReady = true,
@@ -875,8 +892,14 @@ class ConversationStream(
      * delete is enqueued, instead of lingering as a "deleted conversation" placeholder
      * (the result of [ConversationMapper.mapDeletedConversation] firing on the soft-
      * deleted file) until the next app start.
+     *
+     * Also records the id in [deletedIds] so [loadBasicConversations] keeps it out
+     * of the list across subsequent reloads; without this the row would be
+     * resurrected by the next DB read because the file is still on disk (soft-
+     * deleted) until the outbox processes the server-side delete.
      */
     fun onConversationDeleted(conversationId: Uuid) {
+        deletedIds += conversationId
         _conversations.value = _conversations.value.copy(
             items = _conversations.value.items.filterNot { it.id == conversationId }
         )

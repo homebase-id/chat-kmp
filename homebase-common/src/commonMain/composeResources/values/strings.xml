@@ -369,6 +369,11 @@
     <string name="chat_group_leaving_in_progress">Leaving group…</string>
     <string name="chat_group_member_op_in_progress">Working…</string>
     <string name="chat_conversation_deleted_confirmation">Conversation and all messages deleted</string>
+    <string name="chat_conversation_deleting_in_progress">Deleting conversation…</string>
+    <string name="chat_conversation_leaving_and_deleting_in_progress">Leaving and deleting…</string>
+    <string name="chat_leave_and_delete">Leave &amp; delete</string>
+    <string name="chat_leave_and_delete_conversation_title">Leave and delete this group?</string>
+    <string name="chat_leave_and_delete_conversation_text">You're still a member of this group. Continuing will leave the group and then delete it from your device. This action can't be undone.</string>
     <string name="chat_group_choose_new_admin">Choose new admin</string>
     <string name="chat_group_choose_new_admin_disclaimer">Before you leave, you must choose at least one new admin for this group.</string>
     <string name="chat_group_not_connected_disclaimer">You can only chat with connected identities, messages will not be delivered to all group members.</string>

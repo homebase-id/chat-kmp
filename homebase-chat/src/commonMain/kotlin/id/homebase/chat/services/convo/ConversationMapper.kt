@@ -180,7 +180,13 @@ class ConversationMapper(
                 val isPinnedByTag = localTags.contains(ChatProtocol.ConversationPinnedTag)
 
                 val conversationState = when {
-                    isLeftByTag && participants.contains(domain) -> ConversationState.RejoinPending
+                    // Legacy groups have no protocol to update the participants list, so
+                    // `participants.contains(domain)` after LeftTag does NOT mean "someone
+                    // re-added me" — the list literally cannot change. Treat any LeftTag
+                    // on a legacy group as Left, regardless of participants. Without this
+                    // exemption, the user sees a spurious "You were re-added to this group"
+                    // immediately after leaving a legacy group.
+                    isLeftByTag && !isLegacyGroup && participants.contains(domain) -> ConversationState.RejoinPending
                     isLeftByTag -> ConversationState.Left
                     isAnyGroup && !participants.contains(domain) -> ConversationState.Removed
                     isArchivedByTag -> ConversationState.Archived

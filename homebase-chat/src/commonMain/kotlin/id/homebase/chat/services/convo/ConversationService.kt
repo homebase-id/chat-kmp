@@ -901,13 +901,19 @@ class ConversationService(
         // 2. Remove self from participants — chained after status message.
         // If this fails, roll back the optimistic status message AND its outbox entry
         // so a ghost "X left" message is not sent to the group while the leave didn't complete.
-        audit.step(2, "updateConversationInternal(participants=${remaining.size}, dep=messageId)")
+        //
+        // applyOptimisticContentLocally=true so the participants list is updated in the
+        // local DB BEFORE step 4 flips the LeftTag. Without this, the mapper sees
+        // (LeftTag-set AND domain-still-in-participants) → RejoinPending, and the user
+        // sees a spurious "You were re-added to this group" the moment after leaving.
+        audit.step(2, "updateConversationInternal(participants=${remaining.size}, dep=messageId, applyOptimisticContentLocally=true)")
         try {
             updateConversationInternal(
                 conversationId = conversationId,
                 title = conversation.name,
                 participants = remaining,
-                dependencyUniqueId = messageId
+                dependencyUniqueId = messageId,
+                applyOptimisticContentLocally = true,
             )
             audit.checkPass("step2RemoveSelf")
         } catch (t: Throwable) {
@@ -1091,7 +1097,14 @@ class ConversationService(
         /** When true, ensures [ChatProtocol.ConversationGroupTag] is present in the file's
          *  tags (used by recovery/revive paths to heal legacy or untagged group files).
          *  null = preserve existing tags as-is. */
-        isGroup: Boolean? = null
+        isGroup: Boolean? = null,
+        /** When true, immediately writes the new metadata to the local DB via
+         *  [OptimisticWriter.writeUpdate] BEFORE enqueuing the server upload. Use this when
+         *  the caller needs subsequent code (or the mapper) to observe the new participant
+         *  list locally without waiting for the outbox to drain — most notably [leaveGroup]
+         *  step 2, which would otherwise race [ChatProtocol.ConversationLeftTag] against the
+         *  pending participant change and produce a spurious [ConversationState.RejoinPending]. */
+        applyOptimisticContentLocally: Boolean = false
     ) {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("updateConversationInternal")
@@ -1259,11 +1272,20 @@ class ConversationService(
         // This ensures that any code running after this call (e.g. updateConversationTags)
         // sees the updated participant list when it reads the file, preventing a false
         // RejoinPending detection caused by the outbox/localTags race.
-//        optimisticWriter.writeUpdate(
-//            driveId = chatDrive,
-//            keyHeader = keyHeader,
-//            unecryptedMetadata = metadata
-//        )
+        //
+        // Off by default — historically this block was commented out wholesale, which is
+        // safe for paths whose change is purely server-side (delete archivalStatus, group
+        // member adds where the new list shows up via sync, etc.). leaveGroup step 2 opts
+        // IN because subsequent code (step 4) flips the LeftTag locally and the mapper
+        // must see the participant change at the same moment, otherwise it renders the
+        // conversation as RejoinPending.
+        if (applyOptimisticContentLocally) {
+            optimisticWriter.writeUpdate(
+                driveId = chatDrive,
+                keyHeader = keyHeader,
+                unecryptedMetadata = metadata
+            )
+        }
 
         // ---- DEBUG instrumentation ----
         audit.step(1, "outboxSync.replaceEnqueue(UpdateFileByUniqueIdRequest, dep=$dependencyUniqueId)")
