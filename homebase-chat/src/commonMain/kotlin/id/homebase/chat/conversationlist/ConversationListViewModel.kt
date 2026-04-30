@@ -109,7 +109,10 @@ import io.github.vinceglb.filekit.filesDir
 import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.write
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import id.homebase.core.localization.TranslationUtil
@@ -131,6 +134,8 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -323,17 +328,20 @@ class ConversationListViewModel(
                         connectionStatusKnown = connectionCtx.statusKnown,
                     )
                 })
-            }.debounce(50).collect { (dataReady: Boolean, enriched: List<EnrichedConversationUiModel>) ->
+            }.debounce(50).map { (dataReady, enriched) ->
+                Pair(
+                    dataReady,
+                    enriched
+                        .sortedByDescending { it.conversation.latestMessageTimestamp }
+                        .toPersistentList()
+                )
+            }.flowOn(Dispatchers.Default).collect { (dataReady, sorted) ->
                 Logger.i(tag = "ConversationListViewModel") {
-                    "conversationStream emit: dataReady=$dataReady enrichedCount=${enriched.size}"
+                    "conversationStream emit: dataReady=$dataReady enrichedCount=${sorted.size}"
                 }
                 if (dataReady) {
                     _uiState.update {
-                        it.copy(
-                            activeConversations = enriched
-                                .sortedByDescending { conversation -> conversation.conversation.latestMessageTimestamp }
-                                .toPersistentList()
-                        )
+                        it.copy(activeConversations = sorted)
                     }
                     updateListContent()
                 }
@@ -2133,9 +2141,9 @@ class ConversationListViewModel(
     }
 
     private fun updateListContent() {
-        viewModelScope.launch {
+        val searchQuery = conversationSearchTextState.text.toString()
+        viewModelScope.launch(Dispatchers.Default) {
             try {
-                val searchQuery = conversationSearchTextState.text.toString()
                 val filterByUnread = uiState.value.filterByUnread
                 val conversationsPool =
                     if (filterByUnread) uiState.value.activeConversations.filter {
@@ -2173,10 +2181,12 @@ class ConversationListViewModel(
                         items.addAll(normalItems)
                     }
 
+                    val content = if (items.isEmpty()) ConversationListContentState.Empty
+                        else ConversationListContentState.Items(items.toPersistentList())
+
                     _uiState.update {
                         it.copy(
-                            conversationsContent = if (items.isEmpty()) ConversationListContentState.Empty
-                            else ConversationListContentState.Items(items.toPersistentList()),
+                            conversationsContent = content,
                             archivedCount = archivedCount
                         )
                     }
@@ -2210,15 +2220,15 @@ class ConversationListViewModel(
                         }
                     }
 
+                    val content = if (result.isEmpty()) ConversationListContentState.EmptySearch(
+                        searchQuery
+                    )
+                    else ConversationListContentState.Items(
+                        result.toPersistentList()
+                    )
+
                     _uiState.update {
-                        it.copy(
-                            conversationsContent = if (result.isEmpty()) ConversationListContentState.EmptySearch(
-                                searchQuery
-                            )
-                            else ConversationListContentState.Items(
-                                result.toPersistentList()
-                            )
-                        )
+                        it.copy(conversationsContent = content)
                     }
                 }
             } catch (e: Exception) {
@@ -2273,42 +2283,51 @@ class ConversationListViewModel(
                         }
 
                         is ChatMessagesData.Messages -> {
-                            val exitedAt = _uiState.value.activeConversations
-                                .find { it.conversation.id == conversationId }
-                                ?.conversation?.exitedAt
-                            val filteredByExit = if (exitedAt != null)
-                                messageState.messages.filter { it.userDate <= exitedAt }
-                            else
-                                messageState.messages
-                            // Hide soft-deleted messages in "Note to Self" conversation
-                            val messages =
-                                if (conversationId == ChatProtocol.ConversationWithYourselfId)
-                                    filteredByExit.filter { !it.isDeleted }
-                                else
-                                    filteredByExit
-                            // Group messages within day sections
-                            val timezone = TimeZone.currentSystemDefault()
-                            val groupedMessages =
-                                messages.sortedBy { it.userDate }.groupBy { message ->
-                                    val date = message.userDate.toLocalDateTime(timezone).date
-                                    date
-                                }
-                            val messagesModels: MutableList<MessageListContentModel> =
-                                mutableListOf(MessageListContentModel.Header)
+                            val currentPending = _messagesUiState.value.pendingOutgoing
 
-                            var systemIndex = 0
-                            messagesModels.addAll(groupedMessages.flatMap { (date, messages) ->
-                                listOf(MessageListContentModel.Section(date)) + messages.map {
-                                    if (it.isStatusMessage)
-                                        MessageListContentModel.System(
-                                            it.content,
-                                            it.userDate,
-                                            systemIndex++
-                                        )
+                            val processed = withContext(Dispatchers.Default) {
+                                val exitedAt = _uiState.value.activeConversations
+                                    .find { it.conversation.id == conversationId }
+                                    ?.conversation?.exitedAt
+                                val filteredByExit = if (exitedAt != null)
+                                    messageState.messages.filter { it.userDate <= exitedAt }
+                                else
+                                    messageState.messages
+                                val messages =
+                                    if (conversationId == ChatProtocol.ConversationWithYourselfId)
+                                        filteredByExit.filter { !it.isDeleted }
                                     else
-                                        MessageListContentModel.Message(it)
-                                }
-                            })
+                                        filteredByExit
+                                val timezone = TimeZone.currentSystemDefault()
+                                val groupedMessages =
+                                    messages.sortedBy { it.userDate }.groupBy { message ->
+                                        message.userDate.toLocalDateTime(timezone).date
+                                    }
+                                val messagesModels: MutableList<MessageListContentModel> =
+                                    mutableListOf(MessageListContentModel.Header)
+
+                                var systemIndex = 0
+                                messagesModels.addAll(groupedMessages.flatMap { (date, msgs) ->
+                                    listOf(MessageListContentModel.Section(date)) + msgs.map {
+                                        if (it.isStatusMessage)
+                                            MessageListContentModel.System(
+                                                it.content,
+                                                it.userDate,
+                                                systemIndex++
+                                            )
+                                        else
+                                            MessageListContentModel.Message(it)
+                                    }
+                                })
+
+                                val messagesList = messagesModels.toPersistentList()
+                                val replyMsgs = computeReplyMessages(messagesList)
+                                val merged = computeMergedItems(messagesList, currentPending, conversationId)
+
+                                Triple(messagesList, replyMsgs, merged)
+                            }
+
+                            val (messagesModels, replyMsgs, merged) = processed
 
                             // Scroll handling: navigate to a specific message (search results,
                             // cross-conversation jumps, etc.). The user's own just-sent messages
@@ -2363,7 +2382,7 @@ class ConversationListViewModel(
                             }
 
                             Logger.i(tag = "ConversationListViewModel") {
-                                "selectedConversationId flip id=$conversationId messageCount=${messages.size}"
+                                "selectedConversationId flip id=$conversationId"
                             }
                             _uiState.value = _uiState.value.copy(
                                 selectedConversationId = conversationId,
@@ -2372,7 +2391,9 @@ class ConversationListViewModel(
                             _messagesUiState.update {
                                 it.copy(
                                     isLoadingMessages = false,
-                                    messages = messagesModels.toPersistentList(),
+                                    messages = messagesModels,
+                                    replyMessages = replyMsgs,
+                                    mergedItems = merged,
                                     scrollPosition = newScroll
                                         ?: it.scrollPosition?.takeIf { pos -> pos.triggerScroll },
                                 )
@@ -2382,7 +2403,7 @@ class ConversationListViewModel(
                                 val totalElapsed = loadStart.elapsedNow()
                                 Logger.d(tag = "ConversationLoad") {
                                     "conversationId=$conversationId " +
-                                            "messageCount=${messages.size} " +
+                                            "messageCount=${messagesModels.size} " +
                                             "cached=$hasCachedMessages " +
                                             "total=$totalElapsed"
                                 }
@@ -2966,10 +2987,14 @@ class ConversationListViewModel(
             // Register the placeholder, register upload progress, clear the
             // composer, and close the overlay BEFORE the heavy work so the
             // user sees a "Preparing…" bubble in the chat immediately.
+            val currentMessages = _messagesUiState.value.messages
+            val newPendingAdd = (_messagesUiState.value.pendingOutgoing + placeholder).toPersistentList()
+            val mergedAdd = computeMergedItems(currentMessages, newPendingAdd, conversationId)
             _messagesUiState.update { state ->
                 state.copy(
                     uploadProgress = (state.uploadProgress + (newMessageId to UploadStatus.Preparing)).toPersistentMap(),
-                    pendingOutgoing = (state.pendingOutgoing + placeholder).toPersistentList(),
+                    pendingOutgoing = newPendingAdd,
+                    mergedItems = mergedAdd,
                     fullScreenOverlay = null,
                     isSendingMessage = false,
                 )
@@ -2994,11 +3019,15 @@ class ConversationListViewModel(
                         userDate = sentAt,
                     )
                     // Real optimistic bubble has landed — drop the placeholder.
+                    val msgs = _messagesUiState.value.messages
+                    val newPending = _messagesUiState.value.pendingOutgoing
+                        .filterNot { it.id == newMessageId }
+                        .toPersistentList()
+                    val merged = computeMergedItems(msgs, newPending, conversationId)
                     _messagesUiState.update { state ->
                         state.copy(
-                            pendingOutgoing = state.pendingOutgoing
-                                .filterNot { it.id == newMessageId }
-                                .toPersistentList(),
+                            pendingOutgoing = newPending,
+                            mergedItems = merged,
                         )
                     }
                 } catch (e: Exception) {
@@ -3006,12 +3035,16 @@ class ConversationListViewModel(
                         throwable = e,
                         tag = TAG
                     ) { "addMessageWithFiles failed for message=$newMessageId conversation=$conversationId" }
+                    val msgs = _messagesUiState.value.messages
+                    val newPending = _messagesUiState.value.pendingOutgoing
+                        .filterNot { it.id == newMessageId }
+                        .toPersistentList()
+                    val merged = computeMergedItems(msgs, newPending, conversationId)
                     _messagesUiState.update { state ->
                         state.copy(
                             uploadProgress = (state.uploadProgress - newMessageId).toPersistentMap(),
-                            pendingOutgoing = state.pendingOutgoing
-                                .filterNot { it.id == newMessageId }
-                                .toPersistentList(),
+                            pendingOutgoing = newPending,
+                            mergedItems = merged,
                         )
                     }
                     sendEvent(
@@ -3082,6 +3115,49 @@ class ConversationListViewModel(
         } finally {
             shareContentProcessor.cleanup()
         }
+    }
+
+    private fun computeReplyMessages(
+        messages: List<MessageListContentModel>
+    ): ImmutableMap<Uuid, MessageUiModel> {
+        val allMessages = messages.filterIsInstance<MessageListContentModel.Message>()
+        val replyTargetIds = allMessages.mapNotNullTo(mutableSetOf()) {
+            it.message.messageAppData.replyPreview?.replyUniqueId
+        }
+        if (replyTargetIds.isEmpty()) return persistentMapOf()
+        return allMessages.filter { it.message.id in replyTargetIds }
+            .associate { it.message.id to it.message }
+            .toPersistentMap()
+    }
+
+    private fun computeMergedItems(
+        messages: ImmutableList<MessageListContentModel>,
+        pendingOutgoing: ImmutableList<PendingOutgoingMessage>,
+        conversationId: Uuid?
+    ): ImmutableList<Any> {
+        if (conversationId == null) return messages.toPersistentList()
+        val realMessageIds = messages
+            .filterIsInstance<MessageListContentModel.Message>()
+            .mapTo(HashSet()) { it.message.id }
+        val pendingForConvo = pendingOutgoing.filter {
+            it.conversationId == conversationId && it.id !in realMessageIds
+        }
+        if (pendingForConvo.isEmpty()) return messages.toPersistentList()
+
+        val pending = pendingForConvo.sortedBy { it.sentAt }.toMutableList()
+        val result = mutableListOf<Any>()
+        for (item in messages) {
+            if (item is MessageListContentModel.Message) {
+                while (pending.isNotEmpty() &&
+                    pending.first().sentAt <= item.message.userDate
+                ) {
+                    result += pending.removeAt(0)
+                }
+            }
+            result += item
+        }
+        result.addAll(pending)
+        return result.toPersistentList()
     }
 }
 

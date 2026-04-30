@@ -45,6 +45,8 @@ data class ConversationListUiState(
 @Immutable
 data class MessageListUiState(
     val messages: ImmutableList<MessageListContentModel> = persistentListOf(),
+    val replyMessages: ImmutableMap<Uuid, MessageUiModel> = persistentMapOf(),
+    val mergedItems: ImmutableList<Any> = persistentListOf(),
     val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     val userDefaultReactions: ImmutableList<String> = persistentListOf(),
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),

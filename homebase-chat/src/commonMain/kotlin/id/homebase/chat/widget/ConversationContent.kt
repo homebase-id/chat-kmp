@@ -168,7 +168,6 @@ import id.homebase.resources.time_yesterday
 import id.homebase.resources.you
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.launch
@@ -313,21 +312,7 @@ fun ConversationContent(
         }
     }
 
-    // Build a lookup map of reply target ID -> MessageUiModel for reply image thumbnails.
-    // Only includes messages that are actually referenced by a reply, to avoid O(n) map of all messages.
-    val replyMessages = remember(uiState.messages) {
-        val allMessages = uiState.messages.filterIsInstance<MessageListContentModel.Message>()
-        val replyTargetIds = allMessages.mapNotNullTo(mutableSetOf()) {
-            it.message.messageAppData.replyPreview?.replyUniqueId
-        }
-        if (replyTargetIds.isEmpty()) {
-            persistentMapOf()
-        } else {
-            allMessages.filter { it.message.id in replyTargetIds }
-                .associate { it.message.id to it.message }
-                .toPersistentMap()
-        }
-    }
+    val replyMessages = uiState.replyMessages
 
     @Suppress("DEPRECATION") BackHandler(showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
         showEmojiSheet = false
@@ -640,46 +625,7 @@ fun ConversationContent(
                     }
                 }
 
-                val realMessageIds = remember(uiState.messages) {
-                    uiState.messages
-                        .filterIsInstance<MessageListContentModel.Message>()
-                        .mapTo(HashSet()) { it.message.id }
-                }
-                val pendingForConvo = remember(
-                    uiState.pendingOutgoing,
-                    realMessageIds,
-                    conversation.conversation.id
-                ) {
-                    uiState.pendingOutgoing.filter {
-                        it.conversationId == conversation.conversation.id &&
-                                it.id !in realMessageIds
-                    }
-                }
-                // Merge pending placeholders into the messages list at the right
-                // chronological position (sorted by sentAt vs. message.userDate).
-                // This matters when a video is still processing — any text or
-                // incoming messages with a later timestamp must render BELOW the
-                // video placeholder, not above it.
-                val mergedItems = remember(uiState.messages, pendingForConvo) {
-                    if (pendingForConvo.isEmpty()) {
-                        uiState.messages.toList<Any>()
-                    } else {
-                        val pending = pendingForConvo.sortedBy { it.sentAt }.toMutableList()
-                        val result = mutableListOf<Any>()
-                        for (item in uiState.messages) {
-                            if (item is MessageListContentModel.Message) {
-                                while (pending.isNotEmpty() &&
-                                    pending.first().sentAt <= item.message.userDate
-                                ) {
-                                    result += pending.removeAt(0)
-                                }
-                            }
-                            result += item
-                        }
-                        result.addAll(pending)
-                        result.toList()
-                    }
-                }
+                val mergedItems = uiState.mergedItems
 
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -785,7 +731,7 @@ fun ConversationContent(
                                 }
                             }
                             // If only one message item (the header) show no messages info
-                            if (uiState.messages.size == 1 && pendingForConvo.isEmpty()) {
+                            if (uiState.messages.size == 1 && uiState.pendingOutgoing.none { it.conversationId == conversation.conversation.id }) {
                                 item { EmptyListItem(stringResource(MR.string.chat_no_messages)) }
                             }
                         }
