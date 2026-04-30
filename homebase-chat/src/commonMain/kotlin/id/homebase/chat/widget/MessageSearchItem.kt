@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.common.OdinId
@@ -31,6 +32,7 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.initials
 import kotlin.time.Instant
 
+@OptIn(ExperimentalRichTextApi::class)
 @Composable
 fun MessageSearchItem(
     memberName: String,

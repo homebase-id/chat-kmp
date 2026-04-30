@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 
@@ -85,6 +86,7 @@ fun RichTextExample() {
     }
 }
 
+@OptIn(ExperimentalRichTextApi::class)
 @Composable
 fun TextExample(mode: String, richTextState: RichTextState) {
     HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
