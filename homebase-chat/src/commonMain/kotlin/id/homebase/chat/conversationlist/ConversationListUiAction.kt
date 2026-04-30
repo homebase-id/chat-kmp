@@ -24,6 +24,16 @@ sealed interface ConversationListUiAction {
     data object SearchMessagesNavigatePrevious : ConversationListUiAction
     data object NewConversationClicked : ConversationListUiAction
     data object ClearSelection : ConversationListUiAction
+
+    /** The screen has handled [ConversationListUiState.closeDetailPaneRequest] (popped
+     *  the scaffold detail pane); clear it so it doesn't fire again on next recompose. */
+    data object CloseDetailPaneRequestConsumed : ConversationListUiAction
+
+    /** Combined leave-and-delete for a group conversation the user is still in.
+     *  Service-side: calls [ConversationService.leaveGroup] then
+     *  [ConversationService.deleteConversation] in sequence so the user does not
+     *  have to do both in two separate UI flows. */
+    data class ConfirmLeaveAndDeleteConversation(val conversationId: Uuid) : ConversationListUiAction
     data object FilterByUnreadClicked : ConversationListUiAction
     data object ClearFilterByUnreadClicked : ConversationListUiAction
     data object ShowArchivedMessagesClicked : ConversationListUiAction

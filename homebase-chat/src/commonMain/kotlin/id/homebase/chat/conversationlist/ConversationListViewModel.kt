@@ -95,6 +95,9 @@ import id.homebase.resources.auto_connect_recipient_not_configured
 import id.homebase.resources.auto_connect_recipient_rejected
 import id.homebase.resources.auto_connect_recipient_requires_upgrade
 import id.homebase.resources.auto_connect_recipient_unreachable
+import id.homebase.resources.chat_conversation_deleted_confirmation
+import id.homebase.resources.chat_conversation_deleting_in_progress
+import id.homebase.resources.chat_conversation_leaving_and_deleting_in_progress
 import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_message_forwarded
@@ -1775,15 +1778,26 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ConfirmDeleteConversation -> {
                 viewModelScope.launch {
-                    try {
-                        conversationService.deleteConversation(action.conversationId)
-                    } catch (e: Exception) {
-                        Logger.e(throwable = e, tag = "ConversationListViewModel") {
-                            "Failed to delete conversation: ${e.message}"
-                        }
-                        sendEvent(ShowErrorMessage("Failed to delete conversation: ${e.message}"))
-                    }
+                    runDeleteConversationFlow(
+                        conversationId = action.conversationId,
+                        leaveFirst = false,
+                        overlayLabel = MR.string.chat_conversation_deleting_in_progress,
+                    )
                 }
+            }
+
+            is ConversationListUiAction.ConfirmLeaveAndDeleteConversation -> {
+                viewModelScope.launch {
+                    runDeleteConversationFlow(
+                        conversationId = action.conversationId,
+                        leaveFirst = true,
+                        overlayLabel = MR.string.chat_conversation_leaving_and_deleting_in_progress,
+                    )
+                }
+            }
+
+            is ConversationListUiAction.CloseDetailPaneRequestConsumed -> {
+                _uiState.update { it.copy(closeDetailPaneRequest = null) }
             }
 
             is ConversationListUiAction.AcceptRejoin -> {
@@ -2418,6 +2432,74 @@ class ConversationListViewModel(
     private fun sendEvent(event: ConversationListUiEvent) {
         _uiState.update { it.copy(uiEvent = event) }
     }
+
+    /**
+     * Combined delete (and optional leave-first) flow. Drives the in-flight overlay
+     * via [ConversationListUiState.inFlightDeletionLabel], runs the service ops,
+     * then reconciles UI state (drops the row from the in-memory list, pops the
+     * detail pane if the deleted conversation was open, fires the snackbar).
+     *
+     * @param leaveFirst when true, calls [ConversationService.leaveGroup] before
+     *                   the delete. Required when the user is still an active
+     *                   member of a group conversation; the service-side delete
+     *                   guard otherwise rejects with IllegalStateException.
+     */
+    private suspend fun runDeleteConversationFlow(
+        conversationId: Uuid,
+        leaveFirst: Boolean,
+        overlayLabel: org.jetbrains.compose.resources.StringResource,
+    ) {
+        _uiState.update { it.copy(inFlightDeletionLabel = overlayLabel) }
+        try {
+            if (leaveFirst) {
+                // Mirror GroupSettingsViewModel.LeaveGroupConfirm logic so a sole-admin
+                // with no reachable non-admin still goes through the local-only branch.
+                val enriched = uiState.value.activeConversations
+                    .find { it.conversation.id == conversationId }
+                val conversation = enriched?.conversation
+                val currentUser = credentialsManager.requireActiveCredentials().domain
+                val isSoleAdmin = conversation != null
+                        && conversation.isCurrentUserAdmin(currentUser)
+                        && conversation.admins.size == 1
+                val hasReachableNonAdmin = enriched != null && enriched.participants.any {
+                    it.connectionState ==
+                            id.homebase.chat.services.convo.contact.ContactConnectionState.Connected
+                            && conversation?.isCurrentUserAdmin(it.odinId) == false
+                }
+                val forceLocalOnly = isSoleAdmin && !hasReachableNonAdmin
+                conversationService.leaveGroup(
+                    conversationId = conversationId,
+                    forceLocalOnly = forceLocalOnly,
+                )
+            }
+            conversationService.deleteConversation(conversationId)
+
+            // Drop the row from the in-memory list immediately and tell the stream
+            // to keep it filtered across reloads — see ConversationStream.deletedIds.
+            conversationStream.onConversationDeleted(conversationId)
+
+            val close = uiState.value.selectedConversationId == conversationId
+            _uiState.update {
+                it.copy(
+                    inFlightDeletionLabel = null,
+                    selectedConversationId = if (close) null else it.selectedConversationId,
+                    closeDetailPaneRequest = if (close) conversationId else it.closeDetailPaneRequest,
+                )
+            }
+            if (close) {
+                // ClearSelection also resets messages and stops the per-convo job.
+                onAction(ConversationListUiAction.ClearSelection)
+            }
+            sendEvent(ShowInfoMessage(MR.string.chat_conversation_deleted_confirmation))
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = "ConversationListViewModel") {
+                "Failed to delete conversation (leaveFirst=$leaveFirst): ${e.message}"
+            }
+            _uiState.update { it.copy(inFlightDeletionLabel = null) }
+            sendEvent(ShowErrorMessage("Failed to delete conversation: ${e.message}"))
+        }
+    }
+
 
     private fun autoConnect(recipient: OdinId) {
         // Only operate while the Connect-identities sheet is open; otherwise there is no

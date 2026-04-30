@@ -93,6 +93,10 @@ class GroupSettingsViewModel(
 
             is GroupSettingsUiAction.LeaveGroupConfirm -> {
                 viewModelScope.launch {
+                    // Show full-screen overlay while the leave is in flight. Cleared on
+                    // error; on success the screen pops via the Back event below so
+                    // explicit clearing is unnecessary.
+                    _uiState.update { it.copy(isLeaving = true) }
                     try {
                         uiState.value.conversation?.let { conversation ->
                             uiState.value.currentOdinId?.let { currentUser ->
@@ -110,7 +114,12 @@ class GroupSettingsViewModel(
                         }
                     } catch (e: Exception) {
                         Logger.e("Failed to leave group", e)
-                        _uiState.update { it.copy(uiEvent = Error("Failed to leave group")) }
+                        _uiState.update {
+                            it.copy(
+                                isLeaving = false,
+                                uiEvent = Error("Failed to leave group"),
+                            )
+                        }
                     }
                 }
             }
@@ -118,16 +127,28 @@ class GroupSettingsViewModel(
             is GroupSettingsUiAction.LeaveGroupClicked -> {
                 uiState.value.conversation?.let { conversation ->
                     uiState.value.currentOdinId?.let { currentUser ->
-                        val isSoleAdmin = conversation.isCurrentUserAdmin(currentUser)
+                        val isAdmin = conversation.isCurrentUserAdmin(currentUser)
+                        val isSoleAdmin = isAdmin
                                 && conversation.admins.size == 1
                                 && conversation.isGroupConversation
-                        // Only force the "choose new admin" dialog when there IS someone
-                        // reachable to promote. If the caller has no connected non-admin,
-                        // fall through to ConfirmLeave — leaveGroup will mark locally only.
-                        if (isSoleAdmin && hasReachableNonAdmin(conversation)) {
-                            _uiState.update { it.copy(uiDialog = GroupSettingsUiDialog.LeaveChooseAdmin) }
-                        } else {
-                            _uiState.update { it.copy(uiDialog = GroupSettingsUiDialog.ConfirmLeave) }
+                        when {
+                            // Legacy groups don't support admin management, so the
+                            // "choose another admin first" path is a dead end for
+                            // legacy admins. Surface a strong-warning dialog and let
+                            // them proceed; service-side leaveGroup uses the local-
+                            // only branch for legacy groups regardless.
+                            conversation.isLegacyGroup && isAdmin -> {
+                                _uiState.update { it.copy(uiDialog = GroupSettingsUiDialog.LeaveLegacyAdminWarning) }
+                            }
+                            // Only force the "choose new admin" dialog when there IS someone
+                            // reachable to promote. If the caller has no connected non-admin,
+                            // fall through to ConfirmLeave — leaveGroup will mark locally only.
+                            isSoleAdmin && hasReachableNonAdmin(conversation) -> {
+                                _uiState.update { it.copy(uiDialog = GroupSettingsUiDialog.LeaveChooseAdmin) }
+                            }
+                            else -> {
+                                _uiState.update { it.copy(uiDialog = GroupSettingsUiDialog.ConfirmLeave) }
+                            }
                         }
                     }
                 }
@@ -136,16 +157,11 @@ class GroupSettingsViewModel(
             is GroupSettingsUiAction.MakeAdmin -> {
                 if (action.skipConfirmation) {
                     viewModelScope.launch {
-                        uiState.value.conversation?.let { conversation ->
-                            try {
-                                conversationService.updateAdmins(
-                                    conversationId = conversation.id,
-                                    add = listOf(action.contact.odinId)
-                                )
-                            } catch (e: Exception) {
-                                Logger.e("Failed to add an admin", e)
-                                _uiState.update { it.copy(uiEvent = Error("Failed to add an admin")) }
-                            }
+                        runMemberOp(action.contact.odinId, "Failed to add an admin") { conversation ->
+                            conversationService.updateAdmins(
+                                conversationId = conversation.id,
+                                add = listOf(action.contact.odinId)
+                            )
                         }
                     }
                     return
@@ -156,16 +172,11 @@ class GroupSettingsViewModel(
             is GroupSettingsUiAction.RemoveAdmin -> {
                 if (action.skipConfirmation) {
                     viewModelScope.launch {
-                        uiState.value.conversation?.let { conversation ->
-                            try {
-                                conversationService.updateAdmins(
-                                    conversationId = conversation.id,
-                                    remove = listOf(action.contact.odinId)
-                                )
-                            } catch (e: Exception) {
-                                Logger.e("Failed to remove an admin", e)
-                                _uiState.update { it.copy(uiEvent = Error("Failed to remove an admin")) }
-                            }
+                        runMemberOp(action.contact.odinId, "Failed to remove an admin") { conversation ->
+                            conversationService.updateAdmins(
+                                conversationId = conversation.id,
+                                remove = listOf(action.contact.odinId)
+                            )
                         }
                     }
                     return
@@ -176,18 +187,17 @@ class GroupSettingsViewModel(
             is GroupSettingsUiAction.RemoveFromGroup -> {
                 if (action.skipConfirmation) {
                     viewModelScope.launch {
-                        uiState.value.conversation?.let { conversation ->
-                            try {
-                                conversationService.updateGroupMembers(
-                                    conversationId = conversation.id,
-                                    remove = listOf(action.contact.odinId)
-                                )
-                                // dismiss sheet on successful removal
-                                _uiState.update { it.copy(uiSheet = null) }
-                            } catch (e: Exception) {
-                                Logger.e("Failed to remove a member", e)
-                                _uiState.update { it.copy(uiEvent = Error("Failed to remove a member")) }
-                            }
+                        val ok = runMemberOp(action.contact.odinId, "Failed to remove a member") { conversation ->
+                            conversationService.updateGroupMembers(
+                                conversationId = conversation.id,
+                                remove = listOf(action.contact.odinId)
+                            )
+                        }
+                        if (ok) {
+                            // dismiss sheet on successful removal — the row in the
+                            // participant list will also disappear once the conversation
+                            // file refreshes.
+                            _uiState.update { it.copy(uiSheet = null) }
                         }
                     }
                     return
@@ -255,6 +265,34 @@ class GroupSettingsViewModel(
      * True when at least one loaded participant is both Connected (transit-reachable)
      * and not already an admin — i.e. someone the sole admin could promote and hand off to.
      */
+    /**
+     * Wraps a per-member service call with the in-flight tracking that drives the
+     * spinner in the member-action sheet. Adds [odinId] to [GroupSettingsUiState.pendingMemberOps]
+     * before invoking [block]; clears it in a finally block so the spinner always
+     * unwinds even on cancellation. On exception, surfaces an error event with
+     * [errorMessage] and returns false; otherwise returns true.
+     *
+     * If there is no current conversation in state, this is a no-op returning false.
+     */
+    private suspend fun runMemberOp(
+        odinId: OdinId,
+        errorMessage: String,
+        block: suspend (ConversationUiModel) -> Unit,
+    ): Boolean {
+        val conversation = uiState.value.conversation ?: return false
+        _uiState.update { it.copy(pendingMemberOps = it.pendingMemberOps + odinId) }
+        return try {
+            block(conversation)
+            true
+        } catch (e: Exception) {
+            Logger.e(errorMessage, e)
+            _uiState.update { it.copy(uiEvent = Error(errorMessage)) }
+            false
+        } finally {
+            _uiState.update { it.copy(pendingMemberOps = it.pendingMemberOps - odinId) }
+        }
+    }
+
     private fun hasReachableNonAdmin(conversation: ConversationUiModel): Boolean {
         return uiState.value.contacts.any { contact ->
             contact.connectionState == ContactConnectionState.Connected &&
