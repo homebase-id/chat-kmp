@@ -378,6 +378,8 @@
     <string name="chat_introduce_preflight_body">Some recipients may not receive an introduction:</string>
     <string name="chat_introduce_preflight_send_anyway">Send anyway</string>
     <string name="chat_introduce_preflight_skip_and_send">Skip these and send to the rest</string>
+    <!-- Bullet-prefixed line in the preflight dialog body. %1$s is a per-status reason. -->
+    <string name="chat_introduce_preflight_bullet">• %1$s</string>
     <!-- Per-status reasons. %1$s is the recipient's display name. -->
     <string name="chat_introduce_preflight_reason_ready">%1$s is ready.</string>
     <string name="chat_introduce_preflight_reason_not_connected">You're not connected to %1$s.</string>

@@ -313,6 +313,7 @@
     <string name="chat_introduce_preflight_body">Nogle modtagere får muligvis ikke en introduktion:</string>
     <string name="chat_introduce_preflight_send_anyway">Send alligevel</string>
     <string name="chat_introduce_preflight_skip_and_send">Spring disse over og send til resten</string>
+    <string name="chat_introduce_preflight_bullet">• %1$s</string>
     <string name="chat_introduce_preflight_reason_ready">%1$s er klar.</string>
     <string name="chat_introduce_preflight_reason_not_connected">Du er ikke forbundet med %1$s.</string>
     <string name="chat_introduce_preflight_reason_not_configured">%1$s\'s identitet er ikke konfigureret endnu.</string>

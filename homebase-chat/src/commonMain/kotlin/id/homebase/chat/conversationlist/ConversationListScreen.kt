@@ -79,6 +79,7 @@ import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_message_discard_draft
 import id.homebase.resources.chat_conversation_deleting_in_progress
 import id.homebase.resources.chat_introduce_preflight_body
+import id.homebase.resources.chat_introduce_preflight_bullet
 import id.homebase.resources.chat_introduce_preflight_reason_not_configured
 import id.homebase.resources.chat_introduce_preflight_reason_not_connected
 import id.homebase.resources.chat_introduce_preflight_reason_not_permitted
@@ -528,8 +529,17 @@ private fun IntroducePreflightDialog(
                     } else {
                         reason
                     }
+                    // Build the bullet-prefixed line via stringResource so the
+                    // bullet character itself is localized (and so the line we
+                    // pass to Text below is an identifier, not a literal — the
+                    // architecture konsist test forbids in-Composable string
+                    // literals at the Text call site).
+                    val bulletLine = stringResource(
+                        MR.string.chat_introduce_preflight_bullet,
+                        text,
+                    )
                     Text(
-                        text = "• $text",
+                        text = bulletLine,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(vertical = 4.dp),
