@@ -32,7 +32,7 @@ platform :ios do
         export_compliance_uses_encryption: false
       },
 
-      run_precheck_before_submit: false
+      run_precheck_before_submit: false,
       force: true
     )
   end
