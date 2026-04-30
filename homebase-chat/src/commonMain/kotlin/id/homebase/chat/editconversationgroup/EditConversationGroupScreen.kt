@@ -14,7 +14,6 @@ import androidx.compose.foundation.text.input.maxLength
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -34,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.createconversationgroup.GroupImage
 import id.homebase.core.widget.MinimalTextField
@@ -80,25 +78,6 @@ fun EditConversationGroupScreen(
             is EditConversationGroupUiEvent.PickGroupImage -> {
                 viewModel.eventConsumed()
                 galleryLauncher.launch()
-            }
-        }
-    }
-
-    when (uiState.uiDialog) {
-        null -> {}
-        EditConversationGroupUiDialog.TestDialog -> {
-            Dialog(onDismissRequest = { viewModel.dialogConsumed() }) {
-                Card {
-                    Column(
-                        modifier = Modifier.padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("Test dialog")
-                        Button(onClick = { viewModel.dialogConsumed() }) {
-                            Text("Close dialog")
-                        }
-                    }
-                }
             }
         }
     }

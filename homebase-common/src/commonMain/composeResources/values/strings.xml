@@ -92,6 +92,7 @@
     <string name="update_check_now">Check for updates</string>
     <string name="update_get_update">Get new update</string>
     <string name="update_checking">Searching for update...</string>
+    <string name="vlc_required">VLC is required for video playback.\nInstall it from videolan.org and restart the app.</string>
 
     <!-- Avatars -->
     <string name="avatar_owner">Owner avatar</string>

@@ -78,6 +78,7 @@
     <string name="update_check_now">Søg efter opdateringer</string>
     <string name="update_get_update">Hent ny opdatering</string>
     <string name="update_checking">Søger efter opdatering...</string>
+    <string name="vlc_required">VLC er påkrævet til videoafspilning.\nInstallér det fra videolan.org og genstart appen.</string>
 
     <!-- Avatars -->
     <string name="avatar_owner">Ejer avatar</string>

@@ -108,7 +108,6 @@ class JvmUpdateAppManager(
             val url = "https://github.com/homebase-id/$githubRepo/releases/latest/download/metadata.properties"
 
             val response = httpClient.get(url).bodyAsText()
-            httpClient.close()
 
             // Parse properties
             val properties = Properties()
@@ -136,7 +135,7 @@ class JvmUpdateAppManager(
 
     private fun isDebianPackageInstalled(): Boolean {
         return try {
-            val packageName = getLinuxLauncherCommand()
+            val packageName = getDebianPackageName()
 
             // Method 1: Check dpkg status file
             val dpkgStatusFile = File("/var/lib/dpkg/info/$packageName.list")
@@ -165,7 +164,7 @@ class JvmUpdateAppManager(
 
             isSystemPath
         } catch (e: Exception) {
-            Logger.w(e) { "Error checking package installation: ${e.message}" }
+            Logger.w { "Error checking package installation: ${e.message}" }
             false
         }
     }
@@ -178,7 +177,7 @@ class JvmUpdateAppManager(
         try {
             Logger.i { "Starting apt repository update..." }
 
-            val packageName = getLinuxLauncherCommand()
+            val packageName = getDebianPackageName()
 
             // Step 1: Refresh package lists
             val updateSuccess = if (hasProgramInPath("pkexec") && hasProgramInPath("apt")) {
@@ -307,18 +306,16 @@ class JvmUpdateAppManager(
         try {
             Logger.i { "Initiating application restart..." }
 
-            val packageName = getLinuxLauncherCommand()
-
             // Check if running from installed location
             val jarLocation = JvmUpdateAppManager::class.java.protectionDomain.codeSource.location.path
-            val isInstalled = jarLocation.startsWith("/usr/share/") || jarLocation.startsWith("/opt/")
+            val isInstalled = jarLocation.startsWith("/usr/share/") || jarLocation.startsWith("/opt/") || jarLocation.startsWith("/usr/lib/")
 
             if (isInstalled) {
-                // If installed as .deb, use the system launcher command
-                // The .deb package installs a launcher script (e.g., /usr/bin/homebase-chat)
-                // that uses the bundled JRE
-                Logger.i { "Using system launcher for $packageName" }
-                ProcessBuilder(packageName).start()
+                // If installed as .deb, use the system launcher
+                // The launcher is installed at /usr/bin/homebase-chat
+                val launcherPath = "/usr/bin/homebase-chat"
+                Logger.i { "Using system launcher: $launcherPath" }
+                ProcessBuilder(launcherPath).start()
             } else {
                 // Running from development/manual JAR - use current JRE
                 val javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java"
@@ -343,17 +340,8 @@ class JvmUpdateAppManager(
         }
     }
 
-    /**
-     * Gets the Linux launcher command name.
-     * Conveyor uses the display-name converted to lowercase-with-hyphens.
-     */
-    private fun getLinuxLauncherCommand(): String {
-        // Use the same logic as JvmFileSystemUtil
-        return if (isProductionVersion()) {
-            "homebase-chat"
-        } else {
-            "homebase-chat-dev"
-        }
+    private fun getDebianPackageName(): String {
+        return "homebase-homebase-chat"
     }
 
     private fun compareVersions(remote: String, current: String): Int {
