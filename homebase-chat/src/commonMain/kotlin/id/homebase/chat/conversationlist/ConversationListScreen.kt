@@ -1,13 +1,25 @@
 package id.homebase.chat.conversationlist
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDragHandle
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.layout.AnimatedPane
@@ -65,6 +77,10 @@ import id.homebase.resources.chat_message_delete_dialog_title
 import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_message_discard_draft
+import id.homebase.resources.chat_conversation_deleting_in_progress
+import id.homebase.resources.chat_leave_and_delete
+import id.homebase.resources.chat_leave_and_delete_conversation_text
+import id.homebase.resources.chat_leave_and_delete_conversation_title
 import id.homebase.resources.chat_select_a_conversation
 import id.homebase.resources.chat_select_a_conversation_subtitle
 import id.homebase.resources.discard
@@ -253,17 +269,38 @@ fun ConversationListScreen(
         }
 
         is ConversationListUiDialog.DeleteConversation -> {
+            // Detect "group I'm still an active member of" — in that case, surface
+            // a combined "Leave & delete" action instead of plain delete (which the
+            // service would reject with IllegalStateException). The user no longer
+            // has to leave first in a separate step.
+            val convo = conversationsUiState.activeConversations
+                .find { it.conversation.id == dialog.conversationId }?.conversation
+            val needsLeaveFirst = convo != null
+                && convo.isGroupConversation
+                && convo.conversationState == id.homebase.chat.data.ConversationState.Active
+
             Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
                 DialogCard(
                     buttons = {
                         DialogButtons(
-                            primaryText = stringResource(MR.string.chat_delete),
+                            primaryText = stringResource(
+                                if (needsLeaveFirst) MR.string.chat_leave_and_delete
+                                else MR.string.chat_delete
+                            ),
                             onPrimaryClick = {
-                                viewModel.onAction(
-                                    ConversationListUiAction.ConfirmDeleteConversation(
-                                        dialog.conversationId
+                                if (needsLeaveFirst) {
+                                    viewModel.onAction(
+                                        ConversationListUiAction.ConfirmLeaveAndDeleteConversation(
+                                            dialog.conversationId
+                                        )
                                     )
-                                )
+                                } else {
+                                    viewModel.onAction(
+                                        ConversationListUiAction.ConfirmDeleteConversation(
+                                            dialog.conversationId
+                                        )
+                                    )
+                                }
                                 viewModel.dialogClosed()
                             },
                             secondaryText = stringResource(MR.string.cancel),
@@ -271,10 +308,16 @@ fun ConversationListScreen(
                         )
                     }) {
                     DialogTitle(
-                        text = stringResource(MR.string.chat_delete_conversation_title),
+                        text = stringResource(
+                            if (needsLeaveFirst) MR.string.chat_leave_and_delete_conversation_title
+                            else MR.string.chat_delete_conversation_title
+                        ),
                     )
                     DialogText(
-                        text = stringResource(MR.string.action_cannot_be_undone),
+                        text = stringResource(
+                            if (needsLeaveFirst) MR.string.chat_leave_and_delete_conversation_text
+                            else MR.string.action_cannot_be_undone
+                        ),
                     )
                 }
             }
@@ -313,18 +356,66 @@ fun ConversationListScreen(
         }
     }
 
-    ConversationListUi(
-        snackbarHostState = snackbarHostState,
-        uiState = conversationsUiState,
-        messagesUiState = messagesUiState,
-        archivedConversationsUiState = archivedUiState,
-        conversationSearchTextFieldState = viewModel.conversationSearchTextState,
-        messageInputTextFieldState = viewModel.messageInputTextState,
-        messagesSearchTextState = viewModel.messagesSearchTextState,
-        onUiAction = viewModel::onAction,
-        onNavigateToSettingsScreen = onNavigateToSettingsScreen,
-        onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
-    )
+    Box(modifier = Modifier.fillMaxSize()) {
+        ConversationListUi(
+            snackbarHostState = snackbarHostState,
+            uiState = conversationsUiState,
+            messagesUiState = messagesUiState,
+            archivedConversationsUiState = archivedUiState,
+            conversationSearchTextFieldState = viewModel.conversationSearchTextState,
+            messageInputTextFieldState = viewModel.messageInputTextState,
+            messagesSearchTextState = viewModel.messagesSearchTextState,
+            onUiAction = viewModel::onAction,
+            onEventConsumed = viewModel::eventConsumed,
+            onNavigateToSettingsScreen = onNavigateToSettingsScreen,
+            onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
+        )
+
+        conversationsUiState.inFlightDeletionLabel?.let { label ->
+            DeletingConversationOverlay(label)
+        }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun DeletingConversationOverlay(label: org.jetbrains.compose.resources.StringResource) {
+    // Mirrors LeavingGroupOverlay in GroupSettingsScreen — full-screen scrim
+    // + spinner so the user gets visible feedback that the delete is running,
+    // and double-taps are absorbed.
+    @Suppress("DEPRECATION")
+    BackHandler(enabled = true) { /* no-op while deleting */ }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f))
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) { awaitPointerEvent() }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 32.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                CircularProgressIndicator()
+                Text(
+                    text = stringResource(label),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalComposeUiApi::class)
@@ -338,6 +429,12 @@ fun ConversationListUi(
     messageInputTextFieldState: RichTextState,
     messagesSearchTextState: TextFieldState,
     onUiAction: (ConversationListUiAction) -> Unit,
+    /** Forwarded from the outer screen so this composable can mark VM events as
+     *  consumed when it handles them locally (e.g. CloseDetailPane, which needs
+     *  the in-scope scaffoldNavigator). Defaults to no-op so the existing call
+     *  site at the bottom of the file (ConversationListUiPreview) and any other
+     *  caller that doesn't drive events still compiles. */
+    onEventConsumed: () -> Unit = {},
     onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
@@ -372,6 +469,25 @@ fun ConversationListUi(
     )
     val scope = rememberCoroutineScope()
     val backNavigationBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
+
+    // closeDetailPaneRequest handler — has to live inside ConversationListUi (not
+    // the outer screen) because scaffoldNavigator + backNavigationBehavior are in
+    // scope here. Uses a dedicated state field rather than uiEvent because the
+    // delete flow also fires a snackbar event back-to-back, and uiEvent is a
+    // single slot — the snackbar would overwrite the close request.
+    //
+    // Pops the detail pane with PopUntilContentChange (same mechanic the
+    // BackHandler uses) so this works in BOTH expanded (desktop) and compact
+    // (resized-narrow / phone) layouts. PopUntilScaffoldValueChange would no-op
+    // on expanded because the visible panes don't change there.
+    LaunchedEffect(uiState.closeDetailPaneRequest) {
+        if (uiState.closeDetailPaneRequest != null) {
+            if (scaffoldNavigator.canNavigateBack(BackNavigationBehavior.PopUntilContentChange)) {
+                scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
+            }
+            onUiAction(ConversationListUiAction.CloseDetailPaneRequestConsumed)
+        }
+    }
 
     // Detect if detail pane is visible and list pane is hidden (compact view showing only detail)
     val isListPaneHidden =

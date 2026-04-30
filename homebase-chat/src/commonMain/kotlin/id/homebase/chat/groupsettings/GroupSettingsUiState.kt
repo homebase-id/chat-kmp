@@ -22,6 +22,13 @@ data class GroupSettingsUiState(
     /** Per-recipient transfer state for the admin file. null = column hidden (see above). */
     val adminFileTransfer: Map<OdinId, RecipientFileStatus>? = null,
     val isHealing: Boolean = false,
+    /** Members with an in-flight server op (make/remove admin, remove from group). The
+     *  member-action sheet swaps its action rows for a spinner while the OdinId is
+     *  in this set, then clears it on completion. */
+    val pendingMemberOps: Set<OdinId> = emptySet(),
+    /** True while leaveGroup is awaiting server completion. Drives the full-screen
+     *  overlay. Cleared on error; on success the screen pops via the [Back] event. */
+    val isLeaving: Boolean = false,
     val uiEvent: GroupSettingsUiEvent? = null,
     val uiDialog: GroupSettingsUiDialog? = null,
     val uiSheet: GroupSettingsUiSheet? = null,
@@ -48,6 +55,11 @@ sealed interface GroupSettingsUiEvent {
 sealed interface GroupSettingsUiDialog {
     data object ConfirmLeave: GroupSettingsUiDialog
     data object LeaveChooseAdmin: GroupSettingsUiDialog
+    /** Admin leaving a legacy group: the choose-new-admin path is unavailable on
+     *  legacy groups (no admin management UI), so we surface a strong-warning
+     *  confirmation that lets the user proceed anyway. The service-side
+     *  leaveGroup already handles legacy groups via the local-only branch. */
+    data object LeaveLegacyAdminWarning: GroupSettingsUiDialog
     data class MakeAdmin(val contact: ContactUiModel) : GroupSettingsUiDialog
     data class RemoveAdmin(val contact: ContactUiModel) : GroupSettingsUiDialog
     data class RemoveFromGroup(val contact: ContactUiModel) : GroupSettingsUiDialog

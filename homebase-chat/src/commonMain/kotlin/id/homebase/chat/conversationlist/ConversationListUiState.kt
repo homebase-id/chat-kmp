@@ -40,6 +40,19 @@ data class ConversationListUiState(
     val hasDriveError: Boolean = false,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
+    /** Non-null while a conversation-delete (or combined leave+delete) is awaiting
+     *  service completion. Carries the label string the overlay should display:
+     *  - `chat_conversation_deleting_in_progress` for plain delete
+     *  - `chat_conversation_leaving_and_deleting_in_progress` for combined leave+delete
+     *  Null means no overlay. Cleared on success and error. */
+    val inFlightDeletionLabel: StringResource? = null,
+    /** When non-null, the screen should pop the scaffold detail pane (i.e. close the
+     *  open conversation). Use a dedicated state field rather than [uiEvent] because
+     *  delete fires multiple events back-to-back (close + snackbar) and `uiEvent` is
+     *  a single slot — successive sends overwrite each other and the close was being
+     *  eaten by the snackbar. The screen calls [closeDetailPaneRequestConsumed] when
+     *  it has handled the request. */
+    val closeDetailPaneRequest: Uuid? = null,
 )
 
 @Immutable
