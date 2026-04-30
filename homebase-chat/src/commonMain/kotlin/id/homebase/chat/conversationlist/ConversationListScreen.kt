@@ -78,6 +78,18 @@ import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_message_discard_draft
 import id.homebase.resources.chat_conversation_deleting_in_progress
+import id.homebase.resources.chat_introduce_preflight_body
+import id.homebase.resources.chat_introduce_preflight_reason_not_configured
+import id.homebase.resources.chat_introduce_preflight_reason_not_connected
+import id.homebase.resources.chat_introduce_preflight_reason_not_permitted
+import id.homebase.resources.chat_introduce_preflight_reason_ready
+import id.homebase.resources.chat_introduce_preflight_reason_rejected
+import id.homebase.resources.chat_introduce_preflight_reason_requires_upgrade
+import id.homebase.resources.chat_introduce_preflight_reason_unknown
+import id.homebase.resources.chat_introduce_preflight_reason_unreachable
+import id.homebase.resources.chat_introduce_preflight_send_anyway
+import id.homebase.resources.chat_introduce_preflight_skip_and_send
+import id.homebase.resources.chat_introduce_preflight_title
 import id.homebase.resources.chat_leave_and_delete
 import id.homebase.resources.chat_leave_and_delete_conversation_text
 import id.homebase.resources.chat_leave_and_delete_conversation_title
@@ -354,6 +366,43 @@ fun ConversationListScreen(
                 }
             }
         }
+
+        is ConversationListUiDialog.IntroducePreflight -> {
+            // Build a per-recipient list with status-specific reasons. Recipients are
+            // looked up against the enriched contacts on the active conversation so the
+            // displayed name matches the rest of the UI ("Bob" instead of "bob.demo.rocks");
+            // we fall back to the raw domain when there's no contact match.
+            val convo = conversationsUiState.activeConversations
+                .find { it.conversation.id == dialog.conversationId }
+            val nameFor: (id.homebase.api.common.OdinId) -> String = { odinId ->
+                convo?.participants?.firstOrNull { it.odinId == odinId }?.name
+                    ?: odinId.domainName
+            }
+            IntroducePreflightDialog(
+                dialog = dialog,
+                nameFor = nameFor,
+                onSendAnyway = {
+                    viewModel.onAction(
+                        ConversationListUiAction.IntroduceSendAnyway(
+                            conversationId = dialog.conversationId,
+                            message = dialog.message,
+                        )
+                    )
+                },
+                onSendReadyOnly = {
+                    viewModel.onAction(
+                        ConversationListUiAction.IntroduceSendReadyOnly(
+                            conversationId = dialog.conversationId,
+                            readyRecipients = dialog.result.readyRecipients,
+                            message = dialog.message,
+                        )
+                    )
+                },
+                onCancel = {
+                    viewModel.onAction(ConversationListUiAction.IntroduceCancel)
+                },
+            )
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -371,15 +420,15 @@ fun ConversationListScreen(
             onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
         )
 
-        conversationsUiState.inFlightDeletionLabel?.let { label ->
-            DeletingConversationOverlay(label)
+        conversationsUiState.inFlightOperationLabel?.let { label ->
+            InFlightOperationOverlay(label)
         }
     }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun DeletingConversationOverlay(label: org.jetbrains.compose.resources.StringResource) {
+private fun InFlightOperationOverlay(label: org.jetbrains.compose.resources.StringResource) {
     // Mirrors LeavingGroupOverlay in GroupSettingsScreen — full-screen scrim
     // + spinner so the user gets visible feedback that the delete is running,
     // and double-taps are absorbed.
@@ -416,6 +465,102 @@ private fun DeletingConversationOverlay(label: org.jetbrains.compose.resources.S
             }
         }
     }
+}
+
+/**
+ * Confirmation dialog shown when the introduction preflight reports any non-Ready
+ * recipients. Lists each affected recipient with a human-readable reason and gives
+ * the user three choices: send anyway with the original list, skip the non-Ready
+ * recipients and send to the rest, or cancel.
+ *
+ * "Send anyway" still passes the FULL original recipient list to the server —
+ * preflight is advisory; the server's outbox retries the actual failures in the
+ * background.
+ */
+@Composable
+private fun IntroducePreflightDialog(
+    dialog: ConversationListUiDialog.IntroducePreflight,
+    nameFor: (id.homebase.api.common.OdinId) -> String,
+    onSendAnyway: () -> Unit,
+    onSendReadyOnly: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val nonReady = dialog.result.nonReady
+    val readyCount = dialog.result.readyRecipients.size
+    Dialog(onDismissRequest = onCancel) {
+        DialogCard(
+            buttons = {
+                DialogButtons(
+                    primaryText = stringResource(MR.string.chat_introduce_preflight_send_anyway),
+                    onPrimaryClick = onSendAnyway,
+                    // Only offer "Skip & send to ready" when there's actually a Ready
+                    // subset — if nobody passed preflight, this option is a no-op.
+                    secondaryText = if (readyCount > 0) {
+                        stringResource(MR.string.chat_introduce_preflight_skip_and_send)
+                    } else null,
+                    onSecondaryClick = if (readyCount > 0) {
+                        onSendReadyOnly
+                    } else null,
+                    tertiaryText = stringResource(MR.string.cancel),
+                    onTertiaryClick = onCancel,
+                    showButtonsVertically = true,
+                )
+            }
+        ) {
+            DialogTitle(
+                text = stringResource(MR.string.chat_introduce_preflight_title),
+            )
+            DialogText(
+                text = stringResource(MR.string.chat_introduce_preflight_body),
+            )
+            // Per-recipient reasons. Compact list — one row per non-Ready recipient.
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                nonReady.forEach { entry ->
+                    val name = nameFor(entry.recipient)
+                    val reason = stringResource(entry.status.reasonResource(), name)
+                    val text = if (entry.status ==
+                        id.homebase.api.client.connections.IntroductionPreflightStatus.UnknownError
+                        && !entry.detail.isNullOrBlank()
+                    ) {
+                        // Splice in server detail as a fallback when the per-status
+                        // string is too generic. Format: "<base> <detail>".
+                        "$reason ${entry.detail}"
+                    } else {
+                        reason
+                    }
+                    Text(
+                        text = "• $text",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Maps a preflight status to its localized per-recipient reason string. The
+ *  caller passes the recipient's display name as the format arg `%1$s`. */
+private fun id.homebase.api.client.connections.IntroductionPreflightStatus.reasonResource():
+    org.jetbrains.compose.resources.StringResource = when (this) {
+    id.homebase.api.client.connections.IntroductionPreflightStatus.Ready ->
+        // Should never appear in the dialog, but provide a sensible default anyway.
+        MR.string.chat_introduce_preflight_reason_ready
+    id.homebase.api.client.connections.IntroductionPreflightStatus.NotConnected ->
+        MR.string.chat_introduce_preflight_reason_not_connected
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientNotConfigured ->
+        MR.string.chat_introduce_preflight_reason_not_configured
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientRequiresUpgrade ->
+        MR.string.chat_introduce_preflight_reason_requires_upgrade
+    id.homebase.api.client.connections.IntroductionPreflightStatus.IntroductionsNotPermitted ->
+        MR.string.chat_introduce_preflight_reason_not_permitted
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientRejected ->
+        MR.string.chat_introduce_preflight_reason_rejected
+    id.homebase.api.client.connections.IntroductionPreflightStatus.Unreachable ->
+        MR.string.chat_introduce_preflight_reason_unreachable
+    id.homebase.api.client.connections.IntroductionPreflightStatus.UnknownError ->
+        MR.string.chat_introduce_preflight_reason_unknown
 }
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalComposeUiApi::class)

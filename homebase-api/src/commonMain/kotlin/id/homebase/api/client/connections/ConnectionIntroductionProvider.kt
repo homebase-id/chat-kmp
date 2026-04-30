@@ -66,6 +66,43 @@ class ConnectionIntroductionProvider(
     }
 
     // ------------------------------------------------------------
+    // POST /introductions/preflight
+    // ------------------------------------------------------------
+
+    /**
+     * Asks the server to report per-recipient readiness without creating any
+     * introduction records. Same auth as [sendIntroductions]; same request body
+     * (an [IntroductionGroup]); response is an [IntroductionPreflightResult].
+     *
+     * Server behaviour:
+     *   - 200 with one entry per recipient (sender's own identity filtered out).
+     *   - 400 if the recipient list is empty/invalid (client-side require()
+     *     below short-circuits the empty case).
+     */
+    override suspend fun preflightIntroductions(
+        group: IntroductionGroup
+    ): IntroductionPreflightResult {
+
+        require(group.recipients.isNotEmpty()) {
+            "Recipients cannot be empty"
+        }
+
+        val creds = requireCreds()
+
+        val endpoint = "/connections/introductions/preflight"
+
+        val response = encryptedPostJson(
+            url = apiUrl(creds.domain, endpoint),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(group),
+            secret = creds.secret
+        )
+
+        throwForFailure(response)
+        return deserialize(response.body)
+    }
+
+    // ------------------------------------------------------------
     // DELETE /introductions
     // ------------------------------------------------------------
 

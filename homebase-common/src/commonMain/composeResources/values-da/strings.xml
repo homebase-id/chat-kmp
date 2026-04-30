@@ -306,6 +306,21 @@
     <string name="chat_conversation_deleted_confirmation">Samtale og alle beskeder er slettet</string>
     <string name="chat_conversation_deleting_in_progress">Sletter samtale…</string>
     <string name="chat_conversation_leaving_and_deleting_in_progress">Forlader og sletter…</string>
+
+    <!-- Introduction preflight dialog -->
+    <string name="chat_introduce_preflight_in_progress">Tjekker introduktioner…</string>
+    <string name="chat_introduce_preflight_title">Send introduktioner?</string>
+    <string name="chat_introduce_preflight_body">Nogle modtagere får muligvis ikke en introduktion:</string>
+    <string name="chat_introduce_preflight_send_anyway">Send alligevel</string>
+    <string name="chat_introduce_preflight_skip_and_send">Spring disse over og send til resten</string>
+    <string name="chat_introduce_preflight_reason_ready">%1$s er klar.</string>
+    <string name="chat_introduce_preflight_reason_not_connected">Du er ikke forbundet med %1$s.</string>
+    <string name="chat_introduce_preflight_reason_not_configured">%1$s\'s identitet er ikke konfigureret endnu.</string>
+    <string name="chat_introduce_preflight_reason_requires_upgrade">%1$s\'s server skal opdateres.</string>
+    <string name="chat_introduce_preflight_reason_not_permitted">%1$s tillader ikke introduktioner fra dig.</string>
+    <string name="chat_introduce_preflight_reason_rejected">%1$s afviste anmodningen.</string>
+    <string name="chat_introduce_preflight_reason_unreachable">Kunne ikke nå %1$s\'s server lige nu.</string>
+    <string name="chat_introduce_preflight_reason_unknown">Noget gik galt med %1$s.</string>
     <string name="chat_leave_and_delete">Forlad og slet</string>
     <string name="chat_leave_and_delete_conversation_title">Forlad og slet denne gruppe?</string>
     <string name="chat_leave_and_delete_conversation_text">Du er stadig medlem af denne gruppe. Hvis du fortsætter, forlader du gruppen og sletter den derefter fra din enhed. Handlingen kan ikke fortrydes.</string>
