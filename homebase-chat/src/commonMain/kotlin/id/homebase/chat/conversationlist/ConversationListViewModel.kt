@@ -134,6 +134,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -252,40 +253,53 @@ class ConversationListViewModel(
         }
 
         // Post-create preflight collector. CreateConversationGroupViewModel emits the
-        // newly-created conversation id here; we run a best-effort introduction
+        // newly-created conversation id to the bus; we run a best-effort introduction
         // preflight and, if any recipient is non-Ready, surface the
         // IntroducePreflight dialog. Best-effort — preflight failure logs and
         // returns null, so the user simply doesn't see a dialog (introductions
         // already fired silently at create time via trySendIntroductions).
         //
+        // The bus is a StateFlow so a value emitted before this VM existed (mobile
+        // single-pane: the create-group screen is up while this VM hasn't been
+        // constructed yet) is observed the moment we start collecting. We
+        // explicitly call consume(id) after handling so the same value isn't
+        // re-processed on a subsequent collector restart (e.g. config change).
+        //
         // Overlay is shown during the preflight call so the user gets visible
         // feedback that something is happening on the freshly-created conversation
         // — without it the brief delay before the dialog feels like the app stuck.
         viewModelScope.launch {
-            postCreateIntroductionPreflightBus.events.collect { conversationId ->
-                _uiState.update { it.copy(inFlightOperationLabel = MR.string.chat_introduce_preflight_in_progress) }
-                try {
-                    val preflight = conversationService.previewIntroduceEveryone(conversationId)
-                    _uiState.update { it.copy(inFlightOperationLabel = null) }
-                    if (preflight == null || preflight.allReady) return@collect
-                    val defaultMessage =
-                        "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
-                    _uiState.update {
-                        it.copy(
-                            uiDialog = ConversationListUiDialog.IntroducePreflight(
-                                conversationId = conversationId,
-                                message = defaultMessage,
-                                result = preflight,
-                            )
-                        )
+            postCreateIntroductionPreflightBus.pending
+                .filterNotNull()
+                .collect { conversationId ->
+                    _uiState.update { it.copy(inFlightOperationLabel = MR.string.chat_introduce_preflight_in_progress) }
+                    try {
+                        val preflight = conversationService.previewIntroduceEveryone(conversationId)
+                        _uiState.update { it.copy(inFlightOperationLabel = null) }
+                        if (preflight != null && !preflight.allReady) {
+                            val defaultMessage =
+                                "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
+                            _uiState.update {
+                                it.copy(
+                                    uiDialog = ConversationListUiDialog.IntroducePreflight(
+                                        conversationId = conversationId,
+                                        message = defaultMessage,
+                                        result = preflight,
+                                    )
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Logger.w(throwable = e, tag = "ConversationListViewModel") {
+                            "post-create preflight failed for $conversationId: ${e.message}"
+                        }
+                        _uiState.update { it.copy(inFlightOperationLabel = null) }
+                    } finally {
+                        // Always consume — even on null/all-ready/error paths — so the
+                        // same id isn't re-processed if the collector restarts.
+                        postCreateIntroductionPreflightBus.consume(conversationId)
                     }
-                } catch (e: Exception) {
-                    Logger.w(throwable = e, tag = "ConversationListViewModel") {
-                        "post-create preflight failed for $conversationId: ${e.message}"
-                    }
-                    _uiState.update { it.copy(inFlightOperationLabel = null) }
                 }
-            }
         }
 
         viewModelScope.launch {

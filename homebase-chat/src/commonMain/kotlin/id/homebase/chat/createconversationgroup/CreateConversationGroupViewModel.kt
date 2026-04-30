@@ -97,7 +97,9 @@ class CreateConversationGroupViewModel(
                         // Post-create preflight: signal the conversation list VM so it can
                         // ask the server which recipients are non-Ready and surface the
                         // IntroducePreflight dialog. Best-effort; failure here doesn't
-                        // affect group creation.
+                        // affect group creation. Bus is a StateFlow so this works even
+                        // when ConversationListViewModel hasn't yet been constructed
+                        // (mobile single-pane: it's created on the next nav stop).
                         postCreateIntroductionPreflightBus.emit(conversationId)
                         sendEvent(CreateConversationGroupUiEvent.LoadConversation(conversationId))
                     } catch (e: Exception) {
