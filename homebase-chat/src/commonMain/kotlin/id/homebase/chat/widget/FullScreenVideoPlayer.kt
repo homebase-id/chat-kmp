@@ -94,6 +94,7 @@ fun FullScreenVideoPlayer(
 
         // Download/playback progress (only for server-based playback)
         if (!isLocalPlayback && progress < 1f) {
+            val progressString = "${(progress * 100).toInt()}%"
             Box(
                 modifier = Modifier
                     .size(72.dp)
@@ -107,7 +108,7 @@ fun FullScreenVideoPlayer(
                     trackColor = Color.White.copy(alpha = 0.3f),
                 )
                 Text(
-                    text = "${(progress * 100).toInt()}%",
+                    text = progressString,
                     color = Color.White,
                     fontSize = 12.sp,
                 )

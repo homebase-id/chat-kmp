@@ -49,14 +49,40 @@ import platform.AVFoundation.AVPlayerItemPlaybackStalledNotification
 import platform.AVFoundation.AVPlayerItemStatusFailed
 import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
 import platform.AVFoundation.AVPlayerItemStatusUnknown
+import platform.AVFoundation.AVAssetTrack
+import platform.AVFoundation.AVPlayerItemTrack
+import platform.AVFoundation.AVPlayerTimeControlStatusPaused
+import platform.AVFoundation.AVPlayerTimeControlStatusPlaying
+import platform.AVFoundation.AVPlayerTimeControlStatusWaitingToPlayAtSpecifiedRate
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.accessLog
+import platform.AVFoundation.addPeriodicTimeObserverForInterval
+import platform.AVFoundation.currentTime
+import platform.AVFoundation.duration
 import platform.AVFoundation.errorLog
+import platform.AVFoundation.hasProtectedContent
+import platform.AVFoundation.loadValuesAsynchronouslyForKeys
+import platform.AVFoundation.loadedTimeRanges
 import platform.AVFoundation.pause
 import platform.AVFoundation.play
+import platform.AVFoundation.playable
+import platform.AVFoundation.playbackBufferEmpty
+import platform.AVFoundation.playbackBufferFull
+import platform.AVFoundation.playbackLikelyToKeepUp
+import platform.AVFoundation.presentationSize
+import platform.AVFoundation.rate
+import platform.AVFoundation.reasonForWaitingToPlay
+import platform.AVFoundation.removeTimeObserver
 import platform.AVFoundation.resourceLoader
+import platform.AVFoundation.statusOfValueForKey
+import platform.AVFoundation.timeControlStatus
+import platform.AVFoundation.tracks
+import kotlinx.cinterop.useContents
+import platform.CoreMedia.CMTimeGetSeconds
+import platform.CoreMedia.CMTimeMakeWithSeconds
 import platform.AVKit.AVPlayerViewController
 import platform.Foundation.NSData
+import platform.Foundation.NSDate
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSNotification
@@ -65,6 +91,7 @@ import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
+import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.create
 import platform.Foundation.writeToURL
 import platform.darwin.NSObject
@@ -78,6 +105,7 @@ private sealed interface VpsState {
     data class Playing(
         val player: AVPlayer,
         val delegate: HomebaseResourceLoaderDelegate, // retain delegate alongside player
+        val timeObserver: Any? = null,
     ) : VpsState
 
     data class Error(val message: String) : VpsState
@@ -98,7 +126,10 @@ actual fun VideoPlayerSurface(
 
     DisposableEffect(data) {
         onDispose {
-            (state as? VpsState.Playing)?.player?.pause()
+            (state as? VpsState.Playing)?.let { playing ->
+                playing.timeObserver?.let { playing.player.removeTimeObserver(it) }
+                playing.player.pause()
+            }
             notificationObservers.forEach {
                 NSNotificationCenter.defaultCenter.removeObserver(it)
             }
@@ -144,11 +175,16 @@ actual fun VideoPlayerSurface(
                         val asset = AVURLAsset(uRL = assetUrl, options = null)
                         val loaderQueue = dispatch_queue_create("id.homebase.video.loader", null)
                         asset.resourceLoader.setDelegate(delegate, queue = loaderQueue)
+                        // Kick async load of asset metadata so we get a callback when AVPlayer is
+                        // done parsing the playlist + first segment headers. This is the only
+                        // point where playable / tracks / duration become reliable.
+                        kickAssetMetadataLoad(asset, fileId = data.fileId.toString())
                         val playerItem = AVPlayerItem(asset = asset)
                         attachHlsDiagnostics(playerItem, notificationObservers)
                         val player = AVPlayer(playerItem = playerItem)
+                        val timeObserver = attachPlaybackTicker(player, playerItem, fileId = data.fileId.toString())
                         progressJob.cancel()
-                        state = VpsState.Playing(player = player, delegate = delegate)
+                        state = VpsState.Playing(player = player, delegate = delegate, timeObserver = timeObserver)
                         onProgress(1f)
                     }
                     is VideoContent.Mp4 -> {
@@ -215,6 +251,7 @@ private class HomebaseResourceLoaderDelegate(
         fun empty() = HomebaseResourceLoaderDelegate("", 0, null, null, null, null, null, null)
     }
 
+    @kotlinx.cinterop.ObjCSignatureOverride
     override fun resourceLoader(
         resourceLoader: AVAssetResourceLoader,
         shouldWaitForLoadingOfRequestedResource: AVAssetResourceLoadingRequest,
@@ -228,25 +265,60 @@ private class HomebaseResourceLoaderDelegate(
 
         val cInfo = loadingRequest.contentInformationRequest
         val dReq = loadingRequest.dataRequest
-        Logger.d(tag = "VideoHLS") {
-            "resourceLoader request: url=$url path=$path " +
-                "contentInfoRequested=${cInfo != null} dataRequested=${dReq != null} " +
-                "reqOffset=${dReq?.requestedOffset} reqLength=${dReq?.requestedLength} " +
-                "currentOffset=${dReq?.currentOffset} toEnd=${dReq?.requestsAllDataToEndOfResource}"
+        // Each piece on its own line — the iOS file sink truncates long single-line
+        // entries and drops everything past the first `\n`, so verbose diagnostics
+        // have to be split into several short Logger.d calls.
+        Logger.d(tag = "VideoHLS") { "rl req: path=$path file=$fileId key=$payloadKey" }
+        Logger.d(tag = "VideoHLS") { "rl req: cInfo=${cInfo != null} dReq=${dReq != null} toEnd=${dReq?.requestsAllDataToEndOfResource}" }
+        Logger.d(tag = "VideoHLS") { "rl req: reqOffset=${dReq?.requestedOffset} reqLength=${dReq?.requestedLength} currentOffset=${dReq?.currentOffset}" }
+
+        // Anything that's not the expected playlist or TS chunk is unexpected — log loudly.
+        // A request for `enc.key` (or similar) means our playlist still has an EXT-X-KEY
+        // directive after stripping, and AVPlayer thinks the asset is encrypted.
+        if (!path.endsWith(".m3u8") && !path.endsWith(".ts")) {
+            Logger.w(tag = "VideoHLS") { "rl req: UNEXPECTED path=$path — falling through to .ts branch (likely bug)" }
         }
 
         scope?.launch(Dispatchers.IO) {
             try {
                 if (path.endsWith(".m3u8")) {
-                    Logger.d(tag = "VideoHLS") { "Serving playlist (${strippedPlaylist.length} chars):\n$strippedPlaylist" }
+                    // Surface any EXT-X-KEY directive that survived the line-prefix filter.
+                    // The current strip is `lines().filter { !it.startsWith("#EXT-X-KEY") }` —
+                    // anything indented or with a different prefix would slip through and tell
+                    // AVPlayer the segment data is encrypted, breaking playback silently.
+                    if (strippedPlaylist.contains("EXT-X-KEY", ignoreCase = true) ||
+                        strippedPlaylist.contains("METHOD=AES", ignoreCase = true)) {
+                        Logger.w(tag = "VideoHLS") { "playlist still contains a key directive after stripping — AVPlayer will treat data as encrypted" }
+                    }
+                    Logger.d(tag = "VideoHLS") { "Serving playlist (${strippedPlaylist.length} chars) for fileId=$fileId" }
+                    // Log each line of the playlist as its own short entry so the body
+                    // actually lands in homebase.log. Newline-embedded messages get cut.
+                    strippedPlaylist.lineSequence().forEachIndexed { idx, line ->
+                        Logger.d(tag = "VideoHLS") { "playlist[$idx]: $line" }
+                    }
+                    // Also dump a sidecar copy on disk so it can be retrieved off-device.
+                    runCatching {
+                        val tmp = NSURL.fileURLWithPath(NSTemporaryDirectory())
+                            .URLByAppendingPathComponent("hbvid_playlist_${fileId ?: "unknown"}.m3u8")
+                        if (tmp != null) {
+                            strippedPlaylist.encodeToByteArray().toNSData()
+                                .writeToURL(tmp, atomically = true)
+                            Logger.d(tag = "VideoHLS") { "playlist dumped to ${tmp.path}" }
+                        }
+                    }.onFailure { Logger.w(tag = "VideoHLS") { "playlist dump failed: ${it.message}" } }
                     val bytes = strippedPlaylist.encodeToByteArray()
                     loadingRequest.contentInformationRequest?.let {
                         it.contentType = "public.m3u8-playlist"
                         it.contentLength = bytes.size.toLong()
                         it.byteRangeAccessSupported = true
                     }
-                    loadingRequest.dataRequest?.respondWithData(bytes.toNSData())
-                    withContext(Dispatchers.Main) { loadingRequest.finishLoading() }
+                    val dRespond = loadingRequest.dataRequest
+                    Logger.d(tag = "VideoHLS") { "playlist respond: bytes=${bytes.size} dataRequest=${dRespond != null}" }
+                    dRespond?.respondWithData(bytes.toNSData())
+                    withContext(Dispatchers.Main) {
+                        loadingRequest.finishLoading()
+                        Logger.d(tag = "VideoHLS") { "playlist finishLoading() called" }
+                    }
                 } else {
                     // .ts segment — iOS asks for the exact byterange of one HLS segment from
                     // the playlist. FFmpeg encrypted each segment independently (AES-CBC with
@@ -267,6 +339,10 @@ private class HomebaseResourceLoaderDelegate(
                             dataRequest.requestedLength
                         }
                         Logger.d(tag = "VideoHLS") { "avplayer chunk request: fileId=$fileId key=$payloadKey chunkStart=$start chunkLength=$length totalFileSize=$totalFileSize" }
+                        if (loadingRequest.isCancelled()) {
+                            Logger.w(tag = "VideoHLS") { "ts request: already cancelled before fetch — bailing out" }
+                            return@launch
+                        }
                         val encrypted = driveFileProvider!!.getPayloadBytesEncryptedChunk(
                             driveId = driveId!!,
                             fileId = fileId!!,
@@ -274,6 +350,13 @@ private class HomebaseResourceLoaderDelegate(
                             chunkStart = start,
                             chunkLength = length,
                         ) ?: throw Exception("Failed to fetch chunk at $start (length=$length)")
+                        if (encrypted.size.toLong() != length) {
+                            Logger.w(tag = "VideoHLS") { "ts fetch SHORT-READ: got ${encrypted.size}, expected $length at offset=$start — decrypt likely to fail" }
+                        }
+                        if (loadingRequest.isCancelled()) {
+                            Logger.w(tag = "VideoHLS") { "ts request: cancelled after fetch — bailing out before decrypt" }
+                            return@launch
+                        }
                         val plaintext = AesCbc.decrypt(
                             cipherText = encrypted,
                             key = keyHeader!!.aesKey,
@@ -286,11 +369,11 @@ private class HomebaseResourceLoaderDelegate(
                             ByteArray(requested).also { plaintext.copyInto(it, 0) }
                         }
                         // Byte-alignment diagnostics: AES-CBC blocks are 16 bytes, TS packets are 188.
-                        // FFmpeg produces plaintext that is N * 188 bytes per segment (no slack), then
-                        // adds a 16-byte PKCS7 pad block when encrypting → ciphertext = plaintext + 16.
-                        // After decrypt we zero-pad the plaintext back up to `requested` so the Range
-                        // response length matches what AVPlayer asked for; the 16 trailing zeros must
-                        // not break the TS demux. Log enough to spot misalignment or wrong seam bytes.
+                        // FFmpeg produces plaintext that is N * 188 bytes per segment, then PKCS7
+                        // rounds up to the next 16-byte boundary (1..16 pad bytes). After decrypt we
+                        // zero-pad the plaintext back up to `requested` so the Range response length
+                        // matches what AVPlayer asked for. Each line below is its own short Logger.d
+                        // call — the iOS file sink truncates long entries.
                         val cipherHex = encrypted.take(16).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
                         val plainHeadHex = plaintext.take(16).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
                         val plainTailStart = (plaintext.size - 32).coerceAtLeast(0)
@@ -299,25 +382,61 @@ private class HomebaseResourceLoaderDelegate(
                         val tsRemainder = if (plaintext.isNotEmpty()) plaintext.size % 188 else -1
                         val tsPacketCount = if (plaintext.isNotEmpty()) plaintext.size / 188 else -1
                         val firstByteIsSync = plaintext.isNotEmpty() && plaintext[0] == 0x47.toByte()
-                        Logger.d(tag = "VideoHLS") {
-                            "Segment decrypt: ${encrypted.size} cipher → ${plaintext.size} plain → ${padded.size} zero-padded at $start | " +
-                                "alignment: startMod16=${start % 16} lenMod16=${length % 16} plainMod188=$tsRemainder tsPackets=$tsPacketCount firstByte=0x47?=$firstByteIsSync | " +
-                                "cipher[0..16]=$cipherHex | plain[0..16]=$plainHeadHex | plain[tail-32..]=$plainTailHex | padded[tail-32..]=$padTailHex"
+                        Logger.d(tag = "VideoHLS") { "decrypt sizes: cipher=${encrypted.size} plain=${plaintext.size} padded=${padded.size} at=$start" }
+                        Logger.d(tag = "VideoHLS") { "decrypt align: startMod16=${start % 16} lenMod16=${length % 16} plainMod188=$tsRemainder tsPackets=$tsPacketCount firstByte=0x47?=$firstByteIsSync" }
+                        Logger.d(tag = "VideoHLS") { "decrypt cipher[0..16]=$cipherHex" }
+                        Logger.d(tag = "VideoHLS") { "decrypt plain[0..16]=$plainHeadHex" }
+                        Logger.d(tag = "VideoHLS") { "decrypt plain[tail-32..]=$plainTailHex" }
+                        Logger.d(tag = "VideoHLS") { "decrypt padded[tail-32..]=$padTailHex" }
+                        if (loadingRequest.isCancelled()) {
+                            Logger.w(tag = "VideoHLS") { "ts request: cancelled after decrypt — skipping respondWithData/finishLoading" }
+                            return@launch
                         }
+                        Logger.d(tag = "VideoHLS") { "ts respond: handing ${padded.size} bytes to AVPlayer at offset=$start" }
                         dataRequest.respondWithData(padded.toNSData())
+                    } else {
+                        Logger.w(tag = "VideoHLS") { "ts request had no dataRequest — nothing to respond with" }
                     }
-                    withContext(Dispatchers.Main) { loadingRequest.finishLoading() }
+                    withContext(Dispatchers.Main) {
+                        if (loadingRequest.isCancelled()) {
+                            Logger.w(tag = "VideoHLS") { "ts request: cancelled before finishLoading — skipping" }
+                        } else {
+                            loadingRequest.finishLoading()
+                            Logger.d(tag = "VideoHLS") { "ts finishLoading() called for fileId=$fileId" }
+                        }
+                    }
                 }
             } catch (e: Exception) {
-                Logger.e(tag = "VideoHLS") { "resourceLoader error: ${e.message}" }
+                Logger.e(throwable = e, tag = "VideoHLS") { "resourceLoader error path=$path file=$fileId: ${e::class.simpleName}: ${e.message}" }
                 withContext(Dispatchers.Main) {
-                    loadingRequest.finishLoadingWithError(
-                        NSError.errorWithDomain("HomebaseVideo", 500, null)
-                    )
+                    if (!loadingRequest.isCancelled()) {
+                        loadingRequest.finishLoadingWithError(
+                            NSError.errorWithDomain("HomebaseVideo", 500, null)
+                        )
+                        Logger.d(tag = "VideoHLS") { "finishLoadingWithError() called" }
+                    } else {
+                        Logger.d(tag = "VideoHLS") { "request was cancelled — not calling finishLoadingWithError" }
+                    }
                 }
             }
         }
         return true
+    }
+
+    /**
+     * Fires when AVPlayer cancels a previously-issued loading request. We log it so
+     * that "no further chunk requests" in the log can be distinguished from "cancelled
+     * what we already had outstanding" — both look identical otherwise.
+     */
+    @kotlinx.cinterop.ObjCSignatureOverride
+    override fun resourceLoader(
+        resourceLoader: AVAssetResourceLoader,
+        didCancelLoadingRequest: AVAssetResourceLoadingRequest,
+    ) {
+        val req = didCancelLoadingRequest
+        val path = req.request.URL?.path?.trimStart('/') ?: "?"
+        val dReq = req.dataRequest
+        Logger.w(tag = "VideoHLS") { "rl CANCELLED: path=$path file=$fileId reqOffset=${dReq?.requestedOffset} reqLength=${dReq?.requestedLength}" }
     }
 }
 
@@ -356,16 +475,24 @@ private fun attachHlsDiagnostics(
     }
     val onErrorLog: (NSNotification?) -> Unit = {
         val log = playerItem.errorLog()
-        val last = log?.events?.lastOrNull()
+        val events = log?.events.orEmpty()
         Logger.e(tag = "VideoHLS") {
-            "AVPlayerItem NewErrorLogEntry: status=${statusName(playerItem.status)} last=$last"
+            "AVPlayerItem NewErrorLogEntry: status=${statusName(playerItem.status)} eventCount=${events.size}"
+        }
+        // Dump every event — multi-error sequences carry the actual root cause in the
+        // first event, not the last (which is often a generic "stream couldn't be parsed").
+        events.takeLast(10).forEachIndexed { idx, ev ->
+            Logger.e(tag = "VideoHLS") { "errorLog[$idx]: $ev" }
         }
     }
     val onAccessLog: (NSNotification?) -> Unit = {
         val log = playerItem.accessLog()
-        val last = log?.events?.lastOrNull()
+        val events = log?.events.orEmpty()
         Logger.d(tag = "VideoHLS") {
-            "AVPlayerItem NewAccessLogEntry: last=$last"
+            "AVPlayerItem NewAccessLogEntry: eventCount=${events.size}"
+        }
+        events.takeLast(3).forEachIndexed { idx, ev ->
+            Logger.d(tag = "VideoHLS") { "accessLog[$idx]: $ev" }
         }
     }
 
@@ -393,4 +520,146 @@ private fun attachHlsDiagnostics(
         queue = mainQueue,
         usingBlock = onAccessLog,
     )
+    Logger.d(tag = "VideoHLS") { "diagnostics attached: ${observers.size} notification observers" }
+}
+
+/**
+ * Periodic tick (every 0.5 s) that logs player state — the silent-failure mode we're
+ * chasing produces no AVPlayerItem notifications at all, so we need an out-of-band
+ * heartbeat that tells us whether status ever flips to ReadyToPlay, whether rate goes
+ * non-zero, and what currentTime is doing. Returns the opaque observer token; callers
+ * must hand it back to AVPlayer.removeTimeObserver on dispose.
+ */
+private fun attachPlaybackTicker(
+    player: AVPlayer,
+    playerItem: AVPlayerItem,
+    fileId: String,
+): Any? {
+    fun statusName(status: Long): String = when (status) {
+        AVPlayerItemStatusUnknown -> "Unknown"
+        AVPlayerItemStatusReadyToPlay -> "ReadyToPlay"
+        AVPlayerItemStatusFailed -> "Failed"
+        else -> "raw=$status"
+    }
+
+    var tickCount = 0
+    var lastStatus = -1L
+    var lastRateBucket = Float.NaN
+    var lastErrorDesc: String? = "<initial>"
+    var lastTrackCount = -1
+    var lastTimeControl = -1L
+    var lastReason: String? = "<initial>"
+    var lastBufEmpty: Boolean? = null
+    var lastBufLikely: Boolean? = null
+
+    fun timeControlName(s: Long): String = when (s) {
+        AVPlayerTimeControlStatusPaused -> "Paused"
+        AVPlayerTimeControlStatusWaitingToPlayAtSpecifiedRate -> "Waiting"
+        AVPlayerTimeControlStatusPlaying -> "Playing"
+        else -> "raw=$s"
+    }
+    val interval = CMTimeMakeWithSeconds(0.5, 600)
+    val token = player.addPeriodicTimeObserverForInterval(
+        interval = interval,
+        queue = null, // main queue
+    ) { _ ->
+        tickCount += 1
+        val status = playerItem.status
+        val rate = player.rate
+        val timeControl = player.timeControlStatus
+        val reason: String? = player.reasonForWaitingToPlay
+        val currentSec = CMTimeGetSeconds(player.currentTime())
+        val durSec = CMTimeGetSeconds(playerItem.duration)
+        val itemErr = playerItem.error?.let { "${it.domain}:${it.code} ${it.localizedDescription}" }
+        val playerErr = player.error?.let { "${it.domain}:${it.code} ${it.localizedDescription}" }
+        val errDesc = listOfNotNull(itemErr?.let { "item=$it" }, playerErr?.let { "player=$it" }).joinToString(" | ").ifEmpty { null }
+        val tracks = playerItem.tracks
+        val trackCount = tracks.size
+        val loadedCount = playerItem.loadedTimeRanges.size
+        val loadedSummary = if (loadedCount == 0) "none" else "$loadedCount ranges"
+        val bufEmpty = playerItem.playbackBufferEmpty
+        val bufLikely = playerItem.playbackLikelyToKeepUp
+        val bufFull = playerItem.playbackBufferFull
+        val presW = playerItem.presentationSize.useContents { width }
+        val presH = playerItem.presentationSize.useContents { height }
+        val statusChanged = status != lastStatus
+        val rateChanged = rate != lastRateBucket
+        val errorChanged = errDesc != lastErrorDesc
+        val trackCountChanged = trackCount != lastTrackCount
+        val timeControlChanged = timeControl != lastTimeControl
+        val reasonChanged = reason != lastReason
+        val bufFlagsChanged = bufEmpty != lastBufEmpty || bufLikely != lastBufLikely
+
+        // Always log changes; otherwise heartbeat every ~2 s (every 4th tick).
+        if (statusChanged || rateChanged || errorChanged || trackCountChanged ||
+            timeControlChanged || reasonChanged || bufFlagsChanged || tickCount % 4 == 0) {
+            Logger.d(tag = "VideoHLS") {
+                "tick#$tickCount fileId=$fileId status=${statusName(status)} rate=$rate t=${currentSec}s dur=${durSec}s tracks=$trackCount"
+            }
+            Logger.d(tag = "VideoHLS") { "tick#$tickCount timeControl=${timeControlName(timeControl)} reason=$reason" }
+            Logger.d(tag = "VideoHLS") { "tick#$tickCount loaded=$loadedSummary bufEmpty=$bufEmpty bufLikely=$bufLikely bufFull=$bufFull" }
+            Logger.d(tag = "VideoHLS") { "tick#$tickCount presentationSize=${presW}x${presH}" }
+            if (errDesc != null) {
+                Logger.d(tag = "VideoHLS") { "tick#$tickCount errors: $errDesc" }
+            }
+            if (statusChanged) {
+                Logger.d(tag = "VideoHLS") {
+                    "tick#$tickCount status TRANSITION ${statusName(lastStatus)} → ${statusName(status)}"
+                }
+                // On any status change, dump per-track info — the silent black-screen mode
+                // typically has tracks=0 even at ReadyToPlay, which is the smoking gun.
+                tracks.forEachIndexed { idx, t ->
+                    // Avoid binding-specific accessors that vary across Kotlin/Native versions —
+                    // `description` round-trips through Objective-C and embeds mediaType + enabled.
+                    val track = t as? AVPlayerItemTrack
+                    Logger.d(tag = "VideoHLS") {
+                        "tick#$tickCount track[$idx]: ${track?.description}"
+                    }
+                }
+            }
+        }
+        lastStatus = status
+        lastRateBucket = rate
+        lastErrorDesc = errDesc
+        lastTrackCount = trackCount
+        lastTimeControl = timeControl
+        lastReason = reason
+        lastBufEmpty = bufEmpty
+        lastBufLikely = bufLikely
+    }
+    Logger.d(tag = "VideoHLS") { "playback ticker attached for fileId=$fileId" }
+    return token
+}
+
+/**
+ * Async-load the asset's `playable`, `tracks`, and `duration` keys, then log the
+ * resolved values. AVPlayer goes through this same machinery internally, but the
+ * silent black-screen failure mode never surfaces the result anywhere we can see.
+ * Logging it here is the most direct way to confirm whether the playlist parses
+ * into a playable asset at all.
+ */
+private fun kickAssetMetadataLoad(asset: AVURLAsset, fileId: String) {
+    val keys = listOf("playable", "tracks", "duration", "hasProtectedContent")
+    val kickedAtMs = NSDate().timeIntervalSince1970 * 1000.0
+    asset.loadValuesAsynchronouslyForKeys(keys) {
+        // Distinguish "callback fired" from "callback never fired" — the latter is a
+        // legitimate failure mode if AVPlayer/asset is torn down before completion.
+        val nowMs = NSDate().timeIntervalSince1970 * 1000.0
+        Logger.d(tag = "VideoHLS") { "asset metadata callback fired after ${(nowMs - kickedAtMs).toLong()}ms fileId=$fileId" }
+        keys.forEach { key ->
+            val status = asset.statusOfValueForKey(key, error = null)
+            Logger.d(tag = "VideoHLS") { "asset.$key load status=$status fileId=$fileId" }
+        }
+        Logger.d(tag = "VideoHLS") { "asset playable=${asset.playable} hasProtectedContent=${asset.hasProtectedContent} fileId=$fileId" }
+        val tracks = asset.tracks
+        Logger.d(tag = "VideoHLS") { "asset tracks=${tracks.size} fileId=$fileId" }
+        tracks.forEachIndexed { idx, t ->
+            // `description` includes mediaType, enabled flag, etc — avoids binding accessor pitfalls.
+            val track = t as? AVAssetTrack
+            Logger.d(tag = "VideoHLS") { "asset track[$idx]: ${track?.description}" }
+        }
+        val durSec = CMTimeGetSeconds(asset.duration)
+        Logger.d(tag = "VideoHLS") { "asset duration=${durSec}s fileId=$fileId" }
+    }
+    Logger.d(tag = "VideoHLS") { "asset.loadValuesAsynchronouslyForKeys kicked for fileId=$fileId at ${kickedAtMs.toLong()}ms" }
 }

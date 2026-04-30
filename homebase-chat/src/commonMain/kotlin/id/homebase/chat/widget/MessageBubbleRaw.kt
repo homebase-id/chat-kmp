@@ -48,6 +48,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -98,6 +99,7 @@ import kotlin.uuid.Uuid
  * @param sharedTransitionScope The shared transition scope for animations.
  * @param animatedVisibilityScope The animated visibility scope for animations.
  */
+@OptIn(ExperimentalRichTextApi::class)
 @Composable
 fun MessageBubbleRaw(
     modifier: Modifier = Modifier,

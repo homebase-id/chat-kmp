@@ -107,6 +107,7 @@ kotlin {
         jvmTest.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.sqldelight.sqlite.driver)
+            implementation(libs.konsist)
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)

@@ -69,6 +69,8 @@ import id.homebase.resources.login_sub_title
 import id.homebase.resources.login_successful
 import id.homebase.resources.login_title
 import id.homebase.resources.login_try_again_button
+import id.homebase.resources.number_of_records
+import id.homebase.resources.timeout_in_seconds
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.delay
@@ -221,7 +223,7 @@ private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>, isPingin
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Timeout in ${secondsLeft}s",
+                    text = stringResource(MR.string.timeout_in_seconds, secondsLeft.toString()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -258,14 +260,14 @@ private fun DriveProgressRow(
             Spacer(modifier = Modifier.weight(1f))
             if (drive.count > 0 && !drive.completed) {
                 Text(
-                    text = "${drive.count} records",
+                    text = stringResource(MR.string.number_of_records, drive.count.toString()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(end = 8.dp),
                 )
             } else if (drive.completed) {
                 Text(
-                    text = "${drive.total} records",
+                    text = stringResource(MR.string.number_of_records, drive.total.toString()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(end = 8.dp),

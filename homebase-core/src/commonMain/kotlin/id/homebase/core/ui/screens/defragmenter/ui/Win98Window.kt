@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -33,7 +34,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material3.Text
 import kotlin.math.floor
 import kotlin.math.max
 
@@ -99,6 +99,7 @@ private fun Win98TitleBar(title: String, onClose: () -> Unit) {
 private fun Win98CloseButton(onClose: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    val closeString = "X"
     Box(
         modifier = Modifier
             .size(width = 20.dp, height = 16.dp)
@@ -115,7 +116,7 @@ private fun Win98CloseButton(onClose: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "X",
+            text = closeString,
             style = Win98TextStyle.copy(
                 fontWeight = FontWeight.Bold,
                 color = Win98Palette.Black,

@@ -38,7 +38,7 @@
     <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
     <string name="action_cannot_be_undone">Denne handling kan ikke fortrydes.</string>
     <string name="show_more">Vis mere</string>
-    <string name="slide_to_cancel">Træk for at annullere</string>
+    <string name="slide_to_cancel">&lt; Træk for at annullere</string>
     <string name="someone">Nogen</string>
     <string name="leave">Forlad</string>
     <string name="export_log">Eksportér log</string>
@@ -78,6 +78,14 @@
     <string name="update_check_now">Søg efter opdateringer</string>
     <string name="update_get_update">Hent ny opdatering</string>
     <string name="update_checking">Søger efter opdatering...</string>
+    <string name="vlc_required">VLC er påkrævet til videoafspilning.\nInstallér det fra videolan.org og genstart appen.</string>
+    <string name="number_of_members">%1$s medlemmer</string>
+    <string name="conversations_selected">%1$s samtale(r) valgt</string>
+    <string name="share_to">Del til...</string>
+    <string name="sending_to_conversations">Sender til %1$s samtale(r)...</string>
+    <string name="timeout_in_seconds">Timeout om %1$ss</string>
+    <string name="number_of_records">%1$s poster</string>
+    <string name="emoji_all">Alle・</string>
 
     <!-- Avatars -->
     <string name="avatar_owner">Ejer avatar</string>

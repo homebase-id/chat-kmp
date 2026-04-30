@@ -48,10 +48,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.util.truncateToCodePoints
-import id.homebase.resources.MR
-import id.homebase.resources.share_picker_next
-import id.homebase.resources.share_picker_send
-import org.jetbrains.compose.resources.stringResource
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
@@ -59,6 +55,18 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.widget.StyledSearchTextField
+import id.homebase.resources.MR
+import id.homebase.resources.chat_search_placeholder
+import id.homebase.resources.contacts
+import id.homebase.resources.conversations_selected
+import id.homebase.resources.groups
+import id.homebase.resources.number_of_members
+import id.homebase.resources.recents
+import id.homebase.resources.sending_to_conversations
+import id.homebase.resources.share_picker_next
+import id.homebase.resources.share_picker_send
+import id.homebase.resources.share_to
+import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -144,7 +152,7 @@ fun SharePickerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Share to...") },
+                title = { Text(stringResource(MR.string.share_to)) },
                 navigationIcon = {
                     IconButton(onClick = onCancel) {
                         Icon(Icons.Default.Close, contentDescription = "Cancel")
@@ -170,7 +178,7 @@ fun SharePickerScreen(
             // Search bar
             StyledSearchTextField(
                 textFieldState = searchFieldState,
-                placeHolderText = "Search conversations...",
+                placeHolderText = stringResource(MR.string.chat_search_placeholder),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -192,7 +200,7 @@ fun SharePickerScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text("Sending to ${selectedIds.size} conversation${if (selectedIds.size > 1) "s" else ""}...")
+                        Text(stringResource(MR.string.sending_to_conversations, selectedIds.size.toString()))
                     }
                 }
             } else if (!conversationsData.dataReady) {
@@ -225,7 +233,7 @@ fun SharePickerScreen(
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     if (recents.isNotEmpty()) {
                         stickyHeader(key = "header_recents") {
-                            SectionHeader("Recents")
+                            SectionHeader(stringResource(MR.string.recents))
                         }
                         items(
                             items = recents,
@@ -247,7 +255,7 @@ fun SharePickerScreen(
 
                     if (contacts.isNotEmpty()) {
                         stickyHeader(key = "header_contacts") {
-                            SectionHeader("Contacts")
+                            SectionHeader(stringResource(MR.string.contacts))
                         }
                         items(
                             items = contacts,
@@ -269,7 +277,7 @@ fun SharePickerScreen(
 
                     if (groups.isNotEmpty()) {
                         stickyHeader(key = "header_groups") {
-                            SectionHeader("Groups")
+                            SectionHeader(stringResource(MR.string.groups))
                         }
                         items(
                             items = groups,
@@ -311,7 +319,7 @@ private fun ShareSendBar(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = "$count conversation${if (count > 1) "s" else ""} selected",
+                text = stringResource(MR.string.conversations_selected, count.toString()),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -376,7 +384,7 @@ private fun ConversationPickerItem(
             )
             if (conversation.isGroupConversation) {
                 Text(
-                    text = "${conversation.participants.size} members",
+                    text = stringResource(MR.string.number_of_members, conversation.participants.size.toString()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -409,7 +417,7 @@ private fun SharedContentPreview(
     Column(modifier = modifier) {
         if (sharedContent.hasText) {
             Text(
-                text = sharedContent.text!!.truncateToCodePoints(200),
+                text = sharedContent.text?.truncateToCodePoints(200) ?: "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 3,

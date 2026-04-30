@@ -186,7 +186,7 @@ fun RotationDial(
             modifier = Modifier.fillMaxHeight(),
         ) {
             Text(
-                text = "$displayDegree",
+                text = displayDegree.toString(),
                 color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 15.sp,
                 modifier = Modifier
