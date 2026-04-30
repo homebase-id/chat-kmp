@@ -32,8 +32,6 @@ platform :ios do
         export_compliance_uses_encryption: false
       },
 
-      skip_waiting_for_build_processing: true,
-      precheck_include_in_app_purchases: false,
       force: true
     )
   end
