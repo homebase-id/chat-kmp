@@ -101,12 +101,43 @@ class ConversationMapper(
                         OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it)
                     }
 
-                val participants = conversationData.recipients.filterNotNull().distinct()
+                val rawRecipients = conversationData.recipients
+                val participants = rawRecipients.filterNotNull().distinct()
                 require(participants.isNotEmpty()) { "Conversation has no valid participants" }
 
                 val isGroup = appData.tags?.contains(ChatProtocol.ConversationGroupTag) == true
                 val isLegacyGroup = !isGroup && participants.size > 2
                 val isAnyGroup = isGroup || isLegacyGroup
+
+                // ---- DEBUG instrumentation ----
+                // PARTICIPANT-LIST TRACE — log every group's participant list each time it is
+                // mapped. If a member is missing in the UI, the diff between this and the
+                // ParticipantsAudit lines from createConversation/writeConversationFile/
+                // updateConversationInternal pinpoints exactly which step lost it.
+                if (isAnyGroup) {
+                    val nullCount = rawRecipients.count { it == null }
+                    val rawSize = rawRecipients.size
+                    val droppedDistinct = rawRecipients.filterNotNull().size - participants.size
+                    Logger.i(tag = "ParticipantsAudit") {
+                        "ConversationMapper.mapToBasic READ for $conversationId: " +
+                            "rawRecipients.size=$rawSize nullCount=$nullCount distinctDropped=$droppedDistinct " +
+                            "final.size=${participants.size} domains=[${participants.joinToString(",") { it.domainName }}] " +
+                            "isGroup=$isGroup isLegacyGroup=$isLegacyGroup versionTag=${metadata.versionTag}"
+                    }
+                    if (nullCount > 0) {
+                        Logger.w(tag = "ParticipantsAudit") {
+                            "ConversationMapper.mapToBasic for $conversationId: $nullCount null entries in recipients — " +
+                                "deserializer produced nulls (corrupt content or schema drift)"
+                        }
+                    }
+                    if (droppedDistinct > 0) {
+                        Logger.w(tag = "ParticipantsAudit") {
+                            "ConversationMapper.mapToBasic for $conversationId: $droppedDistinct duplicate entries in stored recipients — " +
+                                "the stored file has duplicates; investigate writers (createConversation/updateConversationInternal/recoverConversation)"
+                        }
+                    }
+                }
+                // ---- end DEBUG ----
 
                 val title =
                     if (conversationId == ChatProtocol.ConversationWithYourselfId) {
