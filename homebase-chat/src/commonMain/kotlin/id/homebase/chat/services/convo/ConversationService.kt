@@ -1354,6 +1354,69 @@ class ConversationService(
         audit.finish()
     }
 
+    /**
+     * Same as [introduceEveryone] but sends to an explicit subset of recipients.
+     * Used by the preflight UI flow when the user picks "Skip these and send to
+     * the rest" — the VM passes only the [IntroductionPreflightStatus.Ready]
+     * recipients here. Best-effort: errors are swallowed (see [trySendIntroductions]).
+     */
+    suspend fun introduceRecipients(
+        conversationId: Uuid,
+        recipients: List<OdinId>,
+        message: String?,
+    ) {
+        // ---- DEBUG instrumentation ----
+        val audit = MethodAudit("introduceRecipients")
+        audit.start("conversationId=$conversationId recipients=${recipients.size} messageLen=${message?.length ?: 0}")
+        // ---- end DEBUG ----
+        if (recipients.isEmpty()) {
+            audit.info("no recipients — no-op")
+            audit.finish("no-op (empty recipients)")
+            return
+        }
+        trySendIntroductions(recipients, message ?: "")
+        audit.finish()
+    }
+
+    /**
+     * Best-effort preflight check for the introduction flow. Returns null when the
+     * preflight call itself fails (network, server 500, etc.) — callers should treat
+     * that as "couldn't tell, proceed as if all recipients were Ready" rather than
+     * blocking the user. The server doesn't enforce ordering between preflight and
+     * send, so a null result is a UX hint, not a constraint.
+     */
+    suspend fun previewIntroduceEveryone(
+        conversationId: Uuid,
+    ): id.homebase.api.client.connections.IntroductionPreflightResult? {
+        // ---- DEBUG instrumentation ----
+        val audit = MethodAudit("previewIntroduceEveryone")
+        audit.start("conversationId=$conversationId")
+        // ---- end DEBUG ----
+        val conversation = requireConversation(conversationId)
+        val domain = credentialsManager.requireActiveDomain()
+        val recipients = conversation.participants.filterNot { it == domain }.distinct()
+        audit.pre("recipients=${recipients.size}")
+        if (recipients.isEmpty()) {
+            audit.info("no recipients — preflight skipped")
+            audit.finish("no-op (empty recipients)")
+            return null
+        }
+        return runCatching {
+            introductionProvider.preflightIntroductions(
+                group = IntroductionGroup(recipients = recipients, message = null)
+            )
+        }.onSuccess { result ->
+            audit.info("preflight returned ${result.recipients.size} entries; allReady=${result.allReady}")
+            audit.checkPass("preflight")
+        }.onFailure { e ->
+            // Best-effort: log + swallow so the caller falls back to "send anyway".
+            Logger.w(throwable = e, tag = "ConversationService") {
+                "previewIntroduceEveryone($conversationId) failed — caller will proceed without preflight: ${e.message}"
+            }
+            audit.checkWarn("preflight", "preflight call failed: ${e.message} — caller proceeds without preflight info")
+        }.also { audit.finish() }.getOrNull()
+    }
+
     private suspend fun trySendIntroductions(
         recipients: List<OdinId>,
         message: String
