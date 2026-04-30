@@ -364,6 +364,11 @@
     <string name="chat_group_remove_admin_dislaimer">Remove %1$s as group admin?</string>
     <string name="chat_group_leave">Leave group</string>
     <string name="chat_group_leave_disclaimer">You will no longer be able to send or receive messages in this group.</string>
+    <string name="chat_group_leave_legacy_admin_disclaimer">This is a legacy group, which doesn't support transferring the admin role. If you leave, the group will be left without an admin and other members may have a degraded experience. Are you sure you want to continue?</string>
+    <string name="chat_group_leave_legacy_admin_confirm">Leave anyway</string>
+    <string name="chat_group_leaving_in_progress">Leaving group…</string>
+    <string name="chat_group_member_op_in_progress">Working…</string>
+    <string name="chat_conversation_deleted_confirmation">Conversation and all messages deleted</string>
     <string name="chat_group_choose_new_admin">Choose new admin</string>
     <string name="chat_group_choose_new_admin_disclaimer">Before you leave, you must choose at least one new admin for this group.</string>
     <string name="chat_group_not_connected_disclaimer">You can only chat with connected identities, messages will not be delivered to all group members.</string>
@@ -381,7 +386,7 @@
     <string name="chat_group_admin_file_problem">Admin file delivery problem</string>
     <string name="chat_group_heal">Heal group</string>
     <string name="chat_group_heal_completed">Re-distributing group files…</string>
-    <string name="chat_group_heal_completed_nothing">Nothing to redistribute (you didn\'t author the group files).</string>
+    <string name="chat_group_heal_completed_nothing">Nothing to redistribute (you didn't author the group files).</string>
 
     <!-- 1:1 connection state banner (shown in place of the message composer) -->
     <string name="chat_not_connected_description">You're not connected.</string>

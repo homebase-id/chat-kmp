@@ -869,6 +869,19 @@ class ConversationStream(
         )
     }
 
+    /**
+     * Drop the conversation from the in-memory list immediately. Called from the
+     * conversation-delete UI flow so the row disappears as soon as the service-side
+     * delete is enqueued, instead of lingering as a "deleted conversation" placeholder
+     * (the result of [ConversationMapper.mapDeletedConversation] firing on the soft-
+     * deleted file) until the next app start.
+     */
+    fun onConversationDeleted(conversationId: Uuid) {
+        _conversations.value = _conversations.value.copy(
+            items = _conversations.value.items.filterNot { it.id == conversationId }
+        )
+    }
+
     override suspend fun getRecipients(
         conversationId: Uuid,
         additionalRecipients: List<OdinId>

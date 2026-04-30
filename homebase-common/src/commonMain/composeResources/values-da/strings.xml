@@ -299,6 +299,11 @@
     <string name="chat_group_remove_admin_dislaimer">Fjern %1$s som gruppeadmin?</string>
     <string name="chat_group_leave">Forlad gruppe</string>
     <string name="chat_group_leave_disclaimer">Du vil ikke længere kunne sende eller modtage beskeder i denne gruppe.</string>
+    <string name="chat_group_leave_legacy_admin_disclaimer">Dette er en ældre gruppe, som ikke understøtter overdragelse af adminrollen. Hvis du forlader gruppen, vil den stå uden admin, og andre medlemmer kan opleve en forringet funktionalitet. Er du sikker på, at du vil fortsætte?</string>
+    <string name="chat_group_leave_legacy_admin_confirm">Forlad alligevel</string>
+    <string name="chat_group_leaving_in_progress">Forlader gruppe…</string>
+    <string name="chat_group_member_op_in_progress">Arbejder…</string>
+    <string name="chat_conversation_deleted_confirmation">Samtale og alle beskeder er slettet</string>
     <string name="chat_group_choose_new_admin">Vælg ny admin</string>
     <string name="chat_group_choose_new_admin_disclaimer">Før du forlader gruppen, skal du vælge mindst én ny admin til denne gruppe.</string>
     <string name="chat_group_not_connected_disclaimer">Du kan kun chatte med tilsluttede identiteter, beskeder vil ikke blive leveret til alle gruppemedlemmer.</string>

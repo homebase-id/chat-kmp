@@ -95,6 +95,7 @@ import id.homebase.resources.auto_connect_recipient_not_configured
 import id.homebase.resources.auto_connect_recipient_rejected
 import id.homebase.resources.auto_connect_recipient_requires_upgrade
 import id.homebase.resources.auto_connect_recipient_unreachable
+import id.homebase.resources.chat_conversation_deleted_confirmation
 import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_message_forwarded
@@ -1777,6 +1778,17 @@ class ConversationListViewModel(
                 viewModelScope.launch {
                     try {
                         conversationService.deleteConversation(action.conversationId)
+                        // If the deleted conversation is currently open in the detail
+                        // pane, close it — otherwise the user is left staring at the
+                        // soft-deleted "deleted conversation" placeholder.
+                        if (uiState.value.selectedConversationId == action.conversationId) {
+                            onAction(ConversationListUiAction.ClearSelection)
+                        }
+                        // Drop the row from the in-memory list immediately, instead of
+                        // lingering as a "deleted conversation" placeholder until the
+                        // next app start.
+                        conversationStream.onConversationDeleted(action.conversationId)
+                        sendEvent(ShowInfoMessage(MR.string.chat_conversation_deleted_confirmation))
                     } catch (e: Exception) {
                         Logger.e(throwable = e, tag = "ConversationListViewModel") {
                             "Failed to delete conversation: ${e.message}"

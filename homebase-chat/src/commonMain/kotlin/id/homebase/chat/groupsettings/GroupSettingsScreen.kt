@@ -2,11 +2,13 @@ package id.homebase.chat.groupsettings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -39,6 +41,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -47,7 +50,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
@@ -87,7 +93,11 @@ import id.homebase.resources.chat_group_main_file_problem
 import id.homebase.resources.chat_group_choose_new_admin_disclaimer
 import id.homebase.resources.chat_group_leave
 import id.homebase.resources.chat_group_leave_disclaimer
+import id.homebase.resources.chat_group_leave_legacy_admin_confirm
+import id.homebase.resources.chat_group_leave_legacy_admin_disclaimer
+import id.homebase.resources.chat_group_leaving_in_progress
 import id.homebase.resources.chat_group_legacy_banner
+import id.homebase.resources.chat_group_member_op_in_progress
 import id.homebase.resources.chat_group_make_admin
 import id.homebase.resources.chat_group_make_admin_dislaimer
 import id.homebase.resources.chat_group_remove
@@ -179,11 +189,59 @@ fun GroupSettingsScreen(
         onSheetClosed = viewModel::bottomSheetDismissed
     )
 
-    GroupSettingsUi(
-        snackbarHostState = snackbarHostState,
-        uiState = uiState,
-        onUiAction = viewModel::onUiAction
-    )
+    Box(modifier = Modifier.fillMaxSize()) {
+        GroupSettingsUi(
+            snackbarHostState = snackbarHostState,
+            uiState = uiState,
+            onUiAction = viewModel::onUiAction
+        )
+
+        if (uiState.isLeaving) {
+            LeavingGroupOverlay()
+        }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun LeavingGroupOverlay() {
+    // Swallow the system back gesture so the user can't navigate mid-leave —
+    // matches the LogoutOverlay pattern in SettingsScreen.kt.
+    @Suppress("DEPRECATION")
+    BackHandler(enabled = true) { /* no-op */ }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f))
+            // Absorb every tap so the underlying screen can't receive any input
+            // while the leave is in flight.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) { awaitPointerEvent() }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 32.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                CircularProgressIndicator()
+                Text(
+                    text = stringResource(MR.string.chat_group_leaving_in_progress),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -437,6 +495,30 @@ fun GroupSettingsDialogs(
             }
         }
 
+        is GroupSettingsUiDialog.LeaveLegacyAdminWarning -> {
+            Dialog(onDismissRequest = { onDialogClosed() }) {
+                DialogCard(
+                    buttons = {
+                        DialogButtons(
+                            primaryText = stringResource(MR.string.chat_group_leave_legacy_admin_confirm),
+                            onPrimaryClick = {
+                                onUiAction(GroupSettingsUiAction.LeaveGroupConfirm)
+                                onDialogClosed()
+                            },
+                            secondaryText = stringResource(MR.string.cancel),
+                            onSecondaryClick = { onDialogClosed() },
+                        )
+                    }) {
+                    DialogTitle(
+                        text = stringResource(MR.string.chat_group_leave),
+                    )
+                    DialogText(
+                        text = stringResource(MR.string.chat_group_leave_legacy_admin_disclaimer),
+                    )
+                }
+            }
+        }
+
         is GroupSettingsUiDialog.MakeAdmin -> {
             Dialog(onDismissRequest = { onDialogClosed() }) {
                 DialogCard(
@@ -558,7 +640,29 @@ fun GroupSettingsSheets(
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
-                        if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
+                        // While a server op is in flight for this contact, swap the
+                        // action rows for an inline spinner. The op-tracking is
+                        // managed in the VM (runMemberOp helper).
+                        val isPending = uiState.pendingMemberOps.contains(contactInfo.odinId)
+                        if (isPending) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Text(
+                                    text = stringResource(MR.string.chat_group_member_op_in_progress),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        } else if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
                             if (uiState.conversation?.isCurrentUserAdmin(contactInfo.odinId) == true) {
                                 ListItemActionNormalIcon(
                                     modifier = Modifier.fillMaxWidth(),
