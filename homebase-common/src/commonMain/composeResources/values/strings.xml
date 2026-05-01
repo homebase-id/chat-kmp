@@ -57,8 +57,8 @@
     <string name="auto_connect_duplicate_introductory_request">A request to %1$s is already in progress.</string>
     <string name="auto_connect_recipient_unreachable">Couldn't reach %1$s. Try again later.</string>
     <string name="auto_connect_recipient_rejected">%1$s isn't accepting connections right now.</string>
-    <string name="auto_connect_recipient_not_configured">%1$s hasn\'t finished setting up their identity yet.</string>
-    <string name="auto_connect_recipient_requires_upgrade">%1$s\'s server needs to be updated before you can connect.</string>
+    <string name="auto_connect_recipient_not_configured">%1$s hasn't finished setting up their identity yet.</string>
+    <string name="auto_connect_recipient_requires_upgrade">%1$s's server needs to be updated before you can connect.</string>
     <string name="auto_connect_invalid_request">Invalid request.</string>
     <string name="auto_connect_invalid_request_with_detail">Invalid request: %1$s.</string>
     <string name="auto_connect_failed_generic">Something went wrong. Try again.</string>
@@ -371,6 +371,24 @@
     <string name="chat_conversation_deleted_confirmation">Conversation and all messages deleted</string>
     <string name="chat_conversation_deleting_in_progress">Deleting conversation…</string>
     <string name="chat_conversation_leaving_and_deleting_in_progress">Leaving and deleting…</string>
+
+    <!-- Introduction preflight dialog -->
+    <string name="chat_introduce_preflight_in_progress">Checking introductions…</string>
+    <string name="chat_introduce_preflight_title">Send introductions?</string>
+    <string name="chat_introduce_preflight_body">Some recipients may not receive an introduction:</string>
+    <string name="chat_introduce_preflight_send_anyway">Send anyway</string>
+    <string name="chat_introduce_preflight_skip_and_send">Skip these and send to the rest</string>
+    <!-- Bullet-prefixed line in the preflight dialog body. %1$s is a per-status reason. -->
+    <string name="chat_introduce_preflight_bullet">• %1$s</string>
+    <!-- Per-status reasons. %1$s is the recipient's display name. -->
+    <string name="chat_introduce_preflight_reason_ready">%1$s is ready.</string>
+    <string name="chat_introduce_preflight_reason_not_connected">You're not connected to %1$s.</string>
+    <string name="chat_introduce_preflight_reason_not_configured">%1$s's identity isn't set up yet.</string>
+    <string name="chat_introduce_preflight_reason_requires_upgrade">%1$s's server needs an update.</string>
+    <string name="chat_introduce_preflight_reason_not_permitted">%1$s doesn't allow introductions from you.</string>
+    <string name="chat_introduce_preflight_reason_rejected">%1$s declined the request.</string>
+    <string name="chat_introduce_preflight_reason_unreachable">Couldn't reach %1$s's server right now.</string>
+    <string name="chat_introduce_preflight_reason_unknown">Something went wrong with %1$s.</string>
     <string name="chat_leave_and_delete">Leave &amp; delete</string>
     <string name="chat_leave_and_delete_conversation_title">Leave and delete this group?</string>
     <string name="chat_leave_and_delete_conversation_text">You're still a member of this group. Continuing will leave the group and then delete it from your device. This action can't be undone.</string>

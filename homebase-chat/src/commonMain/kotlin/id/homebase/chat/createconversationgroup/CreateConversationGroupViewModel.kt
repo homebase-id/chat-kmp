@@ -12,6 +12,7 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import io.github.vinceglb.filekit.name
@@ -28,6 +29,7 @@ class CreateConversationGroupViewModel(
     private val contactService: ContactService,
     private val conversationWriterService: ConversationService,
     private val fileOperationsProvider: FileOperationsProvider,
+    private val postCreateIntroductionPreflightBus: PostCreateIntroductionPreflightBus,
 ) : ViewModel() {
 
     private val route = savedStateHandle.toRoute<Route.CreateConversationGroup>()
@@ -92,6 +94,13 @@ class CreateConversationGroupViewModel(
                             title = name,
                             payloadBundle = bundle,
                         ).conversationId
+                        // Post-create preflight: signal the conversation list VM so it can
+                        // ask the server which recipients are non-Ready and surface the
+                        // IntroducePreflight dialog. Best-effort; failure here doesn't
+                        // affect group creation. Bus is a StateFlow so this works even
+                        // when ConversationListViewModel hasn't yet been constructed
+                        // (mobile single-pane: it's created on the next nav stop).
+                        postCreateIntroductionPreflightBus.emit(conversationId)
                         sendEvent(CreateConversationGroupUiEvent.LoadConversation(conversationId))
                     } catch (e: Exception) {
                         sendEvent(CreateConversationGroupUiEvent.ShowErrorMessage("Failed to create conversation: ${e.message}"))

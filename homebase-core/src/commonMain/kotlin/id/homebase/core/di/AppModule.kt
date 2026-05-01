@@ -39,6 +39,7 @@ import id.homebase.chat.services.convo.LocalLastReadUpdater
 import id.homebase.chat.services.convo.StatusMessageSender
 import id.homebase.chat.services.convo.UnreadCountEnricher
 import id.homebase.chat.services.MessageLookup
+import id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
@@ -211,6 +212,10 @@ val appModule = module {
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
     singleOf(::ConversationService)
     single<LocalLastReadUpdater> { get<ConversationService>() }
+    // One-shot bus for post-create introduction preflight: CreateConversationGroupViewModel
+    // emits after successful group creation, ConversationListViewModel collects and
+    // surfaces the IntroducePreflight dialog if any recipient is non-Ready.
+    singleOf(::PostCreateIntroductionPreflightBus)
     singleOf(::ChatMessageStream)
     single<MessageLookup> { get<ChatMessageStream>() }
     singleOf(::ShareSuggestionDonor)
@@ -264,7 +269,37 @@ val appModule = module {
     viewModelOf(::AppLoadingViewModel)
     viewModelOf(::HomeViewModel)
     viewModel { FeedViewModel(get(), get(), get(FeedPermissionQualifier)) }
-    viewModelOf(::ConversationListViewModel)
+    // Manual `viewModel { ... }` rather than viewModelOf because the constructor
+    // exceeds Koin's reified-generic helper ceiling (22 params). Adding the 23rd
+    // (PostCreateIntroductionPreflightBus) overflowed the helpers; spelling the
+    // injections out works fine.
+    viewModel {
+        ConversationListViewModel(
+            conversationStream = get(),
+            chatMessageStream = get(),
+            chatMessageSenderService = get(),
+            chatMessageActionService = get(),
+            conversationService = get(),
+            userPreferences = get(),
+            fileOperationsProvider = get(),
+            ownerSessionRepository = get(),
+            credentialsManager = get(),
+            authConnectionCoordinator = get(),
+            audioRecorder = get(),
+            audioWaveFormGenerator = get(),
+            eventBus = get(),
+            contactService = get(),
+            connectionService = get(),
+            connectionRequestService = get(),
+            driveFileProvider = get(),
+            shareContentProcessor = get(),
+            localVideoContextStore = get(),
+            pendingNotificationTap = get(),
+            cropResultBus = get(),
+            drawResultBus = get(),
+            postCreateIntroductionPreflightBus = get(),
+        )
+    }
     viewModelOf(::ArchivedConversationsViewModel)
     viewModelOf(::CreateConversationViewModel)
     viewModelOf(::CreateConversationGroupViewModel)

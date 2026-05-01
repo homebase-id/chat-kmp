@@ -99,6 +99,7 @@ import id.homebase.resources.chat_conversation_deleted_confirmation
 import id.homebase.resources.chat_conversation_deleting_in_progress
 import id.homebase.resources.chat_conversation_leaving_and_deleting_in_progress
 import id.homebase.resources.chat_group_introduce_everyone_status
+import id.homebase.resources.chat_introduce_preflight_in_progress
 import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_message_forwarded
 import id.homebase.resources.chat_search_result_conversations
@@ -136,6 +137,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -180,6 +182,7 @@ class ConversationListViewModel(
     private val pendingNotificationTap: PendingNotificationTap,
     private val cropResultBus: id.homebase.imageeditor.ui.CropResultBus,
     private val drawResultBus: id.homebase.imageeditor.ui.DrawResultBus,
+    private val postCreateIntroductionPreflightBus: id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus,
 ) : ViewModel() {
 
     companion object {
@@ -252,6 +255,56 @@ class ConversationListViewModel(
                 _uiState.update { it.copy(ownerSession = session) }
                 _messagesUiState.update { it.copy(ownerSession = session) }
             }
+        }
+
+        // Post-create preflight collector. CreateConversationGroupViewModel emits the
+        // newly-created conversation id to the bus; we run a best-effort introduction
+        // preflight and, if any recipient is non-Ready, surface the
+        // IntroducePreflight dialog. Best-effort — preflight failure logs and
+        // returns null, so the user simply doesn't see a dialog (introductions
+        // already fired silently at create time via trySendIntroductions).
+        //
+        // The bus is a StateFlow so a value emitted before this VM existed (mobile
+        // single-pane: the create-group screen is up while this VM hasn't been
+        // constructed yet) is observed the moment we start collecting. We
+        // explicitly call consume(id) after handling so the same value isn't
+        // re-processed on a subsequent collector restart (e.g. config change).
+        //
+        // Overlay is shown during the preflight call so the user gets visible
+        // feedback that something is happening on the freshly-created conversation
+        // — without it the brief delay before the dialog feels like the app stuck.
+        viewModelScope.launch {
+            postCreateIntroductionPreflightBus.pending
+                .filterNotNull()
+                .collect { conversationId ->
+                    _uiState.update { it.copy(inFlightOperationLabel = MR.string.chat_introduce_preflight_in_progress) }
+                    try {
+                        val preflight = conversationService.previewIntroduceEveryone(conversationId)
+                        _uiState.update { it.copy(inFlightOperationLabel = null) }
+                        if (preflight != null && !preflight.allReady) {
+                            val defaultMessage =
+                                "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
+                            _uiState.update {
+                                it.copy(
+                                    uiDialog = ConversationListUiDialog.IntroducePreflight(
+                                        conversationId = conversationId,
+                                        message = defaultMessage,
+                                        result = preflight,
+                                    )
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Logger.w(throwable = e, tag = "ConversationListViewModel") {
+                            "post-create preflight failed for $conversationId: ${e.message}"
+                        }
+                        _uiState.update { it.copy(inFlightOperationLabel = null) }
+                    } finally {
+                        // Always consume — even on null/all-ready/error paths — so the
+                        // same id isn't re-processed if the collector restarts.
+                        postCreateIntroductionPreflightBus.consume(conversationId)
+                    }
+                }
         }
 
         viewModelScope.launch {
@@ -1731,6 +1784,35 @@ class ConversationListViewModel(
                 introduceEveryone(action.conversationId)
             }
 
+            is ConversationListUiAction.IntroduceSendAnyway -> {
+                viewModelScope.launch {
+                    _uiState.update { it.copy(uiDialog = null) }
+                    conversationService.introduceEveryone(action.conversationId, action.message)
+                    sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+                }
+            }
+
+            is ConversationListUiAction.IntroduceSendReadyOnly -> {
+                viewModelScope.launch {
+                    _uiState.update { it.copy(uiDialog = null) }
+                    if (action.readyRecipients.isEmpty()) {
+                        // No-op — the dialog should not have allowed this, but be defensive.
+                        sendEvent(ShowErrorMessage("No ready recipients to send to."))
+                        return@launch
+                    }
+                    conversationService.introduceRecipients(
+                        conversationId = action.conversationId,
+                        recipients = action.readyRecipients,
+                        message = action.message,
+                    )
+                    sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+                }
+            }
+
+            is ConversationListUiAction.IntroduceCancel -> {
+                _uiState.update { it.copy(uiDialog = null) }
+            }
+
             is ConversationListUiAction.ArchiveConversation -> {
                 viewModelScope.launch {
                     try {
@@ -2122,8 +2204,33 @@ class ConversationListViewModel(
         viewModelScope.launch {
             val defaultMessage =
                 "${_uiState.value.ownerSession?.displayName ?: "Unknown"} has added you to group chat"
-            conversationService.introduceEveryone(conversationId, defaultMessage)
-            sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+            // Show the in-flight overlay during preflight — without this the user
+            // sees nothing for ~hundreds of ms and the app feels stuck.
+            _uiState.update { it.copy(inFlightOperationLabel = MR.string.chat_introduce_preflight_in_progress) }
+            // Best-effort preflight: if every recipient is Ready, proceed silently
+            // as before; if any recipient is non-Ready, surface a dialog so the
+            // user can choose Send anyway / Skip and send to the rest / Cancel.
+            // If preflight itself fails (returns null), fall through to the
+            // existing send-everyone path — preflight is advisory, not enforcing.
+            val preflight = conversationService.previewIntroduceEveryone(conversationId)
+            // Always clear the overlay before doing anything follow-up; the dialog
+            // (if shown) draws on top of the conversation view, not the overlay.
+            _uiState.update { it.copy(inFlightOperationLabel = null) }
+            if (preflight == null || preflight.allReady) {
+                conversationService.introduceEveryone(conversationId, defaultMessage)
+                sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+                return@launch
+            }
+            // Some recipients are not ready; let the user decide.
+            _uiState.update {
+                it.copy(
+                    uiDialog = ConversationListUiDialog.IntroducePreflight(
+                        conversationId = conversationId,
+                        message = defaultMessage,
+                        result = preflight,
+                    )
+                )
+            }
         }
     }
 
@@ -2456,7 +2563,7 @@ class ConversationListViewModel(
 
     /**
      * Combined delete (and optional leave-first) flow. Drives the in-flight overlay
-     * via [ConversationListUiState.inFlightDeletionLabel], runs the service ops,
+     * via [ConversationListUiState.inFlightOperationLabel], runs the service ops,
      * then reconciles UI state (drops the row from the in-memory list, pops the
      * detail pane if the deleted conversation was open, fires the snackbar).
      *
@@ -2470,7 +2577,7 @@ class ConversationListViewModel(
         leaveFirst: Boolean,
         overlayLabel: org.jetbrains.compose.resources.StringResource,
     ) {
-        _uiState.update { it.copy(inFlightDeletionLabel = overlayLabel) }
+        _uiState.update { it.copy(inFlightOperationLabel = overlayLabel) }
         try {
             if (leaveFirst) {
                 // Mirror GroupSettingsViewModel.LeaveGroupConfirm logic so a sole-admin
@@ -2502,7 +2609,7 @@ class ConversationListViewModel(
             val close = uiState.value.selectedConversationId == conversationId
             _uiState.update {
                 it.copy(
-                    inFlightDeletionLabel = null,
+                    inFlightOperationLabel = null,
                     selectedConversationId = if (close) null else it.selectedConversationId,
                     closeDetailPaneRequest = if (close) conversationId else it.closeDetailPaneRequest,
                 )
@@ -2516,7 +2623,7 @@ class ConversationListViewModel(
             Logger.e(throwable = e, tag = "ConversationListViewModel") {
                 "Failed to delete conversation (leaveFirst=$leaveFirst): ${e.message}"
             }
-            _uiState.update { it.copy(inFlightDeletionLabel = null) }
+            _uiState.update { it.copy(inFlightOperationLabel = null) }
             sendEvent(ShowErrorMessage("Failed to delete conversation: ${e.message}"))
         }
     }

@@ -34,6 +34,24 @@ sealed interface ConversationListUiAction {
      *  [ConversationService.deleteConversation] in sequence so the user does not
      *  have to do both in two separate UI flows. */
     data class ConfirmLeaveAndDeleteConversation(val conversationId: Uuid) : ConversationListUiAction
+
+    /** Three outcomes from the [ConversationListUiDialog.IntroducePreflight]
+     *  dialog. The dialog presents the user with non-Ready recipients and these
+     *  actions are how they choose what to do. The original `message` is passed
+     *  through so the VM doesn't have to reach back into UI state for it. */
+    data class IntroduceSendAnyway(val conversationId: Uuid, val message: String) : ConversationListUiAction
+
+    /** Send only to the recipients that came back as
+     *  [id.homebase.api.client.connections.IntroductionPreflightStatus.Ready]
+     *  in the preflight result; skip the others. */
+    data class IntroduceSendReadyOnly(
+        val conversationId: Uuid,
+        val readyRecipients: List<id.homebase.api.common.OdinId>,
+        val message: String,
+    ) : ConversationListUiAction
+
+    /** Dismiss the preflight dialog without sending. Equivalent to closing the dialog. */
+    data object IntroduceCancel : ConversationListUiAction
     data object FilterByUnreadClicked : ConversationListUiAction
     data object ClearFilterByUnreadClicked : ConversationListUiAction
     data object ShowArchivedMessagesClicked : ConversationListUiAction
