@@ -12,20 +12,25 @@ import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.PayloadDeleteKey
-import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
+import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.QueryBatch
@@ -35,6 +40,12 @@ import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.vaultLabeledDrive
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
@@ -50,35 +61,26 @@ data class VaultData(
 
 class VaultRepository(
     private val databaseManager: DatabaseManager,
-    private val uploadProvider: DriveUploadProvider,
     private val credentialsManager: CredentialsManager,
     private val fileOperationsProvider: FileOperationsProvider,
     private val outboxSync: OutboxSync,
     private val payloadEncryptionService: PayloadBundleEncryptionService,
     private val driveFileProvider: DriveFileProvider,
     private val optimisticWriter: OptimisticWriter,
+    private val eventBus: EventBus,
 ) {
     private val driveId = vaultLabeledDrive.drive.alias
 
-    suspend fun loadFiles(): List<VaultFileItem> {
-        val creds = credentialsManager.getActiveCredentials() ?: return emptyList()
-        val identityId = creds.getIdentityId()
-        val queryBatch = QueryBatch(identityId)
-
-        return try {
-            val result = queryBatch.queryBatchAsync(
-                dbm = databaseManager,
-                driveId = driveId,
-                noOfItems = 1000,
-                sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
-                fileSystemType = FileSystemType.Standard.value,
-            )
-            result.records.mapNotNull { it.toVaultFileItem() }
-        } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to load vault files" }
-            emptyList()
+    fun observeVaultData(): Flow<VaultData> {
+        val vaultEvents = eventBus.events.filter { event ->
+            (event is BackendEvent.DriveEvent.BatchReceived && event.driveId == driveId) ||
+                    (event is BackendEvent.OutboxEvent.ItemCompleted && event.driveId == driveId) ||
+                    (event is BackendEvent.OutboxEvent.ItemFailed && event.driveId == driveId) ||
+                    (event is BackendEvent.OutboxEvent.OutboxItemDropped && event.driveId == driveId)
         }
+        return merge(flowOf(Unit), vaultEvents.map { })
+            .conflate()
+            .map { loadAllVaultData() }
     }
 
     suspend fun createSection(
@@ -98,20 +100,29 @@ class VaultRepository(
                 ),
             )
 
-            optimisticWriter.writeNewFile(
-                driveId = driveId,
-                keyHeader = keyHeader,
-                unecryptedMetadata = unencryptedMetadata,
-                originalRecipientCount = 0,
-                fileSystemType = FileSystemType.Standard,
-            )
-
             val request = UploadFileRequest(
                 driveId = driveId,
                 keyHeader = keyHeader,
                 metadata = unencryptedMetadata.encryptContent(keyHeader),
             )
-            outboxSync.tryEnqueue(request)
+            val enqueued = outboxSync.tryEnqueue(request)
+            if (enqueued) {
+                try {
+                    optimisticWriter.writeNewFile(
+                        driveId = driveId,
+                        keyHeader = keyHeader,
+                        unecryptedMetadata = unencryptedMetadata,
+                        originalRecipientCount = 0,
+                        fileSystemType = FileSystemType.Standard,
+                    )
+                } catch (e: Exception) {
+                    Logger.e(
+                        e,
+                        TAG
+                    ) { "Optimistic write failed (non-fatal) for section: ${sectionContent.title}" }
+                }
+            }
+            enqueued
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to create vault section: ${sectionContent.title}" }
             false
@@ -125,30 +136,26 @@ class VaultRepository(
         val queryBatch = QueryBatch(identityId)
 
         return try {
-            val sectionResult = queryBatch.queryBatchAsync(
+            val result = queryBatch.queryBatchAsync(
                 dbm = databaseManager,
                 driveId = driveId,
-                noOfItems = 100,
+                noOfItems = 1100,
                 sortOrder = QueryBatchSortOrder.NewestFirst,
                 sortField = QueryBatchSortField.CreatedDate,
                 fileSystemType = FileSystemType.Standard.value,
-                filetypesAnyOf = listOf(VAULT_SECTION_TYPE),
+                filetypesAnyOf = listOf(VAULT_SECTION_TYPE, VAULT_FILE_TYPE),
             )
-            val sections = sectionResult.records.mapNotNull { file ->
+
+            val (sectionRecords, fileRecords) = result.records.partition {
+                it.fileMetadata.appData.fileType == VAULT_SECTION_TYPE
+            }
+
+            val sections = sectionRecords.mapNotNull { file ->
                 val sectionContent = file.toVaultSection() ?: return@mapNotNull null
                 file to sectionContent
             }
 
-            val fileResult = queryBatch.queryBatchAsync(
-                dbm = databaseManager,
-                driveId = driveId,
-                noOfItems = 1000,
-                sortOrder = QueryBatchSortOrder.NewestFirst,
-                sortField = QueryBatchSortField.CreatedDate,
-                fileSystemType = FileSystemType.Standard.value,
-                filetypesAnyOf = listOf(VAULT_FILE_TYPE),
-            )
-            val allFiles = fileResult.records.mapNotNull { it.toVaultFileItem() }
+            val allFiles = fileRecords.mapNotNull { it.toVaultFileItem() }
 
             val filesBySection = allFiles
                 .filter { it.groupId != null }
@@ -173,7 +180,8 @@ class VaultRepository(
             val keyHeader = KeyHeader.newRandom16()
 
             val resolvedFiles = files.map { (path, contentType) ->
-                fileOperationsProvider.resolveToFilePath(path) to contentType
+                val resolved = fileOperationsProvider.resolveToFilePath(path)
+                convertHeicIfNeeded(resolved, contentType)
             }
 
             val bundle = buildMultiPayloadBundle(resolvedFiles)
@@ -185,7 +193,7 @@ class VaultRepository(
             val content = OdinSystemSerializer.serialize(
                 VaultFileContent(name = entryName, notes = notes)
             )
-            val metadata = UploadFileMetadata(
+            val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
                 appData = UploadAppFileMetaData(
@@ -195,25 +203,60 @@ class VaultRepository(
                     groupId = groupId,
                     previewThumbnail = encryptedBundle.previewThumbs.firstOrNull(),
                 ),
-            ).encryptContent(keyHeader)
+            )
+
+            val payloadDescriptors = encryptedBundle.payloads.map { payload ->
+                PayloadDescriptor(
+                    key = payload.key,
+                    contentType = payload.contentType.ifEmpty { null },
+                    iv = payload.iv?.let { Base64.encode(it) },
+                    descriptorContent = payload.descriptorContent,
+                    previewThumbnail = payload.previewThumbnail?.let {
+                        ThumbnailDescriptor(
+                            pixelWidth = it.pixelWidth,
+                            pixelHeight = it.pixelHeight,
+                            contentType = it.contentType,
+                            content = it.content,
+                        )
+                    },
+                )
+            }.ifEmpty { null }
 
             val request = UploadFileRequest(
                 driveId = driveId,
                 keyHeader = keyHeader,
-                metadata = metadata,
+                metadata = unencryptedMetadata.encryptContent(keyHeader),
                 payloads = encryptedBundle.payloads,
                 thumbnails = encryptedBundle.thumbnails,
             )
 
             val enqueued = outboxSync.tryEnqueue(request)
-            if (enqueued) uniqueId else null
+            if (enqueued) {
+                try {
+                    optimisticWriter.writeNewFile(
+                        driveId = driveId,
+                        keyHeader = keyHeader,
+                        unecryptedMetadata = unencryptedMetadata,
+                        originalRecipientCount = 0,
+                        fileSystemType = FileSystemType.Standard,
+                        payloadDescriptors = payloadDescriptors,
+                    )
+                    Logger.d(tag = TAG) { "Optimistic write complete: $entryName uniqueId=$uniqueId" }
+                } catch (e: Exception) {
+                    Logger.e(e, TAG) { "Optimistic write failed (non-fatal): $entryName" }
+                }
+                uniqueId
+            } else {
+                null
+            }
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue multi-payload upload: $entryName" }
             null
         }
     }
 
-    suspend fun deleteFile(fileId: Uuid): Boolean {
+    // TODO: Add optimistic deletes with rollback (snapshot → writeDelete → enqueue → rollback on failure)
+    suspend fun deleteFile(uniqueId: Uuid, fileId: Uuid): Boolean {
         return try {
             outboxSync.tryEnqueue(
                 request = DeleteLocalFilesByFileIdRequest(
@@ -222,55 +265,54 @@ class VaultRepository(
                 ),
             )
         } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to enqueue vault file delete: $fileId" }
+            Logger.e(e, TAG) { "Failed to enqueue vault file delete: $uniqueId" }
             false
         }
     }
 
+    // TODO: Add optimistic update with rollback (snapshot → writeUpdate → enqueue → rollback on failure)
     suspend fun renameFile(
-        fileId: Uuid,
+        uniqueId: Uuid,
         newName: String,
         existingNotes: String?,
         versionTag: Uuid?,
         keyHeader: KeyHeader,
     ): Boolean {
         return try {
-            val content = OdinSystemSerializer.serialize(VaultFileContent(name = newName, notes = existingNotes))
+            val content = OdinSystemSerializer.serialize(
+                VaultFileContent(name = newName, notes = existingNotes)
+            )
             val metadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
                 appData = UploadAppFileMetaData(
+                    uniqueId = uniqueId,
                     content = content,
                 ),
                 versionTag = versionTag,
             ).encryptContent(keyHeader)
 
-            val request = UpdateFileByFileIdRequest(
-                driveId = driveId,
-                fileId = fileId,
-                keyHeader = keyHeader,
-                instructions = FileUpdateInstructionSet(
-                    transferIv = ByteArrayUtil.getRndByteArray(16),
-                    locale = UpdateLocale.Local,
-                    recipients = emptyList(),
-                    manifest = UpdateManifest.build(
-                        payloads = null,
-                        toDeletePayloads = null,
-                        thumbnails = null,
-                        generatePayloadIv = false,
+            outboxSync.tryEnqueue(
+                request = UpdateFileByUniqueIdRequest(
+                    driveId = driveId,
+                    uniqueId = uniqueId,
+                    keyHeader = keyHeader,
+                    instructions = FileUpdateInstructionSet(
+                        transferIv = ByteArrayUtil.getRndByteArray(16),
+                        locale = UpdateLocale.Local,
+                        recipients = emptyList(),
+                        manifest = UpdateManifest.build(),
                     ),
+                    metadata = metadata,
                 ),
-                metadata = metadata,
             )
-
-            val result = uploadProvider.updateFileByFileId(request)
-            result != null
         } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to rename vault file: $fileId -> $newName" }
+            Logger.e(e, TAG) { "Failed to enqueue rename: $uniqueId -> $newName" }
             false
         }
     }
 
+    // TODO: Add optimistic deletes with rollback for section + child files
     suspend fun deleteSection(sectionUniqueId: Uuid, sectionFileId: Uuid): Boolean {
         return try {
             outboxSync.tryEnqueue(
@@ -292,8 +334,9 @@ class VaultRepository(
         }
     }
 
+    // TODO: Add optimistic update with rollback (snapshot → writeUpdate → enqueue → rollback on failure)
     suspend fun updateSection(
-        sectionFileId: Uuid,
+        sectionUniqueId: Uuid,
         sectionContent: VaultSectionContent,
         versionTag: Uuid?,
         keyHeader: KeyHeader,
@@ -304,33 +347,28 @@ class VaultRepository(
                 allowDistribution = false,
                 isEncrypted = true,
                 appData = UploadAppFileMetaData(
+                    uniqueId = sectionUniqueId,
                     content = content,
                 ),
                 versionTag = versionTag,
             ).encryptContent(keyHeader)
 
-            val request = UpdateFileByFileIdRequest(
-                driveId = driveId,
-                fileId = sectionFileId,
-                keyHeader = keyHeader,
-                instructions = FileUpdateInstructionSet(
-                    transferIv = ByteArrayUtil.getRndByteArray(16),
-                    locale = UpdateLocale.Local,
-                    recipients = emptyList(),
-                    manifest = UpdateManifest.build(
-                        payloads = null,
-                        toDeletePayloads = null,
-                        thumbnails = null,
-                        generatePayloadIv = false,
+            outboxSync.tryEnqueue(
+                request = UpdateFileByUniqueIdRequest(
+                    driveId = driveId,
+                    uniqueId = sectionUniqueId,
+                    keyHeader = keyHeader,
+                    instructions = FileUpdateInstructionSet(
+                        transferIv = ByteArrayUtil.getRndByteArray(16),
+                        locale = UpdateLocale.Local,
+                        recipients = emptyList(),
+                        manifest = UpdateManifest.build(),
                     ),
+                    metadata = metadata,
                 ),
-                metadata = metadata,
             )
-
-            val result = uploadProvider.updateFileByFileId(request)
-            result != null
         } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to update vault section: $sectionFileId" }
+            Logger.e(e, TAG) { "Failed to enqueue section update: $sectionUniqueId" }
             false
         }
     }
@@ -347,16 +385,17 @@ class VaultRepository(
             val startIndex = existingMaxIndex + 1
 
             val resolvedFiles = newFiles.map { (path, contentType) ->
-                fileOperationsProvider.resolveToFilePath(path) to contentType
+                val resolved = fileOperationsProvider.resolveToFilePath(path)
+                convertHeicIfNeeded(resolved, contentType)
             }
 
             val allPayloads = mutableListOf<PayloadFile>()
-            val allThumbnails = mutableListOf<id.homebase.api.client.drives.files.ThumbnailFile>()
+            val allThumbnails = mutableListOf<ThumbnailFile>()
 
             resolvedFiles.forEachIndexed { i, (filePath, contentType) ->
                 val key = vaultPayloadKey(startIndex + i)
                 var previewThumbnail: EmbeddedThumb? = null
-                var thumbnails = emptyList<id.homebase.api.client.drives.files.ThumbnailFile>()
+                var thumbnails = emptyList<ThumbnailFile>()
 
                 if (contentType.startsWith("image/")) {
                     try {
@@ -379,7 +418,10 @@ class VaultRepository(
                 allThumbnails += thumbnails
             }
 
-            val keyHeader = file.keyHeader
+            val keyHeader = KeyHeader(
+                iv = ByteArrayUtil.getRndByteArray(16),
+                aesKey = file.keyHeader.aesKey
+            )
             val encryptedBundle = payloadEncryptionService.encryptBundle(
                 Uuid.random(), PayloadBundle(allPayloads, allThumbnails, emptyList()),
                 keyHeader.aesKey, scope,
@@ -388,33 +430,32 @@ class VaultRepository(
             val metadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
-                appData = UploadAppFileMetaData(),
+                appData = UploadAppFileMetaData(uniqueId = file.uniqueId),
                 versionTag = file.versionTag,
             )
 
-            val request = UpdateFileByFileIdRequest(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                keyHeader = keyHeader,
-                instructions = FileUpdateInstructionSet(
-                    transferIv = ByteArrayUtil.getRndByteArray(16),
-                    locale = UpdateLocale.Local,
-                    recipients = emptyList(),
-                    manifest = UpdateManifest.build(
-                        payloads = encryptedBundle.payloads,
-                        thumbnails = encryptedBundle.thumbnails,
-                        generatePayloadIv = false,
+            outboxSync.tryEnqueue(
+                request = UpdateFileByUniqueIdRequest(
+                    driveId = file.driveId,
+                    uniqueId = file.uniqueId,
+                    keyHeader = keyHeader,
+                    instructions = FileUpdateInstructionSet(
+                        transferIv = ByteArrayUtil.getRndByteArray(16),
+                        locale = UpdateLocale.Local,
+                        recipients = emptyList(),
+                        manifest = UpdateManifest.build(
+                            payloads = encryptedBundle.payloads,
+                            thumbnails = encryptedBundle.thumbnails,
+                            generatePayloadIv = false,
+                        ),
                     ),
+                    metadata = metadata,
+                    payloads = encryptedBundle.payloads,
+                    thumbnails = encryptedBundle.thumbnails,
                 ),
-                metadata = metadata,
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails,
             )
-
-            val result = uploadProvider.updateFileByFileId(request)
-            result != null
         } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to append pages to ${file.fileId}" }
+            Logger.e(e, TAG) { "Failed to enqueue append pages to ${file.uniqueId}" }
             false
         }
     }
@@ -426,39 +467,39 @@ class VaultRepository(
         return try {
             val isLastPage = file.payloadDescriptors.size <= 1
             if (isLastPage) {
-                return deleteFile(file.fileId)
+                return deleteFile(file.uniqueId, file.fileId)
             }
 
             val metadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
-                appData = UploadAppFileMetaData(),
+                appData = UploadAppFileMetaData(uniqueId = file.uniqueId),
                 versionTag = file.versionTag,
             )
 
-            val request = UpdateFileByFileIdRequest(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                keyHeader = file.keyHeader,
-                instructions = FileUpdateInstructionSet(
-                    transferIv = ByteArrayUtil.getRndByteArray(16),
-                    locale = UpdateLocale.Local,
-                    recipients = emptyList(),
-                    manifest = UpdateManifest.build(
-                        toDeletePayloads = listOf(PayloadDeleteKey(payloadKey)),
+            outboxSync.tryEnqueue(
+                request = UpdateFileByUniqueIdRequest(
+                    driveId = file.driveId,
+                    uniqueId = file.uniqueId,
+                    keyHeader = file.keyHeader,
+                    instructions = FileUpdateInstructionSet(
+                        transferIv = ByteArrayUtil.getRndByteArray(16),
+                        locale = UpdateLocale.Local,
+                        recipients = emptyList(),
+                        manifest = UpdateManifest.build(
+                            toDeletePayloads = listOf(PayloadDeleteKey(payloadKey)),
+                        ),
                     ),
+                    metadata = metadata,
                 ),
-                metadata = metadata,
             )
-
-            val result = uploadProvider.updateFileByFileId(request)
-            result != null
         } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to delete page $payloadKey from ${file.fileId}" }
+            Logger.e(e, TAG) { "Failed to enqueue delete page $payloadKey from ${file.uniqueId}" }
             false
         }
     }
 
+    // TODO: Add optimistic update with rollback (snapshot → writeUpdate → enqueue → rollback on failure)
     suspend fun updateNotes(
         file: VaultFileItem,
         notes: String?,
@@ -470,27 +511,29 @@ class VaultRepository(
             val metadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
-                appData = UploadAppFileMetaData(content = content),
+                appData = UploadAppFileMetaData(
+                    uniqueId = file.uniqueId,
+                    content = content,
+                ),
                 versionTag = file.versionTag,
             ).encryptContent(file.keyHeader)
 
-            val request = UpdateFileByFileIdRequest(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                keyHeader = file.keyHeader,
-                instructions = FileUpdateInstructionSet(
-                    transferIv = ByteArrayUtil.getRndByteArray(16),
-                    locale = UpdateLocale.Local,
-                    recipients = emptyList(),
-                    manifest = UpdateManifest.build(),
+            outboxSync.tryEnqueue(
+                request = UpdateFileByUniqueIdRequest(
+                    driveId = file.driveId,
+                    uniqueId = file.uniqueId,
+                    keyHeader = file.keyHeader,
+                    instructions = FileUpdateInstructionSet(
+                        transferIv = ByteArrayUtil.getRndByteArray(16),
+                        locale = UpdateLocale.Local,
+                        recipients = emptyList(),
+                        manifest = UpdateManifest.build(),
+                    ),
+                    metadata = metadata,
                 ),
-                metadata = metadata,
             )
-
-            val result = uploadProvider.updateFileByFileId(request)
-            result != null
         } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to update notes for ${file.fileId}" }
+            Logger.e(e, TAG) { "Failed to enqueue notes update for ${file.uniqueId}" }
             false
         }
     }
@@ -531,13 +574,13 @@ class VaultRepository(
         files: List<Pair<String, String>>,
     ): PayloadBundle {
         val allPayloads = mutableListOf<PayloadFile>()
-        val allThumbnails = mutableListOf<id.homebase.api.client.drives.files.ThumbnailFile>()
+        val allThumbnails = mutableListOf<ThumbnailFile>()
         val allPreviews = mutableListOf<EmbeddedThumb>()
 
         files.forEachIndexed { index, (filePath, contentType) ->
             val key = vaultPayloadKey(index)
             var previewThumbnail: EmbeddedThumb? = null
-            var thumbnails = emptyList<id.homebase.api.client.drives.files.ThumbnailFile>()
+            var thumbnails = emptyList<ThumbnailFile>()
 
             if (contentType.startsWith("image/")) {
                 try {
@@ -566,5 +609,20 @@ class VaultRepository(
             thumbnails = allThumbnails,
             previewThumbs = allPreviews,
         )
+    }
+
+    private suspend fun convertHeicIfNeeded(
+        filePath: String,
+        contentType: String,
+    ): Pair<String, String> {
+        if (contentType != "image/heic" && contentType != "image/heif") {
+            return filePath to contentType
+        }
+        val heicBytes = fileOperationsProvider.readFileBytes(filePath)
+        val jpegBytes = convertHeicToJpeg(heicBytes) ?: return filePath to contentType
+        val convertedPath = fileOperationsProvider.writeBytesToTempFile(
+            jpegBytes, "heic_converted_", ".jpg"
+        )
+        return convertedPath to "image/jpeg"
     }
 }

@@ -1,8 +1,12 @@
 package id.homebase.core.ui.screens.vault
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import id.homebase.core.HomebaseConstants
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,11 +38,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -46,6 +53,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.ui.screens.vault.model.VaultSectionUiModel
 import id.homebase.core.util.getUriHandler
@@ -57,6 +65,18 @@ import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.vault_biometric_prompt_subtitle
 import id.homebase.resources.vault_biometric_prompt_title
+import id.homebase.resources.vault_error_append_pages
+import id.homebase.resources.vault_error_create_section
+import id.homebase.resources.vault_error_delete_file
+import id.homebase.resources.vault_error_delete_page
+import id.homebase.resources.vault_error_delete_section
+import id.homebase.resources.vault_error_download
+import id.homebase.resources.vault_error_download_page
+import id.homebase.resources.vault_error_outbox_upload
+import id.homebase.resources.vault_error_rename_file
+import id.homebase.resources.vault_error_rename_section
+import id.homebase.resources.vault_error_save_notes
+import id.homebase.resources.vault_error_upload
 import id.homebase.resources.vault_label
 import id.homebase.resources.vault_permission_cancel
 import id.homebase.resources.vault_rename_action
@@ -83,9 +103,9 @@ fun VaultScreen(
     onNavigateToSettings: () -> Unit,
 ) {
     val vaultPreferences = koinInject<VaultPreferences>()
+    val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
     val fileSystemHandler = getUriHandler()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     val biometricTitle = stringResource(MR.string.vault_biometric_prompt_title)
     val biometricSubtitle = stringResource(MR.string.vault_biometric_prompt_subtitle)
 
@@ -97,19 +117,32 @@ fun VaultScreen(
         )
     }
 
-    // Biometric auth gate — re-triggers when authorized flips to false (e.g. after backgrounding)
-    LaunchedEffect(authorized) {
-        if (authorized) return@LaunchedEffect
+    var unlockAttempt by remember { mutableStateOf(0) }
+    var isAuthenticating by remember { mutableStateOf(false) }
+
+    LaunchedEffect(authorized, unlockAttempt) {
+        if (authorized || isAuthenticating) return@LaunchedEffect
+        isAuthenticating = true
         when (authenticateBiometric(biometricTitle, biometricSubtitle)) {
             BiometricResult.Success, BiometricResult.Unavailable -> {
                 vaultPreferences.recordAuthSuccess()
                 authorized = true
             }
-            BiometricResult.Failure -> onNavigateBack()
+            BiometricResult.Failure -> { /* stay on locked screen */ }
+        }
+        isAuthenticating = false
+    }
+
+    var pendingError by remember { mutableStateOf<VaultError?>(null) }
+
+    pendingError?.let { error ->
+        val message = resolveVaultError(error)
+        LaunchedEffect(error) {
+            snackbarHostState.showSnackbar(message)
+            pendingError = null
         }
     }
 
-    // Collect one-time events
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
@@ -117,7 +150,7 @@ fun VaultScreen(
                     fileSystemHandler.shareFile(Path(event.filePath))
                 }
                 is VaultUiEvent.Error -> {
-                    scope.launch { snackbarHostState.showSnackbar(event.message) }
+                    pendingError = event.error
                 }
                 is VaultUiEvent.Activated,
                 is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
@@ -232,51 +265,97 @@ fun VaultScreen(
             .consumeWindowInsets(innerPadding)
             .padding(innerPadding)
 
-        if (authorized) {
-            when {
-                uiState.isLoading && uiState.sections.isEmpty() -> {
-                    Box(
-                        modifier = contentModifier,
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                }
+        val transitionDuration = HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION
 
-                uiState.sections.isEmpty() -> {
-                    VaultEmptyState(
-                        onAddSection = { showNewSectionSheet = true },
-                        modifier = contentModifier,
-                    )
-                }
+        SharedTransitionLayout {
+            AnimatedContent(
+                targetState = uiState.fullScreenOverlay,
+                transitionSpec = {
+                    fadeIn(tween(transitionDuration)) togetherWith fadeOut(tween(transitionDuration))
+                },
+            ) { overlay ->
+                if (overlay == null) {
+                    if (!authorized) {
+                        VaultLockedContent(
+                            onUnlock = { unlockAttempt++ },
+                            modifier = contentModifier,
+                        )
+                    } else {
+                        when {
+                            uiState.isLoading && uiState.sections.isEmpty() -> {
+                                Box(
+                                    modifier = contentModifier,
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
 
-                else -> {
-                    LazyColumn(
-                        modifier = contentModifier,
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(uiState.sections, key = { it.sectionId }) { section ->
-                            VaultSectionCard(
-                                section = section,
-                                onEntryClick = {
-                                    viewModel.onAction(VaultUiAction.EntryClicked(it))
-                                },
-                                onAddEntry = {
-                                    activeSectionForEntry = section
-                                    showImageAddSheet = true
-                                },
-                                onMoveUp = {
-                                    viewModel.onAction(VaultUiAction.MoveSectionUp(section))
-                                },
-                                onMoveDown = {
-                                    viewModel.onAction(VaultUiAction.MoveSectionDown(section))
-                                },
-                                onRenameSection = { sectionToRename = section },
-                                onDeleteSection = { sectionToDelete = section },
-                            )
+                            uiState.sections.isEmpty() -> {
+                                VaultEmptyState(
+                                    onAddSection = { showNewSectionSheet = true },
+                                    modifier = contentModifier,
+                                )
+                            }
+
+                            else -> {
+                                LazyColumn(
+                                    modifier = contentModifier,
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    items(uiState.sections, key = { it.sectionId }) { section ->
+                                        VaultSectionCard(
+                                            section = section,
+                                            localAttachmentStore = localAttachmentStore,
+                                            onEntryClick = {
+                                                viewModel.onAction(VaultUiAction.EntryClicked(it))
+                                            },
+                                            onAddEntry = {
+                                                activeSectionForEntry = section
+                                                showImageAddSheet = true
+                                            },
+                                            onMoveUp = {
+                                                viewModel.onAction(VaultUiAction.MoveSectionUp(section))
+                                            },
+                                            onMoveDown = {
+                                                viewModel.onAction(VaultUiAction.MoveSectionDown(section))
+                                            },
+                                            onRenameSection = { sectionToRename = section },
+                                            onDeleteSection = { sectionToDelete = section },
+                                            sharedTransitionScope = this@SharedTransitionLayout,
+                                            animatedVisibilityScope = this@AnimatedContent,
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
+                } else if (overlay is VaultOverlay.Gallery) {
+                    VaultGalleryOverlay(
+                        file = overlay.file,
+                        initialPage = overlay.initialPage,
+                        onDismiss = { viewModel.onAction(VaultUiAction.CloseOverlay) },
+                        onSharePage = { key ->
+                            viewModel.onAction(VaultUiAction.SharePage(overlay.file, key))
+                        },
+                        onDeletePage = { key ->
+                            viewModel.onAction(VaultUiAction.DeletePage(overlay.file, key))
+                        },
+                        onAppendPages = {
+                            fileForAppend = overlay.file
+                            appendPicker.launch()
+                        },
+                        onUpdateNotes = { notes ->
+                            viewModel.onAction(VaultUiAction.UpdateNotes(overlay.file, notes))
+                        },
+                        onDeleteEntry = {
+                            viewModel.onAction(VaultUiAction.DeleteFile(overlay.file))
+                        },
+                        onRenameEntry = { fileToRename = overlay.file },
+                        sharedTransitionScope = this@SharedTransitionLayout,
+                        animatedVisibilityScope = this@AnimatedContent,
+                    )
                 }
             }
         }
@@ -362,21 +441,26 @@ fun VaultScreen(
 
     // Section rename dialog
     sectionToRename?.let { section ->
-        var newName by remember(section) { mutableStateOf(section.title) }
+        var nameField by remember(section) {
+            mutableStateOf(TextFieldValue(section.title, TextRange(0, section.title.length)))
+        }
+        val sectionFocus = remember { FocusRequester() }
         AlertDialog(
             onDismissRequest = { sectionToRename = null },
             title = { Text(stringResource(MR.string.vault_section_rename)) },
             text = {
                 OutlinedTextField(
-                    value = newName,
-                    onValueChange = { newName = it },
+                    value = nameField,
+                    onValueChange = { nameField = it },
                     singleLine = true,
+                    modifier = Modifier.focusRequester(sectionFocus),
                 )
+                LaunchedEffect(Unit) { sectionFocus.requestFocus() }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.onAction(VaultUiAction.RenameSection(section, newName))
+                        viewModel.onAction(VaultUiAction.RenameSection(section, nameField.text))
                         sectionToRename = null
                     },
                 ) {
@@ -393,21 +477,26 @@ fun VaultScreen(
 
     // File rename dialog
     fileToRename?.let { file ->
-        var newName by remember(file) { mutableStateOf(file.fileName) }
+        var nameField by remember(file) {
+            mutableStateOf(TextFieldValue(file.fileName, TextRange(0, file.fileName.length)))
+        }
+        val fileFocus = remember { FocusRequester() }
         AlertDialog(
             onDismissRequest = { fileToRename = null },
             title = { Text(stringResource(MR.string.vault_rename_title)) },
             text = {
                 OutlinedTextField(
-                    value = newName,
-                    onValueChange = { newName = it },
+                    value = nameField,
+                    onValueChange = { nameField = it },
                     singleLine = true,
+                    modifier = Modifier.focusRequester(fileFocus),
                 )
+                LaunchedEffect(Unit) { fileFocus.requestFocus() }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.onAction(VaultUiAction.RenameFile(file, newName))
+                        viewModel.onAction(VaultUiAction.RenameFile(file, nameField.text))
                         fileToRename = null
                     },
                 ) {
@@ -422,38 +511,22 @@ fun VaultScreen(
         )
     }
 
-    // Gallery overlay (outside Scaffold, on top of everything)
-    AnimatedVisibility(
-        visible = uiState.fullScreenOverlay != null,
-        enter = fadeIn(),
-        exit = fadeOut(),
-    ) {
-        val overlay = uiState.fullScreenOverlay
-        if (overlay is VaultOverlay.Gallery) {
-            VaultGalleryOverlay(
-                file = overlay.file,
-                initialPage = overlay.initialPage,
-                onDismiss = { viewModel.onAction(VaultUiAction.CloseOverlay) },
-                onSharePage = { key ->
-                    viewModel.onAction(VaultUiAction.SharePage(overlay.file, key))
-                },
-                onDeletePage = { key ->
-                    viewModel.onAction(VaultUiAction.DeletePage(overlay.file, key))
-                },
-                onAppendPages = {
-                    fileForAppend = overlay.file
-                    appendPicker.launch()
-                },
-                onUpdateNotes = { notes ->
-                    viewModel.onAction(VaultUiAction.UpdateNotes(overlay.file, notes))
-                },
-                onDeleteEntry = {
-                    viewModel.onAction(VaultUiAction.DeleteFile(overlay.file))
-                },
-                onRenameEntry = { fileToRename = overlay.file },
-            )
-        }
-    }
 }
 
 private enum class VaultPickerAction { Camera, Gallery }
+
+@Composable
+private fun resolveVaultError(error: VaultError): String = when (error) {
+    VaultError.CreateSectionFailed -> stringResource(MR.string.vault_error_create_section)
+    VaultError.RenameSectionFailed -> stringResource(MR.string.vault_error_rename_section)
+    VaultError.DeleteSectionFailed -> stringResource(MR.string.vault_error_delete_section)
+    is VaultError.UploadFailed -> stringResource(MR.string.vault_error_upload, error.fileName)
+    VaultError.DownloadFailed -> stringResource(MR.string.vault_error_download)
+    is VaultError.RenameFileFailed -> stringResource(MR.string.vault_error_rename_file, error.fileName)
+    is VaultError.DeleteFileFailed -> stringResource(MR.string.vault_error_delete_file, error.fileName)
+    VaultError.AppendPagesFailed -> stringResource(MR.string.vault_error_append_pages)
+    VaultError.DeletePageFailed -> stringResource(MR.string.vault_error_delete_page)
+    VaultError.SaveNotesFailed -> stringResource(MR.string.vault_error_save_notes)
+    VaultError.DownloadPageFailed -> stringResource(MR.string.vault_error_download_page)
+    VaultError.OutboxUploadFailed -> stringResource(MR.string.vault_error_outbox_upload)
+}

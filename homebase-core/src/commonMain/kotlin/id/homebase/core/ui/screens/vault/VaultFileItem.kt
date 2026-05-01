@@ -8,8 +8,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.OdinSystemSerializer
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
+import id.homebase.chat.services.ChatProtocol
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
@@ -39,15 +38,14 @@ data class VaultSectionContent(
 @Immutable
 data class VaultFileItem(
     val fileId: Uuid,
+    val uniqueId: Uuid,
     val driveId: Uuid,
     val fileName: String,
     val contentType: String,
     val sizeBytes: Long,
     val createdAt: Long,
     val previewThumbnail: EmbeddedThumb?,
-    val payloadKey: String,
     val keyHeader: KeyHeader,
-    val payloadIv: String? = null,
     val isEncrypted: Boolean,
     val versionTag: Uuid?,
     val uploadStatus: VaultUploadStatus? = null,
@@ -60,16 +58,6 @@ data class VaultFileItem(
 
     val pageCount: Int get() = payloadDescriptors.size.coerceAtLeast(1)
     val hasMultiplePages: Boolean get() = pageCount > 1
-
-    @OptIn(ExperimentalEncodingApi::class)
-    val payloadKeyHeader: KeyHeader
-        get() = payloadIv?.let { ivBase64 ->
-            try {
-                KeyHeader(Base64.decode(ivBase64), keyHeader.aesKey)
-            } catch (_: Exception) {
-                keyHeader
-            }
-        } ?: keyHeader
 
     val isImage: Boolean get() = contentType.startsWith("image/")
 
@@ -91,54 +79,12 @@ sealed interface VaultUploadStatus {
 }
 
 /**
- * Guesses a MIME content type from the file extension.
- */
-internal fun guessContentType(fileName: String): String {
-    val ext = fileName.substringAfterLast('.', "").lowercase()
-    return when (ext) {
-        "jpg", "jpeg" -> "image/jpeg"
-        "png" -> "image/png"
-        "gif" -> "image/gif"
-        "webp" -> "image/webp"
-        "svg" -> "image/svg+xml"
-        "heic", "heif" -> "image/heic"
-        "mp4" -> "video/mp4"
-        "mov" -> "video/quicktime"
-        "avi" -> "video/x-msvideo"
-        "webm" -> "video/webm"
-        "mkv" -> "video/x-matroska"
-        "mp3" -> "audio/mpeg"
-        "wav" -> "audio/wav"
-        "ogg" -> "audio/ogg"
-        "m4a" -> "audio/mp4"
-        "flac" -> "audio/flac"
-        "pdf" -> "application/pdf"
-        "doc" -> "application/msword"
-        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        "xls" -> "application/vnd.ms-excel"
-        "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        "ppt" -> "application/vnd.ms-powerpoint"
-        "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        "zip" -> "application/zip"
-        "txt" -> "text/plain"
-        "json" -> "application/json"
-        "xml" -> "application/xml"
-        "html", "htm" -> "text/html"
-        "csv" -> "text/csv"
-        else -> "application/octet-stream"
-    }
-}
-
-/**
  * Maps a [HomebaseFile] to a [VaultFileItem], or returns null if the file
  * has no payloads or the content cannot be parsed.
  */
-@OptIn(ExperimentalEncodingApi::class)
 fun HomebaseFile.toVaultFileItem(): VaultFileItem? {
     val payloads = fileMetadata.payloads
     if (payloads.isNullOrEmpty()) return null
-
-    val firstPayload = payloads.first()
 
     val contentJson = fileMetadata.appData.content ?: return null
     val vaultFileContent = try {
@@ -147,19 +93,22 @@ fun HomebaseFile.toVaultFileItem(): VaultFileItem? {
         return null
     }
 
+    val isPending = fileMetadata.localAppData?.tags
+        ?.contains(ChatProtocol.isPendingSendTag) == true
+
     return VaultFileItem(
         fileId = fileId,
+        uniqueId = fileMetadata.appData.uniqueId ?: fileId,
         driveId = driveId,
         fileName = vaultFileContent.name,
-        contentType = firstPayload.contentType ?: "",
-        sizeBytes = firstPayload.bytesWritten ?: 0L,
+        contentType = payloads.first().contentType ?: "",
+        sizeBytes = payloads.sumOf { it.bytesWritten ?: 0L },
         createdAt = fileMetadata.created.milliseconds,
         previewThumbnail = fileMetadata.appData.previewThumbnail,
-        payloadKey = firstPayload.key,
         keyHeader = keyHeader,
-        payloadIv = firstPayload.iv,
         isEncrypted = fileMetadata.isEncrypted,
         versionTag = fileMetadata.versionTag,
+        uploadStatus = if (isPending) VaultUploadStatus.Uploading(0f) else null,
         groupId = fileMetadata.appData.groupId,
         payloadDescriptors = payloads,
         notes = vaultFileContent.notes,

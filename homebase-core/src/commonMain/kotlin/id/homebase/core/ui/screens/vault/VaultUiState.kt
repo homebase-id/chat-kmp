@@ -64,5 +64,20 @@ sealed interface VaultUiEvent {
         val fileName: String,
         val contentType: String,
     ) : VaultUiEvent
-    data class Error(val message: String) : VaultUiEvent
+    data class Error(val error: VaultError) : VaultUiEvent
+}
+
+sealed interface VaultError {
+    data object CreateSectionFailed : VaultError
+    data object RenameSectionFailed : VaultError
+    data object DeleteSectionFailed : VaultError
+    data class UploadFailed(val fileName: String) : VaultError
+    data object DownloadFailed : VaultError
+    data class RenameFileFailed(val fileName: String) : VaultError
+    data class DeleteFileFailed(val fileName: String) : VaultError
+    data object AppendPagesFailed : VaultError
+    data object DeletePageFailed : VaultError
+    data object SaveNotesFailed : VaultError
+    data object DownloadPageFailed : VaultError
+    data object OutboxUploadFailed : VaultError
 }

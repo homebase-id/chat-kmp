@@ -41,6 +41,7 @@ fun VaultSettingsScreen(
     viewModel: VaultSettingsViewModel,
     onBackClick: () -> Unit,
     onOpenVault: () -> Unit,
+    showOpenVault: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     VaultSettingsUi(
@@ -50,6 +51,7 @@ fun VaultSettingsScreen(
             else viewModel.onAction(action)
         },
         onBackClick = onBackClick,
+        showOpenVault = showOpenVault,
     )
 }
 
@@ -59,6 +61,7 @@ fun VaultSettingsUi(
     uiState: VaultSettingsUiState,
     onAction: (VaultSettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
+    showOpenVault: Boolean = true,
 ) {
     val scrollState = rememberScrollState()
     Scaffold(
@@ -84,11 +87,13 @@ fun VaultSettingsUi(
                 .verticalScroll(scrollState),
         ) {
             Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
-                imageVector = Icons.Outlined.Lock,
-                text = stringResource(MR.string.vault_settings_open),
-                onClick = { onAction(VaultSettingsUiAction.OpenVaultClicked) },
-            )
+            if (showOpenVault) {
+                SettingsItemAction(
+                    imageVector = Icons.Outlined.Lock,
+                    text = stringResource(MR.string.vault_settings_open),
+                    onClick = { onAction(VaultSettingsUiAction.OpenVaultClicked) },
+                )
+            }
             SettingsItemAction(
                 imageVector = Icons.Outlined.Visibility,
                 text = stringResource(MR.string.vault_settings_show_icon),

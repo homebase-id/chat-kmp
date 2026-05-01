@@ -105,7 +105,12 @@ val appModule = module {
         DriveRegistry(
             credentialsManager = get(),
             databaseManager = get(),
-            getFileHeaderByUid = { driveId, uniqueId -> files.getFileHeaderByUid(driveId, uniqueId) },
+            getFileHeaderByUid = { driveId, uniqueId ->
+                files.getFileHeaderByUid(
+                    driveId,
+                    uniqueId
+                )
+            },
             uploadFile = { request -> uploader.uploadFile(request) },
             updateFileByUniqueId = { request -> uploader.updateFileByUniqueId(request) },
             eventBus = get(),
@@ -286,8 +291,22 @@ val appModule = module {
     viewModelOf(::AddGroupMembersViewModel)
     viewModelOf(::EditConversationGroupViewModel)
     viewModel { ExtendPermissionViewModel(get(), get(), get(), getPermissionExtensionConfig()) }
-    viewModel(VaultPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getVaultPermissionExtensionConfig()) }
-    viewModel(FeedPermissionQualifier) { ExtendPermissionViewModel(get(), get(), get(), getFeedPermissionExtensionConfig()) }
+    viewModel(VaultPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getVaultPermissionExtensionConfig()
+        )
+    }
+    viewModel(FeedPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getFeedPermissionExtensionConfig()
+        )
+    }
     viewModelOf(::SettingsViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
@@ -299,7 +318,7 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
-    viewModel { VaultViewModel(get(), get(VaultPermissionQualifier), get(), get()) }
+    viewModel { VaultViewModel(get(), get(VaultPermissionQualifier), get(), get(), get(), get(), get()) }
     viewModelOf(::VaultSettingsViewModel)
 }
 

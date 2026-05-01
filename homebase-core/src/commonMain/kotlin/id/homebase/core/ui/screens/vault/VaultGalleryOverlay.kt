@@ -74,6 +74,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.image.HomebaseImage
@@ -101,6 +103,7 @@ import id.homebase.resources.vault_notes_cancel
 import id.homebase.resources.vault_notes_label
 import id.homebase.resources.vault_notes_placeholder
 import id.homebase.resources.vault_notes_save
+import id.homebase.resources.vault_error_image_unavailable
 import id.homebase.resources.vault_permission_cancel
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -121,6 +124,8 @@ fun VaultGalleryOverlay(
     onUpdateNotes: (String?) -> Unit,
     onDeleteEntry: () -> Unit,
     onRenameEntry: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val pages = file.payloadDescriptors
     if (pages.isEmpty()) return
@@ -137,23 +142,19 @@ fun VaultGalleryOverlay(
     BottomSheetScaffold(
         sheetPeekHeight = sheetPeekHeight,
         sheetShape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-        sheetContainerColor = Color(0xF01E1E1E),
+        sheetContainerColor = Color.Black.copy(alpha = 0.94f),
         sheetContentColor = Color.White,
         sheetShadowElevation = 8.dp,
         sheetDragHandle = {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp, bottom = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(width = 36.dp, height = 4.dp)
-                        .background(
-                            color = Color.White.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(2.dp),
-                        ),
+                    modifier = Modifier.size(width = 36.dp, height = 4.dp).background(
+                        color = Color.White.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(2.dp),
+                    ),
                 )
             }
         },
@@ -184,6 +185,8 @@ fun VaultGalleryOverlay(
                         file = file,
                         descriptor = descriptor,
                         onToggleUI = { showUI = !showUI },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
                     )
                 } else {
                     GalleryPageNonImage(
@@ -332,10 +335,7 @@ private fun GalleryDetailSheet(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .imePadding()
-            .verticalScroll(scrollState),
+        modifier = Modifier.fillMaxWidth().imePadding().verticalScroll(scrollState),
     ) {
         // Thumbnail strip
         LazyRow(
@@ -358,44 +358,44 @@ private fun GalleryDetailSheet(
                 }
 
                 Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(
-                            color = Color.White.copy(alpha = 0.1f),
-                            shape = RoundedCornerShape(6.dp),
-                        )
-                        .then(borderModifier)
-                        .clickable {
-                            scope.launch { pagerState.animateScrollToPage(index) }
-                        },
+                    modifier = Modifier.size(48.dp).background(
+                        color = Color.White.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(6.dp),
+                    ).then(borderModifier).clickable {
+                        scope.launch { pagerState.animateScrollToPage(index) }
+                    },
                     contentAlignment = Alignment.Center,
                 ) {
                     if (isImage) {
-                        val thumbKeyHeader = descriptor.iv?.let { ivBase64 ->
-                            try {
-                                KeyHeader(Base64.decode(ivBase64), file.keyHeader.aesKey)
-                            } catch (_: Exception) {
-                                file.keyHeader
-                            }
-                        } ?: file.keyHeader
-
-                        HomebaseImage(
-                            imageData = HomebaseImageData(
+                        val thumbImageData = remember(file.fileId, descriptor.key, descriptor.lastModified) {
+                            val payloadIv = descriptor.iv?.let {
+                                try {
+                                    Base64.decode(it)
+                                } catch (_: Exception) {
+                                    null
+                                }
+                            } ?: return@remember null
+                            HomebaseImageData(
                                 driveId = file.driveId,
                                 fileId = file.fileId,
                                 payloadKey = descriptor.key,
-                                previewThumbnail = descriptor.previewThumbnail?.let {
-                                    file.previewThumbnail
-                                } ?: file.previewThumbnail,
+                                previewThumbnail = file.previewThumbnail,
+                                lastModified = descriptor.lastModified,
                                 isEncrypted = file.isEncrypted,
-                                keyHeader = thumbKeyHeader,
-                            ),
-                            modifier = Modifier
-                                .size(48.dp)
-                                .background(Color.Transparent, RoundedCornerShape(6.dp)),
-                            contentScale = ContentScale.Crop,
-                            contentDescription = null,
-                        )
+                                keyHeader = KeyHeader(
+                                    iv = payloadIv, aesKey = file.keyHeader.aesKey
+                                ),
+                            )
+                        }
+                        if (thumbImageData != null) {
+                            HomebaseImage(
+                                imageData = thumbImageData,
+                                modifier = Modifier.size(48.dp)
+                                    .background(Color.Transparent, RoundedCornerShape(6.dp)),
+                                contentScale = ContentScale.Crop,
+                                contentDescription = null,
+                            )
+                        }
                     } else {
                         Icon(
                             imageVector = fileTypeIcon(descriptor.contentType ?: ""),
@@ -409,14 +409,11 @@ private fun GalleryDetailSheet(
 
             item {
                 Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .border(
-                            width = 1.dp,
-                            color = Color.White.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(6.dp),
-                        )
-                        .clickable { onAppendPages() },
+                    modifier = Modifier.size(48.dp).border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(6.dp),
+                    ).clickable { onAppendPages() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -431,9 +428,7 @@ private fun GalleryDetailSheet(
 
         // File name + date
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         ) {
             Text(
                 text = file.fileName,
@@ -562,16 +557,11 @@ private fun GalleryDetailSheet(
             }
         } else {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .border(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(8.dp),
-                    )
-                    .clickable { editingNotes = true }
-                    .padding(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(8.dp),
+                ).clickable { editingNotes = true }.padding(12.dp),
             ) {
                 Text(
                     text = file.notes?.ifBlank { null }
@@ -624,19 +614,30 @@ private fun GalleryPageImage(
     file: VaultFileItem,
     descriptor: PayloadDescriptor,
     onToggleUI: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     var scale by remember(descriptor.key) { mutableStateOf(1f) }
     var offset by remember(descriptor.key) { mutableStateOf(Offset.Zero) }
 
-    // Resolve per-page key header from descriptor IV
-    val pageKeyHeader = remember(descriptor.iv, file.keyHeader) {
-        descriptor.iv?.let { ivBase64 ->
+    val pageImageData = remember(file.fileId, descriptor.key, descriptor.iv, descriptor.lastModified) {
+        val payloadIv = descriptor.iv?.let {
             try {
-                KeyHeader(Base64.decode(ivBase64), file.keyHeader.aesKey)
+                Base64.decode(it)
             } catch (_: Exception) {
-                file.keyHeader
+                null
             }
-        } ?: file.keyHeader
+        } ?: return@remember null
+        HomebaseImageData(
+            driveId = file.driveId,
+            fileId = file.fileId,
+            payloadKey = descriptor.key,
+            previewThumbnail = file.previewThumbnail,
+            loadFullPayload = true,
+            lastModified = descriptor.lastModified,
+            isEncrypted = file.isEncrypted,
+            keyHeader = KeyHeader(iv = payloadIv, aesKey = file.keyHeader.aesKey),
+        )
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -659,26 +660,15 @@ private fun GalleryPageImage(
             }
         }
 
-        HomebaseImage(
-            imageData = HomebaseImageData(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                payloadKey = descriptor.key,
-                previewThumbnail = file.previewThumbnail,
-                loadFullPayload = true,
-                isEncrypted = file.isEncrypted,
-                keyHeader = pageKeyHeader,
-            ),
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
+        if (pageImageData != null) {
+            HomebaseImage(
+                imageData = pageImageData,
+                modifier = Modifier.fillMaxSize().graphicsLayer(
                     scaleX = scale,
                     scaleY = scale,
                     translationX = offset.x,
                     translationY = offset.y,
-                )
-                .transformable(state = transformState)
-                .pointerInput(Unit) {
+                ).transformable(state = transformState).pointerInput(Unit) {
                     detectTapGestures(
                         onDoubleTap = {
                             scale = if (scale > 1f) 1f else 2f
@@ -687,9 +677,36 @@ private fun GalleryPageImage(
                         onTap = { onToggleUI() },
                     )
                 },
-            contentScale = ContentScale.Fit,
-            contentDescription = file.fileName,
-        )
+                contentScale = ContentScale.Fit,
+                contentDescription = file.fileName,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+                    detectTapGestures(onTap = { onToggleUI() })
+                },
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        imageVector = fileTypeIcon(descriptor.contentType ?: ""),
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(64.dp),
+                    )
+                    Text(
+                        text = stringResource(MR.string.vault_error_image_unavailable),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.5f),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -699,11 +716,9 @@ private fun GalleryPageNonImage(
     onToggleUI: () -> Unit,
 ) {
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { onToggleUI() })
-            },
+        modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+            detectTapGestures(onTap = { onToggleUI() })
+        },
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -711,12 +726,10 @@ private fun GalleryPageNonImage(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .background(
-                        color = Color.White.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(24.dp),
-                    ),
+                modifier = Modifier.size(96.dp).background(
+                    color = Color.White.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(24.dp),
+                ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

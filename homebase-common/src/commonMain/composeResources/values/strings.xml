@@ -587,6 +587,26 @@
     <string name="vault_detail_total_size">Total Size</string>
     <string name="vault_detail_created">Created</string>
 
+    <!-- Vault Locked Screen -->
+    <string name="vault_locked_title">Vault is locked</string>
+    <string name="vault_locked_subtitle">Authenticate to access your documents</string>
+    <string name="vault_locked_unlock">Unlock</string>
+
+    <!-- Vault Errors -->
+    <string name="vault_error_create_section">Failed to create section</string>
+    <string name="vault_error_rename_section">Failed to rename section</string>
+    <string name="vault_error_delete_section">Failed to delete section</string>
+    <string name="vault_error_upload">Failed to upload %1$s</string>
+    <string name="vault_error_download">Failed to download file for sharing</string>
+    <string name="vault_error_rename_file">Failed to rename %1$s</string>
+    <string name="vault_error_delete_file">Failed to delete %1$s</string>
+    <string name="vault_error_append_pages">Failed to add pages</string>
+    <string name="vault_error_delete_page">Failed to delete page</string>
+    <string name="vault_error_save_notes">Failed to save notes</string>
+    <string name="vault_error_download_page">Failed to download page for sharing</string>
+    <string name="vault_error_outbox_upload">Upload failed</string>
+    <string name="vault_error_image_unavailable">Image could not be loaded</string>
+
     <string name="feed_error_title">Failed to load feed</string>
     <string name="feed_error_retry">Retry</string>
     <string name="pending_attachment_one">1 attachment</string>

@@ -755,10 +755,13 @@ fun AppNavHost(
 
                             composable<Route.VaultSettings> {
                                 if (isAuthenticated) {
+                                    val fromVault = navController.previousBackStackEntry
+                                        ?.destination?.hasRoute(Route.Vault::class) == true
                                     VaultSettingsScreen(
                                         viewModel = koinViewModel(),
                                         onBackClick = { navController.popBackStack() },
                                         onOpenVault = openVault,
+                                        showOpenVault = !fromVault,
                                     )
                                 }
                             }
