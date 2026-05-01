@@ -73,14 +73,9 @@ class VaultRepository(
 
     fun observeVaultData(): Flow<VaultData> {
         val vaultEvents = eventBus.events.filter { event ->
-            (event is BackendEvent.DriveEvent.BatchReceived && event.driveId == driveId) ||
-                    (event is BackendEvent.OutboxEvent.ItemCompleted && event.driveId == driveId) ||
-                    (event is BackendEvent.OutboxEvent.ItemFailed && event.driveId == driveId) ||
-                    (event is BackendEvent.OutboxEvent.OutboxItemDropped && event.driveId == driveId)
+            (event is BackendEvent.DriveEvent.BatchReceived && event.driveId == driveId) || (event is BackendEvent.OutboxEvent.ItemCompleted && event.driveId == driveId) || (event is BackendEvent.OutboxEvent.ItemFailed && event.driveId == driveId) || (event is BackendEvent.OutboxEvent.OutboxItemDropped && event.driveId == driveId)
         }
-        return merge(flowOf(Unit), vaultEvents.map { })
-            .conflate()
-            .map { loadAllVaultData() }
+        return merge(flowOf(Unit), vaultEvents.map { }).conflate().map { loadAllVaultData() }
     }
 
     suspend fun createSection(
@@ -117,8 +112,7 @@ class VaultRepository(
                     )
                 } catch (e: Exception) {
                     Logger.e(
-                        e,
-                        TAG
+                        e, TAG
                     ) { "Optimistic write failed (non-fatal) for section: ${sectionContent.title}" }
                 }
             }
@@ -130,8 +124,8 @@ class VaultRepository(
     }
 
     suspend fun loadAllVaultData(): VaultData {
-        val creds = credentialsManager.getActiveCredentials()
-            ?: return VaultData(emptyList(), emptyMap())
+        val creds =
+            credentialsManager.getActiveCredentials() ?: return VaultData(emptyList(), emptyMap())
         val identityId = creds.getIdentityId()
         val queryBatch = QueryBatch(identityId)
 
@@ -157,9 +151,7 @@ class VaultRepository(
 
             val allFiles = fileRecords.mapNotNull { it.toVaultFileItem() }
 
-            val filesBySection = allFiles
-                .filter { it.groupId != null }
-                .groupBy { it.groupId!! }
+            val filesBySection = allFiles.filter { it.groupId != null }.groupBy { it.groupId!! }
 
             VaultData(sections, filesBySection)
         } catch (e: Exception) {
@@ -282,6 +274,11 @@ class VaultRepository(
             val content = OdinSystemSerializer.serialize(
                 VaultFileContent(name = newName, notes = existingNotes)
             )
+
+            val newKeyHeader = KeyHeader(
+                iv = ByteArrayUtil.getRndByteArray(16), aesKey = keyHeader.aesKey
+            )
+
             val metadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
@@ -290,13 +287,13 @@ class VaultRepository(
                     content = content,
                 ),
                 versionTag = versionTag,
-            ).encryptContent(keyHeader)
+            ).encryptContent(newKeyHeader)
 
             outboxSync.tryEnqueue(
                 request = UpdateFileByUniqueIdRequest(
                     driveId = driveId,
                     uniqueId = uniqueId,
-                    keyHeader = keyHeader,
+                    keyHeader = newKeyHeader,
                     instructions = FileUpdateInstructionSet(
                         transferIv = ByteArrayUtil.getRndByteArray(16),
                         locale = UpdateLocale.Local,
@@ -343,6 +340,10 @@ class VaultRepository(
     ): Boolean {
         return try {
             val content = OdinSystemSerializer.serialize(sectionContent)
+            val newKeyHeader = KeyHeader(
+                iv = ByteArrayUtil.getRndByteArray(16),
+                aesKey = keyHeader.aesKey
+            )
             val metadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
@@ -351,13 +352,13 @@ class VaultRepository(
                     content = content,
                 ),
                 versionTag = versionTag,
-            ).encryptContent(keyHeader)
+            ).encryptContent(newKeyHeader)
 
             outboxSync.tryEnqueue(
                 request = UpdateFileByUniqueIdRequest(
                     driveId = driveId,
                     uniqueId = sectionUniqueId,
-                    keyHeader = keyHeader,
+                    keyHeader = newKeyHeader,
                     instructions = FileUpdateInstructionSet(
                         transferIv = ByteArrayUtil.getRndByteArray(16),
                         locale = UpdateLocale.Local,
@@ -379,9 +380,9 @@ class VaultRepository(
         scope: CoroutineScope,
     ): Boolean {
         return try {
-            val existingMaxIndex = file.payloadDescriptors
-                .mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
-                .maxOrNull() ?: -1
+            val existingMaxIndex =
+                file.payloadDescriptors.mapNotNull { it.key.removePrefix("vlt_pg_").toIntOrNull() }
+                    .maxOrNull() ?: -1
             val startIndex = existingMaxIndex + 1
 
             val resolvedFiles = newFiles.map { (path, contentType) ->
@@ -419,8 +420,7 @@ class VaultRepository(
             }
 
             val keyHeader = KeyHeader(
-                iv = ByteArrayUtil.getRndByteArray(16),
-                aesKey = file.keyHeader.aesKey
+                iv = ByteArrayUtil.getRndByteArray(16), aesKey = file.keyHeader.aesKey
             )
             val encryptedBundle = payloadEncryptionService.encryptBundle(
                 Uuid.random(), PayloadBundle(allPayloads, allThumbnails, emptyList()),
@@ -508,6 +508,11 @@ class VaultRepository(
             val content = OdinSystemSerializer.serialize(
                 VaultFileContent(name = file.fileName, notes = notes)
             )
+
+            val keyHeader = KeyHeader(
+                iv = ByteArrayUtil.getRndByteArray(16),
+                aesKey = file.keyHeader.aesKey
+            )
             val metadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
@@ -516,13 +521,13 @@ class VaultRepository(
                     content = content,
                 ),
                 versionTag = file.versionTag,
-            ).encryptContent(file.keyHeader)
+            ).encryptContent(keyHeader)
 
             outboxSync.tryEnqueue(
                 request = UpdateFileByUniqueIdRequest(
                     driveId = file.driveId,
                     uniqueId = file.uniqueId,
-                    keyHeader = file.keyHeader,
+                    keyHeader = keyHeader,
                     instructions = FileUpdateInstructionSet(
                         transferIv = ByteArrayUtil.getRndByteArray(16),
                         locale = UpdateLocale.Local,
