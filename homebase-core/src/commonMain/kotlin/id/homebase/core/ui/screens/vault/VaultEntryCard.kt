@@ -12,12 +12,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
-import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.PictureAsPdf
-import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,13 +23,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import id.homebase.api.client.KeyHeader
+import id.homebase.chat.services.LocalAttachmentContext
+import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 private val CARD_WIDTH = 100.dp
 private val CARD_HEIGHT = 120.dp
@@ -45,8 +50,11 @@ private val CARD_CORNER = 12.dp
 fun VaultEntryCard(
     file: VaultFileItem,
     sectionTitle: String,
+    localAttachmentStore: LocalAttachmentContextStore,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val cardShape = RoundedCornerShape(CARD_CORNER)
     val topCornersShape = RoundedCornerShape(topStart = CARD_CORNER, topEnd = CARD_CORNER)
@@ -98,31 +106,65 @@ fun VaultEntryCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
-                if (file.isImage && file.isPending && file.pendingFileUri != null) {
-                    HomebaseImage(
-                        imageData = HomebaseImageData.pending(fileUri = file.pendingFileUri),
+                val localStore = localAttachmentStore
+                val firstPayloadKey = file.payloadDescriptors.firstOrNull()?.key ?: "vlt_pg_00"
+                val localCtx = localStore.observe(file.uniqueId, firstPayloadKey)
+                    .collectAsStateWithLifecycle(
+                        initialValue = localStore.get(file.uniqueId, firstPayloadKey),
+                    ).value
+                val localImage = localCtx as? LocalAttachmentContext.Image
+
+                if (file.isImage && localImage != null) {
+                    AsyncImage(
+                        model = localImage.localFilePath,
+                        contentDescription = file.fileName,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
-                        contentDescription = file.fileName,
                     )
-                } else if (file.isImage && !file.isPending) {
-                    HomebaseImage(
-                        imageData = HomebaseImageData(
-                            driveId = file.driveId,
-                            fileId = file.fileId,
-                            payloadKey = file.payloadKey,
-                            previewThumbnail = file.previewThumbnail,
-                            requestedSize = ImageSize.THUMB_MEDIUM,
-                            isEncrypted = file.isEncrypted,
-                            keyHeader = file.payloadKeyHeader,
-                        ),
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                        contentDescription = file.fileName,
-                    )
+                } else if (file.isImage) {
+                    @OptIn(ExperimentalEncodingApi::class)
+                    val descriptor = file.payloadDescriptors.firstOrNull()
+                    val payloadIv = remember(descriptor?.iv) {
+                        descriptor?.iv?.let {
+                            try {
+                                Base64.decode(it)
+                            } catch (_: Exception) {
+                                null
+                            }
+                        }
+                    }
+                    if (descriptor != null && payloadIv != null) {
+                        HomebaseImage(
+                            imageData = HomebaseImageData(
+                                driveId = file.driveId,
+                                fileId = file.fileId,
+                                payloadKey = descriptor.key,
+                                previewThumbnail = file.previewThumbnail,
+                                requestedSize = ImageSize.THUMB_MEDIUM,
+                                isEncrypted = file.isEncrypted,
+                                keyHeader = KeyHeader(
+                                    iv = payloadIv,
+                                    aesKey = file.keyHeader.aesKey
+                                ),
+                                lastModified = descriptor.lastModified,
+                            ),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                            contentDescription = file.fileName,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.Image,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(32.dp),
+                        )
+                    }
                 } else {
                     Icon(
-                        imageVector = vaultEntryFileTypeIcon(file.contentType),
+                        imageVector = fileTypeIcon(file.contentType),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(32.dp),
@@ -213,10 +255,3 @@ fun VaultEntryCard(
     }
 }
 
-private fun vaultEntryFileTypeIcon(contentType: String): ImageVector = when {
-    contentType.startsWith("image/") -> Icons.Outlined.Image
-    contentType.startsWith("video/") -> Icons.Outlined.VideoFile
-    contentType.startsWith("audio/") -> Icons.Outlined.AudioFile
-    contentType == "application/pdf" -> Icons.Outlined.PictureAsPdf
-    else -> Icons.AutoMirrored.Outlined.InsertDriveFile
-}
