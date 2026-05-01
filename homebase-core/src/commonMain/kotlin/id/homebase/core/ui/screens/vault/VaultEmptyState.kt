@@ -12,7 +12,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -50,14 +50,18 @@ fun VaultEmptyState(
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(24.dp))
-        SmallFloatingActionButton(
+        ExtendedFloatingActionButton(
             onClick = onAddSection,
             containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Add,
-                contentDescription = stringResource(MR.string.vault_empty_add_section),
-            )
-        }
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = null,
+                )
+            },
+            text = {
+                Text(text = stringResource(MR.string.vault_empty_add_section))
+            },
+        )
     }
 }

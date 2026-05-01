@@ -218,10 +218,12 @@ fun AppNavHost(
         }
     }
 
+    val isVaultActivated by vaultViewModel.isActivated.collectAsStateWithLifecycle()
+
     // Open-Vault helper — if activated, go straight to the Vault screen (which gates on
     // biometrics internally); otherwise kick off the onboarding flow.
     val openVault: () -> Unit = {
-        if (vaultPreferences.activated.value) {
+        if (isVaultActivated) {
             navController.navigate(Route.Vault) {
                 popUpTo(Route.ChatList) { saveState = true }
                 launchSingleTop = true
@@ -846,9 +848,9 @@ private fun NavHostController.selectConversationOnChatList(
 }
 
 private fun NavDestination?.isTopLevelRoute(): Boolean {
-    return this?.hasRoute(Route.ChatList::class) == true || this?.hasRoute(Route.Home::class) == true || this?.hasRoute(
-        Route.Vault::class
-    ) == true || this?.hasRoute(Route.Feed::class) == true
+    return this?.hasRoute(Route.ChatList::class) == true ||
+            this?.hasRoute(Route.Home::class) == true ||
+            this?.hasRoute(Route.Feed::class) == true
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {

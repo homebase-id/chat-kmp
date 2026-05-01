@@ -11,6 +11,7 @@ import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.core.sync.DriveRegistry
 import id.homebase.api.sync.database.DatabaseSizeProbe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +35,7 @@ class StorageSettingsViewModel(
     private val imageLoader: ImageLoader,
     private val databaseSizeProbe: DatabaseSizeProbe,
     private val fileOperationsProvider: FileOperationsProvider,
+    private val driveRegistry: DriveRegistry,
 ) : ViewModel() {
 
     private val fileSystem = FileSystem.SYSTEM
@@ -158,9 +160,14 @@ class StorageSettingsViewModel(
             return emptyList()
         }
 
-        val drives = driveSyncManager.driveStatuses.value.values
+        val mountedDrives = driveSyncManager.driveStatuses.value.values
             .map { it.driveId to it.label }
-            .sortedBy { it.second }
+        val mountedIds = mountedDrives.map { it.first }.toSet()
+        val optionalDrives = runCatching { driveRegistry.loadDrives() }
+            .getOrElse { emptyList() }
+            .filter { it.drive.alias !in mountedIds }
+            .map { it.drive.alias to it.label }
+        val drives = (mountedDrives + optionalDrives).sortedBy { it.second }
 
         return withContext(Dispatchers.Default) {
             val rows = ArrayList<DriveRowState>(drives.size)

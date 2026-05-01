@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
@@ -28,7 +29,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import id.homebase.api.sync.DriveState
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
@@ -44,6 +47,7 @@ class VaultViewModel(
     private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val driveRegistry: DriveRegistry,
     private val localAttachmentStore: LocalAttachmentContextStore,
+    private val driveSyncManager: DriveSyncManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(VaultUiState())
@@ -58,48 +62,85 @@ class VaultViewModel(
     // Maps outbox uniqueId -> sectionId for grouping
     private val uploadTracker = mutableMapOf<Uuid, Uuid>()
 
+    private val _isActivated = MutableStateFlow(false)
+    val isActivated: StateFlow<Boolean> = _isActivated.asStateFlow()
+
+    private suspend fun isVaultRegistered(): Boolean {
+        val drives = driveRegistry.bootstrap()
+        val found = drives.any { it.drive.alias == vaultLabeledDrive.drive.alias }
+        Logger.i(tag = TAG) { "isVaultRegistered: $found (registry has ${drives.size} drive(s))" }
+        return found
+    }
+
     init {
         viewModelScope.launch {
-            if (vaultPreferences.activated.value) {
+            val hasDrive = isVaultRegistered()
+            _isActivated.value = hasDrive
+            Logger.i(tag = TAG) { "init: isActivated=$hasDrive" }
+            if (hasDrive) {
                 try {
                     authConnectionCoordinator.mountDrive(vaultLabeledDrive)
+                    Logger.i(tag = TAG) { "init: mountDrive succeeded" }
                 } catch (e: Exception) {
                     Logger.w(e, TAG) { "mountDrive on init failed (non-fatal)" }
                 }
             }
         }
 
+        // Collector for permission dialog callback only — when user grants permissions
+        // via the dialog, permissionsGranted changes from false→true and this fires.
         viewModelScope.launch {
             vaultPermissionViewModel.permissionsGranted
                 .filter { it }
                 .collect {
-                    if (!vaultPreferences.activated.value) {
-                        vaultPreferences.setActivated(true)
-                        val alreadyRegistered = driveRegistry.hasDrive(vaultLabeledDrive.drive.alias)
-                        if (!alreadyRegistered) {
-                            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
-                            createDefaultSections()
-                        }
-                    }
-                    val wasUserTriggered = _uiState.value.isCheckingPermissions
-                    _uiState.update { it.copy(isCheckingPermissions = false) }
-                    if (wasUserTriggered) {
-                        _events.tryEmit(VaultUiEvent.Activated)
+                    if (_uiState.value.isCheckingPermissions) {
+                        handleActivation()
                     }
                 }
         }
 
         observeVaultData()
+        observeDriveSyncStatus()
         observeOutboxFailures()
+    }
+
+    private fun observeDriveSyncStatus() {
+        viewModelScope.launch {
+            driveSyncManager.driveStatuses
+                .map { it[vaultLabeledDrive.drive.alias]?.state }
+                .collect { state ->
+                    val isSyncing = state is DriveState.Synchronizing
+                    _uiState.update { it.copy(isSyncing = isSyncing) }
+                }
+        }
+    }
+
+    private suspend fun handleActivation() {
+        _uiState.update { it.copy(isCheckingPermissions = false) }
+        val alreadyRegistered = isVaultRegistered()
+        if (!alreadyRegistered) {
+            Logger.i(tag = TAG) { "activation: first-time setup — mounting drive + creating sections" }
+            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
+            createDefaultSections()
+        } else {
+            Logger.i(tag = TAG) { "activation: vault already registered — mounting drive" }
+            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
+        }
+        _isActivated.value = true
+        _events.tryEmit(VaultUiEvent.Activated)
     }
 
     private suspend fun createDefaultSections() {
         val existingIds = vaultRepository.loadAllVaultData().sections
             .mapNotNull { (file, _) -> file.fileMetadata.appData.uniqueId }
             .toSet()
+        Logger.i(tag = TAG) { "createDefaultSections: ${existingIds.size} existing section(s) in local DB" }
         vaultDefaultSections.forEachIndexed { index, (id, title) ->
             if (id !in existingIds) {
+                Logger.i(tag = TAG) { "createDefaultSections: creating '$title' ($id)" }
                 vaultRepository.createSection(id, VaultSectionContent(title, index))
+            } else {
+                Logger.d(TAG) { "createDefaultSections: '$title' ($id) already exists — skipping" }
             }
         }
     }
@@ -108,7 +149,11 @@ class VaultViewModel(
         when (action) {
             VaultUiAction.SetupClicked -> {
                 _uiState.update { it.copy(isCheckingPermissions = true) }
-                vaultPermissionViewModel.recheckPermissions()
+                if (vaultPermissionViewModel.permissionsGranted.value) {
+                    viewModelScope.launch { handleActivation() }
+                } else {
+                    vaultPermissionViewModel.recheckPermissions()
+                }
             }
 
             VaultUiAction.DismissOnboardingClicked -> {
@@ -133,11 +178,14 @@ class VaultViewModel(
             is VaultUiAction.RenameFile -> handleRenameFile(action)
             is VaultUiAction.DeleteFile -> handleDeleteFile(action)
             VaultUiAction.CloseOverlay -> _uiState.update { it.copy(fullScreenOverlay = null) }
-            VaultUiAction.RefreshFiles -> { /* handled by observeVaultData Flow */ }
+            VaultUiAction.RefreshFiles -> { /* handled by observeVaultData Flow */
+            }
         }
     }
 
     // region Data observation
+
+    private var hasSyncedOnce = false
 
     private fun observeVaultData() {
         viewModelScope.launch {
@@ -152,6 +200,18 @@ class VaultViewModel(
                         isFirst = index == 0,
                         isLast = index == sortedSections.size - 1,
                     )
+                }
+                val fileCount = data.filesBySection.values.sumOf { it.size }
+                Logger.i(tag = TAG) { "observeVaultData: ${sectionModels.size} section(s), $fileCount file(s)" }
+
+                if (sectionModels.isEmpty() && !hasSyncedOnce) {
+                    hasSyncedOnce = true
+                    Logger.i(tag = TAG) { "observeVaultData: empty — triggering syncDrive" }
+                    try {
+                        driveSyncManager.syncDrive(vaultLabeledDrive.drive.alias)
+                    } catch (e: Exception) {
+                        Logger.d(TAG) { "syncDrive on empty load: ${e.message}" }
+                    }
                 }
                 _uiState.update { it.copy(sections = sectionModels, isLoading = false) }
             }

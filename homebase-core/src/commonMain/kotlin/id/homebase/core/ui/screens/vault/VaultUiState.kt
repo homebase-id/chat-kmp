@@ -8,7 +8,8 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalUuidApi::class)
 data class VaultUiState(
     val isCheckingPermissions: Boolean = false,
-    val isLoading: Boolean = false,
+    val isLoading: Boolean = true,
+    val isSyncing: Boolean = false,
     val sections: List<VaultSectionUiModel> = emptyList(),
     val fullScreenOverlay: VaultOverlay? = null,
 )

@@ -318,7 +318,7 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
-    viewModel { VaultViewModel(get(), get(VaultPermissionQualifier), get(), get(), get(), get(), get()) }
+    viewModel { VaultViewModel(get(), get(VaultPermissionQualifier), get(), get(), get(), get(), get(), get()) }
     viewModelOf(::VaultSettingsViewModel)
 }
 

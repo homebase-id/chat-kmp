@@ -11,9 +11,6 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
 
     private val keyValue get() = databaseManager.keyValue
 
-    private val _activated = MutableStateFlow(readBoolean(ACTIVATED_KEY, default = false))
-    val activated: StateFlow<Boolean> = _activated.asStateFlow()
-
     private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = true))
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
@@ -42,12 +39,6 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
         return true
     }
 
-    suspend fun setActivated(value: Boolean) {
-        if (_activated.value == value) return
-        keyValue.upsertValue(ACTIVATED_KEY, encode(value))
-        _activated.value = value
-    }
-
     suspend fun setIconVisible(value: Boolean) {
         if (_iconVisible.value == value) return
         keyValue.upsertValue(ICON_VISIBLE_KEY, encode(value))
@@ -70,7 +61,6 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
     private fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
 
     companion object {
-        val ACTIVATED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0101")
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0102")
         val BIOMETRICS_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0103")
 

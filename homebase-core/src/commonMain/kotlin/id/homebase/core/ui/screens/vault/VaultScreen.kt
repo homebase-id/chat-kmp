@@ -282,7 +282,7 @@ fun VaultScreen(
                         )
                     } else {
                         when {
-                            uiState.isLoading && uiState.sections.isEmpty() -> {
+                            (uiState.isLoading || uiState.isSyncing) && uiState.sections.isEmpty() -> {
                                 Box(
                                     modifier = contentModifier,
                                     contentAlignment = Alignment.Center,

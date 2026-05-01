@@ -100,9 +100,6 @@ class AuthConnectionCoordinator(
                 // list before opening the WebSocket, so the first WS connect already
                 // subscribes to the full set — no late observer-driven reconnect.
                 val initialDrives = driveRegistry.bootstrap()
-                for (drive in initialDrives) {
-                    driveSyncManager.mountDrive(drive.drive.alias, drive.label)
-                }
                 connect(extraDrives = initialDrives)
                 // Observe cross-device registry changes. We seed the diff baseline with the
                 // bootstrap result so the chat-drive sync that later writes the same file
@@ -184,6 +181,14 @@ class AuthConnectionCoordinator(
                             // because pause() sets isRunning=false on disconnect, and syncAll()
                             // would silently skip if isRunning is still false.
                             driveSyncManager.start()
+
+                            // Mount optional drives (vault, etc.) from DriveRegistry.
+                            // Must happen AFTER start() sets isRunning=true, otherwise
+                            // mountDrive() silently skips.
+                            val registeredDrives = driveRegistry.loadDrives()
+                            for (drive in registeredDrives) {
+                                driveSyncManager.mountDrive(drive.drive.alias, drive.label)
+                            }
 
                             // Flush the server inbox before syncing.  While connected the
                             // server pushes inboxItemReceived notifications in real-time,
