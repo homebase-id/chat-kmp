@@ -130,6 +130,7 @@ internal suspend fun classifyRow(
                 rowId = row.rowId,
                 conversationId = groupId,
                 originalAuthor = header.fileMetadata.originalAuthor,
+                sender = header.fileMetadata.senderOdinId,
             )
         }
     }

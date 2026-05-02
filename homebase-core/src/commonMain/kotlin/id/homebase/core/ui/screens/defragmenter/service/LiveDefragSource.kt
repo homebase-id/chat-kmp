@@ -490,6 +490,7 @@ class LiveDefragSource(
                                     conversationService.recoverConversation(
                                         conversationId = state.conversationId,
                                         originalAuthor = state.originalAuthor,
+                                        sender = state.sender,
                                     )
                                 }.onFailure {
                                     Logger.w(tag = tag, throwable = it) {

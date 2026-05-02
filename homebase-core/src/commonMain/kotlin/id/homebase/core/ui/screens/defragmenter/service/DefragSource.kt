@@ -146,6 +146,7 @@ sealed interface CellState {
         val rowId: Long,
         val conversationId: Uuid,
         val originalAuthor: OdinId?,
+        val sender: OdinId?,
     ) : CellState
 }
 
