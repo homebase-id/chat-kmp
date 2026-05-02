@@ -616,6 +616,53 @@ class NotificationService(
 }
 
 /**
+ * Mirrors Android's `Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY` bit. Callers
+ * pass `intent.flags`; a non-zero AND means the Intent comes from the recents
+ * history stack (launcher resume after process death) rather than a fresh
+ * notification tap. In that case the launching Intent's notification extras
+ * are stale and should not re-fire navigation.
+ */
+const val FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY: Int = 0x00100000
+
+fun isReplayedFromHistory(flags: Int): Boolean =
+    (flags and FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+
+/**
+ * Outcome of inspecting an Android notification-tap Intent. [Skip] means the
+ * Intent is either a recents/launcher replay or doesn't carry the tap marker;
+ * either way, the caller must not invoke [NotificationService.handleNotificationClicked].
+ * [Process] means the Intent is a fresh, marked tap and the payload should be
+ * forwarded to NotificationService.
+ */
+sealed interface NotificationIntentDecision {
+    data object Skip : NotificationIntentDecision
+    data class Process(val payload: PayloadData) : NotificationIntentDecision
+}
+
+/**
+ * Decides whether a notification-tap Intent should be processed. Pure function —
+ * no Activity, no Intent — so it's reachable from JVM unit tests. The Android
+ * call site reads `intent.flags`, `intent.getBooleanExtra(EXTRA_NOTIFICATION_TAP)`,
+ * and `intent.extras` and routes through this.
+ *
+ * Skip when:
+ *  - `flags` carries [FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY] (Android resumed the
+ *    activity from recents/launcher and handed back the original launching Intent
+ *    — the extras are stale; this is the bug from homebase.log 2026-05-01 08:05:49).
+ *  - The Intent doesn't carry the notification-tap marker (deep links, normal app
+ *    launches, etc.).
+ */
+fun decideNotificationIntent(
+    flags: Int,
+    isMarkedAsTap: Boolean,
+    payload: PayloadData,
+): NotificationIntentDecision = when {
+    isReplayedFromHistory(flags) -> NotificationIntentDecision.Skip
+    !isMarkedAsTap -> NotificationIntentDecision.Skip
+    else -> NotificationIntentDecision.Process(payload)
+}
+
+/**
  * Parses a chat notification's `typeId` (conversation) and `tagId`
  * (message) into Uuids. Returns null if either is missing or malformed
  * — the caller then skips setting the pending tap and the user lands

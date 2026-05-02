@@ -658,6 +658,17 @@ fun ConversationListUi(
         }
     }
 
+    // Cold-start guard against the pane scaffold's rememberSaveable-restored Detail
+    // destination outliving its conversation. See ColdStartDetailGuard's KDoc.
+    val loadedConversationIds = remember(uiState.activeConversations) {
+        uiState.activeConversations.mapTo(hashSetOf()) { it.conversation.id }
+    }
+    ColdStartDetailGuard(
+        scaffoldNavigator = scaffoldNavigator,
+        loadedConversationIds = loadedConversationIds,
+        maxHorizontalPartitions = scaffoldDirective.maxHorizontalPartitions,
+    )
+
     val partitions = scaffoldDirective.maxHorizontalPartitions
     LaunchedEffect(partitions) {
         if (partitions > 1) {
