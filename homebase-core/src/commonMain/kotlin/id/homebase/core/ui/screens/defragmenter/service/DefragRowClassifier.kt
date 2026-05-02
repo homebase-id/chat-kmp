@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.defragmenter.service
 
+import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DriveMainIndexWrapper.PagedScanRow
@@ -44,6 +45,14 @@ internal suspend fun classifyRow(
      * Healthy from the classifier's point of view).
      */
     mapToBasicProbe: (suspend (HomebaseFile) -> Throwable?)? = null,
+    /**
+     * Set of conversation `appData.uniqueId`s that are present-and-mappable on
+     * the chat drive (i.e. NOT classified as [CellState.UnmappableConversation]
+     * and NOT soft-deleted). Used to flag chat-message rows whose
+     * `appData.groupId` doesn't resolve. Null disables orphan-message detection
+     * entirely (rows are then never classified as [CellState.OrphanChatMessage]).
+     */
+    healthyConversationIds: Set<Uuid>? = null,
 ): CellState {
     // 1. Strict deserialise: failure → CorruptJsonHeader.
     val header: HomebaseFile = try {
@@ -66,26 +75,66 @@ internal suspend fun classifyRow(
                 driveId = driveId,
                 fileId = row.fileId,
                 rowId = row.rowId,
+                conversationId = header.fileMetadata.appData.uniqueId,
+                originalAuthor = header.fileMetadata.originalAuthor,
             )
         }
     }
 
     // 3. Soft-delete branches.
+    //
+    // The canonical deletion marker is `fileState == FileState.Deleted`.
+    // The legacy in-JSON `appData.archivalStatus == Removed` marker still
+    // appears on older rows (which is why HomebaseFile.isSoftDeleted() ORs
+    // both), but the SQL projection's `archivalStatus` column may legitimately
+    // stay 0 on canonically-deleted files — that's NOT drift.
+    //
+    // Drift = SQL.archivalStatus == Removed AND fileState != Deleted.
+    // (SQL says removed but the canonical marker still says active. Either
+    // the SQL projection diverged or a legacy archivalStatus-only deletion
+    // was never migrated to fileState. Repair will sync SQL back to the
+    // canonical truth.)
+    val canonicallyDeleted = header.fileState == FileState.Deleted
+    val sqlRemoved = row.archivalStatus == ARCHIVAL_STATUS_REMOVED
+
+    if (canonicallyDeleted) {
+        return CellState.SoftDeleted(
+            ref = DeletedFileRef(driveId = driveId, fileId = row.fileId),
+        )
+    }
+    if (fileType == MESSAGE_FILE_TYPE && sqlRemoved) {
+        return CellState.SoftDeleteArchivalMismatch(
+            driveId = driveId,
+            fileId = row.fileId,
+            rowId = row.rowId,
+        )
+    }
+    // Legacy-only marker (appData.archivalStatus == Removed but fileState
+    // != Deleted and SQL.archivalStatus != Removed) — treat as soft-deleted
+    // so the row is hard-deleted in the next defrag pass. The legacy marker
+    // is the user's intent to delete; we honour it.
     if (header.isSoftDeleted()) {
-        return if (fileType == MESSAGE_FILE_TYPE && row.archivalStatus != ARCHIVAL_STATUS_REMOVED) {
-            CellState.SoftDeleteArchivalMismatch(
+        return CellState.SoftDeleted(
+            ref = DeletedFileRef(driveId = driveId, fileId = row.fileId),
+        )
+    }
+
+    // 4. Orphan chat message — groupId points to a missing or unmappable
+    //    conversation. Healable via ConversationService.recoverConversation.
+    if (fileType == MESSAGE_FILE_TYPE && healthyConversationIds != null) {
+        val groupId = header.fileMetadata.appData.groupId
+        if (groupId != null && groupId !in healthyConversationIds) {
+            return CellState.OrphanChatMessage(
                 driveId = driveId,
                 fileId = row.fileId,
                 rowId = row.rowId,
-            )
-        } else {
-            CellState.SoftDeleted(
-                ref = DeletedFileRef(driveId = driveId, fileId = row.fileId),
+                conversationId = groupId,
+                originalAuthor = header.fileMetadata.originalAuthor,
             )
         }
     }
 
-    // 4. Legacy null-userDate (chat messages only).
+    // 5. Legacy null-userDate (chat messages only).
     if (
         fileType == MESSAGE_FILE_TYPE &&
         row.userDate == 0L &&
@@ -100,7 +149,7 @@ internal suspend fun classifyRow(
         )
     }
 
-    // 5. Default.
+    // 6. Default.
     return CellState.Healthy
 }
 

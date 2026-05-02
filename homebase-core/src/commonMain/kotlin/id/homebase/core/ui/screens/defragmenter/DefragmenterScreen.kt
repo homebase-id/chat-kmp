@@ -293,6 +293,12 @@ private fun StatsPanel(state: DefragmenterUiState, modifier: Modifier = Modifier
                     color = Win98Palette.IssueUnmappableConvoFill,
                 )
             }
+            if (state.issueCountOrphanMessage > 0) {
+                Win98Label(
+                    text = "Orphan messages: ${state.issueCountOrphanMessage}",
+                    color = Win98Palette.IssueOrphanMessageFill,
+                )
+            }
         }
     }
 }

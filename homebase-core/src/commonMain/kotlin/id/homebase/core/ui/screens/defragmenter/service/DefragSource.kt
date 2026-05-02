@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.defragmenter.service
 
+import id.homebase.api.common.OdinId
 import kotlinx.coroutines.flow.Flow
 import kotlin.uuid.Uuid
 
@@ -84,8 +85,9 @@ sealed interface DefragAnalyzeEvent {
  *  2. fileType=8888 + ConversationMapper.mapToBasic throws → [UnmappableConversation]
  *  3. isSoftDeleted + archivalStatus drift → [SoftDeleteArchivalMismatch] (msg only)
  *     else                                  → [SoftDeleted] (existing semantic)
- *  4. fileType=7878 + userDate=0 + appData.userDate=null + created>0 → [LegacyUserDateZero]
- *  5. otherwise → [Healthy]
+ *  4. fileType=7878 + appData.groupId not in known/healthy conversation set → [OrphanChatMessage]
+ *  5. fileType=7878 + userDate=0 + appData.userDate=null + created>0 → [LegacyUserDateZero]
+ *  6. otherwise → [Healthy]
  */
 sealed interface CellState {
     object Healthy : CellState
@@ -115,11 +117,35 @@ sealed interface CellState {
         val rowId: Long,
     ) : CellState
 
-    /** Conversation file (8888) where ConversationMapper.mapToBasic throws. UI: pink. */
+    /**
+     * Conversation file (8888) where ConversationMapper.mapToBasic throws.
+     * UI: pink. Repair delegates to `ConversationService.recoverConversation`
+     * — same flow as [OrphanChatMessage] — which overwrites the broken local
+     * file with a healthy placeholder via OptimisticWriter (local-only).
+     * `conversationId` is the file's `appData.uniqueId`; `fileId` is the
+     * row's `fileId` column. They are different Uuids.
+     */
     data class UnmappableConversation(
         val driveId: Uuid,
         val fileId: Uuid,
         val rowId: Long,
+        val conversationId: Uuid?,
+        val originalAuthor: OdinId?,
+    ) : CellState
+
+    /**
+     * Chat message (7878) whose `appData.groupId` points to a conversation that
+     * is either missing entirely or present-but-unmappable. UI: rose. Repair
+     * delegates to `ConversationService.recoverConversation(groupId, originalAuthor)`
+     * which materialises the missing conversation locally and writes it back to
+     * the server, after which this cell re-classifies as Healthy.
+     */
+    data class OrphanChatMessage(
+        val driveId: Uuid,
+        val fileId: Uuid,
+        val rowId: Long,
+        val conversationId: Uuid,
+        val originalAuthor: OdinId?,
     ) : CellState
 }
 
@@ -167,11 +193,18 @@ sealed interface DefragRepairEvent {
         val repaired: Int,
         val repairedLegacyUserDateZero: Int,
         val repairedSoftDeleteArchivalMismatch: Int,
+        val repairedOrphanChatMessage: Int,
+        val repairedUnmappableConversation: Int,
         val skipped: Int,
     ) : DefragRepairEvent
 
     /** Which kind of repair was applied to a given row. */
-    enum class RepairKind { LegacyUserDateZero, SoftDeleteArchivalMismatch }
+    enum class RepairKind {
+        LegacyUserDateZero,
+        SoftDeleteArchivalMismatch,
+        OrphanChatMessage,
+        UnmappableConversation,
+    }
 }
 
 data class DeletedFileRef(val driveId: Uuid, val fileId: Uuid)

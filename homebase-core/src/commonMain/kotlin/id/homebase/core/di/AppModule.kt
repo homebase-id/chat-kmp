@@ -261,6 +261,7 @@ val appModule = module {
             credentialsManager = get(),
             databaseManager = get(),
             driveFileProvider = get(),
+            conversationService = get(),
             mapToBasicProbe = mapToBasicProbe,
         )
     }

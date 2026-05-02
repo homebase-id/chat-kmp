@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.chat.services.convo.ConversationService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -43,6 +44,7 @@ class LiveDefragSource(
     private val credentialsManager: CredentialsManager,
     private val databaseManager: DatabaseManager,
     private val driveFileProvider: DriveFileProvider,
+    private val conversationService: ConversationService,
     private val mapToBasicProbe: (suspend (HomebaseFile) -> Throwable?)? = null,
 ) : DefragSource {
 
@@ -117,6 +119,38 @@ class LiveDefragSource(
             return@flow
         }
 
+        // Pre-pass: build the set of CONVERSATION uniqueIds whose mapToBasic
+        // succeeds — i.e. the "valid parents" any chat message can legitimately
+        // point to via appData.groupId. Messages whose groupId isn't in this
+        // set get classified as OrphanChatMessage in the main scan, which the
+        // repair pass heals via ConversationService.recoverConversation.
+        // Skipped if mapToBasicProbe is null (tests / probe-disabled mode);
+        // when null, classifyRow is also called with healthyConversationIds=null
+        // so orphan detection turns off cleanly.
+        val healthyConversationIds: Set<Uuid>? = if (mapToBasicProbe == null) null else {
+            val probe = mapToBasicProbe
+            val healthy = HashSet<Uuid>()
+            val convFiles = runCatching {
+                databaseManager.chatReadCount.selectAllConversations(identityId)
+            }.getOrElse {
+                Logger.w(tag = tag, throwable = it) {
+                    "preload conversations failed — orphan-message detection skipped"
+                }
+                emptyList()
+            }
+            for (file in convFiles) {
+                val uid = file.fileMetadata.appData.uniqueId ?: continue
+                if (file.isSoftDeleted()) continue
+                val mapErr = runCatching { probe(file) }.getOrNull()
+                if (mapErr == null) healthy.add(uid)
+            }
+            Logger.i(tag = tag) {
+                "preload: ${healthy.size}/${convFiles.size} conversations are mappable " +
+                        "(others will cause their messages to flag as orphans)"
+            }
+            healthy
+        }
+
         // Pass 2: paged scan + classifier.
         val accCells = HashMap<Int, CellState>()
         val accGaps = HashMap<Int, DeletedFileRef>()
@@ -156,6 +190,7 @@ class LiveDefragSource(
                         driveId = slot.driveId,
                         row = row,
                         mapToBasicProbe = mapToBasicProbe,
+                        healthyConversationIds = healthyConversationIds,
                     )
                     chunkCells[pos] = state
                     chunkCounters.bump(state)
@@ -198,7 +233,17 @@ class LiveDefragSource(
 
         Logger.i(tag = tag) {
             "analyze complete: rows=$totalBlocks drives=${driveSlots.size} ${totals.format()} " +
-                    "repair_eligible=${totals.legacyUserDateZero + totals.softDeleteArchivalMismatch}"
+                    "repair_eligible=${totals.legacyUserDateZero + totals.softDeleteArchivalMismatch + totals.orphanChatMessage}"
+        }
+        if (cumulative != totalBlocks) {
+            // Pre-scan count and the actual paged-scan total disagree — usually
+            // means rows were inserted/deleted by another writer between the
+            // count and the scan. Surface it instead of silently classifying
+            // a moving target.
+            Logger.w(tag = tag) {
+                "analyze row drift: pre_scan_count=$totalBlocks scanned=$cumulative " +
+                        "delta=${cumulative - totalBlocks}"
+            }
         }
         emit(
             DefragAnalyzeEvent.Done(
@@ -271,6 +316,8 @@ class LiveDefragSource(
                     repaired = 0,
                     repairedLegacyUserDateZero = 0,
                     repairedSoftDeleteArchivalMismatch = 0,
+                    repairedOrphanChatMessage = 0,
+                    repairedUnmappableConversation = 0,
                     skipped = 0,
                 )
             )
@@ -287,6 +334,8 @@ class LiveDefragSource(
                     repaired = 0,
                     repairedLegacyUserDateZero = 0,
                     repairedSoftDeleteArchivalMismatch = 0,
+                    repairedOrphanChatMessage = 0,
+                    repairedUnmappableConversation = 0,
                     skipped = 0,
                 )
             )
@@ -311,11 +360,32 @@ class LiveDefragSource(
 
         emit(DefragRepairEvent.Started(eligibleEstimate = -1))
 
+        // Same preload as analyze() so the orphan-message branch fires here too.
+        val healthyConversationIds: Set<Uuid>? = if (mapToBasicProbe == null) null else {
+            val probe = mapToBasicProbe
+            val healthy = HashSet<Uuid>()
+            val convFiles = runCatching {
+                databaseManager.chatReadCount.selectAllConversations(identityId)
+            }.getOrElse { emptyList() }
+            for (file in convFiles) {
+                val uid = file.fileMetadata.appData.uniqueId ?: continue
+                if (file.isSoftDeleted()) continue
+                if (runCatching { probe(file) }.getOrNull() == null) healthy.add(uid)
+            }
+            healthy
+        }
+
         var analyzed = 0
         var repaired = 0
         var repairedLegacy = 0
         var repairedArchival = 0
+        var repairedOrphan = 0
+        var repairedUnmappableConvo = 0
         var skipped = 0
+        // Per-conversation dedup so we call recoverConversation once per missing
+        // (or broken) parent, not once per orphan message belonging to it. Used
+        // for both OrphanChatMessage and UnmappableConversation branches.
+        val alreadyRecovered = HashSet<Uuid>()
 
         for (slot in driveSlots) {
             var sinceRowId = 0L
@@ -342,14 +412,21 @@ class LiveDefragSource(
                         driveId = slot.driveId,
                         row = row,
                         mapToBasicProbe = mapToBasicProbe,
+                        healthyConversationIds = healthyConversationIds,
                     )
                     analyzed += 1
                     when (state) {
                         is CellState.SoftDeleteArchivalMismatch -> {
+                            // Drift is now defined as SQL.archivalStatus=Removed
+                            // while fileState != Deleted. The canonical truth
+                            // says the file is active, so re-project SQL to
+                            // match: clear the stale SQL marker (set to 0).
+                            // The row then re-classifies as Healthy (or via
+                            // other branches) on the next analyze.
                             val ok = runCatching {
                                 mainIndex.repairArchivalStatusByRowId(
                                     rowId = row.rowId,
-                                    archivalStatus = ARCHIVAL_STATUS_REMOVED,
+                                    archivalStatus = 0L,
                                 )
                             }.getOrElse {
                                 Logger.w(tag = tag, throwable = it) {
@@ -401,8 +478,71 @@ class LiveDefragSource(
                                 skipped += 1
                             }
                         }
-                        is CellState.CorruptJsonHeader,
+                        is CellState.OrphanChatMessage -> {
+                            // First orphan for this conversationId triggers
+                            // recoverConversation; subsequent orphans for the
+                            // same id just emit the colour-flip event (the
+                            // parent is already being recovered). originalAuthor
+                            // may be null (self-authored group messages) — the
+                            // service handles that as group-with-self.
+                            if (alreadyRecovered.add(state.conversationId)) {
+                                runCatching {
+                                    conversationService.recoverConversation(
+                                        conversationId = state.conversationId,
+                                        originalAuthor = state.originalAuthor,
+                                    )
+                                }.onFailure {
+                                    Logger.w(tag = tag, throwable = it) {
+                                        "recoverConversation failed for convo=${state.conversationId}"
+                                    }
+                                }
+                            }
+                            repaired += 1
+                            repairedOrphan += 1
+                            emit(
+                                DefragRepairEvent.Repaired(
+                                    position = pos,
+                                    driveId = slot.driveId,
+                                    fileId = row.fileId,
+                                    rowId = row.rowId,
+                                    kind = DefragRepairEvent.RepairKind.OrphanChatMessage,
+                                )
+                            )
+                        }
                         is CellState.UnmappableConversation -> {
+                            val convoId = state.conversationId
+                            if (convoId == null) {
+                                // Without a uniqueId we can't address the file
+                                // through ConversationService — leave it for
+                                // the corrupt-JSON prompt flow.
+                                skipped += 1
+                            } else {
+                                if (alreadyRecovered.add(convoId)) {
+                                    runCatching {
+                                        conversationService.recoverConversation(
+                                            conversationId = convoId,
+                                            originalAuthor = state.originalAuthor,
+                                        )
+                                    }.onFailure {
+                                        Logger.w(tag = tag, throwable = it) {
+                                            "recoverConversation (unmappable) failed for convo=$convoId"
+                                        }
+                                    }
+                                }
+                                repaired += 1
+                                repairedUnmappableConvo += 1
+                                emit(
+                                    DefragRepairEvent.Repaired(
+                                        position = pos,
+                                        driveId = slot.driveId,
+                                        fileId = row.fileId,
+                                        rowId = row.rowId,
+                                        kind = DefragRepairEvent.RepairKind.UnmappableConversation,
+                                    )
+                                )
+                            }
+                        }
+                        is CellState.CorruptJsonHeader -> {
                             // Not auto-repairable here.
                             skipped += 1
                         }
@@ -418,7 +558,9 @@ class LiveDefragSource(
 
         Logger.i(tag = tag) {
             "repair complete: analyzed=$analyzed repaired=$repaired " +
-                    "legacy=$repairedLegacy archival=$repairedArchival skipped=$skipped"
+                    "legacy=$repairedLegacy archival=$repairedArchival " +
+                    "orphans=$repairedOrphan unmappable=$repairedUnmappableConvo " +
+                    "recovered_convos=${alreadyRecovered.size} skipped=$skipped"
         }
         emit(
             DefragRepairEvent.Done(
@@ -426,6 +568,8 @@ class LiveDefragSource(
                 repaired = repaired,
                 repairedLegacyUserDateZero = repairedLegacy,
                 repairedSoftDeleteArchivalMismatch = repairedArchival,
+                repairedOrphanChatMessage = repairedOrphan,
+                repairedUnmappableConversation = repairedUnmappableConvo,
                 skipped = skipped,
             )
         )
@@ -442,6 +586,7 @@ class LiveDefragSource(
             is CellState.SoftDeleteArchivalMismatch -> "softdelete_archival_mismatch"
             is CellState.CorruptJsonHeader -> "corrupt_jsonheader"
             is CellState.UnmappableConversation -> "unmappable_conversation"
+            is CellState.OrphanChatMessage -> "orphan_chat_message"
             // Healthy and SoftDeleted are not "issues" — no per-occurrence detail line.
             else -> return
         }
@@ -463,6 +608,11 @@ class LiveDefragSource(
                 "issue=unmappable_conversation drive=$driveId fileId=${row.fileId} " +
                         "rowId=${row.rowId}"
             }
+            is CellState.OrphanChatMessage -> Logger.w(tag = tag) {
+                "issue=orphan_chat_message drive=$driveId fileId=${row.fileId} " +
+                        "rowId=${row.rowId} convoId=${state.conversationId} " +
+                        "originalAuthor=${state.originalAuthor?.domainName}"
+            }
             // Healthy and SoftDeleted are filtered out by the early-return above.
             is CellState.Healthy, is CellState.SoftDeleted -> Unit
         }
@@ -476,6 +626,7 @@ class LiveDefragSource(
         var softDeleteArchivalMismatch = 0
         var corruptJsonHeader = 0
         var unmappableConversation = 0
+        var orphanChatMessage = 0
 
         fun bump(state: CellState) {
             when (state) {
@@ -485,6 +636,7 @@ class LiveDefragSource(
                 is CellState.SoftDeleteArchivalMismatch -> softDeleteArchivalMismatch += 1
                 is CellState.CorruptJsonHeader -> corruptJsonHeader += 1
                 is CellState.UnmappableConversation -> unmappableConversation += 1
+                is CellState.OrphanChatMessage -> orphanChatMessage += 1
             }
         }
 
@@ -495,6 +647,7 @@ class LiveDefragSource(
             softDeleteArchivalMismatch += other.softDeleteArchivalMismatch
             corruptJsonHeader += other.corruptJsonHeader
             unmappableConversation += other.unmappableConversation
+            orphanChatMessage += other.orphanChatMessage
         }
 
         fun format(): String =
@@ -502,7 +655,8 @@ class LiveDefragSource(
                     "legacy_userDate_zero=$legacyUserDateZero " +
                     "softdelete_archival_mismatch=$softDeleteArchivalMismatch " +
                     "corrupt_jsonheader=$corruptJsonHeader " +
-                    "unmappable_conversation=$unmappableConversation"
+                    "unmappable_conversation=$unmappableConversation " +
+                    "orphan_chat_message=$orphanChatMessage"
     }
 
     override suspend fun hardDelete(driveId: Uuid, fileId: Uuid): Boolean {
@@ -514,7 +668,16 @@ class LiveDefragSource(
             }
             false
         }
-        if (!remoteOk) return false
+        if (!remoteOk) {
+            // hardDeleteFile returns false on any 2xx that isn't 200 (e.g. 202,
+            // 204). throwForFailure already covered 4xx/5xx, so reaching here
+            // with a non-throw means the server accepted but didn't confirm —
+            // log it so we don't silently leave the row in the local index.
+            Logger.w(tag = tag) {
+                "hardDeleteFile non-200 ack for drive=$driveId file=$fileId — local row kept"
+            }
+            return false
+        }
 
         // Remote call succeeded — also remove the local DriveMainIndex row so
         // subsequent Analyze passes don't re-report it as soft-deleted.

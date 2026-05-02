@@ -52,6 +52,7 @@ data class DefragmenterUiState(
     val issueCountArchivalMismatch: Int = 0,
     val issueCountCorruptJson: Int = 0,
     val issueCountUnmappableConvo: Int = 0,
+    val issueCountOrphanMessage: Int = 0,
 ) {
     /** True during Vacuuming and Complete — canvas tints filled blocks green. */
     val celebratory: Boolean
@@ -82,7 +83,8 @@ data class DefragmenterUiState(
             issueCountLegacyUserDateZero == other.issueCountLegacyUserDateZero &&
             issueCountArchivalMismatch == other.issueCountArchivalMismatch &&
             issueCountCorruptJson == other.issueCountCorruptJson &&
-            issueCountUnmappableConvo == other.issueCountUnmappableConvo
+            issueCountUnmappableConvo == other.issueCountUnmappableConvo &&
+            issueCountOrphanMessage == other.issueCountOrphanMessage
     }
 
     override fun hashCode(): Int {
@@ -99,6 +101,7 @@ data class DefragmenterUiState(
         result = 31 * result + issueCountArchivalMismatch
         result = 31 * result + issueCountCorruptJson
         result = 31 * result + issueCountUnmappableConvo
+        result = 31 * result + issueCountOrphanMessage
         return result
     }
 }
