@@ -16,7 +16,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.viewinterop.UIKitView
+import androidx.compose.ui.viewinterop.UIKitViewController
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
@@ -224,12 +224,20 @@ actual fun VideoPlayerSurface(
         when (val s = state) {
             VpsState.Loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             is VpsState.Error -> Text(text = s.message, modifier = Modifier.align(Alignment.Center))
-            is VpsState.Playing -> UIKitView(
+            // UIKitViewController (not UIKitView) — Compose handles the
+            // addChild/didMove(toParent:) containment dance UIViewControllers
+            // require. AVPlayerViewController will not initialize its secure
+            // rendering layer correctly when its `.view` is hosted bare in a
+            // UIKitView (no parent VC), which manifests as audio-plays /
+            // video-stays-black for assets where hasProtectedContent=true —
+            // exactly what HLS-AES-128 sets after we stopped stripping
+            // #EXT-X-KEY.
+            is VpsState.Playing -> UIKitViewController(
                 factory = {
                     AVPlayerViewController().apply {
                         player = s.player
                         s.player.play()
-                    }.view
+                    }
                 },
                 modifier = Modifier.fillMaxSize(),
             )
