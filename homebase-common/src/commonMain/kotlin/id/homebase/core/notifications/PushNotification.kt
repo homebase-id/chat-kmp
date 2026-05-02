@@ -1,5 +1,6 @@
 package id.homebase.core.notifications
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /** Push notification payload matching the backend DevicePushNotificationRequest format. */
@@ -8,6 +9,7 @@ data class PushNotification(
     val id: String? = null,
     val senderId: String,
     val unread: Boolean = false,
+    @SerialName("timestamp")
     val created: Long = 0,
     val options: PushNotificationPayloadOptions,
     val appDisplayName: String? = null
