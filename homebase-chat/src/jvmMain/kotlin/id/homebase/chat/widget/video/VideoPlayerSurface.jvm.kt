@@ -127,7 +127,11 @@ actual fun VideoPlayerSurface(
                         videoPreloader.preload(
                             VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
                         )
-                        File(dir, "index.m3u8").writeText(content.strippedPlaylist)
+                        File(dir, "index.m3u8").writeText(
+                            content.originalPlaylist.lines()
+                                .filter { !it.startsWith("#EXT-X-KEY") }
+                                .joinToString("\n")
+                        )
 
                         val totalSize = content.metadata.fileSize
                         val server = HttpServer.create(InetSocketAddress(0), 0).apply {

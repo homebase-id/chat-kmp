@@ -80,6 +80,8 @@ kotlin {
         }
         appleMain.dependencies {
             implementation(libs.ktor.client.darwin)
+            implementation(libs.ktor.server.core)
+            implementation(libs.ktor.server.cio)
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)

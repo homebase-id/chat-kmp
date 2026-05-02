@@ -5,7 +5,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.time.measureTimedValue
 
 sealed interface VideoContent {
-    data class Hls(val metadata: VideoMetadata, val strippedPlaylist: String) : VideoContent
+    data class Hls(val metadata: VideoMetadata, val originalPlaylist: String) : VideoContent
     data class Mp4(val metadata: VideoMetadata, val bytes: ByteArray) : VideoContent
 }
 
@@ -56,13 +56,10 @@ suspend fun resolveVideoContent(
         Logger.w(tag = "VideoIO") { "metadata: isSegmented=true but hlsPlaylist=null — falling through to MP4 branch will fail silently. fileId=${data.fileId} descriptorComplete=${metadata.isDescriptorContentComplete}" }
     }
     return if (metadata.isSegmented && hlsPlaylist != null) {
-        val strippedPlaylist = hlsPlaylist.lines()
-            .filter { !it.startsWith("#EXT-X-KEY") }
-            .joinToString("\n")
         Logger.d(tag = "VideoIO") {
-            "metadata: hls path chosen — original=${hlsPlaylist.length} chars stripped=${strippedPlaylist.length} chars"
+            "metadata: hls path chosen — playlistChars=${hlsPlaylist.length}"
         }
-        VideoContent.Hls(metadata, strippedPlaylist)
+        VideoContent.Hls(metadata, hlsPlaylist)
     } else {
         val (bytes, payloadElapsed) = measureTimedValue {
             driveFileProvider.getPayloadBytesDecrypted(
