@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.services.MessageAppData
+import id.homebase.chat.services.XorIdUtil
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlin.time.Instant
@@ -27,6 +28,14 @@ data class MessageUiModel(
     val modified: Instant?, // When the message was last modified
     val created: Instant, // Server-side creation timestamp
     val originalAuthor: OdinId?,
+    /**
+     * The wire-level sender of this message file (the identity that uploaded
+     * it to the chat drive). Equal to [originalAuthor] for non-forwarded
+     * messages; differs when the message is a forward — sender is the
+     * forwarder, [originalAuthor] is whoever first wrote the content. Use
+     * this (not [originalAuthor]) for the 1:1 XorId test.
+     */
+    val sender: OdinId?,
     val displayName: String,
 
     /** The timestamp when this file was marked as read for current user's identity */
@@ -58,4 +67,22 @@ data class MessageUiModel(
     val hasMore: Boolean
 ) {
     fun isAuthoredBy(domain: OdinId?): Boolean = (originalAuthor == domain)
+
+    /**
+     * True when this message lives in a 1:1 conversation between [self] and
+     * [sender] — i.e. `XorId(self, sender) == conversationId`.
+     *
+     * Uses [sender], NOT [originalAuthor]: the latter is content provenance
+     * and may differ from sender for forwarded messages, which would
+     * otherwise misclassify a forwarded 1:1 as a group.
+     *
+     * Returns false when [sender] is null. Callers wanting a different
+     * fallback should test [sender] explicitly.
+     */
+    fun isOneToOne(self: OdinId): Boolean =
+        sender != null && XorIdUtil.isOneToOneWithSender(
+            self = self,
+            sender = sender,
+            messageGroupId = conversationId,
+        )
 }
