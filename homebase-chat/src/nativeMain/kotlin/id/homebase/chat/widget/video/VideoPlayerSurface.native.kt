@@ -18,9 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.crypto.AesCbc
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloader
@@ -30,15 +28,10 @@ import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
-import platform.AVFoundation.AVAssetResourceLoader
-import platform.AVFoundation.AVAssetResourceLoaderDelegateProtocol
-import platform.AVFoundation.AVAssetResourceLoadingRequest
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeErrorKey
@@ -73,7 +66,6 @@ import platform.AVFoundation.presentationSize
 import platform.AVFoundation.rate
 import platform.AVFoundation.reasonForWaitingToPlay
 import platform.AVFoundation.removeTimeObserver
-import platform.AVFoundation.resourceLoader
 import platform.AVFoundation.statusOfValueForKey
 import platform.AVFoundation.timeControlStatus
 import platform.AVFoundation.tracks
@@ -94,18 +86,18 @@ import platform.Foundation.NSUUID
 import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.create
 import platform.Foundation.writeToURL
-import platform.darwin.NSObject
 import platform.darwin.NSObjectProtocol
-import platform.darwin.dispatch_queue_create
 import kotlin.time.measureTimedValue
-import kotlin.uuid.Uuid
 
 private sealed interface VpsState {
     data object Loading : VpsState
     data class Playing(
         val player: AVPlayer,
-        val delegate: HomebaseResourceLoaderDelegate, // retain delegate alongside player
         val timeObserver: Any? = null,
+        // Present for HLS playback; null for MP4. Used to unregister the LocalVideoServer
+        // session on dispose so the encrypted-bytes endpoint can't be hit after the player
+        // tears down.
+        val sessionId: String? = null,
     ) : VpsState
 
     data class Error(val message: String) : VpsState
@@ -129,6 +121,11 @@ actual fun VideoPlayerSurface(
             (state as? VpsState.Playing)?.let { playing ->
                 playing.timeObserver?.let { playing.player.removeTimeObserver(it) }
                 playing.player.pause()
+                playing.sessionId?.let { id ->
+                    // Server itself stays alive for the app lifetime; just drop the session
+                    // so the encrypted-bytes endpoint can't be hit on a stale id.
+                    scope.launch { LocalVideoServer.shared().unregister(id) }
+                }
             }
             notificationObservers.forEach {
                 NSNotificationCenter.defaultCenter.removeObserver(it)
@@ -161,20 +158,25 @@ actual fun VideoPlayerSurface(
                         videoPreloader.preload(
                             VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
                         )
-                        val delegate = HomebaseResourceLoaderDelegate(
-                            strippedPlaylist = content.strippedPlaylist,
-                            totalFileSize = content.metadata.fileSize,
+
+                        // Hand AVPlayer a real `http://127.0.0.1:<port>/...` URL backed by a
+                        // tiny CIO server. The server rewrites the playlist so #EXT-X-KEY
+                        // points at the AES key inline as a data: URI and segment URIs come
+                        // back to /segment, which streams ciphertext untouched. AVPlayer
+                        // decrypts via stock HLS-AES-128 — no resource loader, no per-byterange
+                        // crypto on our side. See LocalVideoServer.native.kt for the rationale.
+                        val server = LocalVideoServer.shared()
+                        val sessionId = server.register(
                             driveFileProvider = driveFileProvider,
                             driveId = data.driveId,
                             fileId = data.fileId,
                             payloadKey = data.payloadKey,
                             keyHeader = data.keyHeader,
-                            scope = scope,
+                            originalPlaylist = content.originalPlaylist,
+                            totalFileSize = content.metadata.fileSize,
                         )
-                        val assetUrl = NSURL.URLWithString("homebase://video/index.m3u8")!!
+                        val assetUrl = NSURL.URLWithString(server.manifestUrl(sessionId))!!
                         val asset = AVURLAsset(uRL = assetUrl, options = null)
-                        val loaderQueue = dispatch_queue_create("id.homebase.video.loader", null)
-                        asset.resourceLoader.setDelegate(delegate, queue = loaderQueue)
                         // Kick async load of asset metadata so we get a callback when AVPlayer is
                         // done parsing the playlist + first segment headers. This is the only
                         // point where playable / tracks / duration become reliable.
@@ -184,7 +186,7 @@ actual fun VideoPlayerSurface(
                         val player = AVPlayer(playerItem = playerItem)
                         val timeObserver = attachPlaybackTicker(player, playerItem, fileId = data.fileId.toString())
                         progressJob.cancel()
-                        state = VpsState.Playing(player = player, delegate = delegate, timeObserver = timeObserver)
+                        state = VpsState.Playing(player = player, timeObserver = timeObserver, sessionId = sessionId)
                         onProgress(1f)
                     }
                     is VideoContent.Mp4 -> {
@@ -208,7 +210,6 @@ actual fun VideoPlayerSurface(
                         onProgress(0.8f)
                         state = VpsState.Playing(
                             player = AVPlayer(uRL = mp4Url),
-                            delegate = HomebaseResourceLoaderDelegate.empty(),
                         )
                         onProgress(1f)
                     }
@@ -233,210 +234,6 @@ actual fun VideoPlayerSurface(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-    }
-}
-
-private class HomebaseResourceLoaderDelegate(
-    private val strippedPlaylist: String,
-    private val totalFileSize: Long,
-    private val driveFileProvider: DriveFileProvider?,
-    private val driveId: Uuid?,
-    private val fileId: Uuid?,
-    private val payloadKey: String?,
-    private val keyHeader: KeyHeader?,
-    private val scope: CoroutineScope?,
-) : NSObject(), AVAssetResourceLoaderDelegateProtocol {
-
-    companion object {
-        fun empty() = HomebaseResourceLoaderDelegate("", 0, null, null, null, null, null, null)
-    }
-
-    @kotlinx.cinterop.ObjCSignatureOverride
-    override fun resourceLoader(
-        resourceLoader: AVAssetResourceLoader,
-        shouldWaitForLoadingOfRequestedResource: AVAssetResourceLoadingRequest,
-    ): Boolean {
-        val loadingRequest = shouldWaitForLoadingOfRequestedResource
-        val url = loadingRequest.request.URL
-        val path = url?.path?.trimStart('/') ?: run {
-            Logger.e(tag = "VideoHLS") { "resourceLoader: URL or path is null" }
-            return false
-        }
-
-        val cInfo = loadingRequest.contentInformationRequest
-        val dReq = loadingRequest.dataRequest
-        // Each piece on its own line — the iOS file sink truncates long single-line
-        // entries and drops everything past the first `\n`, so verbose diagnostics
-        // have to be split into several short Logger.d calls.
-        Logger.d(tag = "VideoHLS") { "rl req: path=$path file=$fileId key=$payloadKey" }
-        Logger.d(tag = "VideoHLS") { "rl req: cInfo=${cInfo != null} dReq=${dReq != null} toEnd=${dReq?.requestsAllDataToEndOfResource}" }
-        Logger.d(tag = "VideoHLS") { "rl req: reqOffset=${dReq?.requestedOffset} reqLength=${dReq?.requestedLength} currentOffset=${dReq?.currentOffset}" }
-
-        // Anything that's not the expected playlist or TS chunk is unexpected — log loudly.
-        // A request for `enc.key` (or similar) means our playlist still has an EXT-X-KEY
-        // directive after stripping, and AVPlayer thinks the asset is encrypted.
-        if (!path.endsWith(".m3u8") && !path.endsWith(".ts")) {
-            Logger.w(tag = "VideoHLS") { "rl req: UNEXPECTED path=$path — falling through to .ts branch (likely bug)" }
-        }
-
-        scope?.launch(Dispatchers.IO) {
-            try {
-                if (path.endsWith(".m3u8")) {
-                    // Surface any EXT-X-KEY directive that survived the line-prefix filter.
-                    // The current strip is `lines().filter { !it.startsWith("#EXT-X-KEY") }` —
-                    // anything indented or with a different prefix would slip through and tell
-                    // AVPlayer the segment data is encrypted, breaking playback silently.
-                    if (strippedPlaylist.contains("EXT-X-KEY", ignoreCase = true) ||
-                        strippedPlaylist.contains("METHOD=AES", ignoreCase = true)) {
-                        Logger.w(tag = "VideoHLS") { "playlist still contains a key directive after stripping — AVPlayer will treat data as encrypted" }
-                    }
-                    Logger.d(tag = "VideoHLS") { "Serving playlist (${strippedPlaylist.length} chars) for fileId=$fileId" }
-                    // Log each line of the playlist as its own short entry so the body
-                    // actually lands in homebase.log. Newline-embedded messages get cut.
-                    strippedPlaylist.lineSequence().forEachIndexed { idx, line ->
-                        Logger.d(tag = "VideoHLS") { "playlist[$idx]: $line" }
-                    }
-                    // Also dump a sidecar copy on disk so it can be retrieved off-device.
-                    runCatching {
-                        val tmp = NSURL.fileURLWithPath(NSTemporaryDirectory())
-                            .URLByAppendingPathComponent("hbvid_playlist_${fileId ?: "unknown"}.m3u8")
-                        if (tmp != null) {
-                            strippedPlaylist.encodeToByteArray().toNSData()
-                                .writeToURL(tmp, atomically = true)
-                            Logger.d(tag = "VideoHLS") { "playlist dumped to ${tmp.path}" }
-                        }
-                    }.onFailure { Logger.w(tag = "VideoHLS") { "playlist dump failed: ${it.message}" } }
-                    val bytes = strippedPlaylist.encodeToByteArray()
-                    loadingRequest.contentInformationRequest?.let {
-                        it.contentType = "public.m3u8-playlist"
-                        it.contentLength = bytes.size.toLong()
-                        it.byteRangeAccessSupported = true
-                    }
-                    val dRespond = loadingRequest.dataRequest
-                    Logger.d(tag = "VideoHLS") { "playlist respond: bytes=${bytes.size} dataRequest=${dRespond != null}" }
-                    dRespond?.respondWithData(bytes.toNSData())
-                    withContext(Dispatchers.Main) {
-                        loadingRequest.finishLoading()
-                        Logger.d(tag = "VideoHLS") { "playlist finishLoading() called" }
-                    }
-                } else {
-                    // .ts segment — iOS asks for the exact byterange of one HLS segment from
-                    // the playlist. FFmpeg encrypted each segment independently (AES-CBC with
-                    // PKCS7 padding, keyHeader.iv as IV), so we decrypt standalone and zero-pad
-                    // the plaintext back up to `length` to honor Range semantics. AVPlayer's TS
-                    // parser resyncs past the trailing zeros on the next 0x47.
-                    loadingRequest.contentInformationRequest?.let {
-                        it.contentType = "public.mpeg-2-transport-stream"
-                        it.contentLength = totalFileSize
-                        it.byteRangeAccessSupported = true
-                    }
-                    val dataRequest = loadingRequest.dataRequest
-                    if (dataRequest != null) {
-                        val start = dataRequest.requestedOffset
-                        val length = if (dataRequest.requestsAllDataToEndOfResource) {
-                            totalFileSize - start
-                        } else {
-                            dataRequest.requestedLength
-                        }
-                        Logger.d(tag = "VideoHLS") { "avplayer chunk request: fileId=$fileId key=$payloadKey chunkStart=$start chunkLength=$length totalFileSize=$totalFileSize" }
-                        if (loadingRequest.isCancelled()) {
-                            Logger.w(tag = "VideoHLS") { "ts request: already cancelled before fetch — bailing out" }
-                            return@launch
-                        }
-                        val encrypted = driveFileProvider!!.getPayloadBytesEncryptedChunk(
-                            driveId = driveId!!,
-                            fileId = fileId!!,
-                            key = payloadKey!!,
-                            chunkStart = start,
-                            chunkLength = length,
-                        ) ?: throw Exception("Failed to fetch chunk at $start (length=$length)")
-                        if (encrypted.size.toLong() != length) {
-                            Logger.w(tag = "VideoHLS") { "ts fetch SHORT-READ: got ${encrypted.size}, expected $length at offset=$start — decrypt likely to fail" }
-                        }
-                        if (loadingRequest.isCancelled()) {
-                            Logger.w(tag = "VideoHLS") { "ts request: cancelled after fetch — bailing out before decrypt" }
-                            return@launch
-                        }
-                        val plaintext = AesCbc.decrypt(
-                            cipherText = encrypted,
-                            key = keyHeader!!.aesKey,
-                            iv = keyHeader.iv,
-                        )
-                        val requested = length.toInt()
-                        val padded = if (plaintext.size >= requested) {
-                            plaintext.copyOfRange(0, requested)
-                        } else {
-                            ByteArray(requested).also { plaintext.copyInto(it, 0) }
-                        }
-                        // Byte-alignment diagnostics: AES-CBC blocks are 16 bytes, TS packets are 188.
-                        // FFmpeg produces plaintext that is N * 188 bytes per segment, then PKCS7
-                        // rounds up to the next 16-byte boundary (1..16 pad bytes). After decrypt we
-                        // zero-pad the plaintext back up to `requested` so the Range response length
-                        // matches what AVPlayer asked for. Each line below is its own short Logger.d
-                        // call — the iOS file sink truncates long entries.
-                        val cipherHex = encrypted.take(16).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
-                        val plainHeadHex = plaintext.take(16).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
-                        val plainTailStart = (plaintext.size - 32).coerceAtLeast(0)
-                        val plainTailHex = plaintext.copyOfRange(plainTailStart, plaintext.size).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
-                        val padTailHex = padded.copyOfRange((padded.size - 32).coerceAtLeast(0), padded.size).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
-                        val tsRemainder = if (plaintext.isNotEmpty()) plaintext.size % 188 else -1
-                        val tsPacketCount = if (plaintext.isNotEmpty()) plaintext.size / 188 else -1
-                        val firstByteIsSync = plaintext.isNotEmpty() && plaintext[0] == 0x47.toByte()
-                        Logger.d(tag = "VideoHLS") { "decrypt sizes: cipher=${encrypted.size} plain=${plaintext.size} padded=${padded.size} at=$start" }
-                        Logger.d(tag = "VideoHLS") { "decrypt align: startMod16=${start % 16} lenMod16=${length % 16} plainMod188=$tsRemainder tsPackets=$tsPacketCount firstByte=0x47?=$firstByteIsSync" }
-                        Logger.d(tag = "VideoHLS") { "decrypt cipher[0..16]=$cipherHex" }
-                        Logger.d(tag = "VideoHLS") { "decrypt plain[0..16]=$plainHeadHex" }
-                        Logger.d(tag = "VideoHLS") { "decrypt plain[tail-32..]=$plainTailHex" }
-                        Logger.d(tag = "VideoHLS") { "decrypt padded[tail-32..]=$padTailHex" }
-                        if (loadingRequest.isCancelled()) {
-                            Logger.w(tag = "VideoHLS") { "ts request: cancelled after decrypt — skipping respondWithData/finishLoading" }
-                            return@launch
-                        }
-                        Logger.d(tag = "VideoHLS") { "ts respond: handing ${padded.size} bytes to AVPlayer at offset=$start" }
-                        dataRequest.respondWithData(padded.toNSData())
-                    } else {
-                        Logger.w(tag = "VideoHLS") { "ts request had no dataRequest — nothing to respond with" }
-                    }
-                    withContext(Dispatchers.Main) {
-                        if (loadingRequest.isCancelled()) {
-                            Logger.w(tag = "VideoHLS") { "ts request: cancelled before finishLoading — skipping" }
-                        } else {
-                            loadingRequest.finishLoading()
-                            Logger.d(tag = "VideoHLS") { "ts finishLoading() called for fileId=$fileId" }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = "VideoHLS") { "resourceLoader error path=$path file=$fileId: ${e::class.simpleName}: ${e.message}" }
-                withContext(Dispatchers.Main) {
-                    if (!loadingRequest.isCancelled()) {
-                        loadingRequest.finishLoadingWithError(
-                            NSError.errorWithDomain("HomebaseVideo", 500, null)
-                        )
-                        Logger.d(tag = "VideoHLS") { "finishLoadingWithError() called" }
-                    } else {
-                        Logger.d(tag = "VideoHLS") { "request was cancelled — not calling finishLoadingWithError" }
-                    }
-                }
-            }
-        }
-        return true
-    }
-
-    /**
-     * Fires when AVPlayer cancels a previously-issued loading request. We log it so
-     * that "no further chunk requests" in the log can be distinguished from "cancelled
-     * what we already had outstanding" — both look identical otherwise.
-     */
-    @kotlinx.cinterop.ObjCSignatureOverride
-    override fun resourceLoader(
-        resourceLoader: AVAssetResourceLoader,
-        didCancelLoadingRequest: AVAssetResourceLoadingRequest,
-    ) {
-        val req = didCancelLoadingRequest
-        val path = req.request.URL?.path?.trimStart('/') ?: "?"
-        val dReq = req.dataRequest
-        Logger.w(tag = "VideoHLS") { "rl CANCELLED: path=$path file=$fileId reqOffset=${dReq?.requestedOffset} reqLength=${dReq?.requestedLength}" }
     }
 }
 
