@@ -1497,10 +1497,14 @@ class ConversationService(
      * from the file when available, and either revives or creates the file using
      * the ORIGINAL [conversationId] (never recomputes it).
      */
-    suspend fun recoverConversation(conversationId: Uuid, originalAuthor: OdinId?) {
+    suspend fun recoverConversation(
+        conversationId: Uuid,
+        originalAuthor: OdinId?,
+        sender: OdinId? = null,
+    ) {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("recoverConversation")
-        audit.start("conversationId=$conversationId originalAuthor=${originalAuthor?.domainName}")
+        audit.start("conversationId=$conversationId originalAuthor=${originalAuthor?.domainName} sender=${sender?.domainName}")
         // ---- end DEBUG ----
         val domain = credentialsManager.requireActiveDomain()
         val isNoteToSelf = conversationId == ChatProtocol.ConversationWithYourselfId
@@ -1514,14 +1518,18 @@ class ConversationService(
             return
         }
 
-        // null originalAuthor → can't compute the 1:1 XorId, so treat as group
-        // (matches ConversationStream's placeholder behaviour for self-authored
-        // group messages whose stored originalAuthor is null).
-        val isOneToOne = originalAuthor != null && conversationId == XorIdUtil.getNewXorId(
-            domain.domainName, originalAuthor.domainName
+        // Prefer senderOdinId — for forwarded messages the file's sender is the
+        // wire-level counterparty in *this* conversation, while originalAuthor
+        // points to whoever first wrote the content (a different identity, not
+        // in this 1:1). Fall back to originalAuthor only when sender is unknown.
+        val xorCandidate: OdinId? = sender ?: originalAuthor
+        val isOneToOne = xorCandidate != null && XorIdUtil.isOneToOneWithSender(
+            self = domain,
+            sender = xorCandidate,
+            messageGroupId = conversationId,
         )
 
-        Logger.i("ConversationService: recoverConversation($conversationId) author=${originalAuthor?.domainName} isOneToOne=$isOneToOne")
+        Logger.i("ConversationService: recoverConversation($conversationId) author=${originalAuthor?.domainName} sender=${sender?.domainName} xorCandidate=${xorCandidate?.domainName} isOneToOne=$isOneToOne")
 
         // Recovery is strictly local-only: write a placeholder header to the
         // local DB and refresh the in-memory model. No outbox enqueue, no
@@ -1565,10 +1573,10 @@ class ConversationService(
             participants = existingContent?.recipients
                 ?.filterNotNull()?.distinct()
                 ?.takeIf { it.isNotEmpty() }
-                ?: listOfNotNull(originalAuthor, domain).distinct()
+                ?: listOfNotNull(xorCandidate, domain).distinct()
             brokenFileIdToDelete = existingFile.fileId
         } else {
-            participants = listOfNotNull(originalAuthor, domain).distinct()
+            participants = listOfNotNull(xorCandidate, domain).distinct()
             brokenFileIdToDelete = null
         }
 

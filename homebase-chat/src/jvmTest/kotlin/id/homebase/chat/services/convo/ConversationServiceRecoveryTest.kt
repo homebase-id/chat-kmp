@@ -2,11 +2,13 @@ package id.homebase.chat.services.convo
 
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.common.OdinId
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.XorIdUtil
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -121,6 +123,54 @@ class ConversationServiceRecoveryTest {
             assertNotNull(file, "no local file ⇒ a placeholder should be written")
             assertNull(file.fileMetadata.versionTag, "placeholder marker")
             assertTrue(fixture.conversationLoader.loaded.contains(xorId))
+        }
+    }
+
+    @Test
+    fun recoverConversation_oneOnOne_forwardedMessage_usesSenderAsCounterparty() = runTest {
+        // Forwarded-message scenario:
+        //   senderOdinId = alice (the wire-level counterparty in this 1:1)
+        //   originalAuthor = carol (whoever first wrote the content; not in this 1:1)
+        // The 1:1 id is XorId(self, alice). The XOR test must use sender, not
+        // originalAuthor — otherwise the convo is misclassified as a group
+        // ("1:1 repair" forced fallback) with the wrong participant.
+        ConversationServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val alice = "alice.test"
+            val carol = "carol.test"
+            val xorId = XorIdUtil.getNewXorId(fixture.testDomain, alice)
+
+            service.recoverConversation(
+                conversationId = xorId,
+                originalAuthor = OdinId(carol),
+                sender = OdinId(alice),
+            )
+
+            val file = fixture.getConversationFile(xorId)
+            assertNotNull(file, "forwarded 1:1 should produce a placeholder file")
+            assertNull(file.fileMetadata.versionTag, "local-only placeholder marker")
+
+            // Took the 1:1 branch (no ConversationGroupTag) — the regression
+            // would set the group tag and a "1:1 repair" title.
+            val tags = file.fileMetadata.appData.tags ?: emptyList()
+            assertFalse(
+                tags.contains(ChatProtocol.ConversationGroupTag),
+                "forwarded 1:1 should NOT be classified as a group",
+            )
+
+            // Recipients use the sender (alice), not the originalAuthor (carol).
+            val contentJson = file.fileMetadata.appData.content
+            assertNotNull(contentJson, "placeholder content should be written")
+            val content = OdinSystemSerializer.deserialize<ConversationAppDataJson>(contentJson)
+            val recipients = content.recipients?.filterNotNull()?.map { it.domainName } ?: emptyList()
+            assertTrue(
+                recipients.contains(alice),
+                "1:1 placeholder must list the sender (alice) as participant; got $recipients",
+            )
+            assertFalse(
+                recipients.contains(carol),
+                "originalAuthor (carol) is content provenance, not a participant; got $recipients",
+            )
         }
     }
 
