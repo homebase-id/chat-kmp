@@ -484,8 +484,12 @@ class FakeStatusMessageSender : StatusMessageSender {
 
 class FakeConversationLoader : ConversationLoader {
     val loaded = mutableListOf<Uuid>()
+    val removed = mutableListOf<Uuid>()
     override suspend fun loadConversation(conversationId: Uuid) {
         loaded += conversationId
+    }
+    override suspend fun removeConversation(conversationId: Uuid) {
+        removed += conversationId
     }
 }
 

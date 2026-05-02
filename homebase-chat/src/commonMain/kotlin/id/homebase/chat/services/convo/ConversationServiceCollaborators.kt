@@ -19,6 +19,8 @@ interface StatusMessageSender {
 
 interface ConversationLoader {
     suspend fun loadConversation(conversationId: Uuid)
+    /** Drop the in-memory entry for [conversationId]. No-op if not present. */
+    suspend fun removeConversation(conversationId: Uuid)
 }
 
 /**
