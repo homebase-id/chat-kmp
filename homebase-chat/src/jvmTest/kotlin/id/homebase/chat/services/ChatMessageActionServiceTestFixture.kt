@@ -287,6 +287,7 @@ class ChatMessageActionServiceTestFixture(
             modified = null,
             created = Instant.fromEpochMilliseconds(userDateMs),
             originalAuthor = OdinId(senderDomain),
+            sender = OdinId(senderDomain),
             displayName = senderDomain,
             localReadTimestamp = if (alreadyRead) UnixTimeUtc(1L) else null,
             isDeleted = isDeleted,

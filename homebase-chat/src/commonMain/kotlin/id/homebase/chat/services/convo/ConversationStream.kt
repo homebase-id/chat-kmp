@@ -15,7 +15,6 @@ import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.XorIdUtil
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.avatars.ConversationAvatarModel
@@ -87,7 +86,7 @@ class ConversationStream(
      *  sync, or transfer-to-self). The plumbing is retained so a future
      *  explicit-recovery path (e.g. ensure-file-on-send, or a post-sync
      *  reconciliation pass) can wire in without touching DI. */
-    var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId) -> Unit)? = null
+    var onRecoverConversation: (suspend (conversationId: Uuid, originalAuthor: OdinId?) -> Unit)? = null
     // endregion
 
     // region Placeholder reconciliation
@@ -272,24 +271,24 @@ class ConversationStream(
             // endregion
 
             if (matchingConversation == null) {
-                // Determine 1:1 vs group so the placeholder has a useful avatar
+                // Determine 1:1 vs group so the placeholder has a useful avatar.
+                // Use sender (not originalAuthor) for the XOR test — for forwarded
+                // messages those differ and originalAuthor is content provenance,
+                // not the wire-level counterparty.
                 val activeDomain = credentialsManager.getActiveDomain()
-                val isOneToOne = activeDomain != null && m.originalAuthor != null
-                    && m.conversationId == XorIdUtil.getNewXorId(
-                        activeDomain.domainName, m.originalAuthor.domainName
-                    )
+                val isOneToOne = activeDomain != null && m.isOneToOne(activeDomain)
 
                 val placeholderAvatar = if (isOneToOne) {
                     ConversationAvatarModel(
                         type = ConversationAvatarModel.Type.Connection,
-                        odinId = m.originalAuthor
+                        odinId = m.sender,
                     )
                 } else {
                     ConversationAvatarModel(type = ConversationAvatarModel.Type.GroupFallback)
                 }
 
                 val placeholderParticipants = if (isOneToOne) {
-                    listOf(activeDomain, m.originalAuthor).distinct()
+                    listOfNotNull(activeDomain, m.sender).distinct()
                 } else {
                     emptyList()
                 }
@@ -391,6 +390,15 @@ class ConversationStream(
         } else {
             updateConversation(existing, incoming)
         }
+    }
+
+    override suspend fun removeConversation(conversationId: Uuid) {
+        val current = _conversations.value
+        if (current.items.none { it.id == conversationId }) return
+        _conversations.value = current.copy(
+            items = current.items.filterNot { it.id == conversationId }
+        )
+        placeholderIds -= conversationId
     }
 
     private suspend fun processAdminFileBatch(adminFiles: List<HomebaseFile>) {

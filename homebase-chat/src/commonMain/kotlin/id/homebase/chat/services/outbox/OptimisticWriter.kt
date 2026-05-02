@@ -157,13 +157,14 @@ class OptimisticWriter(
         conversationId: Uuid,
         participants: List<OdinId>,
         isGroup: Boolean,
+        title: String = "",
     ) {
         val credentials = credentialsManager.requireActiveCredentials()
         val domain = credentials.domain
         val created = UnixTimeUtc.now()
 
         val content = ConversationAppDataJson(
-            title = "",
+            title = title,
             recipients = participants,
             version = 1,
         )
