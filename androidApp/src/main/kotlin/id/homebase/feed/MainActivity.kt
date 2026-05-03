@@ -21,10 +21,12 @@ import id.homebase.api.ActivityProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
 import id.homebase.core.notifications.NotificationIntentDecision
+import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.notifications.decideNotificationIntent
 import id.homebase.core.notifications.isReplayedFromHistory
+import id.homebase.feed.share.ShareShortcutPublisher
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import io.github.vinceglb.filekit.FileKit
@@ -119,8 +121,18 @@ class MainActivity : AppCompatActivity() {
             // Deep link: homebase-fchat://conversation/{conversationId}
             if (data.host == "conversation" && data.pathSegments.isNotEmpty()) {
                 val conversationId = data.pathSegments.first()
-                Logger.i(tag = "MainActivity") { "Deep link: navigating to conversation $conversationId" }
-                notificationService.navigateToConversation(conversationId)
+                val fromShareShortcut = intent.getBooleanExtra(
+                    ShareShortcutPublisher.EXTRA_FROM_SHARE_SHORTCUT, false
+                )
+                val source = if (fromShareShortcut) {
+                    NotificationNavigationEvent.OpenConversation.Source.ShareIntent
+                } else {
+                    NotificationNavigationEvent.OpenConversation.Source.NotificationTap
+                }
+                Logger.i(tag = "MainActivity") {
+                    "Deep link: navigating to conversation $conversationId source=$source"
+                }
+                notificationService.navigateToConversation(conversationId, source = source)
                 // Clear the deep link so it's not re-processed on config changes
                 intent.data = null
                 return
