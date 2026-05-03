@@ -76,6 +76,8 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         private set
     lateinit var payloadEncryptor: FakePayloadBundleEncryptor
         private set
+    lateinit var optimisticWriter: OptimisticWriter
+        private set
 
     suspend fun build(scope: CoroutineScope = TestScope()): ChatMessageSenderService {
         dbm = createInMemoryDbm()
@@ -92,7 +94,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         conversationLookup = SeedableConversationLookup(testDomain)
         payloadEncryptor = FakePayloadBundleEncryptor()
 
-        val optimisticWriter = OptimisticWriter(
+        optimisticWriter = OptimisticWriter(
             credentialsManager = credentialsManager,
             dbm = dbm,
             eventBus = eventBus,
