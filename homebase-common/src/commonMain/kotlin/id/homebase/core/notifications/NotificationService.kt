@@ -477,8 +477,14 @@ class NotificationService(
     }
 
     /** Navigate to a specific conversation (used for deep links and share shortcuts). */
-    fun navigateToConversation(conversationId: String) {
-        _navigationEvents.trySend(NotificationNavigationEvent.OpenConversation(conversationId))
+    fun navigateToConversation(
+        conversationId: String,
+        source: NotificationNavigationEvent.OpenConversation.Source =
+            NotificationNavigationEvent.OpenConversation.Source.NotificationTap,
+    ) {
+        _navigationEvents.trySend(
+            NotificationNavigationEvent.OpenConversation(conversationId, source)
+        )
     }
 
     /** Displays a rich notification using platform-specific APIs. */
