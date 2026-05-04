@@ -111,7 +111,11 @@ class ExtendPermissionViewModel(
 
     fun recheckPermissions() {
         _uiState.value = ExtendPermissionUiState.Idle
-        _permissionsChecked.value = false
+        // Note: we deliberately do NOT reset _permissionsChecked here. Once a check has
+        // completed against the current credentials, callers (e.g. the feed webview
+        // gate) should keep seeing a stable verdict. Resetting it here would make
+        // every ON_RESUME / event-bus-triggered recheck unmount any UI gated on
+        // "permissions checked" and reload from scratch.
         viewModelScope.launch { checkPermissions() }
     }
 
