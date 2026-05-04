@@ -37,6 +37,7 @@ import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.widget.video.LocalVideoPlayerSurface
+import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoPlayerSurface
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -73,17 +74,45 @@ fun FullScreenVideoPlayer(
     }
     val isLocalPlayback = data.localFilePath != null
 
+    // Pulled up so both the player surface and the paused-thumbnail fallback below
+    // can read trim metadata + thumbnail bytes off the same local context.
+    val localVideoContextStore = org.koin.compose.koinInject<LocalAttachmentContextStore>()
+    val localCtx = data.uploadMessageId?.let {
+        localVideoContextStore.get(it, data.payloadKey) as? LocalAttachmentContext.Video
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // Video player surface - prefer local file when available
+        // Video player surface - prefer local file when available, and clip to the
+        // sender-chosen trim range so the bubble matches what the receiver gets.
         if (isLocalPlayback) {
-            LocalVideoPlayerSurface(
-                filePath = data.localFilePath,
-                modifier = Modifier.fillMaxSize(),
-            )
+            // data.localFilePath is smart-cast to non-null here via isLocalPlayback,
+            // so localPath is inferred as String. No explicit null check needed.
+            val localPath = data.localFilePath
+            val hasTrim = localCtx != null &&
+                (localCtx.trimStartMs != null || localCtx.trimEndMs != null)
+            val clipDuration = localCtx?.durationMs ?: 0L
+            if (hasTrim && clipDuration > 0L) {
+                val clipStart = localCtx.trimStartMs ?: 0L
+                val clipEnd = localCtx.trimEndMs ?: clipDuration
+                TrimmableVideoPlayerSurface(
+                    filePath = localPath,
+                    clipStartMs = clipStart,
+                    clipEndMs = clipEnd,
+                    isPlaying = isPlaying,
+                    seekRequestMs = null,
+                    onPositionMs = { /* no-op; bubble has no scrubber */ },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                LocalVideoPlayerSurface(
+                    filePath = data.localFilePath,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         } else {
             VideoPlayerSurface(
                 data = data,
@@ -143,11 +172,7 @@ fun FullScreenVideoPlayer(
                 )
             } else if (isLocalPlayback) {
                 // Show local thumbnail when paused during local playback
-                val localVideoContextStore = org.koin.compose.koinInject<LocalAttachmentContextStore>()
-                val localContext = data.uploadMessageId?.let {
-                    localVideoContextStore.get(it, data.payloadKey) as? LocalAttachmentContext.Video
-                }
-                val localBitmap = localContext?.thumbnailBytes?.let { bytes ->
+                val localBitmap = localCtx?.thumbnailBytes?.let { bytes ->
                     remember(bytes) { bytes.toImageBitmap() }
                 }
                 if (localBitmap != null) {
