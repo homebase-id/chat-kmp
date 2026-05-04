@@ -40,6 +40,22 @@ data class HomebaseFile(
         fileState == FileState.Deleted ||
             fileMetadata.appData.archivalStatus == ArchivalStatus.Removed
 
+    /**
+     * The userDate stored in `DriveMainIndex.userDate` for this file —
+     * `appData.userDate` if present, else `metadata.created.milliseconds`.
+     *
+     * Mirrors the formula in `MainIndexMetaHelpers` (sync-side projection)
+     * so callers that need to compare against the SQL column (notably the
+     * unread-count and last-read tracking) get the same value regardless
+     * of whether they go through the in-memory message mapper or the SQL.
+     *
+     * Distinct from `MessageUiModel.userDate`, which clamps to the
+     * server-stamped `transitCreated` for display safety. That clamp is
+     * correct for rendering but wrong for read-bookkeeping comparisons.
+     */
+    fun sqlUserDateMs(): Long =
+        fileMetadata.appData.userDate ?: fileMetadata.created.milliseconds
+
     fun assertOriginalAuthor(odinId: OdinId) {
         val originalAuthor = fileMetadata.originalAuthor
         if (originalAuthor == null) {
