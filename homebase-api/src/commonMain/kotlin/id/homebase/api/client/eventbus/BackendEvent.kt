@@ -183,6 +183,14 @@ sealed interface BackendEvent {
     // A drive subscription was rejected by the server (non-fatal — other drives still sync)
     data class DriveAuthorizationFailed(val message: String) : BackendEvent
 
+    /**
+     * Emitted when the user has returned from the owner-console "Extend Permissions" flow.
+     * On desktop this fires when the local callback server hits its /permission-callback
+     * endpoint. ExtendPermissionViewModel listens for this and re-runs its check so the
+     * dialog dismisses (or re-shows) immediately rather than waiting for the next event.
+     */
+    data object PermissionsExtensionReturned : BackendEvent
+
     // We need an event for when someone is typing something for you...
     // data object UserTyping : backendEvent
 }

@@ -45,6 +45,8 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun FeedScreen(viewModel: FeedViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val permissionsChecked by viewModel.feedExtendPermissionViewModel.permissionsChecked.collectAsStateWithLifecycle()
+    val permissionsGranted by viewModel.feedExtendPermissionViewModel.permissionsGranted.collectAsStateWithLifecycle()
     val isSystemDark = isSystemInDarkTheme()
 
     LaunchedEffect(isSystemDark) {
@@ -71,6 +73,8 @@ fun FeedScreen(viewModel: FeedViewModel) {
 
     FeedContent(
         uiState = uiState,
+        permissionsChecked = permissionsChecked,
+        permissionsGranted = permissionsGranted,
         onAction = viewModel::onAction,
         reloadKey = reloadKey,
     )
@@ -79,6 +83,8 @@ fun FeedScreen(viewModel: FeedViewModel) {
 @Composable
 private fun FeedContent(
     uiState: FeedUiState,
+    permissionsChecked: Boolean,
+    permissionsGranted: Boolean,
     onAction: (FeedUiAction) -> Unit,
     reloadKey: Int = 0,
 ) {
@@ -90,7 +96,7 @@ private fun FeedContent(
             )
         }
 
-        uiState.credentialsReady -> {
+        uiState.credentialsReady && permissionsChecked && permissionsGranted -> {
             FeedWebView(
                 url = uiState.feedUrl,
                 injectionScript = uiState.injectionScript,

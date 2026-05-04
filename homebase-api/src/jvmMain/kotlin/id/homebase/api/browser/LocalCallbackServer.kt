@@ -31,6 +31,19 @@ object LocalCallbackServer {
 
     private var onCallbackUrl: ((String) -> Unit)? = null
 
+    /**
+     * Invoked when the browser hits `/permission-callback` after the user finishes the
+     * owner-console "Extend Permissions" flow. Wired from desktop app startup
+     * (Main.kt) to broadcast a `BackendEvent.PermissionsExtensionReturned` event so any
+     * `ExtendPermissionViewModel` re-runs its check immediately rather than waiting on
+     * the next event-bus tick.
+     */
+    private var onPermissionCallback: (() -> Unit)? = null
+
+    fun setPermissionCallback(handler: () -> Unit) {
+        this.onPermissionCallback = handler
+    }
+
     fun start(onCallbackUrl: (String) -> Unit, preferredPort: Int = 0): Int {
         this.onCallbackUrl = onCallbackUrl
         if (server != null) return currentPort
@@ -55,6 +68,22 @@ object LocalCallbackServer {
 
                                 call.respondText(
                                     text = CALLBACK_HTML,
+                                    contentType = ContentType.Text.Html
+                                )
+                            }
+
+                            /**
+                             * Owner-console "Extend Permissions" return URL. Fires the
+                             * registered callback (which broadcasts a backend event so
+                             * any ExtendPermissionViewModel re-runs its check) and serves
+                             * the permission-update confirmation HTML, which focuses the
+                             * desktop app on user click.
+                             */
+                            get("/permission-callback") {
+                                Logger.d(tag = TAG) { "Permission-extend return hit" }
+                                LocalCallbackServer.onPermissionCallback?.invoke()
+                                call.respondText(
+                                    text = PERMISSION_CALLBACK_HTML,
                                     contentType = ContentType.Text.Html
                                 )
                             }
@@ -189,12 +218,12 @@ object LocalCallbackServer {
     <p>
       Authentication for <strong>Homebase&nbsp;Chat</strong> is complete.
     </p>
-
+    
     <p>
       You can now continue using the application.
     </p>
 
-    <button onclick="openApp()">Return to Homebase Chat</button>
+    <button id="returnBtn" autofocus onclick="openApp()">Return to Homebase Chat</button>
 
     <p class="hint">
       You may also close this browser tab if it doesn’t close automatically.
@@ -208,6 +237,106 @@ object LocalCallbackServer {
           try { window.close(); } catch (_) {}
         });
     }
+    // Pressing Enter anywhere on the page activates the button (covers cases where
+    // autofocus is denied by the browser or focus has drifted).
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        openApp();
+      }
+    });
+  </script>
+</body>
+</html>
+"""
+
+    private const val PERMISSION_CALLBACK_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Homebase Chat — Permissions Updated</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #ffffff;
+      color: #171717;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .box {
+      border: 1px solid #eaeaea;
+      border-radius: 14px;
+      padding: 2.25rem;
+      text-align: center;
+      max-width: 440px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.06);
+    }
+    h1 {
+      font-size: 1.35rem;
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+    }
+    p {
+      color: #555;
+      margin: 0.5rem 0;
+      line-height: 1.5;
+    }
+    .hint {
+      font-size: 0.9rem;
+      color: #777;
+      margin-top: 1.25rem;
+    }
+    button {
+      margin-top: 1.75rem;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      border-radius: 8px;
+      border: none;
+      background: #171717;
+      color: #ffffff;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #000000;
+    }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Permissions updated</h1>
+
+    <p>
+      Your <strong>Homebase&nbsp;Chat</strong> permissions have been updated.
+    </p>
+
+    <p>
+      You can now return to the application.
+    </p>
+
+    <button id="returnBtn" autofocus onclick="openApp()">Return to Homebase Chat</button>
+
+    <p class="hint">
+      You may also close this browser tab if it doesn’t close automatically.
+    </p>
+  </div>
+
+  <script>
+    function openApp() {
+      fetch('/focus')
+        .finally(() => {
+          try { window.close(); } catch (_) {}
+        });
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        openApp();
+      }
+    });
   </script>
 </body>
 </html>
