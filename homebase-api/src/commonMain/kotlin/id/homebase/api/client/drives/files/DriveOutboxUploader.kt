@@ -2,6 +2,7 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
@@ -59,24 +60,27 @@ class DriveOutboxUploader(
                     )
                     return
                 }
-                when (e.errorCode) {
-                    OdinClientErrorCode.VersionTagMismatch -> {
-                        Logger.w(
-                            "Discarding outbox item ${outboxRecord.uniqueId} " +
-                                    "uploadType=${outboxRecord.uploadType} — VersionTagMismatch: ${e.message}"
-                        )
-                        return
-                    }
-
-                    else -> {
-                        Logger.e(
-                            "$TAG upload: 400 for outbox item ${outboxRecord.uniqueId} " +
-                                    "uploadType=${outboxRecord.uploadType} errorCode=${e.errorCode} " +
-                                    "— will retry (server message: ${e.message})"
-                        )
-                        throw e
-                    }
+                // Title-match in addition to the structured errorCode because the server
+                // sometimes collapses VersionTagMismatch into errorCode=UnhandledScenario
+                // while preserving the title text "Mismatching version tag …". Without
+                // this fallback the outbox burns 20 attempts (~48h) on a stale tag.
+                val isVersionTagMismatch =
+                    e.errorCode == OdinClientErrorCode.VersionTagMismatch ||
+                            e.message?.contains("Mismatching version tag", ignoreCase = true) == true
+                if (isVersionTagMismatch) {
+                    Logger.w(
+                        "$TAG upload: dropping outbox item ${outboxRecord.uniqueId} " +
+                                "uploadType=${outboxRecord.uploadType} driveId=${outboxRecord.driveId} " +
+                                "— VersionTagMismatch (errorCode=${e.errorCode}): ${e.message}"
+                    )
+                    return
                 }
+                Logger.e(
+                    "$TAG upload: 400 for outbox item ${outboxRecord.uniqueId} " +
+                            "uploadType=${outboxRecord.uploadType} errorCode=${e.errorCode} " +
+                            "— will retry (server message: ${e.message})"
+                )
+                throw e
             }
             Logger.e(
                 "$TAG upload: failing outbox item ${outboxRecord.uniqueId} " +
@@ -251,9 +255,22 @@ class DriveOutboxUploader(
 
     private suspend fun updateLocalMetadataTags(outboxRecord: Outbox) {
         val request = OdinSystemSerializer.deserialize<UpdateLocalMetadataTagsOutboxRequest>(outboxRecord.json.decodeToString())
+        Logger.d(tag = "MarkAsRead") {
+            "DriveOutboxUploader.updateLocalMetadataTags: outboxRow=${outboxRecord.uniqueId} drive=${request.file.targetDrive.alias} fileId=${request.file.fileId} hasRequestVersionTag=${request.versionTag != null}"
+        }
+        // Falling back to versionTag=null when both the request and the local header
+        // are missing causes the server to reject with VersionTagMismatch and the
+        // outbox to retry for ~48h. Treat the missing local file as a permanent
+        // failure (NotFoundException is dropped by OutboxSync.isPermanentFailure).
         val versionTag = request.versionTag
             ?: fileProvider.getFileHeader(request.file.targetDrive.alias, Uuid.parse(request.file.fileId))
                 ?.fileMetadata?.localAppData?.versionTag?.toString()
+            ?: run {
+                Logger.w(tag = "MarkAsRead") {
+                    "DriveOutboxUploader.updateLocalMetadataTags: dropping outboxRow=${outboxRecord.uniqueId} drive=${request.file.targetDrive.alias} fileId=${request.file.fileId} — no version tag in request and local file gone"
+                }
+                throw NotFoundException()
+            }
         driveUploadProvider.uploadLocalMetadataTags(
             file = request.file,
             localAppData = LocalAppData(versionTag = versionTag, tags = request.tags)
@@ -266,7 +283,12 @@ class DriveOutboxUploader(
             "DriveOutboxUploader.updateLocalMetadataContent: outboxRow=${outboxRecord.uniqueId} drive=${request.driveId} fileId=${request.fileId} hasIv=${request.iv != null}"
         }
         val file = fileProvider.getFileHeader(request.driveId, request.fileId)
-            ?: error("File not found for local metadata content update: ${request.fileId}")
+            ?: run {
+                Logger.w(tag = "MarkAsRead") {
+                    "DriveOutboxUploader.updateLocalMetadataContent: dropping outboxRow=${outboxRecord.uniqueId} drive=${request.driveId} fileId=${request.fileId} — local file no longer present"
+                }
+                throw NotFoundException()
+            }
         val versionTag = request.versionTag
             ?: file.fileMetadata.localAppData?.versionTag?.toString()
         try {
