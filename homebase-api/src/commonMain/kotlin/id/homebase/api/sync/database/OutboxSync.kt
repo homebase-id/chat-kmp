@@ -80,17 +80,19 @@ class OutboxSync(
             when (e.errorCode) {
                 OdinClientErrorCode.FileNotFound,
                 OdinClientErrorCode.MissingVersionTag,
+                OdinClientErrorCode.VersionTagMismatch,
                 OdinClientErrorCode.CannotOverwriteNonExistentFile,
                 OdinClientErrorCode.UnknownId -> return true
                 else -> Unit
             }
             // The server sometimes returns 400 with the structured errorCode
             // collapsed to UnhandledScenario but the message text intact.
-            // Catch the two recurring local-only-placeholder failures we've
-            // seen so they don't loop in the outbox.
+            // Catch the recurring local-only-placeholder failures we've seen
+            // so they don't loop in the outbox. The version-tag check matches
+            // both "Missing version tag" and "Mismatching version tag".
             val msg = e.message ?: return false
             if (msg.contains("Could not find file", ignoreCase = true)) return true
-            if (msg.contains("Missing version tag", ignoreCase = true)) return true
+            if (msg.contains(Regex("Mis(sing|matching) version tag", RegexOption.IGNORE_CASE))) return true
         }
         return false
     }
