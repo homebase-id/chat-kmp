@@ -18,6 +18,8 @@ import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.ActivityProvider
+import id.homebase.api.client.eventbus.BackendEvent
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
 import id.homebase.core.notifications.NotificationIntentDecision
@@ -40,6 +42,7 @@ class MainActivity : AppCompatActivity() {
 
     val youAuthFlowManager: YouAuthFlowManager by inject()
     private val notificationService: NotificationService by inject()
+    private val eventBus: EventBus by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -134,6 +137,25 @@ class MainActivity : AppCompatActivity() {
                 }
                 notificationService.navigateToConversation(conversationId, source = source)
                 // Clear the deep link so it's not re-processed on config changes
+                intent.data = null
+                return
+            }
+
+            // Owner-console "Extend Permissions" return URL.
+            // Path: homebase-fchat://permission-callback?status=[canceled|...]
+            if (data.host == "permission-callback") {
+                val status = data.getQueryParameter("status")
+                val canceled = status.equals("canceled", ignoreCase = true) ||
+                    status.equals("cancelled", ignoreCase = true)
+                Logger.i(tag = "MainActivity") {
+                    "Permission-extend deep link (status=$status canceled=$canceled)"
+                }
+                lifecycleScope.launch {
+                    eventBus.emit(
+                        if (canceled) BackendEvent.PermissionsExtensionCanceled
+                        else BackendEvent.PermissionsExtensionReturned
+                    )
+                }
                 intent.data = null
                 return
             }
