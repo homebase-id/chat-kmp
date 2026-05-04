@@ -9,8 +9,11 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.PermissionExtensionConfig
 import id.homebase.api.youauth.PermissionExtensionManager
 import id.homebase.api.youauth.SecurityContextProvider
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
@@ -48,6 +51,16 @@ class ExtendPermissionViewModel(
      */
     private var boundToken: String? = null
 
+    /**
+     * One-shot signal for the host screen to navigate the user back to the chat tab
+     * (or clear the selected conversation, if already there) when they explicitly
+     * cancel — either by tapping Cancel on the dialog or by aborting the owner-console
+     * flow (`status=canceled`). Emitted on a SharedFlow so the screen consumes it
+     * exactly once per cancel.
+     */
+    private val _navigateAwayRequest = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val navigateAwayRequest: SharedFlow<Unit> = _navigateAwayRequest.asSharedFlow()
+
     init {
         viewModelScope.launch { checkPermissions() }
 
@@ -63,6 +76,21 @@ class ExtendPermissionViewModel(
                 .collect {
                     Logger.i(tag = TAG) { "Permissions-extension return — rechecking" }
                     recheckPermissions()
+                }
+        }
+
+        viewModelScope.launch {
+            eventBus.events
+                .filterIsInstance<BackendEvent.PermissionsExtensionCanceled>()
+                .collect {
+                    Logger.i(tag = TAG) {
+                        "Permissions-extension canceled — dismissing dialog, requesting nav-away"
+                    }
+                    // Dismiss without rechecking — the user already said "no thanks"
+                    // in the owner console, so re-prompting with the same dialog would
+                    // just be the second of two cancel taps.
+                    _uiState.value = ExtendPermissionUiState.Dismissed
+                    _navigateAwayRequest.tryEmit(Unit)
                 }
         }
     }

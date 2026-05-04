@@ -191,6 +191,14 @@ sealed interface BackendEvent {
      */
     data object PermissionsExtensionReturned : BackendEvent
 
+    /**
+     * Emitted when the user explicitly canceled the owner-console "Extend Permissions"
+     * flow (the redirect URL carried `status=canceled`). Distinct from
+     * [PermissionsExtensionReturned] so the VM can route the user back to the chat tab
+     * without re-prompting with the same dialog they just dismissed.
+     */
+    data object PermissionsExtensionCanceled : BackendEvent
+
     // We need an event for when someone is typing something for you...
     // data object UserTyping : backendEvent
 }

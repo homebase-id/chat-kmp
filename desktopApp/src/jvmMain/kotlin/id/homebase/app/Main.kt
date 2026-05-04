@@ -81,8 +81,13 @@ fun main() {
     // returns from the owner-console "Extend Permissions" flow) to the in-app event
     // bus so ExtendPermissionViewModel re-runs its check and the dialog dismisses.
     val eventBus = GlobalContext.get().get<EventBus>()
-    LocalCallbackServer.setPermissionCallback {
-        runBlocking { eventBus.emit(BackendEvent.PermissionsExtensionReturned) }
+    LocalCallbackServer.setPermissionCallback { canceled ->
+        runBlocking {
+            eventBus.emit(
+                if (canceled) BackendEvent.PermissionsExtensionCanceled
+                else BackendEvent.PermissionsExtensionReturned
+            )
+        }
     }
 
     // OSX customizations

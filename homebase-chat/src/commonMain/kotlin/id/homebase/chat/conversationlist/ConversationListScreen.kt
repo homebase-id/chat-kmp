@@ -130,6 +130,11 @@ fun ConversationListScreen(
         viewModel = extendPermissionViewModel,
         onCancel = { viewModel.onAction(ConversationListUiAction.ClearSelection) },
     )
+    LaunchedEffect(Unit) {
+        extendPermissionViewModel.navigateAwayRequest.collect {
+            viewModel.onAction(ConversationListUiAction.ClearSelection)
+        }
+    }
 
     val infoString = (conversationsUiState.uiEvent as? ConversationListUiEvent.ShowInfoMessage)?.res?.let { stringResource(it) } ?: ""
     LaunchedEffect(conversationsUiState.uiEvent) {

@@ -33,14 +33,15 @@ object LocalCallbackServer {
 
     /**
      * Invoked when the browser hits `/permission-callback` after the user finishes the
-     * owner-console "Extend Permissions" flow. Wired from desktop app startup
-     * (Main.kt) to broadcast a `BackendEvent.PermissionsExtensionReturned` event so any
-     * `ExtendPermissionViewModel` re-runs its check immediately rather than waiting on
-     * the next event-bus tick.
+     * owner-console "Extend Permissions" flow. The `canceled` flag reflects the
+     * `status=canceled` query parameter the owner console appends when the user
+     * explicitly aborts. Wired from desktop app startup (Main.kt) to broadcast either
+     * `BackendEvent.PermissionsExtensionReturned` (success — recheck) or
+     * `BackendEvent.PermissionsExtensionCanceled` (skip recheck, route to chat tab).
      */
-    private var onPermissionCallback: (() -> Unit)? = null
+    private var onPermissionCallback: ((canceled: Boolean) -> Unit)? = null
 
-    fun setPermissionCallback(handler: () -> Unit) {
+    fun setPermissionCallback(handler: (canceled: Boolean) -> Unit) {
         this.onPermissionCallback = handler
     }
 
@@ -74,15 +75,11 @@ object LocalCallbackServer {
 
                             /**
                              * Owner-console "Extend Permissions" return URL. Fires the
-                             * registered callback (which broadcasts a backend event so
-                             * any ExtendPermissionViewModel re-runs its check). Serves
-                             * either the success or canceled confirmation HTML based on
-                             * the `status` query param the owner console appends.
-                             *
-                             * Note: we always invoke onPermissionCallback regardless of
-                             * status — on cancel, the recheck still detects perms are
-                             * missing and re-shows the dialog when the app gets focus,
-                             * giving the user a one-click path to retry.
+                             * registered callback with a `canceled` flag derived from
+                             * the `status` query param so the in-app side can route the
+                             * user appropriately (recheck on success, skip recheck and
+                             * navigate to chat tab on cancel). Serves either the success
+                             * or canceled confirmation HTML accordingly.
                              */
                             get("/permission-callback") {
                                 val status = call.request.queryParameters["status"]
@@ -91,7 +88,7 @@ object LocalCallbackServer {
                                 Logger.d(tag = TAG) {
                                     "Permission-extend return hit (status=$status canceled=$canceled)"
                                 }
-                                LocalCallbackServer.onPermissionCallback?.invoke()
+                                onPermissionCallback?.invoke(canceled)
                                 call.respondText(
                                     text = if (canceled) PERMISSION_CANCELED_HTML
                                     else PERMISSION_CALLBACK_HTML,
