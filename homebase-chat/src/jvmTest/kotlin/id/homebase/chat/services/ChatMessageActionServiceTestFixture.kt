@@ -287,6 +287,7 @@ class ChatMessageActionServiceTestFixture(
             modified = null,
             created = Instant.fromEpochMilliseconds(userDateMs),
             originalAuthor = OdinId(senderDomain),
+            sender = OdinId(senderDomain),
             displayName = senderDomain,
             localReadTimestamp = if (alreadyRead) UnixTimeUtc(1L) else null,
             isDeleted = isDeleted,
@@ -524,14 +525,19 @@ class ChatMessageActionServiceTestFixture(
  * Cheap FileOperationsProvider used only so DriveFileProviderCached's ctor can run.
  * Every method throws — if markAsReadByFiles (or any test path we expect NOT to hit
  * file I/O) actually reaches file ops, the test fails loudly instead of silently.
+ *
+ * Each instance gets its own unique cache subdirectory so multiple test classes'
+ * Coil DiskCache instances don't contend on the same on-disk journal.
  */
 private class NoopFileOperationsProvider : FileOperationsProvider {
+    private val uniqueCacheDir: String =
+        java.nio.file.Files.createTempDirectory("hb-chat-test-cache").toString()
     private fun nope(): Nothing =
         error("NoopFileOperationsProvider: no file IO expected in markAsReadByFiles tests")
     override fun openFileInput(path: String) = nope()
     override suspend fun readFileBytes(path: String) = nope()
     override fun deleteTempFile(path: String) = nope()
-    override fun getCacheDirectory(): String = System.getProperty("java.io.tmpdir") ?: "/tmp"
+    override fun getCacheDirectory(): String = uniqueCacheDir
     override fun getFileSize(path: String) = nope()
     override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String) = nope()
     override suspend fun writeStream(path: String, data: Flow<ByteArray>) = nope()

@@ -1,6 +1,7 @@
 package id.homebase.core.notifications
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -8,8 +9,19 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.time.ExperimentalTime
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
+
+/**
+ * Returns a virtual-time clock backed by the [TestScope]'s scheduler so the
+ * dedup window (and any other Instant-based check inside the holder) advances
+ * with `advanceTimeBy(...)` rather than wall-clock time.
+ */
+@OptIn(ExperimentalTime::class, ExperimentalCoroutinesApi::class)
+private fun TestScope.virtualClock(): () -> Instant =
+    { Instant.fromEpochMilliseconds(testScheduler.currentTime) }
 
 /**
  * Locks down the PendingNotificationTap contract consumed by
@@ -168,5 +180,131 @@ class PendingNotificationTapTest {
         advanceTimeBy(1_500)
         advanceUntilIdle()
         assertNull(holder.state.value)
+    }
+
+    // ---------- consume-dedup ----------
+    //
+    // After a real `set → resolve` cycle, a duplicate `set(conv,msg)` call within
+    // DEDUP_WINDOW is a no-op. This catches rapid-fire replays — e.g. onCreate
+    // and onNewIntent both processing the same Intent in the same activity
+    // lifecycle, or any future code path that re-feeds the same payload — without
+    // breaking the legitimate "user receives a new message in the same conv"
+    // case (different msgId → fresh tap) or "user taps a new conv" case
+    // (different convId → fresh tap). The TTL expiry path does NOT seed
+    // dedup, since "tap I never resolved" is not a thing the user already saw.
+
+    @Test
+    fun setAfterRecentConsume_isIgnoredAsDuplicate() = runTest {
+        val holder = PendingNotificationTap(scope = backgroundScope, now = virtualClock())
+        holder.set(convoA, msgA)
+        holder.clearIfMatches(convoA)
+        assertNull(holder.state.value)
+
+        advanceTimeBy(5_000)  // well within DEDUP_WINDOW
+        advanceUntilIdle()
+
+        holder.set(convoA, msgA)
+        assertNull(
+            holder.state.value,
+            "duplicate set within dedup window must be a no-op",
+        )
+    }
+
+    @Test
+    fun setAfterStaleConsume_succeeds() = runTest {
+        val holder = PendingNotificationTap(scope = backgroundScope, now = virtualClock())
+        holder.set(convoA, msgA)
+        holder.clearIfMatches(convoA)
+
+        advanceTimeBy(31_000)  // past DEDUP_WINDOW
+        advanceUntilIdle()
+
+        holder.set(convoA, msgA)
+        val tap = holder.state.value
+        assertNotNull(tap, "set after dedup window expired must produce a fresh tap")
+        assertEquals(convoA, tap.conversationId)
+        assertEquals(msgA, tap.messageId)
+    }
+
+    @Test
+    fun setDifferentConvAfterRecentConsume_succeeds() = runTest {
+        val holder = PendingNotificationTap(scope = backgroundScope, now = virtualClock())
+        holder.set(convoA, msgA)
+        holder.clearIfMatches(convoA)
+
+        advanceTimeBy(5_000)
+        advanceUntilIdle()
+
+        holder.set(convoB, msgB)
+        val tap = holder.state.value
+        assertNotNull(tap, "different conv must not be deduped")
+        assertEquals(convoB, tap.conversationId)
+    }
+
+    @Test
+    fun setSameConvDifferentMsgAfterRecentConsume_succeeds() = runTest {
+        val holder = PendingNotificationTap(scope = backgroundScope, now = virtualClock())
+        holder.set(convoA, msgA)
+        holder.clearIfMatches(convoA)
+
+        advanceTimeBy(5_000)
+        advanceUntilIdle()
+
+        // A new message arriving in the same conversation is a fresh tap —
+        // dedup is per (conv, msg), not per conv.
+        holder.set(convoA, msgB)
+        val tap = holder.state.value
+        assertNotNull(tap, "same conv with different msg must not be deduped")
+        assertEquals(convoA, tap.conversationId)
+        assertEquals(msgB, tap.messageId)
+    }
+
+    @Test
+    fun dedupRecordIsNotSeededByTtlExpiry() = runTest {
+        val holder = PendingNotificationTap(
+            ttl = 10.seconds,
+            scope = backgroundScope,
+            now = virtualClock(),
+        )
+        holder.set(convoA, msgA)
+
+        // No resolve — let the TTL fire.
+        advanceTimeBy(11_000)
+        advanceUntilIdle()
+        assertNull(holder.state.value)
+
+        // Same payload taps next — must be treated as a fresh tap, not a dup.
+        holder.set(convoA, msgA)
+        val tap = holder.state.value
+        assertNotNull(tap, "TTL expiry must not seed dedup")
+        assertEquals(convoA, tap.conversationId)
+    }
+
+    @Test
+    fun clearWithoutMatchingTap_doesNotSeedDedup() = runTest {
+        val holder = PendingNotificationTap(scope = backgroundScope, now = virtualClock())
+        // No prior set — clear() on an empty holder is a no-op.
+        holder.clear()
+
+        holder.set(convoA, msgA)
+        val tap = holder.state.value
+        assertNotNull(tap, "clear() on empty state must not poison a future fresh tap")
+        assertEquals(convoA, tap.conversationId)
+    }
+
+    @Test
+    fun dedupAppliesAfterPlainClearToo() = runTest {
+        val holder = PendingNotificationTap(scope = backgroundScope, now = virtualClock())
+        holder.set(convoA, msgA)
+        holder.clear()  // not clearIfMatches — both clear paths must seed dedup
+
+        advanceTimeBy(5_000)
+        advanceUntilIdle()
+
+        holder.set(convoA, msgA)
+        assertNull(
+            holder.state.value,
+            "plain clear() should also seed dedup so a replayed Intent is no-oped",
+        )
     }
 }

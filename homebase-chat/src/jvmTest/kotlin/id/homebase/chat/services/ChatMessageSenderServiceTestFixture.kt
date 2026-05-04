@@ -76,6 +76,8 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         private set
     lateinit var payloadEncryptor: FakePayloadBundleEncryptor
         private set
+    lateinit var optimisticWriter: OptimisticWriter
+        private set
 
     suspend fun build(scope: CoroutineScope = TestScope()): ChatMessageSenderService {
         dbm = createInMemoryDbm()
@@ -92,7 +94,7 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         conversationLookup = SeedableConversationLookup(testDomain)
         payloadEncryptor = FakePayloadBundleEncryptor()
 
-        val optimisticWriter = OptimisticWriter(
+        optimisticWriter = OptimisticWriter(
             credentialsManager = credentialsManager,
             dbm = dbm,
             eventBus = eventBus,
@@ -254,13 +256,17 @@ class SeedableConversationLookup(private val testDomain: String) : ConversationP
 }
 
 private class SenderNoopFileOperationsProvider : FileOperationsProvider {
+    // Per-instance unique dir so multiple test classes' Coil DiskCache instances
+    // don't contend on the same on-disk journal.
+    private val uniqueCacheDir: String =
+        java.nio.file.Files.createTempDirectory("hb-chat-sender-test-cache").toString()
     private fun nope(): Nothing =
         error("SenderNoopFileOperationsProvider: no file IO expected in chain-shape tests")
 
     override fun openFileInput(path: String) = nope()
     override suspend fun readFileBytes(path: String) = nope()
     override fun deleteTempFile(path: String) = nope()
-    override fun getCacheDirectory(): String = System.getProperty("java.io.tmpdir") ?: "/tmp"
+    override fun getCacheDirectory(): String = uniqueCacheDir
     override fun getFileSize(path: String) = nope()
     override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String) = nope()
     override suspend fun writeStream(path: String, data: Flow<ByteArray>) = nope()

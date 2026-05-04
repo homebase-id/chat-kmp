@@ -120,6 +120,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -154,4 +160,10 @@ dependencies {
     implementation(libs.firebase.crashlytics)
 
     debugImplementation(libs.androidx.ui.tooling)
+
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
