@@ -7,4 +7,7 @@ data class AttachmentInput(
     val displayName: String? = null,
     val waveformFile: String? = null,
     val audioLengthSeconds: Int? = null,
+    /** Video-only: optional trim applied during compression. */
+    val trimStartMs: Long? = null,
+    val trimEndMs: Long? = null,
 )
