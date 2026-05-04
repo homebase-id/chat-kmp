@@ -266,15 +266,30 @@ class ConversationMapper(
      * This is a per-row patcher; callers in [ConversationStream] invoke
      * it in a loop over rows from `selectAllConversationPlusLastMessage`.
      */
+    /**
+     * @param sqlUserDateMs Authoritative `DriveMainIndex.userDate` for the
+     *   message row. When provided, drives the conversation's
+     *   `latestMessageTimestamp` directly rather than the clamped
+     *   `MessageUiModel.userDate`. Pass `null` only when no SQL row exists yet
+     *   for the message (which essentially never happens — by the time
+     *   `applyLastMessage` runs, the message has been ingested into
+     *   `DriveMainIndex`). Use [HomebaseFile.sqlUserDateMs] to derive it
+     *   from a freshly-received file when there's no SQL projection at hand.
+     */
     suspend fun applyLastMessage(
         ui: ConversationUiModel,
         lastMsgFile: HomebaseFile,
         domain: OdinId,
+        sqlUserDateMs: Long? = null,
     ): ConversationUiModel {
         val msg = ChatMessageStream.mapToMessageData(lastMsgFile, credentialsManager) {
             it.fileMetadata.originalAuthor?.domainName ?: ""
         } ?: return ui
-        return ui.updateWithLatestMessage(msg, domain)
+        return ui.updateWithLatestMessage(
+            msg,
+            domain,
+            latestTimestampOverrideMs = sqlUserDateMs,
+        )
     }
 
     /**
@@ -322,7 +337,7 @@ class ConversationMapper(
 
         return if (lastMsg != null) {
             val domain = credentialsManager.requireActiveDomain()
-            applyLastMessage(withAdmins, lastMsg, domain)
+            applyLastMessage(withAdmins, lastMsg, domain, sqlUserDateMs = lastMsg.sqlUserDateMs())
         } else withAdmins
     }
 

@@ -202,16 +202,20 @@ class ConversationStream(
     private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
         if (messageFiles.isEmpty()) throw IllegalArgumentException("It can't be empty")
 
-        // For each file in the batch, map to model (fetch last message from DB if needed)
-        val incomingMessages =
-            messageFiles.mapNotNull { file ->
-                ChatMessageStream.mapToMessageData(file, credentialsManager, ::resolveDisplayName)
-            }
+        // For each file in the batch, map to model (fetch last message from DB if needed).
+        // Keep the original HomebaseFile alongside the mapped MessageUiModel so we can
+        // pull the SQL-faithful userDate via `file.sqlUserDateMs()` — `MessageUiModel.userDate`
+        // is clamped to `transitCreated` for display and can underrun the SQL column.
+        val incoming = ArrayList<Pair<HomebaseFile, MessageUiModel>>(messageFiles.size)
+        for (file in messageFiles) {
+            val mapped = ChatMessageStream.mapToMessageData(file, credentialsManager, ::resolveDisplayName)
+            if (mapped != null) incoming.add(file to mapped)
+        }
 
-        if (messageFiles.size != incomingMessages.size)
-            Logger.w("ConversationStream: ${messageFiles.size - incomingMessages.size} of ${messageFiles.size} messages failed to convert")
+        if (messageFiles.size != incoming.size)
+            Logger.w("ConversationStream: ${messageFiles.size - incoming.size} of ${messageFiles.size} messages failed to convert")
 
-        for (m in incomingMessages) {
+        for ((file, m) in incoming) {
             val matchingConversation = _conversations.value.items.find { it.id == m.conversationId }
 
             // Drop messages for conversations the user has left or been removed from
@@ -257,7 +261,7 @@ class ConversationStream(
                 _conversations.value = _conversations.value.copy(
                     items = _conversations.value.items.map { if (it.id == revived.id) revived else it }
                 )
-                updateConversationFromNewMessage(revived, m)
+                updateConversationFromNewMessage(revived, m, file.sqlUserDateMs())
 
                 // Intentionally do NOT trigger server-side recovery here. A
                 // drive-sync batch handler is the wrong place to enqueue
@@ -298,7 +302,7 @@ class ConversationStream(
                         id = m.conversationId,
                         name = "Conversation missing...",
                         lastMessage = m.content,
-                        latestMessageTimestamp = m.userDate,
+                        latestMessageTimestamp = Instant.fromEpochMilliseconds(file.sqlUserDateMs()),
                         admins = (if (m.originalAuthor == null) emptySet() else setOf(m.originalAuthor)),
                         unreadCount = 0,
                         avatarTiny = null,
@@ -340,7 +344,7 @@ class ConversationStream(
                 placeholderIds += m.conversationId
                 // endregion
             } else {
-                updateConversationFromNewMessage(matchingConversation, m)
+                updateConversationFromNewMessage(matchingConversation, m, file.sqlUserDateMs())
             }
         }
 
@@ -349,11 +353,20 @@ class ConversationStream(
         _conversations.value = _conversations.value.copy(dataReady = true, items = sortedList)
     }
 
+    /**
+     * @param sqlUserDateMs Authoritative `DriveMainIndex.userDate` of the
+     *   incoming message file (epoch ms). Used as the source of truth for the
+     *   conversation's `latestMessageTimestamp` so it stays in lock-step with
+     *   `selectAllUnreadCount`. The clamped `m.userDate` is correct for
+     *   display but can underrun the SQL value.
+     */
     private suspend fun updateConversationFromNewMessage(
         c: ConversationUiModel,
-        m: MessageUiModel
+        m: MessageUiModel,
+        sqlUserDateMs: Long,
     ) {
-        if (m.userDate >= c.latestMessageTimestamp) {
+        val sqlUserDate = Instant.fromEpochMilliseconds(sqlUserDateMs)
+        if (sqlUserDate >= c.latestMessageTimestamp) {
             val domain = credentialsManager.getActiveDomain()
 
             val increment =
@@ -364,7 +377,7 @@ class ConversationStream(
 
             val updatedConversation = c.copy(
                 unreadCount = c.unreadCount + increment,
-                latestMessageTimestamp = m.userDate,
+                latestMessageTimestamp = sqlUserDate,
                 lastMessage = m.content.truncateToCodePoints(40), // TODO: Global constant
                 lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
                 lastMessageIsDeleted = m.isDeleted,
@@ -438,6 +451,16 @@ class ConversationStream(
         // file-of-record lastReadTime into ChatReadCount and patches unread
         // counts in one round-trip — fire-and-forget so the in-memory list
         // update above stays on the hot path.
+        //
+        // Skip while the cold-load pipeline hasn't run its own enrich yet.
+        // During initial sync, every conversation file streams in via this
+        // path and would trigger N redundant enrich passes (each 2-10s on a
+        // power user's box, visibly reshuffling the list every emit). The
+        // end-of-start() enrich (`enrichAllConversationsWithUnreadCounts`
+        // after `enrichWithLastMessages` / `enrichWithAdmins`) flips
+        // `hasUnreadCounts` once cold-load is done; only after that should
+        // per-batch arrivals trigger their own mirror.
+        if (!_conversations.value.enrichment.hasUnreadCounts) return
         scope.launch {
             try {
                 enrichAllConversationsWithUnreadCounts()
@@ -655,17 +678,22 @@ class ConversationStream(
         val rows = dbm.chatReadCount.selectAllConversationPlusLastMessage(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
-        val msgByConversation = HashMap<Uuid, id.homebase.api.client.drives.HomebaseFile>(rows.size)
+        // Carry the SQL `msgUserDate` (DriveMainIndex.userDate) alongside the
+        // file. The conversation list's `latestMessageTimestamp` must use this
+        // SQL value, not the clamped `MessageUiModel.userDate`, so it stays in
+        // lock-step with what `selectAllUnreadCount` filters on. See
+        // `HomebaseFile.sqlUserDateMs()` for the formula.
+        val msgByConversation = HashMap<Uuid, Pair<id.homebase.api.client.drives.HomebaseFile, Long?>>(rows.size)
         for (row in rows) {
             val convoId = row.conversation.fileMetadata.appData.uniqueId ?: continue
             val msg = row.message ?: continue
-            msgByConversation[convoId] = msg
+            msgByConversation[convoId] = msg to row.msgUserDateMs
         }
 
         val current = _conversations.value
         val updated = current.items.map { ui ->
-            val msgFile = msgByConversation[ui.id] ?: return@map ui
-            mapper.applyLastMessage(ui, msgFile, domain)
+            val pair = msgByConversation[ui.id] ?: return@map ui
+            mapper.applyLastMessage(ui, pair.first, domain, sqlUserDateMs = pair.second)
         }
 
         _conversations.value = current.copy(

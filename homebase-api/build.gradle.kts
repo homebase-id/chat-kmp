@@ -93,6 +93,7 @@ kotlin {
             implementation(libs.kotlinx.immutableCollections)
             implementation(libs.kache)
             implementation(libs.kache.file)
+            implementation(libs.coil3)
             implementation(libs.okio)
         }
         commonTest.dependencies {

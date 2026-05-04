@@ -81,11 +81,22 @@ class ChatMessageActionService(
             return
         }
 
-        val newReadTime = viewedRecords.maxOf { it.userDate }
+        // The MessageUiModel.userDate carried here is the *clamped* value from
+        // ChatMessageStream.mapToMessageData (`min(appData.userDate, transitCreated)`).
+        // selectAllUnreadCount filters on the *un-clamped* DriveMainIndex.userDate,
+        // so capping newReadTime at `viewedRecords.maxOf { userDate }` can leave
+        // the badge stuck on a row whose appData.userDate exceeded transitCreated.
+        // The conversation's `latestMessageTimestamp` (sourced from the SQL column
+        // since `enrichWithLastMessages` was fixed) is authoritative — use it as
+        // a floor when it's ahead of the per-file value.
+        val viewedMax = viewedRecords.maxOf { it.userDate }
+        val convoLatest = participantLookup.getConversationById(conversationId)?.latestMessageTimestamp
+        val newReadTime = if (convoLatest != null && convoLatest > viewedMax) convoLatest else viewedMax
         Logger.d(tag = TAG) {
             "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} " +
-                    "(max userDate over ${viewedRecords.size} viewed records, " +
-                    "${unreadRecords.size} receipt-eligible)"
+                    "(viewedMax=${viewedMax.toEpochMilliseconds()} " +
+                    "convoLatest=${convoLatest?.toEpochMilliseconds()} " +
+                    "viewed=${viewedRecords.size} receipt-eligible=${unreadRecords.size})"
         }
 
         // Send a read receipt only if there are receipt-eligible records. For

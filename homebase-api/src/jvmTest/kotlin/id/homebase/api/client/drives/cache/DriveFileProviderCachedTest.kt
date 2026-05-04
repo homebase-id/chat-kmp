@@ -168,7 +168,7 @@ class DriveFileProviderCachedTest {
         // but pre-fix code paths could have produced them — so a user upgrading
         // past the fix might still carry one on disk. This test documents the
         // failure mode and pins the diagnostic log to the right context.
-        val thumbDir = Path.of(tempDir, "homebase-thumbs")
+        val thumbDir = Path.of(tempDir, "homebase-thumbs-v2")
         val filesBefore = snapshotFiles(thumbDir)
 
         provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
@@ -218,7 +218,7 @@ class DriveFileProviderCachedTest {
 
         // Truncate every file under the thumb cache dir to simulate a corrupted
         // on-disk entry (short read in readBytesResponse => EOFException / NPE).
-        val thumbDir = Path.of(tempDir, "homebase-thumbs")
+        val thumbDir = Path.of(tempDir, "homebase-thumbs-v2")
         Files.walk(thumbDir).use { stream ->
             stream.filter { Files.isRegularFile(it) }.forEach { Files.write(it, ByteArray(0)) }
         }
@@ -310,7 +310,7 @@ class DriveFileProviderCachedTest {
     fun `getCacheStats returns sentinel for broken cache without hiding the healthy one`() = runTest {
         // Pre-fail the thumb cache: create homebase-thumbs as a FILE, which
         // makes the subsequent FileKache ctor blow up on createDirectories.
-        Files.write(Path.of(tempDir, "homebase-thumbs"), ByteArray(0))
+        Files.write(Path.of(tempDir, "homebase-thumbs-v2"), ByteArray(0))
 
         val stats = provider.getCacheStats()
 
@@ -326,41 +326,6 @@ class DriveFileProviderCachedTest {
         assertEquals(
             CacheStats.UNAVAILABLE, thumb.sizeBytes,
             "broken thumb cache must be marked unavailable via the sentinel"
-        )
-    }
-
-    /**
-     * Regression for an Android log where a single internal mayakapps/kache
-     * NPE poisoned the live FileKache instance and every subsequent
-     * `get()`/`put()` fired the same `getClass() on null` NPE for the rest of
-     * the session — 90k+ identical errors in one user log. The self-healing
-     * path nulls the bad reference under the lifecycle mutex so the next
-     * accessor reconstructs over the existing on-disk journal, recovering
-     * already-cached entries instead of needing a full re-download.
-     */
-    @Test
-    fun `discardThumbKache rebuilds cache and previously-cached bytes survive`() = runTest {
-        // Populate the cache so there's a live instance + on-disk journal.
-        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
-        val countAfterPopulate = requestCount
-
-        // Same key reads from cache — no network — proving the live instance works.
-        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
-        assertEquals(
-            countAfterPopulate, requestCount,
-            "warm read should hit the live cache (no extra network call)"
-        )
-
-        // Simulate the recovery path the new catch blocks invoke.
-        provider.discardThumbKache()
-
-        // Next call must succeed — a fresh FileKache reconstructs over the
-        // same directory and finds the existing entry. Network count must NOT
-        // change: the on-disk journal survives, so this is a cache hit.
-        provider.getThumbBytesRaw(driveId, fileId, key, 100, 100)
-        assertEquals(
-            countAfterPopulate, requestCount,
-            "after discard + reconstruct, the previously-cached entry must still serve from disk"
         )
     }
 
@@ -384,7 +349,7 @@ class DriveFileProviderCachedTest {
     }
 }
 
-/** Snapshot every regular file under [dir] (recursively), skipping FileKache's journal. */
+/** Snapshot every regular file under [dir] (recursively), skipping the disk-cache journal. */
 private fun snapshotFiles(dir: Path): Set<Path> {
     if (!Files.exists(dir)) return emptySet()
     return Files.walk(dir).use { stream ->
