@@ -2408,6 +2408,18 @@ class ConversationListViewModel(
             )
         }
 
+        // Flip the selected id NOW, not after messages arrive. The scaffold's
+        // detail-pane navigation in NotificationNavigationEffects keys off this
+        // value via LaunchedEffect(selectedConversationId); waiting for the first
+        // ChatMessagesData.Messages emission held the navigation hostage to a
+        // potentially slow DB read on cold-start / post-reconnect. The detail pane
+        // already shows isLoadingMessages = true above; messages will fill in via
+        // the collect block below.
+        Logger.i(tag = "ConversationListViewModel") {
+            "selectedConversationId set id=$conversationId (pending messages)"
+        }
+        _uiState.update { it.copy(selectedConversationId = conversationId) }
+
         // When loading message for newly selected conversation, cancel any previous job to
         // avoid observing multiple messageStreams
         currentConversationJob?.cancel()
@@ -2516,12 +2528,17 @@ class ConversationListViewModel(
                                 )
                             }
 
-                            Logger.i(tag = "ConversationListViewModel") {
-                                "selectedConversationId flip id=$conversationId messageCount=${messages.size}"
+                            if (setInitialScroll) {
+                                // Crisp proof that the detail pane is no longer
+                                // gated on messages: this is the gap between the
+                                // synchronous selectedConversationId flip and the
+                                // first messages payload landing in the UI. If
+                                // it's long, navigation already completed (tap →
+                                // detailPane render) without waiting for it.
+                                Logger.i(tag = "ConversationListViewModel") {
+                                    "messages first emission id=$conversationId messageCount=${messages.size} sinceSelected=${loadStart.elapsedNow()}"
+                                }
                             }
-                            _uiState.value = _uiState.value.copy(
-                                selectedConversationId = conversationId,
-                            )
 
                             _messagesUiState.update {
                                 it.copy(

@@ -26,6 +26,13 @@ import kotlin.uuid.Uuid
  * scaffold to `Detail(selectedId)`. If the scaffold is already at `Detail` with a stale
  * `contentKey`, pop first so `navigateTo` is not treated as a no-op.
  *
+ * Contract with [ConversationListViewModel.selectConversation]: the VM MUST update
+ * `selectedConversationId` synchronously when a conversation is selected, *before*
+ * any message-stream collect resumes. If that flip is delayed until the first
+ * `ChatMessagesData.Messages` arrives, this effect won't fire and a slow DB read on
+ * cold-start / post-reconnect will hold notification-tap navigation hostage for
+ * seconds. See `loadMessagesForConversation` for the prelude that enforces this.
+ *
  * The two effects race during a programmatic swap: `navigateBack()` transits the
  * scaffold through the "list-only" state that effect 1 watches for. `isSwappingDetailPane`
  * gates effect 1 during that window so it doesn't null out `selectedConversationId`
