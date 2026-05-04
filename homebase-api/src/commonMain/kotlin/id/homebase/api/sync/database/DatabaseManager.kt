@@ -5,7 +5,6 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import co.touchlab.kermit.Logger
-import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -168,40 +167,17 @@ class DatabaseManager(
     }
 
     suspend fun withWriteTransaction(block: (OdinDatabase) -> Unit) {
-        val queueStart = TimeSource.Monotonic.markNow()
         withContext(dispatcher) {
-            val wait = queueStart.elapsedNow()
-            val execStart = TimeSource.Monotonic.markNow()
             database.transaction { block(database) }
-            Logger.i(tag = "DbWrite") {
-                "withWriteTransaction wait=$wait exec=${execStart.elapsedNow()}"
-            }
         }
     }
 
     suspend fun withWrite(block: (OdinDatabase) -> Unit) {
-        val queueStart = TimeSource.Monotonic.markNow()
-        withContext(dispatcher) {
-            val wait = queueStart.elapsedNow()
-            val execStart = TimeSource.Monotonic.markNow()
-            block(database)
-            Logger.i(tag = "DbWrite") {
-                "withWrite wait=$wait exec=${execStart.elapsedNow()}"
-            }
-        }
+        withContext(dispatcher) { block(database) }
     }
 
-    suspend fun <R> withWriteValue(block: (OdinDatabase) -> R): R {
-        val queueStart = TimeSource.Monotonic.markNow()
-        return withContext(dispatcher) {
-            val wait = queueStart.elapsedNow()
-            val execStart = TimeSource.Monotonic.markNow()
-            val result = block(database)
-            Logger.i(tag = "DbWrite") {
-                "withWriteValue wait=$wait exec=${execStart.elapsedNow()}"
-            }
-            result
-        }
+    suspend fun <R> withWriteValue(block: (OdinDatabase) -> R): R = withContext(dispatcher) {
+        block(database)
     }
 
     // Nuke every table and rebuild the schema from scratch. Used on logout (via
