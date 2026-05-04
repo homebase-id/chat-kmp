@@ -18,7 +18,11 @@ data class PayloadFile(
     val descriptorContent: String? = null,
     val isPreEncrypted: Boolean = false,
     /** IV for manual encryption mode (when skipEncryption = true). */
-    val iv: ByteArray? = null
+    val iv: ByteArray? = null,
+    /** Video-only: trim start, ms, applied during compression. Null = no trim. */
+    val trimStartMs: Long? = null,
+    /** Video-only: trim end, ms, applied during compression. Null = no trim. */
+    val trimEndMs: Long? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

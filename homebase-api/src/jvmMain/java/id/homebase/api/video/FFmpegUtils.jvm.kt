@@ -88,35 +88,22 @@ actual object FFmpegUtils {
 
     actual suspend fun compressVideo(
         inputPath: String,
-        onProgress: ((Float) -> Unit)?
+        onProgress: ((Float) -> Unit)?,
+        trimStartMs: Long?,
+        trimEndMs: Long?,
     ): String? =
         withContext(Dispatchers.IO) {
             if (!FFmpegBinaryManager.isAvailable()) return@withContext null
 
-            // Check if compression is needed via ffprobe
-            val needsCompression = run {
-                val probeCommand = listOf(
-                    FFmpegBinaryManager.ffprobePath(),
-                    "-v", "quiet",
-                    "-select_streams", "v:0",
-                    "-show_entries", "stream=codec_name,bit_rate,width",
-                    "-of", "csv=p=0",
-                    inputPath
-                )
-                val output = runProcessWithOutput(probeCommand)
-                val parts = output.trim().split(",")
-                if (parts.size >= 3) {
-                    val codec = parts[0].lowercase()
-                    val bitrate = parts[1].toLongOrNull()
-                    val width = parts[2].toIntOrNull()
-                    val isH264 = codec == "h264"
-                    val bitrateOk = bitrate != null && bitrate <= MAX_BITRATE
-                    val widthOk = width != null && width <= MAX_WIDTH
-                    !(isH264 && bitrateOk && widthOk)
-                } else {
-                    true // assume compression needed if probe fails
-                }
-            }
+            val hasTrim = trimStartMs != null || trimEndMs != null
+
+            // Check if compression is needed. When trim is requested we
+            // must always re-encode, since stream-copy won't apply -t accurately.
+            // For the no-trim path: codec + width come from ffprobe (reliably
+            // reported), but bitrate is computed from fileSize / duration —
+            // ffprobe's stream-level `bit_rate` is optional and frequently null
+            // for libx264 output, which used to force unnecessary re-encodes.
+            val needsCompression = hasTrim || !isAlreadyOptimal(inputPath)
 
             if (!needsCompression) {
                 println("Video already optimal — skipping compression")
@@ -127,24 +114,35 @@ actual object FFmpegUtils {
             val outputPath =
                 "${System.getProperty("java.io.tmpdir")}/compressed_${inputFile.name}"
 
-            val durationMs = getDurationMs(inputPath)
+            val sourceDurationMs = getDurationMs(inputPath)
+            val effectiveDurationMs = trimDurationMs(sourceDurationMs, trimStartMs, trimEndMs)
 
-            val command = listOf(
-                FFmpegBinaryManager.ffmpegPath(),
-                "-y",
-                "-i", inputPath,
-                "-c:v", "libx264",
-                "-b:v", "3000k",
-                "-vf", "scale='min(1280,iw)':-2",
-                "-preset", "fast",
-                "-progress", "pipe:1",
-                "-nostats",
-                outputPath
-            )
+            val command = mutableListOf<String>().apply {
+                add(FFmpegBinaryManager.ffmpegPath())
+                add("-y")
+                // -ss before -i: fast input seek; with re-encode this is also frame-accurate.
+                if (trimStartMs != null && trimStartMs > 0) {
+                    add("-ss"); add(formatSeconds(trimStartMs))
+                }
+                add("-i"); add(inputPath)
+                if (trimEndMs != null) {
+                    val durSec = ((trimEndMs - (trimStartMs ?: 0L)).coerceAtLeast(0L)) / 1000.0
+                    add("-t"); add(formatSeconds((durSec * 1000.0).toLong()))
+                }
+                addAll(listOf(
+                    "-c:v", "libx264",
+                    "-b:v", "3000k",
+                    "-vf", "scale='min(1280,iw)':-2",
+                    "-preset", "fast",
+                    "-progress", "pipe:1",
+                    "-nostats",
+                    outputPath
+                ))
+            }
 
             val result = runProcessWithLogs(
                 command = command,
-                totalDurationMs = durationMs,
+                totalDurationMs = effectiveDurationMs,
                 onProgress = onProgress
             )
 
@@ -154,6 +152,48 @@ actual object FFmpegUtils {
                 null
             }
         }
+
+    /**
+     * "Already optimal" = h264 + width ≤ MAX_WIDTH + average bitrate ≤ MAX_BITRATE.
+     * The avg bitrate is computed from fileSize / duration rather than queried via
+     * ffprobe — `stream.bit_rate` is optional and not always present (e.g. libx264
+     * output without an explicit muxer hint), which used to force re-encodes for
+     * already-tiny files.
+     */
+    private suspend fun isAlreadyOptimal(inputPath: String): Boolean {
+        val probeCommand = listOf(
+            FFmpegBinaryManager.ffprobePath(),
+            "-v", "quiet",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=codec_name,width",
+            "-of", "csv=p=0",
+            inputPath
+        )
+        val output = runProcessWithOutput(probeCommand).trim()
+        val parts = output.split(",")
+        if (parts.size < 2) return false
+        val codec = parts[0].lowercase()
+        val width = parts[1].toIntOrNull() ?: return false
+
+        val sizeBytes = File(inputPath).length()
+        val durationMs = getDurationMs(inputPath)
+        if (sizeBytes <= 0L || durationMs <= 0L) return false
+        val avgBitrate = sizeBytes * 8L * 1000L / durationMs
+        return codec == "h264" && width <= MAX_WIDTH && avgBitrate <= MAX_BITRATE
+    }
+
+    private fun trimDurationMs(sourceMs: Long, startMs: Long?, endMs: Long?): Long {
+        val s = startMs?.coerceAtLeast(0L) ?: 0L
+        val e = endMs ?: sourceMs
+        return (e - s).coerceAtLeast(1L)
+    }
+
+    private fun formatSeconds(ms: Long): String {
+        // Locale-safe (avoid comma decimal separator in some default locales).
+        val whole = ms / 1000
+        val frac = ms % 1000
+        return "$whole.${frac.toString().padStart(3, '0')}"
+    }
 
 
     actual suspend fun segmentVideo(

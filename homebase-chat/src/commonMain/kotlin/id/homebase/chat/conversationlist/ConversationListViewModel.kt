@@ -215,21 +215,35 @@ class ConversationListViewModel(
             runCatching { VideoThumbnailExtractor.extractPosterFrame(videoPath) }.getOrNull()
         }
         pendingThumbnails[attachmentId] = deferred
+        // Duration is needed by the trim screen and is cheap to read; kick it off in
+        // parallel with the poster extraction.
+        val durationDeferred = viewModelScope.async {
+            runCatching { id.homebase.api.video.FFmpegUtils.getDurationMs(videoPath) }
+                .getOrNull()
+        }
         viewModelScope.launch {
             val bytes = try {
                 deferred.await()
             } catch (_: CancellationException) {
                 null
             }
+            val durationMs = try {
+                durationDeferred.await()
+            } catch (_: CancellationException) {
+                null
+            }
             pendingThumbnails.remove(attachmentId)
-            if (bytes == null) return@launch
+            if (bytes == null && durationMs == null) return@launch
             _messagesUiState.update { state ->
                 val overlay = state.fullScreenOverlay as? FullScreenOverlay.AttachmentData
                     ?: return@update state
                 if (overlay.attachments.none { it.attachmentId == attachmentId }) return@update state
                 val updated = overlay.attachments.map { a ->
                     if (a is AttachmentPendingFile.FileVideo && a.attachmentId == attachmentId) {
-                        a.copy(thumbnailBytes = bytes)
+                        a.copy(
+                            thumbnailBytes = bytes ?: a.thumbnailBytes,
+                            durationMs = durationMs?.takeIf { it > 0 } ?: a.durationMs,
+                        )
                     } else a
                 }
                 state.copy(fullScreenOverlay = overlay.copy(attachments = updated))
@@ -2088,6 +2102,25 @@ class ConversationListViewModel(
                 }
             }
 
+            /* Inline trim scrubber result. */
+            is ConversationListUiAction.ApplyTrimResult -> {
+                val overlay = _messagesUiState.value.fullScreenOverlay
+                if (overlay !is FullScreenOverlay.AttachmentData) return
+                val newAttachments = overlay.attachments.map { existing ->
+                    if (existing.attachmentId == action.attachmentId &&
+                        existing is AttachmentPendingFile.FileVideo
+                    ) {
+                        existing.copy(
+                            trimStartMs = action.trimStartMs,
+                            trimEndMs = action.trimEndMs,
+                        )
+                    } else existing
+                }
+                _messagesUiState.update {
+                    it.copy(fullScreenOverlay = overlay.copy(attachments = newAttachments))
+                }
+            }
+
             /* Audio recording */
             is ConversationListUiAction.ShowRecordingHelp -> {
                 sendEvent(ShowInfoMessage(MR.string.chat_message_audio_recording_help))
@@ -3022,6 +3055,8 @@ class ConversationListViewModel(
                                     platformMimeType = attachment.file.mimeType()?.toString(),
                                 ),
                                 displayName = attachment.file.name,
+                                trimStartMs = attachment.trimStartMs,
+                                trimEndMs = attachment.trimEndMs,
                             )
                         )
                     }
@@ -3096,6 +3131,9 @@ class ConversationListViewModel(
                                 thumbnailBytes = bytes,
                                 localFilePath = file.file.toString(),
                                 aspectRatio = aspect,
+                                trimStartMs = file.trimStartMs,
+                                trimEndMs = file.trimEndMs,
+                                durationMs = file.durationMs,
                             )
                         } else null
                     }

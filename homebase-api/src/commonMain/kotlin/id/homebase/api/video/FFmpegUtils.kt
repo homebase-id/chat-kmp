@@ -9,7 +9,12 @@ expect object FFmpegUtils {
 
     suspend fun getRotationFromFile(filePath: String): Int
 
-    suspend fun compressVideo(inputPath: String, onProgress: ((Float) -> Unit)? = null): String?
+    suspend fun compressVideo(
+        inputPath: String,
+        onProgress: ((Float) -> Unit)? = null,
+        trimStartMs: Long? = null,
+        trimEndMs: Long? = null,
+    ): String?
 
     suspend fun getDurationMs(inputPath: String): Long
 

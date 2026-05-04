@@ -164,7 +164,20 @@ fun ConversationMessagesPane(
 
     SharedTransitionLayout {
         AnimatedContent(
-            targetState = uiState.fullScreenOverlay, transitionSpec = {
+            targetState = uiState.fullScreenOverlay,
+            // Key on the overlay's type only. Mutating fields on the same overlay
+            // (e.g. trim handle drag → new AttachmentData) would otherwise be seen
+            // as a new screen and trigger a fade-out + remount of the inline
+            // editor, dropping its `remember` state and re-extracting thumbnails.
+            contentKey = { overlay ->
+                when (overlay) {
+                    null -> "none"
+                    is FullScreenOverlay.ViewMessageData -> "view"
+                    is FullScreenOverlay.VideoPlayerData -> "videoPlayer"
+                    is FullScreenOverlay.AttachmentData -> "attachment"
+                }
+            },
+            transitionSpec = {
                 if (targetState != null) {
                     // Entering full-screen: fade in viewer over fading out conversation
                     fadeIn(
@@ -259,6 +272,16 @@ fun ConversationMessagesPane(
                                     id.homebase.chat.conversationlist.ConversationListUiAction.RequestDrawAttachment(
                                         conversationId,
                                         attachmentId,
+                                    )
+                                )
+                            },
+                            onTrimChange = { conversationId, attachmentId, startMs, endMs ->
+                                onUiAction(
+                                    id.homebase.chat.conversationlist.ConversationListUiAction.ApplyTrimResult(
+                                        conversationId,
+                                        attachmentId,
+                                        startMs,
+                                        endMs,
                                     )
                                 )
                             },

@@ -38,11 +38,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.image.toImageBitmap
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.video.VideoMetadata
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloadService
 import id.homebase.api.video.VideoPreloader
@@ -51,6 +51,7 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
+import id.homebase.chat.widget.video.formatDurationLabel
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -260,16 +261,10 @@ fun MediaItem(
                         descriptorContent = payload.descriptorContent,
                     )
                 }
-                val isHls = remember(payload.descriptorContent) {
-                    try {
-                        payload.descriptorContent?.let {
-                            OdinSystemSerializer.deserialize<VideoMetadata>(it).isSegmented
-                        } ?: false
-                    } catch (e: Exception) {
-                        Logger.e { "Error parsing video metadata: ${e.message}" }
-                        false
-                    }
+                val videoDescriptor = remember(payload.descriptorContent) {
+                    payload.descriptorInfo() as? DescriptorContent.VideoFile
                 }
+                val isHls = videoDescriptor?.isSegmented == true
                 var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
                 var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
                 if (!isUploading) {
@@ -293,6 +288,15 @@ fun MediaItem(
                     )
                 }
                 val videoLocalContext = localContext as? LocalAttachmentContext.Video
+                val displayDurationMs: Long? = run {
+                    val ctx = videoLocalContext
+                    if (ctx != null) {
+                        val total = ctx.durationMs ?: 0L
+                        val s = ctx.trimStartMs ?: 0L
+                        val e = ctx.trimEndMs ?: total
+                        (e - s).takeIf { it > 0 }
+                    } else videoDescriptor?.durationMs
+                }
                 Box(modifier = finalModifier) {
                     if (videoLocalContext != null) {
                         val uploadBitmap = remember(videoLocalContext.thumbnailBytes) {
@@ -347,6 +351,21 @@ fun MediaItem(
                                 .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
                                 .padding(horizontal = 3.dp, vertical = 1.dp),
                         )
+                        if (displayDurationMs != null) {
+                            Text(
+                                text = formatDurationLabel(displayDurationMs),
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(4.dp)
+                                    .background(
+                                        Color.Black.copy(alpha = 0.55f),
+                                        RoundedCornerShape(4.dp),
+                                    )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
                     }
                     if (isPreloading && !isUploading) {
                         Box(
@@ -376,6 +395,12 @@ fun MediaItem(
                 val imageBitmap = videoCtx?.thumbnailBytes?.let { bytes ->
                     remember(bytes) { bytes.toImageBitmap() }
                 }
+                val noIvDurationMs: Long? = videoCtx?.let {
+                    val total = it.durationMs ?: 0L
+                    val s = it.trimStartMs ?: 0L
+                    val e = it.trimEndMs ?: total
+                    (e - s).takeIf { d -> d > 0 }
+                }
                 if (imageBitmap != null) {
                     Box(modifier = finalModifier) {
                         Image(
@@ -384,6 +409,21 @@ fun MediaItem(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                         )
+                        if (noIvDurationMs != null) {
+                            Text(
+                                text = formatDurationLabel(noIvDurationMs),
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(4.dp)
+                                    .background(
+                                        Color.Black.copy(alpha = 0.55f),
+                                        RoundedCornerShape(4.dp),
+                                    )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
                     }
                 } else {
                     MediaPlaceholder(emoji = "📹", label = "Video", modifier = baseModifier)
