@@ -13,6 +13,10 @@ import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import kotlin.concurrent.Volatile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okio.ByteString.Companion.encodeUtf8
@@ -94,9 +98,12 @@ class PublicProfileProviderCached(
         .build()
 
     init {
-        // Reclaim disk from the pre-migration mayakapps/kache cache directories.
-        runCatching { fileSystem.deleteRecursively("$directory/homebase-public-profiles".toPath()) }
-        runCatching { fileSystem.deleteRecursively("$directory/homebase-public-images".toPath()) }
+        // Fire-and-forget reclaim of the pre-migration mayakapps/kache cache
+        // directories — see DriveFileProviderCached.init for rationale.
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+            runCatching { fileSystem.deleteRecursively("$directory/homebase-public-profiles".toPath()) }
+            runCatching { fileSystem.deleteRecursively("$directory/homebase-public-images".toPath()) }
+        }
     }
 
     // Coil's DiskLruCache enforces `[a-z0-9_-]{1,120}` on keys; SHA-256 hex

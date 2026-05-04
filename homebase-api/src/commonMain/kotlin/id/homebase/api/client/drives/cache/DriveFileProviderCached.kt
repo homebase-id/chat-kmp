@@ -13,7 +13,11 @@ import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.PayloadOperationOptions
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.launch
 import io.ktor.client.HttpClient
 import io.ktor.http.Headers
 import kotlin.collections.mutableMapOf
@@ -111,11 +115,15 @@ class DriveFileProviderCached(
             .build()
 
     init {
-        // Reclaim disk from the pre-migration mayakapps/kache cache directories.
-        // Best-effort — a missing dir is fine, and any failure here is purely
-        // a missed cleanup, not a correctness issue.
-        runCatching { fileSystem.deleteRecursively("$directory/homebase-payloads".toPath()) }
-        runCatching { fileSystem.deleteRecursively("$directory/homebase-thumbs".toPath()) }
+        // Fire-and-forget reclaim of the pre-migration mayakapps/kache cache
+        // directories. Best-effort — a missing dir is fine, and any failure
+        // here is purely a missed cleanup, not a correctness issue. Done off
+        // the construction thread so an upgrade-day delete of a populated
+        // 500 MB dir cannot block whatever path instantiates this class.
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+            runCatching { fileSystem.deleteRecursively("$directory/homebase-payloads".toPath()) }
+            runCatching { fileSystem.deleteRecursively("$directory/homebase-thumbs".toPath()) }
+        }
     }
 
     // Coil's DiskLruCache enforces `[a-z0-9_-]{1,120}` on keys. Our logical
